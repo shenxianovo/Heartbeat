@@ -1,0 +1,44 @@
+---
+title: "系统、开发与分布式记录"
+description: "25 个有来源依据的观测映射用例"
+---
+
+这组包含 25 个场景。每行是一个有明确含义的最小记录切片，不等于完整接入了对应服务。测试输入、身份约定与原始来源保存在 `tests/Heartbeat.Model.Tests/Fixtures/systems.json`。
+
+[下载全部 100 个场景的完整 JSON](/model-stress/scenarios.json)，按本页编号查找，可以检查精确 Schema、输入、身份规则、时间和重放约定。
+
+实际覆盖与限制见[验证证据](./evidence.mdx)。字段能存下来，不代表自动满足领域约束、历史保真或图查询。
+
+| 编号 | 场景 | 关键处理 | 依据 |
+| --- | --- | --- | --- |
+| B01 | Git 作者时间与提交时间 | 两种事实分别解释，不能拼成一个持续区间 | [来源1](https://git-scm.com/docs/git-commit-tree) |
+| B02 | Merge 多父节点与顺序 | 父节点出现关系可有顺序；引用数组不能直接声明 | [来源1](https://git-scm.com/docs/git-commit-tree) |
+| B03 | 附注标签与轻量标签 | 标签对象、引用名和目标分别识别 | [来源1](https://git-scm.com/docs/git-tag) |
+| B04 | 强推、重写与 reflog 过期 | 记录已见对象和引用变化；过期历史不能猜回 | [来源1](https://git-scm.com/docs/git-reflog) |
+| B05 | Git 编码与签名原始字节 | 签名依赖精确字节，文本展示不是原始材料替代品 | [来源1](https://git-scm.com/docs/git-commit) |
+| B06 | Span 先于父 Span 到达 | 允许未到达引用；应用稍后核验，API 不保证目标存在 | [来源1](https://opentelemetry.io/docs/specs/otel/trace/api/) |
+| B07 | Span links 扇入与属性 | 链接出现次数、顺序、属性可成为普通业务实体 | [来源1](https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/trace/v1/trace.proto) |
+| B08 | 纳秒 Span 映射到微秒 | 保留原始纳秒字段；通用时间轴会损失细粒度顺序 | [来源1](https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/trace/v1/trace.proto) |
+| B09 | Span 事件乱序与活动区间 | 来源事件序列和结束未知分开，不用到达顺序替代 | [来源1](https://opentelemetry.io/docs/specs/otel/trace/api/) |
+| B10 | 丢弃遥测与重复导出 | 丢弃计数是证据；重试映射沿用，不杜撰缺失事件 | [来源1](https://opentelemetry.io/docs/specs/otlp/) |
+| B11 | Agent 工具并发扇出 | 工具调用独立身份；父任务引用不等于串行执行 | [来源1](https://openai.github.io/openai-agents-python/ref/tracing/create/) |
+| B12 | 传输重试与真正重执行 | 同一输入重放复用映射；再次执行是新的运行事实 | [来源1](https://opentelemetry.io/docs/specs/otlp/) |
+| B13 | 流式增量没有时间戳 | 保存序号与增量身份；事实时间保持未知 | [来源1](https://developers.openai.com/api/reference/resources/responses/streaming-events) |
+| B14 | 异构模型元数据 | 用有类型的属性条目；联合类型互斥仍需适配器校验 | [来源1](https://openai.github.io/openai-agents-python/ref/tracing/create/) |
+| B15 | PID 重用 | 进程身份需要启动范围，不仅是 PID | [来源1](https://www.man7.org/linux/man-pages/man5/proc_pid_stat.5.html) |
+| B16 | 嵌套 PID 命名空间 | 同一进程的多个可见 PID 需要命名空间限定 | [来源1](https://www.kernel.org/pub/linux/docs/man-pages/book/man-pages-6.17.pdf) |
+| B17 | 容器重启与 Pod 身份 | Pod、容器实例和重启次数分开 | [来源1](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.27/#containerstatus-v1-core) |
+| B18 | Prometheus 计数器重置 | 保留序列标签与重置证据，不把下降当负增量 | [来源1](https://prometheus.io/docs/concepts/metric_types/) |
+| B19 | 直方图正无穷桶与非有限值 | 有限数值与特殊值标签分开；JSON number 不能写 Infinity | [来源1](https://prometheus.io/docs/instrumenting/exposition_formats/) |
+| B20 | 原生直方图稀疏桶 | 保留桶结构与定义变化，不能只保留均值 | [来源1](https://prometheus.io/docs/specs/native_histograms/) |
+| B21 | 漏抓与过期序列 | 缺样不是数值为零，也不能推出真实状态 | [来源1](https://prometheus.io/docs/prometheus/latest/querying/basics/) |
+| B22 | 日志事件时间与采集时间 | 事实时间按定义选；采集时间另作业务字段 | [来源1](https://opentelemetry.io/docs/specs/otel/logs/data-model/) |
+| B23 | Journal 游标与启动时钟 | 游标、boot ID、单调时钟和墙钟各有含义 | [来源1](https://github.com/systemd/systemd/blob/main/man/systemd.journal-fields.xml) |
+| B24 | CI 重跑沿用 run ID | 执行身份包含 attempt；run ID 相同不合并重跑 | [来源1](https://docs.github.com/en/rest/actions/workflow-runs) |
+| B25 | 构件摘要、过期与来源 | 可记录元数据与来源链；过期字节无法凭摘要还原 | [来源1](https://docs.github.com/en/rest/actions/artifacts) |
+
+## 怎么读这些结果
+
+这些映射没有依靠一个万能原始 JSON 字段把所有问题藏起来。来源标识、原始时间、状态、顺序和关系都有声明过的业务字段；确实需要保留字节时，才用明确的编码。
+
+如果一个来源没有提供历史正文、结束事件、时区或准确到达时间，测试不会替它补造。映射成功也不表示来源鉴权、生产采集、查询性能或长期运行已经验证。

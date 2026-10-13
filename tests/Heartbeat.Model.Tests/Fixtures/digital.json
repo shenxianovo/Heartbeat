@@ -1,0 +1,2101 @@
+[
+  {
+    "id": "A01",
+    "title": "Foreground app changes display name without changing installation",
+    "source": [
+      "repo:src/Observers/Heartbeat.Observer.ForegroundState/MacOSForegroundApplicationReader.cs; ForegroundTimeline.cs; LocalApplicationRegistry.cs; ForegroundCapture.cs"
+    ],
+    "evidence": "Reader exposes BundleIdentifier, Name, ExecutablePath, ObservedAt, TimeZone, ProcessId, ProcessStartedAt, Elapsed, Awake. Timeline compares application ID, name and timezone.",
+    "properties": {
+      "name": "Editor Insiders"
+    },
+    "references": {
+      "localApplicationId": "019e1000-0000-7000-8000-000000000101"
+    },
+    "stableIdentity": "Installation UUID persists for matching bundle/path. Each period has its own content/Observation UUID; a changed displayed name splits the period, not the app identity.",
+    "timedMeaning": "Period starts at accepted sample and extends through confirmed samples; old period ends at transition sample. Neither user attention nor document identity follows from foreground state.",
+    "history": "Replaying a persisted outbox uses identical IDs. Name revision must not mutate earlier period content. Same app later in day creates new period.",
+    "fkVsRelation": "localApplicationId is ordinary scalar reference. No independent relation entity is needed for one period/app relationship.",
+    "lossVsFriction": "No representational loss. Practical source boundary: no window/document title in current reader. Inventing a document field would be an unsupported inference.",
+    "testPropositions": [
+      "Feed same installation at t0/name A and t1/name B: expect two content IDs, one app ID; old name A retained",
+      "Replay latest outbox twice: GET each ID is unchanged"
+    ],
+    "verdict": "A",
+    "fixtureKind": "repo-code-grounded constructed fixture",
+    "factTime": [
+      "2026-10-11T09:00:00Z",
+      "2026-10-11T09:00:01Z",
+      "Etc/UTC"
+    ],
+    "expectedValid": true,
+    "reason": "Frozen Core supports the declared business shape; semantic constraints remain collector responsibilities.",
+    "fields": {
+      "name": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "localApplicationId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "resourceName": "stress-a01",
+    "entityId": "019e1000-0000-7000-8000-000000001001",
+    "schemaId": "019e1000-0000-7000-8000-000000002001",
+    "observerId": "019e1000-0000-7000-8000-000000003000",
+    "observationId": "019e1000-0000-7000-8000-000000004001",
+    "observation": {
+      "references": {
+        "observerId": "019e1000-0000-7000-8000-000000003000",
+        "contentId": "019e1000-0000-7000-8000-000000001001",
+        "schemaId": "019e1000-0000-7000-8000-000000002001"
+      },
+      "properties": {
+        "startAt": "2026-10-11T09:00:00Z",
+        "endAt": "2026-10-11T09:00:01Z",
+        "timeZone": "Etc/UTC"
+      }
+    },
+    "sourceFieldNote": "Properties include documented source fields plus explicitly named collector-derived identity/status/evidence fields; exact mapping described in evidence and prose. Fixture values are synthetic unless tagged observed synthetic local sample."
+  },
+  {
+    "id": "A02",
+    "title": "Foreground sleep or wall-clock discontinuity",
+    "source": [
+      "repo:src/Observers/Heartbeat.Observer.ForegroundState/MacOSForegroundApplicationReader.cs; ForegroundTimeline.cs; LocalApplicationRegistry.cs; ForegroundCapture.cs"
+    ],
+    "evidence": "ForegroundTimeline rejects nonpositive/excessive wall gaps; compares elapsed and awake deltas, with 100 ms tolerance; Interrupt clears current continuity.",
+    "properties": {
+      "name": "Browser"
+    },
+    "references": {
+      "localApplicationId": "019e1000-0000-7000-8000-000000000102"
+    },
+    "stableIdentity": "App ID unchanged across sleep, but resumed interval receives new observation/content IDs.",
+    "timedMeaning": "Last confirmed end is kept before gap; resumed observation starts at a new sample. null is unknown boundary, not sleeping. Do not bridge sleep or assign the gap to the app.",
+    "history": "Existing interval may be updated while continuous; collector interruption creates new observation. Evidence replay is distinct from new sample.",
+    "fkVsRelation": "Ordinary application reference. A separate gap/diagnostic business entity is possible only if collector actually records it.",
+    "lossVsFriction": "Core can express separated periods exactly. Collection loss inside gap is source absence, not a reason to change ITimed.",
+    "testPropositions": [
+      "Samples t0,t1 then t1+1h after sleep: assert no interval covers the hour",
+      "Wall moves backward while monotonic rises: assert split, never StartAt > EndAt"
+    ],
+    "verdict": "A",
+    "fixtureKind": "repo-code-grounded constructed fixture",
+    "factTime": [
+      "2026-10-11T09:00:00Z",
+      "2026-10-11T09:00:01Z",
+      "Etc/UTC"
+    ],
+    "expectedValid": true,
+    "reason": "Frozen Core supports the declared business shape; semantic constraints remain collector responsibilities.",
+    "fields": {
+      "name": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "localApplicationId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "resourceName": "stress-a02",
+    "entityId": "019e1000-0000-7000-8000-000000001002",
+    "schemaId": "019e1000-0000-7000-8000-000000002002",
+    "observerId": "019e1000-0000-7000-8000-000000003000",
+    "observationId": "019e1000-0000-7000-8000-000000004002",
+    "observation": {
+      "references": {
+        "observerId": "019e1000-0000-7000-8000-000000003000",
+        "contentId": "019e1000-0000-7000-8000-000000001002",
+        "schemaId": "019e1000-0000-7000-8000-000000002002"
+      },
+      "properties": {
+        "startAt": "2026-10-11T09:00:00Z",
+        "endAt": "2026-10-11T09:00:01Z",
+        "timeZone": "Etc/UTC"
+      }
+    },
+    "sourceFieldNote": "Properties include documented source fields plus explicitly named collector-derived identity/status/evidence fields; exact mapping described in evidence and prose. Fixture values are synthetic unless tagged observed synthetic local sample."
+  },
+  {
+    "id": "A03",
+    "title": "Foreground installation moves path or is reinstalled",
+    "source": [
+      "repo:src/Observers/Heartbeat.Observer.ForegroundState/MacOSForegroundApplicationReader.cs; ForegroundTimeline.cs; LocalApplicationRegistry.cs; ForegroundCapture.cs"
+    ],
+    "evidence": "LocalApplicationRegistry persistent match key is (BundleIdentifier, ExecutablePath); absent path falls back to in-memory (PID, launch time, bundle).",
+    "properties": {
+      "identifiers": [
+        {
+          "scheme": "macos.bundle-id",
+          "value": "example.Editor"
+        },
+        {
+          "scheme": "macos.executable-path",
+          "value": "/Applications/Editor.app/Contents/MacOS/Editor"
+        }
+      ]
+    },
+    "references": {},
+    "stableIdentity": "This actual collector treats a changed path as new installation. Reinstall at identical bundle/path reuses ID; physical installation continuity cannot be established from these clues alone.",
+    "timedMeaning": "Installation entity need not be timed. Observation describes when collector saw foreground state, never UUID generation time.",
+    "history": "Persistent map survives restarts only for path-backed matches. Process fallback can lose identity on restart; no stable source ID should be invented.",
+    "fkVsRelation": "Identifiers are descriptive strings, not entity edges. An independently justified cross-platform software identity could be one ordinary scalar reference.",
+    "lossVsFriction": "B is identity-evidence friction in existing collector, not Core loss. Current fields cannot prove reinstall boundaries; richer mapping does not manufacture missing evidence.",
+    "testPropositions": [
+      "Change path with same bundle: assert current registry returns new UUID",
+      "Restart registry with no path: explicitly test that prior process identity is not promised"
+    ],
+    "verdict": "B",
+    "fixtureKind": "repo-code-grounded constructed fixture",
+    "factTime": [
+      null,
+      null,
+      null
+    ],
+    "expectedValid": true,
+    "reason": "Frozen Core supports the declared business shape; semantic constraints remain collector responsibilities.",
+    "fields": {
+      "identifiers": {
+        "type": "array",
+        "required": true,
+        "nullable": false,
+        "items": {
+          "type": "object",
+          "nullable": false,
+          "fields": {
+            "scheme": {
+              "type": "string",
+              "required": true,
+              "nullable": false
+            },
+            "value": {
+              "type": "string",
+              "required": true,
+              "nullable": false
+            }
+          }
+        }
+      }
+    },
+    "resourceName": "stress-a03",
+    "entityId": "019e1000-0000-7000-8000-000000001003",
+    "schemaId": "019e1000-0000-7000-8000-000000002003",
+    "observerId": "019e1000-0000-7000-8000-000000003000",
+    "observationId": "019e1000-0000-7000-8000-000000004003",
+    "observation": {
+      "references": {
+        "observerId": "019e1000-0000-7000-8000-000000003000",
+        "contentId": "019e1000-0000-7000-8000-000000001003",
+        "schemaId": "019e1000-0000-7000-8000-000000002003"
+      },
+      "properties": {
+        "startAt": null,
+        "endAt": null,
+        "timeZone": null
+      }
+    },
+    "sourceFieldNote": "Properties include documented source fields plus explicitly named collector-derived identity/status/evidence fields; exact mapping described in evidence and prose. Fixture values are synthetic unless tagged observed synthetic local sample."
+  },
+  {
+    "id": "A04",
+    "title": "Android intermittent usage query misses activity end",
+    "source": [
+      "https://developer.android.com/reference/android/app/usage/UsageEvents.Event",
+      "https://developer.android.com/reference/android/app/usage/UsageStatsManager"
+    ],
+    "evidence": "Event accessors include getEventType, getPackageName, getClassName and getTimeStamp (epoch milliseconds). queryEvents can return null while user is not unlocked.",
+    "properties": {
+      "packageName": "example.reader",
+      "className": "ReaderActivity",
+      "eventType": "ACTIVITY_RESUMED",
+      "sourceTimestampMs": "1791709200000",
+      "coverage": "partial"
+    },
+    "references": {},
+    "stableIdentity": "No event UUID assumed. Collector assigns UUID and retains a replay ledger keyed by device/stream/query evidence plus occurrence; package name is scoped to device/profile.",
+    "timedMeaning": "Raw resumed event is a point. A derived session with missing paused event has unknown end, not end-of-query. Query-null is diagnostic absence, not zero activity.",
+    "history": "Overlapping queries replay saved evidence. Same timestamp/package/type may be distinct events, so naive tuple deduplication is unsafe without occurrence context.",
+    "fkVsRelation": "An app reference may be resolved later. Missing FK target is allowed; no relation object necessary for event/app.",
+    "lossVsFriction": "B: reconstruction and deduplication require collector conventions. The model retains missing-end/coverage fields; unavailable events remain unavailable.",
+    "testPropositions": [
+      "Construct RESUMED at t then null query: point event remains; no fabricated PAUSED event",
+      "Reimport identical persisted response: IDs unchanged; new independent identical event retains new ID"
+    ],
+    "verdict": "B",
+    "fixtureKind": "docs-grounded constructed fixture",
+    "factTime": [
+      "2026-10-11T09:00:00Z",
+      "2026-10-11T09:00:00Z",
+      null
+    ],
+    "expectedValid": true,
+    "reason": "Frozen Core supports the declared business shape; semantic constraints remain collector responsibilities.",
+    "fields": {
+      "packageName": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "className": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "eventType": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "sourceTimestampMs": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "coverage": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "resourceName": "stress-a04",
+    "entityId": "019e1000-0000-7000-8000-000000001004",
+    "schemaId": "019e1000-0000-7000-8000-000000002004",
+    "observerId": "019e1000-0000-7000-8000-000000003004",
+    "observationId": "019e1000-0000-7000-8000-000000004004",
+    "observation": {
+      "references": {
+        "observerId": "019e1000-0000-7000-8000-000000003004",
+        "contentId": "019e1000-0000-7000-8000-000000001004",
+        "schemaId": "019e1000-0000-7000-8000-000000002004"
+      },
+      "properties": {
+        "startAt": "2026-10-11T09:00:00Z",
+        "endAt": "2026-10-11T09:00:00Z",
+        "timeZone": null
+      }
+    },
+    "sourceFieldNote": "Properties include documented source fields plus explicitly named collector-derived identity/status/evidence fields; exact mapping described in evidence and prose. Fixture values are synthetic unless tagged observed synthetic local sample."
+  },
+  {
+    "id": "A05",
+    "title": "Android activity lifecycle is not a single user-attention interval",
+    "source": [
+      "https://developer.android.com/reference/android/app/usage/UsageEvents.Event"
+    ],
+    "evidence": "ACTIVITY_RESUMED/ACTIVITY_PAUSED are activity lifecycle events; getPackageName/getClassName distinguish source components. Source clock has millisecond granularity.",
+    "properties": {
+      "packageName": "example.maps",
+      "className": "MapActivity",
+      "eventType": "ACTIVITY_RESUMED",
+      "sourceTimestampMs": "1791709200000",
+      "occurrenceIndex": 2
+    },
+    "references": {},
+    "stableIdentity": "Source event identity is not package alone. Two class/package events at one millisecond remain separate collector occurrences.",
+    "timedMeaning": "Time point uses source timestamp. Concurrent resumed activities do not force exclusive intervals; attention remains unknown.",
+    "history": "Preserve separate raw occurrences even when aggregate derived app periods merge them. Derivation creates its own observations and identities.",
+    "fkVsRelation": "If activity and application become entities, event has scalar activityId and activity has appId. A many-to-many attention relation is not implied.",
+    "lossVsFriction": "No temporal contradiction in overlapping observations. B concerns losing multiplicity when collectors deduplicate by rounded time or assume globally exclusive foreground.",
+    "testPropositions": [
+      "Insert two resumed events at the same millisecond with different occurrences: GET both succeeds",
+      "Build overlapping intervals: model accepts them; no global exclusivity validation should be claimed"
+    ],
+    "verdict": "B",
+    "fixtureKind": "docs-grounded constructed fixture",
+    "factTime": [
+      "2026-10-11T09:00:00Z",
+      "2026-10-11T09:00:00Z",
+      null
+    ],
+    "expectedValid": true,
+    "reason": "Frozen Core supports the declared business shape; semantic constraints remain collector responsibilities.",
+    "fields": {
+      "packageName": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "className": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "eventType": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "sourceTimestampMs": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "occurrenceIndex": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "resourceName": "stress-a05",
+    "entityId": "019e1000-0000-7000-8000-000000001005",
+    "schemaId": "019e1000-0000-7000-8000-000000002005",
+    "observerId": "019e1000-0000-7000-8000-000000003005",
+    "observationId": "019e1000-0000-7000-8000-000000004005",
+    "observation": {
+      "references": {
+        "observerId": "019e1000-0000-7000-8000-000000003005",
+        "contentId": "019e1000-0000-7000-8000-000000001005",
+        "schemaId": "019e1000-0000-7000-8000-000000002005"
+      },
+      "properties": {
+        "startAt": "2026-10-11T09:00:00Z",
+        "endAt": "2026-10-11T09:00:00Z",
+        "timeZone": null
+      }
+    },
+    "sourceFieldNote": "Properties include documented source fields plus explicitly named collector-derived identity/status/evidence fields; exact mapping described in evidence and prose. Fixture values are synthetic unless tagged observed synthetic local sample."
+  },
+  {
+    "id": "A06",
+    "title": "Browser repeated URL visits and redirect/referrer chain",
+    "source": [
+      "https://developer.chrome.com/docs/extensions/reference/api/history"
+    ],
+    "evidence": "VisitItem exposes visitId, id (HistoryItem), referringVisitId, transition, optional visitTime and isLocal. These differ from URL-level history identity.",
+    "properties": {
+      "nativeVisitId": "42",
+      "nativeHistoryItemId": "7",
+      "url": "https://example.org/final",
+      "transition": "link",
+      "isLocal": true
+    },
+    "references": {
+      "referringVisitId": "019e1000-0000-7000-8000-000000000106"
+    },
+    "stableIdentity": "UUID mapping key is browser profile plus visitId, not URL. URL resource and each visit are different identities; native IDs remain strings.",
+    "timedMeaning": "visitTime gives visit point, never dwell duration. Missing time keeps both boundaries null. A referrer is not proof of human click or complete HTTP redirect chain.",
+    "history": "Polling getVisits reuses per-visit IDs; revisiting URL gets new ID. Keep source transition without inventing redirect hops hidden by API.",
+    "fkVsRelation": "Single known preceding visit uses ordinary reference; many separately evidenced hops can be ordinary visit entities, no universal Relation type.",
+    "lossVsFriction": "B: source granularity limits redirect reconstruction. Model supports available chain, but actual API lacks reverse-reference query endpoint for traversal discovery.",
+    "testPropositions": [
+      "Two visitIds share URL: assert two observations and contents",
+      "referringVisitId points to not-yet-loaded UUID: business save valid; missing target read returns 404"
+    ],
+    "verdict": "B",
+    "fixtureKind": "docs-grounded constructed fixture",
+    "factTime": [
+      "2026-10-11T09:00:00Z",
+      "2026-10-11T09:00:00Z",
+      null
+    ],
+    "expectedValid": true,
+    "reason": "Frozen Core supports the declared business shape; semantic constraints remain collector responsibilities.",
+    "fields": {
+      "nativeVisitId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "nativeHistoryItemId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "url": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "transition": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "isLocal": {
+        "type": "boolean",
+        "required": true,
+        "nullable": false
+      },
+      "referringVisitId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "resourceName": "stress-a06",
+    "entityId": "019e1000-0000-7000-8000-000000001006",
+    "schemaId": "019e1000-0000-7000-8000-000000002006",
+    "observerId": "019e1000-0000-7000-8000-000000003006",
+    "observationId": "019e1000-0000-7000-8000-000000004006",
+    "observation": {
+      "references": {
+        "observerId": "019e1000-0000-7000-8000-000000003006",
+        "contentId": "019e1000-0000-7000-8000-000000001006",
+        "schemaId": "019e1000-0000-7000-8000-000000002006"
+      },
+      "properties": {
+        "startAt": "2026-10-11T09:00:00Z",
+        "endAt": "2026-10-11T09:00:00Z",
+        "timeZone": null
+      }
+    },
+    "sourceFieldNote": "Properties include documented source fields plus explicitly named collector-derived identity/status/evidence fields; exact mapping described in evidence and prose. Fixture values are synthetic unless tagged observed synthetic local sample."
+  },
+  {
+    "id": "A07",
+    "title": "Browser history deletion and synced visits",
+    "source": [
+      "https://developer.chrome.com/docs/extensions/reference/api/history"
+    ],
+    "evidence": "onVisitRemoved provides allHistory and optional urls; it does not enumerate deleted visit IDs. isLocal separates local from synced visit origin.",
+    "properties": {
+      "allHistory": false,
+      "urls": [
+        "https://example.org/deleted"
+      ],
+      "seenAt": "2026-10-11T10:00:00Z",
+      "nativeDeletionTime": null
+    },
+    "references": {},
+    "stableIdentity": "Deletion notification is a separate observation UUID; affected URL entity is not the notification. Do not create one deletion fact per guessed visit.",
+    "timedMeaning": "If no source removal timestamp exists, schema states point means notification seen time. Historical visit time remains historical; synced arrival is not local browsing time.",
+    "history": "Replay of saved notification reuses ID. New independent clear-history signal gets new ID. Prior captures remain historical records unless a separate retention policy deletes them.",
+    "fkVsRelation": "urls can remain source strings; graph linkage to multiple URL entities requires individual deletion-target link entities with scalar references.",
+    "lossVsFriction": "B: missing per-visit evidence and multi-target relationship friction. No data loss if source URLs/flags retained; filtering local activity must honor isLocal.",
+    "testPropositions": [
+      "allHistory=true with empty urls must not be interpreted as deleting zero rows",
+      "Historical synced visit arriving now must retain old fact time and isLocal=false"
+    ],
+    "verdict": "B",
+    "fixtureKind": "docs-grounded constructed fixture",
+    "factTime": [
+      "2026-10-11T10:00:00Z",
+      "2026-10-11T10:00:00Z",
+      null
+    ],
+    "expectedValid": true,
+    "reason": "Frozen Core supports the declared business shape; semantic constraints remain collector responsibilities.",
+    "fields": {
+      "allHistory": {
+        "type": "boolean",
+        "required": true,
+        "nullable": false
+      },
+      "urls": {
+        "type": "array",
+        "required": true,
+        "nullable": false,
+        "items": {
+          "type": "string",
+          "nullable": false
+        }
+      },
+      "seenAt": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "nativeDeletionTime": {
+        "type": "string",
+        "required": true,
+        "nullable": true
+      }
+    },
+    "resourceName": "stress-a07",
+    "entityId": "019e1000-0000-7000-8000-000000001007",
+    "schemaId": "019e1000-0000-7000-8000-000000002007",
+    "observerId": "019e1000-0000-7000-8000-000000003007",
+    "observationId": "019e1000-0000-7000-8000-000000004007",
+    "observation": {
+      "references": {
+        "observerId": "019e1000-0000-7000-8000-000000003007",
+        "contentId": "019e1000-0000-7000-8000-000000001007",
+        "schemaId": "019e1000-0000-7000-8000-000000002007"
+      },
+      "properties": {
+        "startAt": "2026-10-11T10:00:00Z",
+        "endAt": "2026-10-11T10:00:00Z",
+        "timeZone": null
+      }
+    },
+    "sourceFieldNote": "Properties include documented source fields plus explicitly named collector-derived identity/status/evidence fields; exact mapping described in evidence and prose. Fixture values are synthetic unless tagged observed synthetic local sample."
+  },
+  {
+    "id": "A08",
+    "title": "Gmail label changes after expired history cursor",
+    "source": [
+      "https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages",
+      "https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.history/list"
+    ],
+    "evidence": "Message id is immutable; labelIds and historyId can change. history IDs are noncontiguous; expired startHistoryId can return 404 requiring full sync.",
+    "properties": {
+      "nativeMessageId": "m-01",
+      "labelIds": [
+        "INBOX",
+        "STARRED"
+      ],
+      "historyId": "914",
+      "coverage": "post-gap-snapshot"
+    },
+    "references": {
+      "messageId": "019e1000-0000-7000-8000-000000000108"
+    },
+    "stableIdentity": "Stable message UUID maps mailbox plus native message id. Snapshot UUID maps saved snapshot/version evidence, not current labels.",
+    "timedMeaning": "Mail-label snapshot is known at fetch time. historyId is not a timestamp; full-sync current flags cannot date missed changes.",
+    "history": "Retain old version content if history required. New snapshot does not overwrite old observed label set. Transport retries re-use saved observation ID.",
+    "fkVsRelation": "messageId scalar reference sufficient. Graph label membership requires separate membership entities if labels are independently identifiable.",
+    "lossVsFriction": "B: history gap cannot be recovered by the model. Explicit coverage plus unknown change time avoids falsely complete chronology; raw label array is lossless source content.",
+    "testPropositions": [
+      "Full sync after cursor 404: assert no fabricated label-change timestamps",
+      "Snapshot labels A then B: reading old content still returns A"
+    ],
+    "verdict": "B",
+    "fixtureKind": "docs-grounded constructed fixture",
+    "factTime": [
+      "2026-10-11T10:00:00Z",
+      "2026-10-11T10:00:00Z",
+      null
+    ],
+    "expectedValid": true,
+    "reason": "Frozen Core supports the declared business shape; semantic constraints remain collector responsibilities.",
+    "fields": {
+      "nativeMessageId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "labelIds": {
+        "type": "array",
+        "required": true,
+        "nullable": false,
+        "items": {
+          "type": "string",
+          "nullable": false
+        }
+      },
+      "historyId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "coverage": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "messageId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "resourceName": "stress-a08",
+    "entityId": "019e1000-0000-7000-8000-000000001008",
+    "schemaId": "019e1000-0000-7000-8000-000000002008",
+    "observerId": "019e1000-0000-7000-8000-000000003008",
+    "observationId": "019e1000-0000-7000-8000-000000004008",
+    "observation": {
+      "references": {
+        "observerId": "019e1000-0000-7000-8000-000000003008",
+        "contentId": "019e1000-0000-7000-8000-000000001008",
+        "schemaId": "019e1000-0000-7000-8000-000000002008"
+      },
+      "properties": {
+        "startAt": "2026-10-11T10:00:00Z",
+        "endAt": "2026-10-11T10:00:00Z",
+        "timeZone": null
+      }
+    },
+    "sourceFieldNote": "Properties include documented source fields plus explicitly named collector-derived identity/status/evidence fields; exact mapping described in evidence and prose. Fixture values are synthetic unless tagged observed synthetic local sample."
+  },
+  {
+    "id": "A09",
+    "title": "Gmail draft edit replaces underlying message; sending creates another message",
+    "source": [
+      "https://developers.google.com/workspace/gmail/api/guides/drafts"
+    ],
+    "evidence": "Draft container ID stays stable while replacing its message changes message ID. Sending deletes the draft and creates a SENT message with a new ID.",
+    "properties": {
+      "nativeDraftId": "d-01",
+      "nativeMessageId": "m-revision-2",
+      "rawBase64Url": "U3ViamVjdDogVGVzdA0KDQpIZWxsbw",
+      "state": "draft"
+    },
+    "references": {
+      "draftId": "019e1000-0000-7000-8000-000000000109",
+      "messageId": "019e1000-0000-7000-8000-000000000209"
+    },
+    "stableIdentity": "Draft UUID belongs to mailbox/draft ID. Each message ID maps separately; sent message cannot silently reuse draft-message identity.",
+    "timedMeaning": "Snapshot fact time is observed state time unless source supplies a specific event timestamp. A draft send response by itself must not invent creation/edit chronology.",
+    "history": "Keep prior message versions and observation content if requested history. Link sent result to draft only when source workflow evidence establishes it.",
+    "fkVsRelation": "draftId/messageId are ordinary references. A send-outcome entity is warranted when recording linkage plus event evidence and timing.",
+    "lossVsFriction": "B: treating all text edits as stable message identity would lose true source replacement semantics. Frozen business entities retain draft/message distinctions.",
+    "testPropositions": [
+      "Two snapshots same draftId, different messageId: one draft and two messages",
+      "Sent response ID differs: no previous message UUID overwritten; prior content remains readable"
+    ],
+    "verdict": "B",
+    "fixtureKind": "docs-grounded constructed fixture",
+    "factTime": [
+      null,
+      null,
+      null
+    ],
+    "expectedValid": true,
+    "reason": "Frozen Core supports the declared business shape; semantic constraints remain collector responsibilities.",
+    "fields": {
+      "nativeDraftId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "nativeMessageId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "rawBase64Url": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "state": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "draftId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "messageId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "resourceName": "stress-a09",
+    "entityId": "019e1000-0000-7000-8000-000000001009",
+    "schemaId": "019e1000-0000-7000-8000-000000002009",
+    "observerId": "019e1000-0000-7000-8000-000000003009",
+    "observationId": "019e1000-0000-7000-8000-000000004009",
+    "observation": {
+      "references": {
+        "observerId": "019e1000-0000-7000-8000-000000003009",
+        "contentId": "019e1000-0000-7000-8000-000000001009",
+        "schemaId": "019e1000-0000-7000-8000-000000002009"
+      },
+      "properties": {
+        "startAt": null,
+        "endAt": null,
+        "timeZone": null
+      }
+    },
+    "sourceFieldNote": "Properties include documented source fields plus explicitly named collector-derived identity/status/evidence fields; exact mapping described in evidence and prose. Fixture values are synthetic unless tagged observed synthetic local sample."
+  },
+  {
+    "id": "A10",
+    "title": "Gmail MIME parts, thread membership and attachments",
+    "source": [
+      "https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages"
+    ],
+    "evidence": "Message exposes threadId, internalDate, payload and raw. MIME parts include partId, mimeType, filename, headers, body and recursive parts.",
+    "properties": {
+      "nativeMessageId": "m-10",
+      "internalDateMs": "1791709200000",
+      "mimeRawBase64Url": "U3ViamVjdDogVGVzdA0KDQpIZWxsbw",
+      "partIds": [
+        "0",
+        "1"
+      ]
+    },
+    "references": {
+      "threadId": "019e1000-0000-7000-8000-000000000110"
+    },
+    "stableIdentity": "Mailbox/native message ID identifies message, mailbox/threadId identifies thread, and message/partId identifies a part. Same attachment filename is not identity.",
+    "timedMeaning": "internalDate is inbox-ordering creation/acceptance time, not necessarily author Date header. Separate source header date can be preserved as property; thread has no assumed single event time.",
+    "history": "Parts may be immutable versions under message. Thread membership expands independently; replay raw message uses mapped content IDs.",
+    "fkVsRelation": "One threadId fits scalar reference. Each attachment part can reference message and blob; arbitrary reference arrays are invalid, so use ordinary part/link entities.",
+    "lossVsFriction": "B: recursive MIME and arbitrary headers can be retained raw without loss; structured graph of parts requires decomposition. Source snippet alone is insufficient full-message evidence.",
+    "testPropositions": [
+      "Same filename for two partIds: keep two part entities",
+      "Submit array items type reference: reject; submit two part rows with scalar messageId: accept"
+    ],
+    "verdict": "B",
+    "fixtureKind": "docs-grounded constructed fixture",
+    "factTime": [
+      "2026-10-11T09:00:00Z",
+      "2026-10-11T09:00:00Z",
+      null
+    ],
+    "expectedValid": true,
+    "reason": "Frozen Core supports the declared business shape; semantic constraints remain collector responsibilities.",
+    "fields": {
+      "nativeMessageId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "internalDateMs": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "mimeRawBase64Url": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "partIds": {
+        "type": "array",
+        "required": true,
+        "nullable": false,
+        "items": {
+          "type": "string",
+          "nullable": false
+        }
+      },
+      "threadId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "resourceName": "stress-a10",
+    "entityId": "019e1000-0000-7000-8000-000000001010",
+    "schemaId": "019e1000-0000-7000-8000-000000002010",
+    "observerId": "019e1000-0000-7000-8000-000000003010",
+    "observationId": "019e1000-0000-7000-8000-000000004010",
+    "observation": {
+      "references": {
+        "observerId": "019e1000-0000-7000-8000-000000003010",
+        "contentId": "019e1000-0000-7000-8000-000000001010",
+        "schemaId": "019e1000-0000-7000-8000-000000002010"
+      },
+      "properties": {
+        "startAt": "2026-10-11T09:00:00Z",
+        "endAt": "2026-10-11T09:00:00Z",
+        "timeZone": null
+      }
+    },
+    "sourceFieldNote": "Properties include documented source fields plus explicitly named collector-derived identity/status/evidence fields; exact mapping described in evidence and prose. Fixture values are synthetic unless tagged observed synthetic local sample."
+  },
+  {
+    "id": "A11",
+    "title": "Outlook message moved folders changes default identifier",
+    "source": [
+      "https://learn.microsoft.com/en-us/graph/outlook-immutable-id"
+    ],
+    "evidence": "Graph default Outlook IDs can change on moves. Prefer: IdType=\"ImmutableId\" retains identity within a mailbox; archive mailbox moves are a boundary.",
+    "properties": {
+      "nativeImmutableId": "AA-immutable-1",
+      "nativeIdMode": "ImmutableId",
+      "folderNativeId": "archive-folder"
+    },
+    "references": {
+      "messageId": "019e1000-0000-7000-8000-000000000111"
+    },
+    "stableIdentity": "Mailbox plus immutable ID is the chosen stable key. If only default IDs were collected, a move cannot be confidently reconciled by subject or internetMessageId alone.",
+    "timedMeaning": "Folder snapshot time is seen time. Move event time unknown unless independently available; received time is not move time.",
+    "history": "Snapshots of folder location get separate content IDs when historical. Original message identity survives supported same-mailbox move.",
+    "fkVsRelation": "Ordinary messageId/folderId references if resolved. A timed folder-membership fact may be its own business entity when history needs it.",
+    "lossVsFriction": "B: source option and mailbox scoping matter. Core accepts both identities but cannot infer sameness from a changed native ID.",
+    "testPropositions": [
+      "Default ID changes on move: do not collapse without evidence",
+      "Immutable ID same within mailbox: reuse message UUID while preserving separate folder snapshots"
+    ],
+    "verdict": "B",
+    "fixtureKind": "docs-grounded constructed fixture",
+    "factTime": [
+      null,
+      null,
+      null
+    ],
+    "expectedValid": true,
+    "reason": "Frozen Core supports the declared business shape; semantic constraints remain collector responsibilities.",
+    "fields": {
+      "nativeImmutableId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "nativeIdMode": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "folderNativeId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "messageId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "resourceName": "stress-a11",
+    "entityId": "019e1000-0000-7000-8000-000000001011",
+    "schemaId": "019e1000-0000-7000-8000-000000002011",
+    "observerId": "019e1000-0000-7000-8000-000000003011",
+    "observationId": "019e1000-0000-7000-8000-000000004011",
+    "observation": {
+      "references": {
+        "observerId": "019e1000-0000-7000-8000-000000003011",
+        "contentId": "019e1000-0000-7000-8000-000000001011",
+        "schemaId": "019e1000-0000-7000-8000-000000002011"
+      },
+      "properties": {
+        "startAt": null,
+        "endAt": null,
+        "timeZone": null
+      }
+    },
+    "sourceFieldNote": "Properties include documented source fields plus explicitly named collector-derived identity/status/evidence fields; exact mapping described in evidence and prose. Fixture values are synthetic unless tagged observed synthetic local sample."
+  },
+  {
+    "id": "A12",
+    "title": "Outlook flag/body revisions and delta removed item",
+    "source": [
+      "https://learn.microsoft.com/en-us/graph/api/resources/message?view=graph-rest-1.0",
+      "https://learn.microsoft.com/en-us/graph/delta-query-messages"
+    ],
+    "evidence": "Message includes changeKey, lastModifiedDateTime, receivedDateTime, sentDateTime, isRead, isDraft, flag and conversationId. Folder-scoped delta can return @removed.",
+    "properties": {
+      "nativeMessageId": "AA-12",
+      "changeKey": "v2",
+      "isRead": true,
+      "isDraft": false,
+      "flagStatus": "flagged",
+      "lastModifiedDateTime": "2026-10-11T10:00:00Z",
+      "receivedDateTime": "2026-10-10T08:00:00Z"
+    },
+    "references": {
+      "messageId": "019e1000-0000-7000-8000-000000000112",
+      "conversationId": "019e1000-0000-7000-8000-000000000212"
+    },
+    "stableIdentity": "Message identity uses mailbox/immutable ID when available. Revision content uses changeKey or persisted version evidence. Delta removal is not proof of permanent global deletion.",
+    "timedMeaning": "Observation represents revision state at fetch time, or explicitly last-modified fact; retain received/sent/modified as separate business string fields with documented meanings.",
+    "history": "Full PUT is replacement, not patch: merge partial delta into a deliberately complete current view before saving, or store the partial delta as its own schema.",
+    "fkVsRelation": "Conversation reference is ordinary. Folder removal can be a separate change entity referencing message/folder without deleting historical snapshots.",
+    "lossVsFriction": "B: partial-source/update semantics can erase prior properties if mistaken for PATCH. Multiple timestamps are representable, but only chosen Observation bounds drive timeline.",
+    "testPropositions": [
+      "PUT snapshot with omitted optional body after prior body: omission replaces prior body (not merge)",
+      "@removed in one folder: mark folder removal only; do not infer permanent deletion"
+    ],
+    "verdict": "B",
+    "fixtureKind": "docs-grounded constructed fixture",
+    "factTime": [
+      "2026-10-11T10:00:00Z",
+      "2026-10-11T10:00:00Z",
+      null
+    ],
+    "expectedValid": true,
+    "reason": "Frozen Core supports the declared business shape; semantic constraints remain collector responsibilities.",
+    "fields": {
+      "nativeMessageId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "changeKey": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "isRead": {
+        "type": "boolean",
+        "required": true,
+        "nullable": false
+      },
+      "isDraft": {
+        "type": "boolean",
+        "required": true,
+        "nullable": false
+      },
+      "flagStatus": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "lastModifiedDateTime": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "receivedDateTime": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "messageId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "conversationId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "resourceName": "stress-a12",
+    "entityId": "019e1000-0000-7000-8000-000000001012",
+    "schemaId": "019e1000-0000-7000-8000-000000002012",
+    "observerId": "019e1000-0000-7000-8000-000000003012",
+    "observationId": "019e1000-0000-7000-8000-000000004012",
+    "observation": {
+      "references": {
+        "observerId": "019e1000-0000-7000-8000-000000003012",
+        "contentId": "019e1000-0000-7000-8000-000000001012",
+        "schemaId": "019e1000-0000-7000-8000-000000002012"
+      },
+      "properties": {
+        "startAt": "2026-10-11T10:00:00Z",
+        "endAt": "2026-10-11T10:00:00Z",
+        "timeZone": null
+      }
+    },
+    "sourceFieldNote": "Properties include documented source fields plus explicitly named collector-derived identity/status/evidence fields; exact mapping described in evidence and prose. Fixture values are synthetic unless tagged observed synthetic local sample."
+  },
+  {
+    "id": "A13",
+    "title": "Slack edit arrives out of order",
+    "source": [
+      "https://docs.slack.dev/reference/events/message/message_changed/"
+    ],
+    "evidence": "message_changed wraps message including original ts and edited.ts/user; event envelope also carries event delivery identity.",
+    "properties": {
+      "nativeMessageTs": "1791709200.000005",
+      "nativeEditTs": "1791712800.000001",
+      "text": "Revised meeting time",
+      "nativeChannel": "C-demo"
+    },
+    "references": {
+      "messageId": "019e1000-0000-7000-8000-000000000113"
+    },
+    "stableIdentity": "Message key scopes channel and source workspace plus original ts. Edit observation/version has its own mapped event identity; numeric conversion must not erase decimal precision.",
+    "timedMeaning": "Original message point differs from edit point. Schema chooses edit fact here; original ts stays source property. Notification receipt is a third clock.",
+    "history": "Preserve edit versions. An older retry must not overwrite latest state; API lacks CAS, so collector must order/reconcile. Same event delivery retry uses same ID.",
+    "fkVsRelation": "Version-to-message reference is scalar. A previousVersionId is optional if supported; do not invent edit chain from missing events.",
+    "lossVsFriction": "B: history works with ordinary versions. Last-writer-wins is practical risk; immutable old snapshots prevent history corruption without Core change.",
+    "testPropositions": [
+      "Apply edit v2 then late v1: latest projection must not regress",
+      "Save A and B versions: old observation still resolves A; timestamp decimal retains all source digits"
+    ],
+    "verdict": "B",
+    "fixtureKind": "docs-grounded constructed fixture",
+    "factTime": [
+      "2026-10-11T10:00:00.000001Z",
+      "2026-10-11T10:00:00.000001Z",
+      null
+    ],
+    "expectedValid": true,
+    "reason": "Frozen Core supports the declared business shape; semantic constraints remain collector responsibilities.",
+    "fields": {
+      "nativeMessageTs": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "nativeEditTs": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "text": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "nativeChannel": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "messageId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "resourceName": "stress-a13",
+    "entityId": "019e1000-0000-7000-8000-000000001013",
+    "schemaId": "019e1000-0000-7000-8000-000000002013",
+    "observerId": "019e1000-0000-7000-8000-000000003013",
+    "observationId": "019e1000-0000-7000-8000-000000004013",
+    "observation": {
+      "references": {
+        "observerId": "019e1000-0000-7000-8000-000000003013",
+        "contentId": "019e1000-0000-7000-8000-000000001013",
+        "schemaId": "019e1000-0000-7000-8000-000000002013"
+      },
+      "properties": {
+        "startAt": "2026-10-11T10:00:00.000001Z",
+        "endAt": "2026-10-11T10:00:00.000001Z",
+        "timeZone": null
+      }
+    },
+    "sourceFieldNote": "Properties include documented source fields plus explicitly named collector-derived identity/status/evidence fields; exact mapping described in evidence and prose. Fixture values are synthetic unless tagged observed synthetic local sample."
+  },
+  {
+    "id": "A14",
+    "title": "Slack deletion arrives before original message was captured",
+    "source": [
+      "https://docs.slack.dev/reference/events/message/message_deleted/"
+    ],
+    "evidence": "message_deleted supplies deleted_ts and channel; deleted_ts identifies the removed message, while event_ts describes the deletion event.",
+    "properties": {
+      "deletedTs": "1791709200.000005",
+      "eventTs": "1791712800.000010",
+      "nativeChannel": "C-demo",
+      "priorContentCaptured": false
+    },
+    "references": {
+      "messageId": "019e1000-0000-7000-8000-000000000114"
+    },
+    "stableIdentity": "Create/reuse mapped message identity without inventing its body. Tombstone/change content is a separate entity and observation.",
+    "timedMeaning": "Use deletion event time, not deleted_ts as deletion time. Original message timestamp may remain known even when its text never was.",
+    "history": "Replays reuse tombstone observation ID. Later import of old original must not resurrect current state without reconciling deletion; historical content can remain.",
+    "fkVsRelation": "Tombstone has ordinary messageId; target may be absent by current API rules. No generic Relation class is needed.",
+    "lossVsFriction": "B: source body loss cannot be repaired; explicit unknown state is lossless relative to available evidence. Core allows dangling reference, so absence is not validation failure.",
+    "testPropositions": [
+      "Save tombstone before message target exists: accepted; target GET 404",
+      "Assert deletion time uses eventTs, original message time uses deletedTs"
+    ],
+    "verdict": "B",
+    "fixtureKind": "docs-grounded constructed fixture",
+    "factTime": [
+      "2026-10-11T10:00:00.000010Z",
+      "2026-10-11T10:00:00.000010Z",
+      null
+    ],
+    "expectedValid": true,
+    "reason": "Frozen Core supports the declared business shape; semantic constraints remain collector responsibilities.",
+    "fields": {
+      "deletedTs": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "eventTs": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "nativeChannel": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "priorContentCaptured": {
+        "type": "boolean",
+        "required": true,
+        "nullable": false
+      },
+      "messageId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "resourceName": "stress-a14",
+    "entityId": "019e1000-0000-7000-8000-000000001014",
+    "schemaId": "019e1000-0000-7000-8000-000000002014",
+    "observerId": "019e1000-0000-7000-8000-000000003014",
+    "observationId": "019e1000-0000-7000-8000-000000004014",
+    "observation": {
+      "references": {
+        "observerId": "019e1000-0000-7000-8000-000000003014",
+        "contentId": "019e1000-0000-7000-8000-000000001014",
+        "schemaId": "019e1000-0000-7000-8000-000000002014"
+      },
+      "properties": {
+        "startAt": "2026-10-11T10:00:00.000010Z",
+        "endAt": "2026-10-11T10:00:00.000010Z",
+        "timeZone": null
+      }
+    },
+    "sourceFieldNote": "Properties include documented source fields plus explicitly named collector-derived identity/status/evidence fields; exact mapping described in evidence and prose. Fixture values are synthetic unless tagged observed synthetic local sample."
+  },
+  {
+    "id": "A15",
+    "title": "Encrypted Matrix event later becomes decryptable",
+    "source": [
+      "https://spec.matrix.org/v1.16/client-server-api/#mroomencrypted"
+    ],
+    "evidence": "Encrypted room events expose event_id, room_id, sender, origin_server_ts and content algorithm/ciphertext. Cleartext is unavailable without decryption.",
+    "properties": {
+      "nativeEventId": "$event-demo",
+      "algorithm": "m.megolm.v1.aes-sha2",
+      "ciphertext": "synthetic-ciphertext",
+      "decryptionState": "unavailable",
+      "plaintext": null
+    },
+    "references": {
+      "roomId": "019e1000-0000-7000-8000-000000000115"
+    },
+    "stableIdentity": "Room/event source identity remains stable. Ciphertext capture and later plaintext interpretation are different content snapshots; decryption does not create a second message.",
+    "timedMeaning": "Encrypted event time uses origin_server_ts. Later decryption seen time can be another observation schema; it does not rewrite original event time.",
+    "history": "Keep initial unreadable snapshot if history required. Derived plaintext references original event content; do not label redacted/unavailable text as empty.",
+    "fkVsRelation": "Room reference scalar. Derived interpretation can reference encrypted input and message identity; responsibility determines Observer identity.",
+    "lossVsFriction": "B: key absence is source/access limitation, not Core loss. Dynamic ciphertext maps can be stored as declared key/value entries or raw source text; no schema-free JSON object field exists.",
+    "testPropositions": [
+      "plaintext=null plus unavailable state round-trips distinctly from plaintext=\"\"",
+      "Decrypt later: original observation content remains ciphertext-only; both target same message identity"
+    ],
+    "verdict": "B",
+    "fixtureKind": "docs-grounded constructed fixture",
+    "factTime": [
+      "2026-10-11T09:00:00Z",
+      "2026-10-11T09:00:00Z",
+      null
+    ],
+    "expectedValid": true,
+    "reason": "Frozen Core supports the declared business shape; semantic constraints remain collector responsibilities.",
+    "fields": {
+      "nativeEventId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "algorithm": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "ciphertext": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "decryptionState": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "plaintext": {
+        "type": "string",
+        "required": true,
+        "nullable": true
+      },
+      "roomId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "resourceName": "stress-a15",
+    "entityId": "019e1000-0000-7000-8000-000000001015",
+    "schemaId": "019e1000-0000-7000-8000-000000002015",
+    "observerId": "019e1000-0000-7000-8000-000000003015",
+    "observationId": "019e1000-0000-7000-8000-000000004015",
+    "observation": {
+      "references": {
+        "observerId": "019e1000-0000-7000-8000-000000003015",
+        "contentId": "019e1000-0000-7000-8000-000000001015",
+        "schemaId": "019e1000-0000-7000-8000-000000002015"
+      },
+      "properties": {
+        "startAt": "2026-10-11T09:00:00Z",
+        "endAt": "2026-10-11T09:00:00Z",
+        "timeZone": null
+      }
+    },
+    "sourceFieldNote": "Properties include documented source fields plus explicitly named collector-derived identity/status/evidence fields; exact mapping described in evidence and prose. Fixture values are synthetic unless tagged observed synthetic local sample."
+  },
+  {
+    "id": "A16",
+    "title": "Chat message shares multiple files whose URLs require authorization",
+    "source": [
+      "https://docs.slack.dev/reference/objects/file-object/"
+    ],
+    "evidence": "Slack file objects expose id, created, name, mimetype and url_private; private file retrieval needs appropriate authorization. File ID differs from sharing message ID.",
+    "properties": {
+      "nativeFileId": "F-demo",
+      "name": "report.pdf",
+      "mimeType": "application/pdf",
+      "downloadState": "not-fetched",
+      "sourceUrl": "https://files.slack.com/files-pri/synthetic"
+    },
+    "references": {
+      "messageId": "019e1000-0000-7000-8000-000000000116",
+      "fileId": "019e1000-0000-7000-8000-000000000216"
+    },
+    "stableIdentity": "Workspace/file ID is file identity; sharing occurrence gets a separate link entity identity. Same file in two messages gives two share links, not two files.",
+    "timedMeaning": "File creation timestamp is not share timestamp; link Observation uses share event time only when supplied. Download timing is separate.",
+    "history": "Preserve metadata versions if history needed. Retry link save uses same ID; failed download must not replace known filename or imply deletion.",
+    "fkVsRelation": "This content is ordinary message-file association with two scalar references. Multiple files require multiple rows or source array with no graph edges.",
+    "lossVsFriction": "B: current API cannot discover reverse message-to-link edges by query. Captured metadata is representable; missing bytes/expired authorization is not structural loss.",
+    "testPropositions": [
+      "Two messages share F-demo: one file and two links",
+      "Failure to fetch url_private leaves downloadState not-fetched; never synthesize empty file"
+    ],
+    "verdict": "B",
+    "fixtureKind": "docs-grounded constructed fixture",
+    "factTime": [
+      null,
+      null,
+      null
+    ],
+    "expectedValid": true,
+    "reason": "Frozen Core supports the declared business shape; semantic constraints remain collector responsibilities.",
+    "fields": {
+      "nativeFileId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "name": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "mimeType": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "downloadState": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "sourceUrl": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "messageId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "fileId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "resourceName": "stress-a16",
+    "entityId": "019e1000-0000-7000-8000-000000001016",
+    "schemaId": "019e1000-0000-7000-8000-000000002016",
+    "observerId": "019e1000-0000-7000-8000-000000003016",
+    "observationId": "019e1000-0000-7000-8000-000000004016",
+    "observation": {
+      "references": {
+        "observerId": "019e1000-0000-7000-8000-000000003016",
+        "contentId": "019e1000-0000-7000-8000-000000001016",
+        "schemaId": "019e1000-0000-7000-8000-000000002016"
+      },
+      "properties": {
+        "startAt": null,
+        "endAt": null,
+        "timeZone": null
+      }
+    },
+    "sourceFieldNote": "Properties include documented source fields plus explicitly named collector-derived identity/status/evidence fields; exact mapping described in evidence and prose. Fixture values are synthetic unless tagged observed synthetic local sample."
+  },
+  {
+    "id": "A17",
+    "title": "Claude Code transcript rescan while append is incomplete",
+    "source": [
+      "https://code.claude.com/docs/en/hooks",
+      "https://code.claude.com/docs/en/agent-sdk/sessions"
+    ],
+    "evidence": "Official docs identify session_id and transcript_path; JSONL sessions live under project directories. Hook documentation warns final transcript content may lag Stop.",
+    "properties": {
+      "sessionNativeId": "session-demo",
+      "transcriptPath": "synthetic/session-demo.jsonl",
+      "lineOrdinal": 3,
+      "rawLine": "{\"type\":\"assistant\",\"message\":{\"content\":\"demo\"}}",
+      "parseState": "complete",
+      "sourceTimestamp": null
+    },
+    "references": {
+      "sessionId": "019e1000-0000-7000-8000-000000000117"
+    },
+    "stableIdentity": "Do not assume undocumented line uuid/parentUuid schema from hooks docs. Keep collector-local source-file generation/offset-to-UUID ledger; raw line plus occurrence distinguishes identical lines.",
+    "timedMeaning": "If retained line has no verified timestamp, StartAt=EndAt=null for historical message. File mtime/import time must not masquerade as message time.",
+    "history": "Rescan complete saved lines reuses IDs; incomplete trailing line remains diagnostic and is retried when complete. Hash alone must not merge distinct identical lines.",
+    "fkVsRelation": "Session scalar reference. Additional links require actual verified record fields; raw JSON identifiers do not participate in graph automatically.",
+    "lossVsFriction": "B with explicit evidence limit: no private/real transcript inspected and no undocumented UUID field asserted. Opaque rawLine preserves unknown source keys but reduces field-level validation/query.",
+    "testPropositions": [
+      "Rescan first 3 lines then append line4: first 3 UUIDs stable, exactly one new complete observation",
+      "Truncated JSON final line then completion: do not emit malformed historical message before parse succeeds"
+    ],
+    "verdict": "B",
+    "fixtureKind": "docs-grounded constructed fixture",
+    "factTime": [
+      null,
+      null,
+      null
+    ],
+    "expectedValid": true,
+    "reason": "Frozen Core supports the declared business shape; semantic constraints remain collector responsibilities.",
+    "fields": {
+      "sessionNativeId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "transcriptPath": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "lineOrdinal": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "rawLine": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "parseState": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "sourceTimestamp": {
+        "type": "string",
+        "required": true,
+        "nullable": true
+      },
+      "sessionId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "resourceName": "stress-a17",
+    "entityId": "019e1000-0000-7000-8000-000000001017",
+    "schemaId": "019e1000-0000-7000-8000-000000002017",
+    "observerId": "019e1000-0000-7000-8000-000000003017",
+    "observationId": "019e1000-0000-7000-8000-000000004017",
+    "observation": {
+      "references": {
+        "observerId": "019e1000-0000-7000-8000-000000003017",
+        "contentId": "019e1000-0000-7000-8000-000000001017",
+        "schemaId": "019e1000-0000-7000-8000-000000002017"
+      },
+      "properties": {
+        "startAt": null,
+        "endAt": null,
+        "timeZone": null
+      }
+    },
+    "sourceFieldNote": "Properties include documented source fields plus explicitly named collector-derived identity/status/evidence fields; exact mapping described in evidence and prose. Fixture values are synthetic unless tagged observed synthetic local sample."
+  },
+  {
+    "id": "A18",
+    "title": "Claude Code session fork and duplicate file copies",
+    "source": [
+      "https://code.claude.com/docs/en/agent-sdk/sessions"
+    ],
+    "evidence": "Fork creates a new session with copied prior history while original remains unchanged. Sessions persist conversation, not filesystem state; session_id identifies session.",
+    "properties": {
+      "nativeSessionId": "session-fork",
+      "relationshipEvidence": "explicit-fork-result",
+      "copiedPrefixLength": 3
+    },
+    "references": {
+      "parentSessionId": "019e1000-0000-7000-8000-000000000118"
+    },
+    "stableIdentity": "Fork session is new entity. Same transcript copied to another path for resume is not automatically another conversation. Copied messages require distinguishing logical message from session occurrence.",
+    "timedMeaning": "Fork time is unknown unless captured by caller/source. Shared prefix events keep original event times; import/fork point cannot replace them.",
+    "history": "Replay imported copied prefix uses session-membership occurrence mapping. Preserve original branch and child branch; avoid deduping entire sessions by content hash.",
+    "fkVsRelation": "parentSessionId scalar works when evidence explicit. Shared message membership in both sessions is ordinary session-message relation entity with ordinal when needed.",
+    "lossVsFriction": "B: many-to-many membership and branch order need business entities. No inherent Core loss; documentation does not warrant assuming every JSONL line carries a parent UUID.",
+    "testPropositions": [
+      "Fork with three inherited messages: two sessions, shared logical prefix or explicit copied occurrences according to declared semantics",
+      "Resume identical session from copied path: source session identity stays stable; no new historical facts"
+    ],
+    "verdict": "B",
+    "fixtureKind": "docs-grounded constructed fixture",
+    "factTime": [
+      null,
+      null,
+      null
+    ],
+    "expectedValid": true,
+    "reason": "Frozen Core supports the declared business shape; semantic constraints remain collector responsibilities.",
+    "fields": {
+      "nativeSessionId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "relationshipEvidence": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "copiedPrefixLength": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "parentSessionId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "resourceName": "stress-a18",
+    "entityId": "019e1000-0000-7000-8000-000000001018",
+    "schemaId": "019e1000-0000-7000-8000-000000002018",
+    "observerId": "019e1000-0000-7000-8000-000000003018",
+    "observationId": "019e1000-0000-7000-8000-000000004018",
+    "observation": {
+      "references": {
+        "observerId": "019e1000-0000-7000-8000-000000003018",
+        "contentId": "019e1000-0000-7000-8000-000000001018",
+        "schemaId": "019e1000-0000-7000-8000-000000002018"
+      },
+      "properties": {
+        "startAt": null,
+        "endAt": null,
+        "timeZone": null
+      }
+    },
+    "sourceFieldNote": "Properties include documented source fields plus explicitly named collector-derived identity/status/evidence fields; exact mapping described in evidence and prose. Fixture values are synthetic unless tagged observed synthetic local sample."
+  },
+  {
+    "id": "A19",
+    "title": "File rename plus hard link shares one inode",
+    "source": [
+      "https://docs.python.org/3/library/os.html#os.stat_result"
+    ],
+    "evidence": "Actual synthetic local sample: original renamed; both renamed path and hard link yielded same st_dev/st_ino and st_nlink=2. Python exposes these stat fields.",
+    "properties": {
+      "deviceNumber": "27",
+      "inodeNumber": "524346",
+      "path": "renamed.txt",
+      "linkCount": 2
+    },
+    "references": {
+      "fileObjectId": "019e1000-0000-7000-8000-000000000119"
+    },
+    "stableIdentity": "Within this observed filesystem lifetime, device/inode identifies file object; path is a directory-entry identity. Inode reuse after deletion is not lifelong identity evidence.",
+    "timedMeaning": "Point observation means stat scan time. st_mtime is content modification time; it is not automatically rename time or creation time.",
+    "history": "Path snapshots differ before/after rename; file content identity persists across these observed operations. Repeat scan forms a new observation unless replaying same captured scan.",
+    "fkVsRelation": "Directory entry links path/parent to file object; hardlinks are two entries pointing to one object. Relation entity justified by distinct entry identity/history.",
+    "lossVsFriction": "B: path-as-file would lose hardlink sameness. Existing business entities retain it. Exact rename instant not available from mere before/after stat snapshots.",
+    "testPropositions": [
+      "Observed rename before/after inode equality must survive mapping",
+      "Two paths with same dev/inode: two entry identities, one file object; do not duplicate bytes solely by path"
+    ],
+    "verdict": "B",
+    "fixtureKind": "observed synthetic local sample plus docs",
+    "factTime": [
+      null,
+      null,
+      null
+    ],
+    "expectedValid": true,
+    "reason": "Frozen Core supports the declared business shape; semantic constraints remain collector responsibilities.",
+    "fields": {
+      "deviceNumber": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "inodeNumber": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "path": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "linkCount": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "fileObjectId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "resourceName": "stress-a19",
+    "entityId": "019e1000-0000-7000-8000-000000001019",
+    "schemaId": "019e1000-0000-7000-8000-000000002019",
+    "observerId": "019e1000-0000-7000-8000-000000003019",
+    "observationId": "019e1000-0000-7000-8000-000000004019",
+    "observation": {
+      "references": {
+        "observerId": "019e1000-0000-7000-8000-000000003019",
+        "contentId": "019e1000-0000-7000-8000-000000001019",
+        "schemaId": "019e1000-0000-7000-8000-000000002019"
+      },
+      "properties": {
+        "startAt": null,
+        "endAt": null,
+        "timeZone": null
+      }
+    },
+    "sourceFieldNote": "Properties include documented source fields plus explicitly named collector-derived identity/status/evidence fields; exact mapping described in evidence and prose. Fixture values are synthetic unless tagged observed synthetic local sample."
+  },
+  {
+    "id": "A20",
+    "title": "Symlink identity and target resolution diverge",
+    "source": [
+      "https://docs.python.org/3/library/os.html#os.stat_result"
+    ],
+    "evidence": "Actual synthetic sample: lstat(shortcut) inode differs from stat(shortcut); readlink returns relative target renamed.txt. Source target text is not canonical resolved identity.",
+    "properties": {
+      "linkPath": "shortcut",
+      "targetText": "renamed.txt",
+      "resolutionState": "resolved-at-scan"
+    },
+    "references": {
+      "symlinkObjectId": "019e1000-0000-7000-8000-000000000120",
+      "resolvedTargetId": "019e1000-0000-7000-8000-000000000119"
+    },
+    "stableIdentity": "Symlink has its own filesystem object identity. Target text and resolved target entity are separate; relative resolution depends on parent directory and scan context.",
+    "timedMeaning": "Resolution is a snapshot fact. Symlink creation time and target change time stay unknown unless evidence exists; dangling later does not invalidate earlier resolved snapshot.",
+    "history": "Keep prior resolved-target snapshot. Repointed symlink changes content/version without falsely rewriting earlier relation.",
+    "fkVsRelation": "Ordinary symlinkObjectId/resolvedTargetId references in resolution content. Unknown/dangling target uses nullable reference plus status, not invented target UUID.",
+    "lossVsFriction": "B: model can preserve both identity and literal target. A collector that stat-follows and discards lstat/readlink loses information before modeling.",
+    "testPropositions": [
+      "Assert symlink ID differs from resolved file ID",
+      "Delete target in isolated test: status dangling with null target; original targetText retained"
+    ],
+    "verdict": "B",
+    "fixtureKind": "observed synthetic local sample plus docs",
+    "factTime": [
+      null,
+      null,
+      null
+    ],
+    "expectedValid": true,
+    "reason": "Frozen Core supports the declared business shape; semantic constraints remain collector responsibilities.",
+    "fields": {
+      "linkPath": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "targetText": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "resolutionState": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "symlinkObjectId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "resolvedTargetId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "resourceName": "stress-a20",
+    "entityId": "019e1000-0000-7000-8000-000000001020",
+    "schemaId": "019e1000-0000-7000-8000-000000002020",
+    "observerId": "019e1000-0000-7000-8000-000000003020",
+    "observationId": "019e1000-0000-7000-8000-000000004020",
+    "observation": {
+      "references": {
+        "observerId": "019e1000-0000-7000-8000-000000003020",
+        "contentId": "019e1000-0000-7000-8000-000000001020",
+        "schemaId": "019e1000-0000-7000-8000-000000002020"
+      },
+      "properties": {
+        "startAt": null,
+        "endAt": null,
+        "timeZone": null
+      }
+    },
+    "sourceFieldNote": "Properties include documented source fields plus explicitly named collector-derived identity/status/evidence fields; exact mapping described in evidence and prose. Fixture values are synthetic unless tagged observed synthetic local sample."
+  },
+  {
+    "id": "A21",
+    "title": "File snapshot includes nanosecond time, NUL bytes and non-UTF8 filename",
+    "source": [
+      "https://docs.python.org/3/library/os.html#os.stat_result"
+    ],
+    "evidence": "Observed synthetic bytes 41 00 42; filename bytes end in ff; chosen mtime_ns=1791712800123456789 round-tripped through stat. Python exposes byte paths and nanosecond stat time.",
+    "properties": {
+      "nameBytesHex": "6e6f6e7574662dff",
+      "contentBytesHex": "410042",
+      "sourceMtimeNs": "1791712800123456789",
+      "encoding": "hex",
+      "snapshotKind": "bytes"
+    },
+    "references": {
+      "fileObjectId": "019e1000-0000-7000-8000-000000000121"
+    },
+    "stableIdentity": "File-object ID separate from immutable byte snapshot/content hash. Non-UTF8 name must be reversibly encoded, not silently replacement-decoded.",
+    "timedMeaning": "Source nanoseconds cannot all fit Observation microseconds; preserve original integer as string property and declare rounding. Observation point describes snapshot or mtime per schema, never both implicitly.",
+    "history": "Unchanged bytes can share a blob entity while independent captures keep separate observations. Updating file does not mutate old snapshots.",
+    "fkVsRelation": "Snapshot fileObjectId ordinary reference; external blob entity optional. Binary bytes encoded in string preserve data; no native binary type exists.",
+    "lossVsFriction": "B: normalized time loses submicrosecond timeline distinction but raw source time remains losslessly preserved. Embedded PostgreSQL text NUL must be encoded, not literal; this is representation friction, not unavoidable C.",
+    "testPropositions": [
+      "Roundtrip hex decoding returns exact 41 00 42 and filename ff",
+      "Two mtime_ns values separated by 1 ns stay distinct source properties even if normalized Observation times equal"
+    ],
+    "verdict": "B",
+    "fixtureKind": "observed synthetic local sample plus docs",
+    "factTime": [
+      null,
+      null,
+      null
+    ],
+    "expectedValid": true,
+    "reason": "Frozen Core supports the declared business shape; semantic constraints remain collector responsibilities.",
+    "fields": {
+      "nameBytesHex": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "contentBytesHex": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "sourceMtimeNs": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "encoding": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "snapshotKind": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "fileObjectId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "resourceName": "stress-a21",
+    "entityId": "019e1000-0000-7000-8000-000000001021",
+    "schemaId": "019e1000-0000-7000-8000-000000002021",
+    "observerId": "019e1000-0000-7000-8000-000000003021",
+    "observationId": "019e1000-0000-7000-8000-000000004021",
+    "observation": {
+      "references": {
+        "observerId": "019e1000-0000-7000-8000-000000003021",
+        "contentId": "019e1000-0000-7000-8000-000000001021",
+        "schemaId": "019e1000-0000-7000-8000-000000002021"
+      },
+      "properties": {
+        "startAt": null,
+        "endAt": null,
+        "timeZone": null
+      }
+    },
+    "sourceFieldNote": "Properties include documented source fields plus explicitly named collector-derived identity/status/evidence fields; exact mapping described in evidence and prose. Fixture values are synthetic unless tagged observed synthetic local sample."
+  },
+  {
+    "id": "A22",
+    "title": "Identical screenshots captured at separate times",
+    "source": [
+      "https://developer.chrome.com/docs/extensions/reference/api/tabs#method-captureVisibleTab"
+    ],
+    "evidence": "Chrome tabs.captureVisibleTab returns an image data URL. It is a visible-tab image, not proof of whole-desktop content or user attention.",
+    "properties": {
+      "imageDataUrl": "data:image/png;base64,c3ludGhldGlj",
+      "captureSequence": 22,
+      "captureScope": "visible-tab",
+      "captureStartedAt": "2026-10-11T09:00:00Z",
+      "captureCompletedAt": "2026-10-11T09:00:00.200000Z"
+    },
+    "references": {},
+    "stableIdentity": "Identical image bytes may share a blob identity, but each independently requested capture has distinct observation identity. This placeholder is deliberately not a valid PNG sample.",
+    "timedMeaning": "API result lacks exact exposure instant; schema can represent capture-operation interval, not assert pixel exposure occurred throughout. Source page content time remains unknown.",
+    "history": "Re-delivery of saved capture reuses ID. A new capture with same pixels remains a new event; hash-only observation deduplication is wrong.",
+    "fkVsRelation": "blobId would be scalar if image separated. Capture-to-window/tab references need verified target identity; tab ID alone is scoped browser-session evidence.",
+    "lossVsFriction": "B: no byte type or image semantics in schema, but data URL/string is lossless. Captured scope and temporal uncertainty require explicit business properties.",
+    "testPropositions": [
+      "Capture same pixels at t1/t2: two observation IDs; optional shared blob ID",
+      "Do not treat operation duration as user active duration"
+    ],
+    "verdict": "B",
+    "fixtureKind": "docs-grounded constructed fixture",
+    "factTime": [
+      "2026-10-11T09:00:00Z",
+      "2026-10-11T09:00:00.200000Z",
+      null
+    ],
+    "expectedValid": true,
+    "reason": "Frozen Core supports the declared business shape; semantic constraints remain collector responsibilities.",
+    "fields": {
+      "imageDataUrl": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "captureSequence": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "captureScope": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "captureStartedAt": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "captureCompletedAt": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "resourceName": "stress-a22",
+    "entityId": "019e1000-0000-7000-8000-000000001022",
+    "schemaId": "019e1000-0000-7000-8000-000000002022",
+    "observerId": "019e1000-0000-7000-8000-000000003022",
+    "observationId": "019e1000-0000-7000-8000-000000004022",
+    "observation": {
+      "references": {
+        "observerId": "019e1000-0000-7000-8000-000000003022",
+        "contentId": "019e1000-0000-7000-8000-000000001022",
+        "schemaId": "019e1000-0000-7000-8000-000000002022"
+      },
+      "properties": {
+        "startAt": "2026-10-11T09:00:00Z",
+        "endAt": "2026-10-11T09:00:00.200000Z",
+        "timeZone": null
+      }
+    },
+    "sourceFieldNote": "Properties include documented source fields plus explicitly named collector-derived identity/status/evidence fields; exact mapping described in evidence and prose. Fixture values are synthetic unless tagged observed synthetic local sample."
+  },
+  {
+    "id": "A23",
+    "title": "OCR reprocessing yields conflicting text/confidence",
+    "source": [
+      "https://docs.cloud.google.com/vision/docs/reference/rest/v1/AnnotateImageResponse"
+    ],
+    "evidence": "Vision response exposes textAnnotations/fullTextAnnotation; structured text includes pages, blocks, paragraphs, words, symbols, confidence and bounding geometry.",
+    "properties": {
+      "engineRunId": "ocr-demo-2",
+      "text": "Invoice 108",
+      "confidence": 0.81,
+      "polygon": [
+        {
+          "x": 1,
+          "y": 2
+        },
+        {
+          "x": 90,
+          "y": 2
+        },
+        {
+          "x": 90,
+          "y": 20
+        },
+        {
+          "x": 1,
+          "y": 20
+        }
+      ],
+      "coordinateSpace": "image-pixels"
+    },
+    "references": {
+      "imageId": "019e1000-0000-7000-8000-000000000123"
+    },
+    "stableIdentity": "Image entity stable; OCR output identity belongs to processing run/model/configuration and version, not recognized text. Bounding box is evidence location, not another image identity.",
+    "timedMeaning": "Observation may express what text was visible at image capture time, with processing timestamp stored separately; alternate schema may express OCR-run event. Never silently conflate the two.",
+    "history": "New OCR algorithm interpretation creates new content/observation; old confidence/text stays available. Exact replay of same saved output reuses IDs.",
+    "fkVsRelation": "Image scalar reference enough. Tokens needing individual identity can become ordinary entities; nested polygon numbers are properties, not relations.",
+    "lossVsFriction": "B: unknown/conflicting recognition is representable with explicit output versions. Current schemas cannot validate confidence range or coordinate bounds beyond numeric types; collector handles semantic validation.",
+    "testPropositions": [
+      "Same image with OCR text 108 then 106: two outputs, one source image",
+      "confidence=1.2 passes generic number type; business validator must reject if contract requires [0,1]"
+    ],
+    "verdict": "B",
+    "fixtureKind": "docs-grounded constructed fixture",
+    "factTime": [
+      null,
+      null,
+      null
+    ],
+    "expectedValid": true,
+    "reason": "Frozen Core supports the declared business shape; semantic constraints remain collector responsibilities.",
+    "fields": {
+      "engineRunId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "text": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "confidence": {
+        "type": "number",
+        "required": true,
+        "nullable": false
+      },
+      "polygon": {
+        "type": "array",
+        "required": true,
+        "nullable": false,
+        "items": {
+          "type": "object",
+          "nullable": false,
+          "fields": {
+            "x": {
+              "type": "integer",
+              "required": true,
+              "nullable": false
+            },
+            "y": {
+              "type": "integer",
+              "required": true,
+              "nullable": false
+            }
+          }
+        }
+      },
+      "coordinateSpace": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "imageId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "resourceName": "stress-a23",
+    "entityId": "019e1000-0000-7000-8000-000000001023",
+    "schemaId": "019e1000-0000-7000-8000-000000002023",
+    "observerId": "019e1000-0000-7000-8000-000000003023",
+    "observationId": "019e1000-0000-7000-8000-000000004023",
+    "observation": {
+      "references": {
+        "observerId": "019e1000-0000-7000-8000-000000003023",
+        "contentId": "019e1000-0000-7000-8000-000000001023",
+        "schemaId": "019e1000-0000-7000-8000-000000002023"
+      },
+      "properties": {
+        "startAt": null,
+        "endAt": null,
+        "timeZone": null
+      }
+    },
+    "sourceFieldNote": "Properties include documented source fields plus explicitly named collector-derived identity/status/evidence fields; exact mapping described in evidence and prose. Fixture values are synthetic unless tagged observed synthetic local sample."
+  },
+  {
+    "id": "A24",
+    "title": "Keyboard held key repeats, composed text and timestamp collisions",
+    "source": [
+      "https://www.w3.org/TR/uievents/#interface-keyboardevent"
+    ],
+    "evidence": "UI Events KeyboardEvent exposes key, code, location, repeat, isComposing and modifier state. Repeated keydown can carry repeat=true.",
+    "properties": {
+      "key": "a",
+      "code": "KeyA",
+      "location": 0,
+      "repeat": true,
+      "isComposing": false,
+      "sequence": 24,
+      "nativeTimeStampMs": 1234.567
+    },
+    "references": {},
+    "stableIdentity": "Each observed keydown has occurrence UUID. Physical key code, logical key and text insertion are distinct; identical key/time values do not identify one event.",
+    "timedMeaning": "DOM event timestamp requires its own clock-origin interpretation before conversion to absolute time. If no verified origin, preserve native value and unknown Observation boundaries.",
+    "history": "Replay persisted input retains ID; multiple auto-repeat events get multiple IDs. Do not mistake transport retries for additional key presses.",
+    "fkVsRelation": "No relationship entity necessary. Device/app references only if captured/resolved; keyboard events do not prove active application without temporal evidence.",
+    "lossVsFriction": "B: schema types represent repeat/composition flags exactly. Converting keydown count to typed characters or attention would be unsupported semantic expansion.",
+    "testPropositions": [
+      "Three repeat=true events with distinct sequences: retain three observations",
+      "Unknown clock origin: StartAt/EndAt null, native timestamp retained; no epoch-zero fabrication"
+    ],
+    "verdict": "B",
+    "fixtureKind": "docs-grounded constructed fixture",
+    "factTime": [
+      null,
+      null,
+      null
+    ],
+    "expectedValid": true,
+    "reason": "Frozen Core supports the declared business shape; semantic constraints remain collector responsibilities.",
+    "fields": {
+      "key": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "code": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "location": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "repeat": {
+        "type": "boolean",
+        "required": true,
+        "nullable": false
+      },
+      "isComposing": {
+        "type": "boolean",
+        "required": true,
+        "nullable": false
+      },
+      "sequence": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "nativeTimeStampMs": {
+        "type": "number",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "resourceName": "stress-a24",
+    "entityId": "019e1000-0000-7000-8000-000000001024",
+    "schemaId": "019e1000-0000-7000-8000-000000002024",
+    "observerId": "019e1000-0000-7000-8000-000000003024",
+    "observationId": "019e1000-0000-7000-8000-000000004024",
+    "observation": {
+      "references": {
+        "observerId": "019e1000-0000-7000-8000-000000003024",
+        "contentId": "019e1000-0000-7000-8000-000000001024",
+        "schemaId": "019e1000-0000-7000-8000-000000002024"
+      },
+      "properties": {
+        "startAt": null,
+        "endAt": null,
+        "timeZone": null
+      }
+    },
+    "sourceFieldNote": "Properties include documented source fields plus explicitly named collector-derived identity/status/evidence fields; exact mapping described in evidence and prose. Fixture values are synthetic unless tagged observed synthetic local sample."
+  },
+  {
+    "id": "A25",
+    "title": "Keyboard privacy suppression must differ from empty text or collection failure",
+    "source": [
+      "https://www.w3.org/TR/uievents/#interface-keyboardevent"
+    ],
+    "evidence": "Same source KeyboardEvent fields as A24; redaction here is an explicit constructed collector privacy policy, not a claim that browsers automatically redact password events.",
+    "properties": {
+      "eventKind": "keydown",
+      "key": null,
+      "code": null,
+      "repeat": false,
+      "capturePolicy": "suppress-key-content",
+      "contentState": "intentionally-not-retained",
+      "sequence": 25
+    },
+    "references": {},
+    "stableIdentity": "Observation identity represents authorized retained event metadata only. No content hash/identity may be computed from forbidden material as a backdoor retention channel.",
+    "timedMeaning": "Time point only if event clock conversion known. Suppression does not make time unknown by itself. Gaps due to unavailable input APIs are diagnostics, not inferred absence of typing.",
+    "history": "Persist replay identity using allowed metadata. Later policy change must not restore old text that was never retained; version schema/policy meaning explicitly.",
+    "fkVsRelation": "No relation needed. If policy becomes independent entity, ordinary policyId reference suffices; do not persist private text in relation labels.",
+    "lossVsFriction": "B: nullable fields alone cannot distinguish suppressed, unavailable and empty; explicit business status preserves that distinction. This is business modeling responsibility, not missing Core primitive.",
+    "testPropositions": [
+      "Roundtrip key=null/contentState suppressed differs from key=\"\"/state observed",
+      "Ensure raw payload, hash and auxiliary fields contain no suppressed key content"
+    ],
+    "verdict": "B",
+    "fixtureKind": "docs-grounded constructed fixture",
+    "factTime": [
+      null,
+      null,
+      null
+    ],
+    "expectedValid": true,
+    "reason": "Frozen Core supports the declared business shape; semantic constraints remain collector responsibilities.",
+    "fields": {
+      "eventKind": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "key": {
+        "type": "string",
+        "required": true,
+        "nullable": true
+      },
+      "code": {
+        "type": "string",
+        "required": true,
+        "nullable": true
+      },
+      "repeat": {
+        "type": "boolean",
+        "required": true,
+        "nullable": false
+      },
+      "capturePolicy": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "contentState": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "sequence": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "resourceName": "stress-a25",
+    "entityId": "019e1000-0000-7000-8000-000000001025",
+    "schemaId": "019e1000-0000-7000-8000-000000002025",
+    "observerId": "019e1000-0000-7000-8000-000000003025",
+    "observationId": "019e1000-0000-7000-8000-000000004025",
+    "observation": {
+      "references": {
+        "observerId": "019e1000-0000-7000-8000-000000003025",
+        "contentId": "019e1000-0000-7000-8000-000000001025",
+        "schemaId": "019e1000-0000-7000-8000-000000002025"
+      },
+      "properties": {
+        "startAt": null,
+        "endAt": null,
+        "timeZone": null
+      }
+    },
+    "sourceFieldNote": "Properties include documented source fields plus explicitly named collector-derived identity/status/evidence fields; exact mapping described in evidence and prose. Fixture values are synthetic unless tagged observed synthetic local sample."
+  }
+]

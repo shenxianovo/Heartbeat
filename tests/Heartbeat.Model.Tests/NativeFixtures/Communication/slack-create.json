@@ -1,0 +1,16 @@
+{
+  "team_id": "TSYNTHETIC",
+  "api_app_id": "ASYNTHETIC",
+  "type": "event_callback",
+  "event_id": "EvSyntheticCreate",
+  "event_time": 1791635700,
+  "event": {
+    "type": "message",
+    "channel": "CSYNTHETIC",
+    "user": "USYNTHETIC",
+    "text": "Before edit café 🛰️",
+    "ts": "1791635696.123456",
+    "thread_ts": "1791635600.000001",
+    "event_ts": "1791635696.123456"
+  }
+}

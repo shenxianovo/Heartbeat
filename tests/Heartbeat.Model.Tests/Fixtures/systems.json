@@ -1,0 +1,1432 @@
+[
+  {
+    "id": "B01",
+    "title": "Git author date versus committer date",
+    "source": "https://git-scm.com/docs/git-commit-tree",
+    "evidence": "Commit has separate author and committer identities/dates. Actual HEAD extracted with git cat-file -p: 1330e68e4b9373c8e844d95cf5e4d7c012445675; both timestamps 1791723615 +0800.",
+    "evidenceKind": "actual raw source subset; UUID mappings constructed",
+    "fields": {
+      "objectId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "authorEpoch": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "authorOffset": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "committerEpoch": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "committerOffset": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "treeId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "treeId": "0192b056-7300-7000-8000-000000000064"
+    },
+    "properties": {
+      "objectId": "1330e68e4b9373c8e844d95cf5e4d7c012445675",
+      "authorEpoch": 1791723615,
+      "authorOffset": "+0800",
+      "committerEpoch": 1791723615,
+      "committerOffset": "+0800"
+    },
+    "expectedValid": true,
+    "identity": "Map repository object-format + object hash to a UUIDv7; retain external hash. Author person and committer person are separate roles even when values match.",
+    "observation": "Content is commit metadata under git-commit schema. A commit-creation observation uses committer time as a point; a separate authorship observation can use author time. Do not turn these into a duration. Offset does not identify an IANA zone, so timeZone=null. Import time is separate collection metadata.",
+    "relations": "Named reference fields are ordinary domain FKs, not a special core relation category. Nonexistent targets remain allowed.",
+    "history": "Git object content is immutable. Reimport same saved input reuses content and observation IDs. Independently observing repository membership can create another observation.",
+    "verdict": "A",
+    "reason": "Two source clocks/roles are naturally domain properties or distinct facts, with one well-defined time projection per observation.",
+    "observer": "The adapter/importer that forms this observation is Observer; original author, process, SDK tool, CI actor and mere transport relay are not automatically Observer identities. If relaying an already formed observation, preserve its ObserverId.",
+    "schemaResource": "stress-b01",
+    "schemaSemantics": "Fixed EntitySchema for this content type; no schema validity interval. Source format/version labels are ordinary content unless the business model meaning or structure changes."
+  },
+  {
+    "id": "B02",
+    "title": "Merge DAG with ordered, variable parent count",
+    "source": "https://git-scm.com/docs/git-commit-tree",
+    "evidence": "git-commit-tree permits any number of parents. Actual repository merge 8b6238ebe2ef5060b2363a8353eaa076df73b87f has parents 75a09d15984ee615f00e4c5c242be532fc5c0589 and 4454024ea4b4390346acdd38b8be5300e6d93300.",
+    "evidenceKind": "actual raw topology subset; UUID mappings constructed",
+    "fields": {
+      "childId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "parentId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "ordinal": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "childId": "0192b056-7300-7000-8000-0000000000c9",
+      "parentId": "0192b056-7300-7000-8000-0000000000ca"
+    },
+    "properties": {
+      "ordinal": 0
+    },
+    "expectedValid": true,
+    "identity": "Commit identity uses object hash; each parent occurrence maps (child hash, parent position) to its own UUIDv7. Fixture is one actual merge-parent occurrence.",
+    "observation": "Parent occurrence is ordinary business content under git-parent-membership. No invented edge timestamp: both Observation bounds null unless observing membership at a known read time.",
+    "relations": "Named reference fields are ordinary domain FKs, not a special core relation category. Nonexistent targets remain allowed.",
+    "history": "Replay same commit/position is idempotent. Never sort parents or dedupe by target alone: first-parent position has meaning. Root commits have no memberships.",
+    "verdict": "B",
+    "reason": "Ordered unbounded parent arrays cannot be reference arrays in this API. Domain membership rows with ordinal preserve graph edges and ordering without core changes. Reverse lookup is an application query concern.",
+    "observer": "The adapter/importer that forms this observation is Observer; original author, process, SDK tool, CI actor and mere transport relay are not automatically Observer identities. If relaying an already formed observation, preserve its ObserverId.",
+    "schemaResource": "stress-b02",
+    "schemaSemantics": "Fixed EntitySchema for this content type; no schema validity interval. Source format/version labels are ordinary content unless the business model meaning or structure changes."
+  },
+  {
+    "id": "B03",
+    "title": "Annotated tag versus lightweight tag",
+    "source": "https://git-scm.com/docs/git-tag",
+    "evidence": "Annotated tags carry tagger/date/message and an object target; lightweight tags are refs without an annotated tag object.",
+    "evidenceKind": "docs-grounded constructed",
+    "fields": {
+      "targetId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "objectType": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "tagName": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "taggerDate": {
+        "type": "string",
+        "required": false,
+        "nullable": true
+      }
+    },
+    "references": {
+      "targetId": "0192b056-7300-7000-8000-00000000012d"
+    },
+    "properties": {
+      "objectType": "tag",
+      "tagName": "v1.0",
+      "taggerDate": null
+    },
+    "expectedValid": true,
+    "identity": "Distinguish tag-object hash from repository+refname identity. Target can be another tag or another Git object; never collapse peeled commit and tag object.",
+    "observation": "Content is tag metadata; annotated-tag creation uses supplied tagger date, unknown stays null. Reading a lightweight ref supports ref-state at collection time, not an invented tag-creation time.",
+    "relations": "Named reference fields are ordinary domain FKs, not a special core relation category. Nonexistent targets remain allowed.",
+    "history": "Retagging moves the ref; immutable tag object remains. Save a ref-state version if prior observations must survive.",
+    "verdict": "A",
+    "reason": "Ordinary target FK has no target-model restriction, naturally supporting tag chains. This constructed optional-date fixture tests unknown handling; it does not assert a real v1.0 tag existed.",
+    "observer": "The adapter/importer that forms this observation is Observer; original author, process, SDK tool, CI actor and mere transport relay are not automatically Observer identities. If relaying an already formed observation, preserve its ObserverId.",
+    "schemaResource": "stress-b03",
+    "schemaSemantics": "Fixed EntitySchema for this content type; no schema validity interval. Source format/version labels are ordinary content unless the business model meaning or structure changes."
+  },
+  {
+    "id": "B04",
+    "title": "Force-push, rewrite, and reflog expiry",
+    "source": "https://git-scm.com/docs/git-reflog",
+    "evidence": "Reflogs record local ref updates; expiry can remove entries. A moved ref is not evidence that the old commit object mutated.",
+    "evidenceKind": "docs-grounded constructed",
+    "fields": {
+      "oldCommitId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "newCommitId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "refName": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "reflogMessage": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "oldCommitId": "0192b056-7300-7000-8000-000000000191",
+      "newCommitId": "0192b056-7300-7000-8000-000000000192"
+    },
+    "properties": {
+      "refName": "refs/heads/main",
+      "reflogMessage": "reset: moving to HEAD~1"
+    },
+    "expectedValid": true,
+    "identity": "Ref identity is repository+full ref name; update occurrence uses saved reflog input identity. Do not use unstable reflog ordinal alone across expiry.",
+    "observation": "Content is a ref-update occurrence, observation point is reflog entry time if available. A later fetch seeing a new target only establishes current ref-state; rewrite time stays unknown.",
+    "relations": "Named reference fields are ordinary domain FKs, not a special core relation category. Nonexistent targets remain allowed.",
+    "history": "Retain old/new commit mappings and captured update records. Replaying captured entry reuses ID. Missing expired reflog is source loss, not recoverable from current branch head.",
+    "verdict": "A",
+    "reason": "Ref-update entities preserve change history naturally. Cannot infer exact rewrite time or actor from only two snapshots; that is absent evidence, not missing model capacity.",
+    "observer": "The adapter/importer that forms this observation is Observer; original author, process, SDK tool, CI actor and mere transport relay are not automatically Observer identities. If relaying an already formed observation, preserve its ObserverId.",
+    "schemaResource": "stress-b04",
+    "schemaSemantics": "Fixed EntitySchema for this content type; no schema validity interval. Source format/version labels are ordinary content unless the business model meaning or structure changes."
+  },
+  {
+    "id": "B05",
+    "title": "Git message encoding and signed exact bytes",
+    "source": "https://git-scm.com/docs/git-commit",
+    "evidence": "Git records an encoding header for non-UTF-8 commit messages; exact object bytes matter to hashes/signatures.",
+    "evidenceKind": "actual raw message subset; byte encoding constructed",
+    "fields": {
+      "objectId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "encoding": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "messageBytesBase64": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "signature": {
+        "type": "string",
+        "required": false,
+        "nullable": true
+      }
+    },
+    "references": {},
+    "properties": {
+      "objectId": "1330e68e4b9373c8e844d95cf5e4d7c012445675",
+      "encoding": "UTF-8",
+      "messageBytesBase64": "ZmVhdChvYnNlcnZlcik6IGNvbGxlY3QgZm9yZWdyb3VuZCBhcHBsaWNhdGlvbiBwZXJpb2RzIHdpdGggZHVyYWJsZSBvdXRib3gK"
+    },
+    "expectedValid": true,
+    "identity": "Object hash maps to UUIDv7; a byte-exact object payload is a specific domain byte encoding, not a generic JSON catchall.",
+    "observation": "Commit event uses commit fact time, not decoding or verification time. Verification result may be another observed fact with its own schema/time.",
+    "relations": "No required domain relation in this minimal fixture; source identifiers remain explicitly typed properties, not automatically traversable edges.",
+    "history": "Never normalize raw signed bytes or overwrite them with rendered text. Repeated hash imports dedupe; independent signature verification is a new observation.",
+    "verdict": "B",
+    "reason": "Text/JSON cannot directly represent arbitrary Git bytes. Base64 field for bytes is a conventional lossless domain encoding; decoded text alone would lose evidence. Fixture encodes actual HEAD message, not a claimed signed commit.",
+    "observer": "The adapter/importer that forms this observation is Observer; original author, process, SDK tool, CI actor and mere transport relay are not automatically Observer identities. If relaying an already formed observation, preserve its ObserverId.",
+    "schemaResource": "stress-b05",
+    "schemaSemantics": "Fixed EntitySchema for this content type; no schema validity interval. Source format/version labels are ordinary content unless the business model meaning or structure changes."
+  },
+  {
+    "id": "B06",
+    "title": "Span arrives before remote parent",
+    "source": "https://opentelemetry.io/docs/specs/otel/trace/api/",
+    "evidence": "SpanContext has trace/span IDs; a parent span may be remote or absent in the collected material.",
+    "evidenceKind": "docs-grounded constructed",
+    "fields": {
+      "traceId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "spanId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "parentId": {
+        "type": "reference",
+        "required": false,
+        "nullable": true
+      },
+      "isRemoteParent": {
+        "type": "boolean",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "parentId": "0192b056-7300-7000-8000-000000000259"
+    },
+    "properties": {
+      "traceId": "0af7651916cd43dd8448eb211c80319c",
+      "spanId": "b7ad6b7169203331",
+      "isRemoteParent": true
+    },
+    "expectedValid": true,
+    "identity": "Map source tenant + trace ID + span ID to UUIDv7. Allocate parent mapping before parent content exists; do not manufacture parent attributes.",
+    "observation": "Content span under span schema; Observation bounds are span start/end. Transport receipt times are separate. Missing parent is not a root; omitted parent differs from explicitly absent root.",
+    "relations": "Named reference fields are ordinary domain FKs, not a special core relation category. Nonexistent targets remain allowed.",
+    "history": "Late parent fills its own entity. Same span replay retains IDs. Sampling may mean parent never arrives; preserve dangling reference without false completeness.",
+    "verdict": "A",
+    "reason": "Current references do not require target existence, so child-first ordering is naturally supported. Validation does not verify graph correctness or source identifier uniqueness.",
+    "observer": "The adapter/importer that forms this observation is Observer; original author, process, SDK tool, CI actor and mere transport relay are not automatically Observer identities. If relaying an already formed observation, preserve its ObserverId.",
+    "schemaResource": "stress-b06",
+    "schemaSemantics": "Fixed EntitySchema for this content type; no schema validity interval. Source format/version labels are ordinary content unless the business model meaning or structure changes."
+  },
+  {
+    "id": "B07",
+    "title": "Span links preserve fan-in, order, and link attributes",
+    "source": "https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/trace/v1/trace.proto",
+    "evidence": "OTLP Span has repeated links; each link carries trace_id, span_id, trace_state, attributes and dropped_attributes_count.",
+    "evidenceKind": "docs-grounded constructed",
+    "fields": {
+      "sourceSpanId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "targetSpanId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "ordinal": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "traceState": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "droppedAttributesCount": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "sourceSpanId": "0192b056-7300-7000-8000-0000000002bd",
+      "targetSpanId": "0192b056-7300-7000-8000-0000000002be"
+    },
+    "properties": {
+      "ordinal": 1,
+      "traceState": "",
+      "droppedAttributesCount": 2
+    },
+    "expectedValid": true,
+    "identity": "Link occurrence identity is source span + captured link position, not just endpoint pair; repeated links can carry distinct attributes.",
+    "observation": "Link-content schema expresses association, not a parent duration. Observation can share source-span fact interval where schema says so, or unknown bounds if independent link timing unavailable.",
+    "relations": "Named reference fields are ordinary domain FKs, not a special core relation category. Nonexistent targets remain allowed.",
+    "history": "Immutable exported snapshot links replay idempotently. Preserve per-link attributes/counts; do not dedupe all identical endpoint pairs.",
+    "verdict": "B",
+    "reason": "Unbounded links cannot live in references as an array. Ordinary link entities with ordinal retain every edge and its metadata. This is supported domain decomposition, not a missing generic Relation core type.",
+    "observer": "The adapter/importer that forms this observation is Observer; original author, process, SDK tool, CI actor and mere transport relay are not automatically Observer identities. If relaying an already formed observation, preserve its ObserverId.",
+    "schemaResource": "stress-b07",
+    "schemaSemantics": "Fixed EntitySchema for this content type; no schema validity interval. Source format/version labels are ordinary content unless the business model meaning or structure changes."
+  },
+  {
+    "id": "B08",
+    "title": "Nanosecond span boundaries collapse in microsecond projection",
+    "source": "https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/trace/v1/trace.proto",
+    "evidence": "OTLP start_time_unix_nano and end_time_unix_nano are fixed64 nanosecond counts.",
+    "evidenceKind": "docs-grounded constructed",
+    "fields": {
+      "startTimeUnixNano": {
+        "type": "number",
+        "required": true,
+        "nullable": false
+      },
+      "endTimeUnixNano": {
+        "type": "number",
+        "required": true,
+        "nullable": false
+      },
+      "traceId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {},
+    "properties": {
+      "startTimeUnixNano": 1791723615000000101,
+      "endTimeUnixNano": 1791723615000000199,
+      "traceId": "0af7651916cd43dd8448eb211c80319c"
+    },
+    "expectedValid": true,
+    "identity": "Source trace/span identity remains stable even if projected start/end become equal.",
+    "observation": "Observation projects to supported precision and may be a point at 2026-10-11T13:00:15Z. Typed exact nano counts in content retain 98 ns duration. Number maps numeric; full unsigned range exceeds integer but not numeric. Source zone unknown.",
+    "relations": "No required domain relation in this minimal fixture; source identifiers remain explicitly typed properties, not automatically traversable edges.",
+    "history": "Replay uses original source IDs and numeric values, never rounded timestamps as dedupe key.",
+    "verdict": "B",
+    "reason": "True precision loss occurs in Observation-only projection, not in the complete domain model. Typed source clock fields preserve known information naturally; queries using only ITimed cannot distinguish sub-microsecond events.",
+    "observer": "The adapter/importer that forms this observation is Observer; original author, process, SDK tool, CI actor and mere transport relay are not automatically Observer identities. If relaying an already formed observation, preserve its ObserverId.",
+    "schemaResource": "stress-b08",
+    "schemaSemantics": "Fixed EntitySchema for this content type; no schema validity interval. Source format/version labels are ordinary content unless the business model meaning or structure changes."
+  },
+  {
+    "id": "B09",
+    "title": "Out-of-order span events and incomplete active span",
+    "source": "https://opentelemetry.io/docs/specs/otel/trace/api/",
+    "evidence": "Span events have their own timestamps; explicit event times and span start/end are distinct API inputs.",
+    "evidenceKind": "docs-grounded constructed",
+    "fields": {
+      "spanId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "ordinal": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "name": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "sourceTimeUnixNano": {
+        "type": "number",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "spanId": "0192b056-7300-7000-8000-000000000385"
+    },
+    "properties": {
+      "ordinal": 0,
+      "name": "exception",
+      "sourceTimeUnixNano": 1791723614000000000
+    },
+    "expectedValid": true,
+    "identity": "Event identity uses source span + recorded event position; timestamp alone is not unique. Preserve order received and explicit event timestamp as different facts.",
+    "observation": "Event observation is a point at its source time. Span observation can have start set and end=null until known; null is not equivalent to running, so status is a business property.",
+    "relations": "Named reference fields are ordinary domain FKs, not a special core relation category. Nonexistent targets remain allowed.",
+    "history": "Late end can update same span if current-state semantics chosen; for historical in-progress snapshots use new content versions. Do not overwrite old snapshot content.",
+    "verdict": "A",
+    "reason": "Independent event observations and explicitly unknown span end are natural. Rejecting a reversed interval is correct; apparent clock reversal belongs in source-clock data, not a fabricated interval.",
+    "observer": "The adapter/importer that forms this observation is Observer; original author, process, SDK tool, CI actor and mere transport relay are not automatically Observer identities. If relaying an already formed observation, preserve its ObserverId.",
+    "schemaResource": "stress-b09",
+    "schemaSemantics": "Fixed EntitySchema for this content type; no schema validity interval. Source format/version labels are ordinary content unless the business model meaning or structure changes."
+  },
+  {
+    "id": "B10",
+    "title": "Dropped events, missing telemetry, and duplicate export",
+    "source": "https://opentelemetry.io/docs/specs/otlp/",
+    "evidence": "OTLP retries after missing acknowledgements can duplicate data; partial success reports rejected counts rather than reconstructing rejected records.",
+    "evidenceKind": "docs-grounded constructed",
+    "fields": {
+      "traceId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "spanId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "droppedEventsCount": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "droppedLinksCount": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {},
+    "properties": {
+      "traceId": "0af7651916cd43dd8448eb211c80319c",
+      "spanId": "b7ad6b7169203331",
+      "droppedEventsCount": 3,
+      "droppedLinksCount": 1
+    },
+    "expectedValid": true,
+    "identity": "Span key maps once; export-attempt identity is distinct from span identity. Counts are source metadata, not evidence of unknown event contents.",
+    "observation": "Observed span keeps source fact bounds. Export failure/success can be diagnostic content at receipt/attempt time when intentionally modeled, rather than changing span fact time.",
+    "relations": "No required domain relation in this minimal fixture; source identifiers remain explicitly typed properties, not automatically traversable edges.",
+    "history": "Same saved export input reuses IDs. A rejected count does not reveal which event or its time; preserve count and completeness limitations.",
+    "verdict": "A",
+    "reason": "Dedupe is business mapping responsibility. Missing source records are not a representational failure. Known counts fit ordinary integer fields; count consistency is not enforced by generic validator.",
+    "observer": "The adapter/importer that forms this observation is Observer; original author, process, SDK tool, CI actor and mere transport relay are not automatically Observer identities. If relaying an already formed observation, preserve its ObserverId.",
+    "schemaResource": "stress-b10",
+    "schemaSemantics": "Fixed EntitySchema for this content type; no schema validity interval. Source format/version labels are ordinary content unless the business model meaning or structure changes."
+  },
+  {
+    "id": "B11",
+    "title": "Concurrent agent tool fan-out",
+    "source": "https://openai.github.io/openai-agents-python/ref/tracing/create/",
+    "evidence": "SDK function spans carry name/input/output, span_id and parent; current context supports concurrent spans.",
+    "evidenceKind": "docs-grounded constructed",
+    "fields": {
+      "parentSpanId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "traceId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "spanId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "name": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "input": {
+        "type": "string",
+        "required": true,
+        "nullable": true
+      },
+      "output": {
+        "type": "string",
+        "required": true,
+        "nullable": true
+      }
+    },
+    "references": {
+      "parentSpanId": "0192b056-7300-7000-8000-00000000044d"
+    },
+    "properties": {
+      "traceId": "trace_fixture",
+      "spanId": "span_fixture",
+      "name": "lookup",
+      "input": "{\"query\":\"status\"}",
+      "output": null
+    },
+    "expectedValid": true,
+    "identity": "Map trace+span identity, never tool name alone. Two concurrent calls to lookup are distinct spans even with identical input.",
+    "observation": "Tool execution content has execution start/end as Observation bounds. In-progress output=null is distinct from omitted/redacted output and must be interpreted by schema/status.",
+    "relations": "Named reference fields are ordinary domain FKs, not a special core relation category. Nonexistent targets remain allowed.",
+    "history": "Completed output can update same current span, or new version content if preserving earlier partial observation. Parent agent generation remains a separate entity.",
+    "verdict": "A",
+    "reason": "Fan-out is multiple entities with ordinary parent references. No special causal graph primitive needed, and overlapping fact intervals are allowed.",
+    "observer": "The adapter/importer that forms this observation is Observer; original author, process, SDK tool, CI actor and mere transport relay are not automatically Observer identities. If relaying an already formed observation, preserve its ObserverId.",
+    "schemaResource": "stress-b11",
+    "schemaSemantics": "Fixed EntitySchema for this content type; no schema validity interval. Source format/version labels are ordinary content unless the business model meaning or structure changes."
+  },
+  {
+    "id": "B12",
+    "title": "Transport retry versus actual tool re-execution",
+    "source": "https://opentelemetry.io/docs/specs/otlp/",
+    "evidence": "Delivery retries can resend telemetry already accepted; protocol explicitly acknowledges duplicate data risk.",
+    "evidenceKind": "docs-grounded constructed",
+    "fields": {
+      "logicalCallId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "attempt": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "spanId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "errorType": {
+        "type": "string",
+        "required": false,
+        "nullable": true
+      }
+    },
+    "references": {
+      "logicalCallId": "0192b056-7300-7000-8000-0000000004b1"
+    },
+    "properties": {
+      "attempt": 2,
+      "spanId": "span_attempt_2",
+      "errorType": null
+    },
+    "expectedValid": true,
+    "identity": "Actual execution attempt gets its own span/entity identity; a retransmission of that attempt reuses identity. Logical call identity groups attempts.",
+    "observation": "Each execution Observation has its own execution interval; retry-backoff or export-attempt times are distinct optional facts, not stretched tool duration.",
+    "relations": "Named reference fields are ordinary domain FKs, not a special core relation category. Nonexistent targets remain allowed.",
+    "history": "Keep attempt 1 failure and attempt 2 success if both executions occurred. Do not turn exporter retries into new execution observations or dedupe executions solely by arguments.",
+    "verdict": "A",
+    "reason": "Ordinary attempt entity + logical-call reference preserves behavior. The attempt field here is explicitly adapter business metadata, not falsely claimed to be a universal native SDK field.",
+    "observer": "The adapter/importer that forms this observation is Observer; original author, process, SDK tool, CI actor and mere transport relay are not automatically Observer identities. If relaying an already formed observation, preserve its ObserverId.",
+    "schemaResource": "stress-b12",
+    "schemaSemantics": "Fixed EntitySchema for this content type; no schema validity interval. Source format/version labels are ordinary content unless the business model meaning or structure changes."
+  },
+  {
+    "id": "B13",
+    "title": "Stream delta identity and sequence without event timestamps",
+    "source": "https://developers.openai.com/api/reference/resources/responses/streaming-events",
+    "evidence": "Documented response.output_text.delta includes item_id, output_index, content_index, delta and sequence_number; event example has no timestamp.",
+    "evidenceKind": "official documentation example subset; UUID mapping constructed",
+    "fields": {
+      "itemId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "sequenceNumber": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "outputIndex": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "contentIndex": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "delta": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "itemId": "0192b056-7300-7000-8000-000000000515"
+    },
+    "properties": {
+      "sequenceNumber": 1,
+      "outputIndex": 0,
+      "contentIndex": 0,
+      "delta": "In"
+    },
+    "expectedValid": true,
+    "identity": "Map response-stream instance + sequence_number to delta ID; map msg_123 to an output item. Item and content indexes identify placement, not absolute time.",
+    "observation": "Delta content schema records an emitted chunk. Source fact times unknown => both Observation bounds null. A received-chunk fact could instead use receipt point with an explicitly different meaning.",
+    "relations": "Named reference fields are ordinary domain FKs, not a special core relation category. Nonexistent targets remain allowed.",
+    "history": "Replay same captured stream event reuses ID; concatenate by sequence/placement. Completed text is a separate aggregate, never a replacement for each captured delta if replay matters.",
+    "verdict": "A",
+    "reason": "Causal order need not be encoded as time. Integer order and ordinary item FK preserve exact streamed structure; no fake timestamp required.",
+    "observer": "The adapter/importer that forms this observation is Observer; original author, process, SDK tool, CI actor and mere transport relay are not automatically Observer identities. If relaying an already formed observation, preserve its ObserverId.",
+    "schemaResource": "stress-b13",
+    "schemaSemantics": "Fixed EntitySchema for this content type; no schema validity interval. Source format/version labels are ordinary content unless the business model meaning or structure changes."
+  },
+  {
+    "id": "B14",
+    "title": "Heterogeneous generation metadata and extensible attributes",
+    "source": "https://openai.github.io/openai-agents-python/ref/tracing/create/",
+    "evidence": "Generation spans accept input/output mappings, model_config and usage dictionaries with arbitrary values.",
+    "evidenceKind": "docs-grounded constructed",
+    "fields": {
+      "ownerId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "key": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "kind": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "stringValue": {
+        "type": "string",
+        "required": false,
+        "nullable": true
+      },
+      "numberValue": {
+        "type": "number",
+        "required": false,
+        "nullable": true
+      },
+      "booleanValue": {
+        "type": "boolean",
+        "required": false,
+        "nullable": true
+      }
+    },
+    "references": {
+      "ownerId": "0192b056-7300-7000-8000-000000000579"
+    },
+    "properties": {
+      "key": "temperature",
+      "kind": "number",
+      "numberValue": 0.7
+    },
+    "expectedValid": true,
+    "identity": "Attribute-entry identity is owner + key + content version. Nested values can be typed value-node entities with ordered child memberships, not opaque unstructured JSON.",
+    "observation": "Owner generation has generation fact interval; metadata inherits that fact meaning, not collection time. Metadata generally needs no independent Observation.",
+    "relations": "Named reference fields are ordinary domain FKs, not a special core relation category. Nonexistent targets remain allowed.",
+    "history": "Preserve versions for historic generations; new keys do not require mutating fixed schema when using declared entry fields. Source payload redaction remains explicit.",
+    "verdict": "B",
+    "reason": "Closed fields reject undeclared arbitrary object keys; a tagged typed-entry encoding retains data. Validator cannot enforce exactly-one value slot or kind/value consistency, so plugin validation bears this cost.",
+    "observer": "The adapter/importer that forms this observation is Observer; original author, process, SDK tool, CI actor and mere transport relay are not automatically Observer identities. If relaying an already formed observation, preserve its ObserverId.",
+    "schemaResource": "stress-b14",
+    "schemaSemantics": "Fixed EntitySchema for this content type; no schema validity interval. Source format/version labels are ordinary content unless the business model meaning or structure changes."
+  },
+  {
+    "id": "B15",
+    "title": "PID reuse across process incarnations",
+    "source": "https://www.man7.org/linux/man-pages/man5/proc_pid_stat.5.html",
+    "evidence": "/proc/PID/stat field 22 starttime is ticks since boot; PID alone does not identify a lifetime. Actual read: pid 2, comm cat, starttime 2186639.",
+    "evidenceKind": "actual raw /proc subset; host namespace context omitted from minimal fixture",
+    "fields": {
+      "pid": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "startTicks": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "bootId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "comm": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {},
+    "properties": {
+      "pid": 2,
+      "startTicks": 2186639,
+      "bootId": "9432e3db-65a7-4250-a736-b70030ebd23b",
+      "comm": "cat"
+    },
+    "expectedValid": true,
+    "identity": "Use host/boot+PID namespace+pid+start ticks for best available incarnation mapping. Tick granularity can still limit uniqueness; keep uncertainty if evidence collides.",
+    "observation": "Process lifetime start is boot-relative evidence. Do not treat ticks as Unix time; without reliable clock calibration use null UTC start and keep startTicks. A process-state read has its own collection-time fact.",
+    "relations": "No required domain relation in this minimal fixture; source identifiers remain explicitly typed properties, not automatically traversable edges.",
+    "history": "New pid with different start ticks becomes a different entity; repeated snapshots reference same incarnation. Do not overwrite earlier incarnation when PID recycled.",
+    "verdict": "A",
+    "reason": "The model can retain native monotonic fields and unknown UTC boundaries. Source tick resolution and absent boot calibration limit certainty, not representation.",
+    "observer": "The adapter/importer that forms this observation is Observer; original author, process, SDK tool, CI actor and mere transport relay are not automatically Observer identities. If relaying an already formed observation, preserve its ObserverId.",
+    "schemaResource": "stress-b15",
+    "schemaSemantics": "Fixed EntitySchema for this content type; no schema validity interval. Source format/version labels are ordinary content unless the business model meaning or structure changes."
+  },
+  {
+    "id": "B16",
+    "title": "Nested PID namespaces and multiple visible PIDs",
+    "source": "https://www.kernel.org/pub/linux/docs/man-pages/book/man-pages-6.17.pdf",
+    "evidence": "Linux proc_pid_status documents NSpid as thread IDs in nested PID namespaces, ordered from the namespace of the procfs mount outward-to-inward. This matters when reader and procfs mount namespaces differ.",
+    "evidenceKind": "docs-grounded constructed",
+    "fields": {
+      "hostId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "nspid": {
+        "type": "array",
+        "required": true,
+        "nullable": false,
+        "items": {
+          "type": "integer",
+          "nullable": false
+        }
+      },
+      "namespaceInode": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "startTicks": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "hostId": "0192b056-7300-7000-8000-000000000641"
+    },
+    "properties": {
+      "nspid": [
+        31496,
+        1
+      ],
+      "namespaceInode": "4026532448",
+      "startTicks": 2186639
+    },
+    "expectedValid": true,
+    "identity": "Namespace-qualified process/thread incarnation identity avoids treating container PID 1 in every namespace as the same process. Namespace inode needs boot/host scope and reuse care.",
+    "observation": "Process content preserves ordered namespace PID vector. UTC lifetime unknown unless calibrated. Observation of status uses known snapshot read time.",
+    "relations": "Named reference fields are ordinary domain FKs, not a special core relation category. Nonexistent targets remain allowed.",
+    "history": "A restart creates a new incarnation even if inner PID remains 1. Replays preserve mappings and do not infer process equivalence solely from comm/executable.",
+    "verdict": "A",
+    "reason": "Integer arrays are supported; the ordered PID vector is scalar metadata, not an array of entity references. Namespace relations can use separate membership records only when actual namespace entities are desired.",
+    "observer": "The adapter/importer that forms this observation is Observer; original author, process, SDK tool, CI actor and mere transport relay are not automatically Observer identities. If relaying an already formed observation, preserve its ObserverId.",
+    "schemaResource": "stress-b16",
+    "schemaSemantics": "Fixed EntitySchema for this content type; no schema validity interval. Source format/version labels are ordinary content unless the business model meaning or structure changes."
+  },
+  {
+    "id": "B17",
+    "title": "Kubernetes container restart versus pod identity",
+    "source": "https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.27/#containerstatus-v1-core",
+    "evidence": "ContainerStatus includes containerID, restartCount, current state and lastState; termination state includes startedAt/finishedAt/exitCode. restartCount can reset if node restart loses kubelet state; it is not a durable incarnation ID.",
+    "evidenceKind": "docs-grounded constructed",
+    "fields": {
+      "podId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "containerID": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "name": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "restartCount": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "exitCode": {
+        "type": "integer",
+        "required": false,
+        "nullable": true
+      }
+    },
+    "references": {
+      "podId": "0192b056-7300-7000-8000-0000000006a5"
+    },
+    "properties": {
+      "containerID": "containerd://fixture-container",
+      "name": "worker",
+      "restartCount": 2,
+      "exitCode": 137
+    },
+    "expectedValid": true,
+    "identity": "Pod UID maps to one pod; runtime-qualified containerID maps to container incarnation. Name identifies slot within pod, not all restarts.",
+    "observation": "Terminated-container content has startedAt/finishedAt fact interval if source provides it. Status observation is a separate point at read time. Never interpret restartCount as a timestamp.",
+    "relations": "Named reference fields are ordinary domain FKs, not a special core relation category. Nonexistent targets remain allowed.",
+    "history": "Retain each observed container incarnation and optional status versions. lastState is only the latest termination; missed older restarts cannot be recovered from count.",
+    "verdict": "A",
+    "reason": "Natural process/domain identity separation. Source status only retaining last termination is source-history loss, not core inability to hold all known restarts.",
+    "observer": "The adapter/importer that forms this observation is Observer; original author, process, SDK tool, CI actor and mere transport relay are not automatically Observer identities. If relaying an already formed observation, preserve its ObserverId.",
+    "schemaResource": "stress-b17",
+    "schemaSemantics": "Fixed EntitySchema for this content type; no schema validity interval. Source format/version labels are ordinary content unless the business model meaning or structure changes."
+  },
+  {
+    "id": "B18",
+    "title": "Prometheus counter reset and label-based series identity",
+    "source": "https://prometheus.io/docs/concepts/metric_types/",
+    "evidence": "Counters increase or reset on restart; histogram/count series similarly have cumulative behavior.",
+    "evidenceKind": "docs-grounded constructed",
+    "fields": {
+      "seriesId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "value": {
+        "type": "number",
+        "required": true,
+        "nullable": false
+      },
+      "sampleTimestampMs": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "seriesId": "0192b056-7300-7000-8000-000000000709"
+    },
+    "properties": {
+      "value": 3,
+      "sampleTimestampMs": 1791723615000
+    },
+    "expectedValid": true,
+    "identity": "Series identity is metric name + complete canonical label set within source tenant. Sample key includes series and source timestamp; do not use value as identity.",
+    "observation": "Sample Observation is a source sample-time point. Cumulative value is not an interval total and must not be spread since previous scrape. Scrape arrival is distinct.",
+    "relations": "Named reference fields are ordinary domain FKs, not a special core relation category. Nonexistent targets remain allowed.",
+    "history": "Preserve earlier sample 100 and later 3 as different samples. A reset is an interpretation across samples, not replacement. Record interpretation separately if needed.",
+    "verdict": "A",
+    "reason": "Counter semantics live in metric schema/content and sampling history. Generic validator accepts negative/decreasing numbers, so counter-specific validity/analysis remains business responsibility.",
+    "observer": "The adapter/importer that forms this observation is Observer; original author, process, SDK tool, CI actor and mere transport relay are not automatically Observer identities. If relaying an already formed observation, preserve its ObserverId.",
+    "schemaResource": "stress-b18",
+    "schemaSemantics": "Fixed EntitySchema for this content type; no schema validity interval. Source format/version labels are ordinary content unless the business model meaning or structure changes."
+  },
+  {
+    "id": "B19",
+    "title": "Classic histogram +Inf bucket and non-finite sample values",
+    "source": "https://prometheus.io/docs/instrumenting/exposition_formats/",
+    "evidence": "Text exposition allows +Inf, -Inf and NaN values; histogram bucket boundaries include the +Inf bucket.",
+    "evidenceKind": "docs-grounded constructed",
+    "fields": {
+      "seriesId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "upperBoundKind": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "upperBound": {
+        "type": "number",
+        "required": false,
+        "nullable": true
+      },
+      "count": {
+        "type": "number",
+        "required": true,
+        "nullable": false
+      },
+      "valueKind": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "seriesId": "0192b056-7300-7000-8000-00000000076d"
+    },
+    "properties": {
+      "upperBoundKind": "positiveInfinity",
+      "upperBound": null,
+      "count": 10,
+      "valueKind": "finite"
+    },
+    "expectedValid": true,
+    "identity": "Bucket sample identity includes series+le label+sample time; +Inf is a distinct boundary, not SQL null as an unknown boundary.",
+    "observation": "Histogram sample Observation is sample-time point; count describes cumulative buckets. Source fact time may be supplied by exposition or scrape semantics.",
+    "relations": "Named reference fields are ordinary domain FKs, not a special core relation category. Nonexistent targets remain allowed.",
+    "history": "Retain bucket samples per scrape, including resets; NaN/staleness markers require distinct tagged semantics. Never silently replace infinity with maximum finite number.",
+    "verdict": "B",
+    "reason": "JSON numeric cannot carry IEEE non-finite values. Explicit finite/positiveInfinity/negativeInfinity/NaN tag is a small domain encoding; preserves semantics without stringifying the whole sample. Generic validator does not enforce tag/value union.",
+    "observer": "The adapter/importer that forms this observation is Observer; original author, process, SDK tool, CI actor and mere transport relay are not automatically Observer identities. If relaying an already formed observation, preserve its ObserverId.",
+    "schemaResource": "stress-b19",
+    "schemaSemantics": "Fixed EntitySchema for this content type; no schema validity interval. Source format/version labels are ordinary content unless the business model meaning or structure changes."
+  },
+  {
+    "id": "B20",
+    "title": "Native histogram sparse buckets and schema changes",
+    "source": "https://prometheus.io/docs/specs/native_histograms/",
+    "evidence": "Native histograms have schema, zero threshold/count and sparse positive/negative bucket spans; reset interpretation is separate from bucket data.",
+    "evidenceKind": "docs-grounded constructed",
+    "fields": {
+      "schema": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "zeroThreshold": {
+        "type": "number",
+        "required": true,
+        "nullable": false
+      },
+      "zeroCount": {
+        "type": "number",
+        "required": true,
+        "nullable": false
+      },
+      "positiveSpans": {
+        "type": "array",
+        "required": true,
+        "nullable": false,
+        "items": {
+          "type": "object",
+          "nullable": false,
+          "fields": {
+            "offset": {
+              "type": "integer",
+              "required": true,
+              "nullable": false
+            },
+            "length": {
+              "type": "integer",
+              "required": true,
+              "nullable": false
+            }
+          }
+        }
+      },
+      "positiveDeltas": {
+        "type": "array",
+        "required": true,
+        "nullable": false,
+        "items": {
+          "type": "integer",
+          "nullable": false
+        }
+      }
+    },
+    "references": {},
+    "properties": {
+      "schema": 3,
+      "zeroThreshold": 0.001,
+      "zeroCount": 2,
+      "positiveSpans": [
+        {
+          "offset": -2,
+          "length": 2
+        }
+      ],
+      "positiveDeltas": [
+        3,
+        -1
+      ]
+    },
+    "expectedValid": true,
+    "identity": "Sample identity is histogram series+sample time. Its native histogram schema number is a property of the sample, not Heartbeat EntitySchema identity.",
+    "observation": "Observation is sample time, not the range over which buckets accumulated. Content preserves sparse indexing and deltas as typed arrays.",
+    "relations": "No required domain relation in this minimal fixture; source identifiers remain explicitly typed properties, not automatically traversable edges.",
+    "history": "Save samples independently across resolution changes/resets. Do not mutate Heartbeat EntitySchema whenever native schema number changes; keep a stable native-histogram record definition.",
+    "verdict": "A",
+    "reason": "Typed nested numeric arrays are allowed and naturally retain source representation. Semantic checks such as span lengths matching deltas require domain validation, not additional core entities.",
+    "observer": "The adapter/importer that forms this observation is Observer; original author, process, SDK tool, CI actor and mere transport relay are not automatically Observer identities. If relaying an already formed observation, preserve its ObserverId.",
+    "schemaResource": "stress-b20",
+    "schemaSemantics": "Fixed EntitySchema for this content type; no schema validity interval. Source format/version labels are ordinary content unless the business model meaning or structure changes."
+  },
+  {
+    "id": "B21",
+    "title": "Missing scrape, stale series, and absence of evidence",
+    "source": "https://prometheus.io/docs/prometheus/latest/querying/basics/",
+    "evidence": "Prometheus staleness removes series from query results after a series ceases to be present; missing samples are not zeros.",
+    "evidenceKind": "docs-grounded constructed",
+    "fields": {
+      "targetId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "scrapeSucceeded": {
+        "type": "boolean",
+        "required": true,
+        "nullable": false
+      },
+      "seriesPresent": {
+        "type": "boolean",
+        "required": true,
+        "nullable": false
+      },
+      "reason": {
+        "type": "string",
+        "required": false,
+        "nullable": true
+      }
+    },
+    "references": {
+      "targetId": "0192b056-7300-7000-8000-000000000835"
+    },
+    "properties": {
+      "scrapeSucceeded": false,
+      "seriesPresent": false,
+      "reason": "timeout"
+    },
+    "expectedValid": true,
+    "identity": "Scrape attempt has own ID scoped by target+scheduled attempt; series sample entity exists only when sample was actually observed.",
+    "observation": "Observation of scrape outcome uses actual attempt interval/point. Do not manufacture source sample at scrape time on failed scrape or stretch last value across unknown gap.",
+    "relations": "Named reference fields are ordinary domain FKs, not a special core relation category. Nonexistent targets remain allowed.",
+    "history": "Keep scrape health outcomes separately from metric samples. Replayed attempt is same; next scheduled attempt is new even with identical timeout message.",
+    "verdict": "A",
+    "reason": "Explicit absent/failed state is ordinary content; null time is reserved for unknown boundary, not stale state. Without scraped evidence actual metric behavior during gap is unknowable.",
+    "observer": "The adapter/importer that forms this observation is Observer; original author, process, SDK tool, CI actor and mere transport relay are not automatically Observer identities. If relaying an already formed observation, preserve its ObserverId.",
+    "schemaResource": "stress-b21",
+    "schemaSemantics": "Fixed EntitySchema for this content type; no schema validity interval. Source format/version labels are ordinary content unless the business model meaning or structure changes."
+  },
+  {
+    "id": "B22",
+    "title": "Log event time differs from observed collection time",
+    "source": "https://opentelemetry.io/docs/specs/otel/logs/data-model/",
+    "evidence": "OpenTelemetry logs distinguish Timestamp (origin clock) from ObservedTimestamp (collection clock), plus optional trace/span context.",
+    "evidenceKind": "docs-grounded constructed",
+    "fields": {
+      "spanId": {
+        "type": "reference",
+        "required": false,
+        "nullable": true
+      },
+      "timestampUnixNano": {
+        "type": "number",
+        "required": false,
+        "nullable": true
+      },
+      "observedTimestampUnixNano": {
+        "type": "number",
+        "required": true,
+        "nullable": false
+      },
+      "severityNumber": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "body": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "spanId": "0192b056-7300-7000-8000-000000000899"
+    },
+    "properties": {
+      "timestampUnixNano": 1791723615000000000,
+      "observedTimestampUnixNano": 1791723620000000000,
+      "severityNumber": 17,
+      "body": "connection failed"
+    },
+    "expectedValid": true,
+    "identity": "Use source log key if available; otherwise persist captured-record identity. Same text/time is insufficient to prove same event.",
+    "observation": "Observation of historical log event projects Timestamp; preserve ObservedTimestamp as explicit collection-clock property. If source time absent, unknown fact time stays unknown unless schema specifically says collection event.",
+    "relations": "Named reference fields are ordinary domain FKs, not a special core relation category. Nonexistent targets remain allowed.",
+    "history": "Replay saved input dedupes by saved identity; two identical log lines may be separate events. Cross-pipeline duplicate detection requires evidence beyond byte equality.",
+    "verdict": "A",
+    "reason": "Two timestamps do not require a new core timestamp role. Typed collection metadata alongside fact-time Observation is faithful; optional source time is naturally represented.",
+    "observer": "The adapter/importer that forms this observation is Observer; original author, process, SDK tool, CI actor and mere transport relay are not automatically Observer identities. If relaying an already formed observation, preserve its ObserverId.",
+    "schemaResource": "stress-b22",
+    "schemaSemantics": "Fixed EntitySchema for this content type; no schema validity interval. Source format/version labels are ordinary content unless the business model meaning or structure changes."
+  },
+  {
+    "id": "B23",
+    "title": "Journal cursor, boot clock, and clock rollback",
+    "source": "https://github.com/systemd/systemd/blob/main/man/systemd.journal-fields.xml",
+    "evidence": "Journal exposes __CURSOR, __REALTIME_TIMESTAMP, __MONOTONIC_TIMESTAMP and _BOOT_ID; cursor is opaque and monotonic time is boot-scoped.",
+    "evidenceKind": "docs-grounded constructed",
+    "fields": {
+      "cursor": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "bootId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "realtimeUsec": {
+        "type": "number",
+        "required": true,
+        "nullable": false
+      },
+      "monotonicUsec": {
+        "type": "number",
+        "required": true,
+        "nullable": false
+      },
+      "message": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {},
+    "properties": {
+      "cursor": "opaque-cursor-fixture",
+      "bootId": "9432e3db-65a7-4250-a736-b70030ebd23b",
+      "realtimeUsec": 1791723615000000,
+      "monotonicUsec": 21866390000,
+      "message": "service started"
+    },
+    "expectedValid": true,
+    "identity": "Journal source+opaque cursor maps to stable record identity. Boot-scoped monotonic timestamp orders only appropriate records; neither it nor message is a universal identity.",
+    "observation": "Journal-receipt Observation projects __REALTIME_TIMESTAMP: this is time received by the journal, not necessarily original event emission. Preserve __MONOTONIC_TIMESTAMP with boot identity for receipt ordering across wall-clock rollback. If _SOURCE_REALTIME_TIMESTAMP exists, model source event time separately. Do not invent globally comparable monotonic UTC time.",
+    "relations": "No required domain relation in this minimal fixture; source identifiers remain explicitly typed properties, not automatically traversable edges.",
+    "history": "Resume same journal cursor without duplicating records. Retain arrival order separately only when needed; source journald metadata is not a total causal order across machines.",
+    "verdict": "A",
+    "reason": "Multiple native clocks fit typed content. A timeline using only Observation UTC cannot display every clock relation; this is query/projection limitation, not source-data loss.",
+    "observer": "The adapter/importer that forms this observation is Observer; original author, process, SDK tool, CI actor and mere transport relay are not automatically Observer identities. If relaying an already formed observation, preserve its ObserverId.",
+    "schemaResource": "stress-b23",
+    "schemaSemantics": "Fixed EntitySchema for this content type; no schema validity interval. Source format/version labels are ordinary content unless the business model meaning or structure changes."
+  },
+  {
+    "id": "B24",
+    "title": "CI run rerun preserves run ID but increments attempt",
+    "source": "https://docs.github.com/en/rest/actions/workflow-runs",
+    "evidence": "GitHub workflow runs expose id, run_attempt, run_started_at, status/conclusion, actor and triggering_actor; attempt-specific APIs exist.",
+    "evidenceKind": "docs-grounded constructed",
+    "fields": {
+      "runId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "runAttempt": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "actorId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "triggeringActorId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "status": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "conclusion": {
+        "type": "string",
+        "required": true,
+        "nullable": true
+      }
+    },
+    "references": {
+      "runId": "0192b056-7300-7000-8000-000000000961",
+      "actorId": "0192b056-7300-7000-8000-000000000962",
+      "triggeringActorId": "0192b056-7300-7000-8000-000000000963"
+    },
+    "properties": {
+      "runAttempt": 2,
+      "status": "in_progress",
+      "conclusion": null
+    },
+    "expectedValid": true,
+    "identity": "Map platform+repository+run ID as logical run; map run ID+run_attempt as attempt. Separate actor and triggering actor roles even if same person.",
+    "observation": "Attempt Observation begins at run_started_at and has unknown end while unfinished; status is explicit. Poll time is collection metadata or a separate status-snapshot fact.",
+    "relations": "Named reference fields are ordinary domain FKs, not a special core relation category. Nonexistent targets remain allowed.",
+    "history": "New attempt must not overwrite attempt 1 execution history. Same attempt polling can update current-state content, but preserve versioned content for historical snapshots. A stale poll arriving later can overwrite current state unless adapter orders it.",
+    "verdict": "A",
+    "reason": "All identities, roles, nullable outcome and attempt intervals map naturally. Store has no source-version compare-and-swap; protection against stale overwrites is an ingestion/history responsibility.",
+    "observer": "The adapter/importer that forms this observation is Observer; original author, process, SDK tool, CI actor and mere transport relay are not automatically Observer identities. If relaying an already formed observation, preserve its ObserverId.",
+    "schemaResource": "stress-b24",
+    "schemaSemantics": "Fixed EntitySchema for this content type; no schema validity interval. Source format/version labels are ordinary content unless the business model meaning or structure changes."
+  },
+  {
+    "id": "B25",
+    "title": "Artifact identity, digest, expiration, and run provenance",
+    "source": "https://docs.github.com/en/rest/actions/artifacts",
+    "evidence": "GitHub artifact API example includes id 11, name Rails, size_in_bytes 556, expired false, expiry time, digest and workflow_run metadata.",
+    "evidenceKind": "official documentation example subset; UUID mapping constructed",
+    "fields": {
+      "workflowRunId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "externalId": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "name": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "sizeInBytes": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "expired": {
+        "type": "boolean",
+        "required": true,
+        "nullable": false
+      },
+      "expiresAt": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "digest": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "workflowRunId": "0192b056-7300-7000-8000-0000000009c5"
+    },
+    "properties": {
+      "externalId": 11,
+      "name": "Rails",
+      "sizeInBytes": 556,
+      "expired": false,
+      "expiresAt": "2020-03-21T14:59:22Z",
+      "digest": "sha256:cfc3236bdad15b5898bca8408945c9e19e1917da8704adc20eaa618444290a8c"
+    },
+    "expectedValid": true,
+    "identity": "Map repository+artifact id; name is not unique identity, digest identifies bytes but not artifact occurrence. Run linkage can remain unresolved until imported.",
+    "observation": "Artifact-created fact uses created_at. expires_at is a scheduled policy deadline property, not proof of actual disappearance or an observed lifetime end. Availability snapshot uses snapshot time.",
+    "relations": "Named reference fields are ordinary domain FKs, not a special core relation category. Nonexistent targets remain allowed.",
+    "history": "Keep artifact metadata after deletion/expiry. Retention changes produce new snapshots where history matters. Do not dedupe artifacts by digest alone or infer unavailable file content from metadata.",
+    "verdict": "A",
+    "reason": "Creation, policy deadline and later availability are naturally separate facts. Missing expired bytes are source availability loss, not a failure to represent known artifact metadata.",
+    "observer": "The adapter/importer that forms this observation is Observer; original author, process, SDK tool, CI actor and mere transport relay are not automatically Observer identities. If relaying an already formed observation, preserve its ObserverId.",
+    "schemaResource": "stress-b25",
+    "schemaSemantics": "Fixed EntitySchema for this content type; no schema validity interval. Source format/version labels are ordinary content unless the business model meaning or structure changes."
+  },
+  {
+    "id": "B02-N",
+    "title": "Parent reference array is not supported",
+    "source": "repository:EntitySchemaRules.cs",
+    "evidence": "actual validator code",
+    "fields": {
+      "parents": {
+        "type": "array",
+        "required": true,
+        "nullable": false,
+        "items": {
+          "type": "reference",
+          "nullable": false
+        }
+      }
+    },
+    "references": {},
+    "properties": {
+      "parents": [
+        "0192b056-7300-7000-8000-0000000000ca"
+      ]
+    },
+    "expectedValid": false,
+    "reason": "ValidDefinition forbids reference at any non-top-level position."
+  },
+  {
+    "id": "B07-N",
+    "title": "Reference nested in link object is not supported",
+    "source": "repository:EntitySchemaRules.cs",
+    "evidence": "actual validator code",
+    "fields": {
+      "link": {
+        "type": "object",
+        "required": true,
+        "nullable": false,
+        "fields": {
+          "targetId": {
+            "type": "reference",
+            "required": true,
+            "nullable": false
+          }
+        }
+      }
+    },
+    "references": {},
+    "properties": {
+      "link": {
+        "targetId": "0192b056-7300-7000-8000-0000000002be"
+      }
+    },
+    "expectedValid": false,
+    "reason": "Nested object reference fails schema validation."
+  },
+  {
+    "id": "B08-N",
+    "title": "Full uint64 range in integer fails",
+    "source": "repository:EntitySchemaRules.cs",
+    "evidence": "actual validator code",
+    "fields": {
+      "timeUnixNano": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {},
+    "properties": {
+      "timeUnixNano": 18446744073709551615
+    },
+    "expectedValid": false,
+    "reason": "integer is signed Int64; numeric number is a valid exact alternative."
+  },
+  {
+    "id": "B14-N",
+    "title": "Undeclared metadata key fails",
+    "source": "repository:EntitySchemaRules.cs",
+    "evidence": "actual validator code",
+    "fields": {
+      "config": {
+        "type": "object",
+        "required": true,
+        "nullable": false,
+        "fields": {
+          "temperature": {
+            "type": "number",
+            "required": true,
+            "nullable": false
+          }
+        }
+      }
+    },
+    "references": {},
+    "properties": {
+      "config": {
+        "temperature": 0.7,
+        "seed": 42
+      }
+    },
+    "expectedValid": false,
+    "reason": "Closed object definitions reject unregistered member seed."
+  },
+  {
+    "id": "B19-N",
+    "title": "Infinity string is not a numeric value",
+    "source": "repository:EntitySchemaRules.cs",
+    "evidence": "actual validator code",
+    "fields": {
+      "value": {
+        "type": "number",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {},
+    "properties": {
+      "value": "+Inf"
+    },
+    "expectedValid": false,
+    "reason": "JSON string cannot satisfy number; use explicit domain special-value kind."
+  },
+  {
+    "id": "B24-N",
+    "title": "Native CI integer cannot be entity reference",
+    "source": "repository:EntitySchemaRules.cs",
+    "evidence": "actual validator code",
+    "fields": {
+      "runId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "runId": 30433642
+    },
+    "properties": {},
+    "expectedValid": false,
+    "reason": "References require RFC-variant UUIDv7 text; persist external mapping."
+  }
+]

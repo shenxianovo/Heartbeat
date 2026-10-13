@@ -1,0 +1,21 @@
+[
+  {
+    "specversion": "1.0",
+    "id": "event-1",
+    "source": "/orders",
+    "type": "example.created",
+    "time": "2026-10-12T01:02:03.123456789Z",
+    "data": {
+      "order": 1
+    },
+    "tenant": "one"
+  },
+  {
+    "specversion": "1.0",
+    "id": "event-2",
+    "source": "/orders",
+    "type": "example.created",
+    "time": "2026-10-12T01:02:03.123456789Z",
+    "data_base64": "aGk="
+  }
+]

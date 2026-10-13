@@ -1,0 +1,16 @@
+{
+  "id":"message-a", "threadId":"thread-a", "labelIds":["INBOX","UNREAD","Label_17"],
+  "historyId":"812", "internalDate":"1791547200123", "snippet":"Hello café", "sizeEstimate":610,
+  "payload": {
+    "partId":"", "mimeType":"multipart/mixed", "filename":"",
+    "headers":[{"name":"Date","value":"Thu, 01 Oct 2026 03:00:00 +0900"},{"name":"Subject","value":"Hello"},{"name":"Received","value":"hop-one"},{"name":"Received","value":"hop-two"}],
+    "body":{"size":0},
+    "parts":[
+      {"partId":"0","mimeType":"multipart/alternative","body":{"size":0},"parts":[
+        {"partId":"0.0","mimeType":"text/plain","headers":[{"name":"Content-Type","value":"text/plain; charset=UTF-8"}],"body":{"size":5,"data":"aGVsbG8"}},
+        {"partId":"0.1","mimeType":"text/html","body":{"size":12,"data":"PHA-aGVsbG88L3A-"}}
+      ]},
+      {"partId":"1","mimeType":"application/pdf","filename":"plan.pdf","body":{"size":1234,"attachmentId":"attachment-a"}}
+    ]
+  }
+}

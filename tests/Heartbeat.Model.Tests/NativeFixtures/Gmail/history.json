@@ -1,0 +1,6 @@
+{"history":[
+ {"id":"818","messages":[{"id":"message-a","threadId":"thread-a"}],"labelsRemoved":[{"message":{"id":"message-a","threadId":"thread-a"},"labelIds":["UNREAD"]}],"labelsAdded":[{"message":{"id":"message-a","threadId":"thread-a"},"labelIds":["STARRED"]}]},
+ {"id":"820","messagesAdded":[{"message":{"id":"message-b","threadId":"thread-b"}}]},
+ {"id":"830","messagesDeleted":[{"message":{"id":"message-c","threadId":"thread-c"}}]},
+ {"id":"900","messages":[{"id":"message-d","threadId":"thread-d"}]}
+],"historyId":"999","nextPageToken":"fixture-continuation-token"}

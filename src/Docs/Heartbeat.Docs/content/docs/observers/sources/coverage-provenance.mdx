@@ -1,0 +1,311 @@
+---
+title: "D 组：修订与证据关系接入"
+description: "D01–D25 的实际来源、原生测试及明确缺口"
+---
+
+[返回 100 场景目录](./coverage.mdx)。原模型结构、完整输入和官方来源依据见[模型压力：修订与证据关系](../../testing/model-generality/provenance.mdx)；以下只说明来源接入层。测试入口名称不是当次执行报告，也不代表线上账号或真实设备验证。
+
+## D01
+
+**CDC 事务顺序与到达顺序**
+
+原场景验收点：事务内序号单独保留，接收先后不替代来源顺序。
+
+- 接入状态：原生实现·部分
+- CLI 来源：`debezium-json`；[格式与运行规则](./telemetry.mdx)
+- 命名断言：`TelemetrySourceTests.CdcUsesSourceClockAndTransactionOrderIndependentOfDelivery`
+- 测试文件：`tests/Heartbeat.Model.Tests/TelemetrySourceTests.cs`
+- 剩余缺口：保留事务 ID/次序/来源与处理时钟；没有按主键识别行或原子 sink 的保证。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/provenance.json` 中的 `D01`
+
+## D02
+
+**SQL 删除与 Kafka 空 tombstone**
+
+原场景验收点：业务删除事实和传输清理标记不是一回事。
+
+- 接入状态：原生实现·部分
+- CLI 来源：`debezium-json`；[格式与运行规则](./telemetry.mdx)
+- 命名断言：`TelemetrySourceTests.CdcDeleteIsAChangeAndKafkaTombstoneIsRejected`
+- 测试文件：`tests/Heartbeat.Model.Tests/TelemetrySourceTests.cs`
+- 剩余缺口：原生 delete envelope 支持；缺少 Kafka key/header 的 null tombstone 明确拒绝。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/provenance.json` 中的 `D02`
+
+## D03
+
+**主键变化**
+
+原场景验收点：保留 before/after 及身份关系，不只保存最后一个键。
+
+- 接入状态：仅相关适配器
+- CLI 来源：`debezium-json`；[格式与运行规则](./telemetry.mdx)
+- 命名断言：`TelemetrySourceTests.CdcUpdateKeepsBothRowImagesAndNativeExtension`
+- 测试文件：`tests/Heartbeat.Model.Tests/TelemetrySourceTests.cs`
+- 剩余缺口：before/after 行镜像保留不等于主键切换关联；Kafka keys/headers 与旧新行关联未实现。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/provenance.json` 中的 `D03`
+
+## D04
+
+**Webhook 重试与同秒事件**
+
+原场景验收点：来源事件 ID 加作用域；时间相同不能自动去重。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 Stripe 原生 Webhook 导入/接收；保存 payload 不等于完成签名校验。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/provenance.json` 中的 `D04`
+
+## D05
+
+**CouchDB 并存冲突版本**
+
+原场景验收点：多个分支都保留；不能只当作线性最新版本。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 CouchDB 修订树接入；单个 winning document 不足以证明冲突、祖先与正文可用性。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/provenance.json` 中的 `D05`
+
+## D06
+
+**修订祖先存在但正文丢失**
+
+原场景验收点：保留已知祖先关系，明确正文不可得。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 CouchDB 修订树接入；单个 winning document 不足以证明冲突、祖先与正文可用性。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/provenance.json` 中的 `D06`
+
+## D07
+
+**BagIt 部分下载与中断**
+
+原场景验收点：清单、已取得材料和缺失状态分别表达。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 BagIt 包、manifest、payload 或 fetch.txt 校验；不自动网络抓取。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/provenance.json` 中的 `D07`
+
+## D08
+
+**归档重放但 UUID 映射丢失**
+
+原场景验收点：无法保证自动识别旧记录；持久映射是采集职责。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 BagIt 包、manifest、payload 或 fetch.txt 校验；不自动网络抓取。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/provenance.json` 中的 `D08`
+
+## D09
+
+**问卷回答修正**
+
+原场景验收点：历史内容版本与当前回答身份分开。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 FHIR 原生资源适配器；问卷、certainty、correction 与 missing/absent 语义需要明确 profile/extension 映射。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/provenance.json` 中的 `D09`
+
+## D10
+
+**受访者确定程度与提取置信度**
+
+原场景验收点：不同主体不同含义；类型校验不保证 0–1 范围。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 FHIR 原生资源适配器；问卷、certainty、correction 与 missing/absent 语义需要明确 profile/extension 映射。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/provenance.json` 中的 `D10`
+
+## D11
+
+**同图多个同类检测框**
+
+原场景验收点：每个检测实例独立，不按标签文字合并。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 Rekognition 结果导入/推理；相同输出的不同运行仍需不同运行证据。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/provenance.json` 中的 `D11`
+
+## D12
+
+**两次模型运行意见不同**
+
+原场景验收点：保留运行来源和各自结果，不覆盖成一个真值。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 Rekognition 结果导入/推理；相同输出的不同运行仍需不同运行证据。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/provenance.json` 中的 `D12`
+
+## D13
+
+**音频分轨只有相对时间**
+
+原场景验收点：相对偏移有意义；没有锚点就不声称绝对时间。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无转写原生结果导入；片段相对时间不能冒充墙上时钟。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/provenance.json` 中的 `D13`
+
+## D14
+
+**重叠讲话与不连续说话段**
+
+原场景验收点：多个普通片段表示重叠或离散，不塞成一个连续区间。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无说话人分离原生文件契约；需要显式 track/channel/speaker 身份，不把 Python 对象当文件协议。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/provenance.json` 中的 `D14`
+
+## D15
+
+**多元 PROV 关联**
+
+原场景验收点：活动、代理和计划用普通业务实体的具名引用连接。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 PROV 关系原生导入；多元关系与活动范围委托仍只有模型样本。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/provenance.json` 中的 `D15`
+
+## D16
+
+**嵌套群组形成环**
+
+原场景验收点：引用可表示环；是否允许环需要领域规则。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 SCIM 原生导入；externalId 自身不含客户端范围，循环关系需保留。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/provenance.json` 中的 `D16`
+
+## D17
+
+**限于活动的责任关系**
+
+原场景验收点：关系实体表达其作用域与时间，不让主体整体承担该时间。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 PROV 关系原生导入；多元关系与活动范围委托仍只有模型样本。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/provenance.json` 中的 `D17`
+
+## D18
+
+**多个供应客户端相同 externalId**
+
+原场景验收点：外部 ID 必须有来源作用域。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 SCIM 原生导入；externalId 自身不含客户端范围，循环关系需保留。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/provenance.json` 中的 `D18`
+
+## D19
+
+**人员记录合并方向**
+
+原场景验收点：保留替代方向及旧身份，不把合并当删除历史。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 FHIR 原生资源适配器；问卷、certainty、correction 与 missing/absent 语义需要明确 profile/extension 映射。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/provenance.json` 中的 `D19`
+
+## D20
+
+**CloudEvents 时间完全相同**
+
+原场景验收点：source+id 区分事件；时间仅是事实属性。
+
+- 接入状态：原生核心断言
+- CLI 来源：`cloudevents-json`；[格式与运行规则](./telemetry.mdx)
+- 命名断言：`TelemetrySourceTests.CloudEventsAtSameTimeKeepSourceAndEventIdentity`
+- 测试文件：`tests/Heartbeat.Model.Tests/TelemetrySourceTests.cs`
+- 剩余缺口：原生 source+id 与相同 event time 有断言；只支持 structured JSON binding。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/provenance.json` 中的 `D20`
+
+## D21
+
+**纳秒日志在微秒存储中重合**
+
+原场景验收点：原始时间与来源序号保留，通用时间比较不够。
+
+- 接入状态：仅相关适配器
+- CLI 来源：`otlp-json`；[格式与运行规则](./telemetry.mdx)
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：OTLP 留精确纳秒，但两个不同日志在微秒投影碰撞的场景尚无直接原生断言。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/provenance.json` 中的 `D21`
+
+## D22
+
+**缺事件时间但有采集时间**
+
+原场景验收点：未知事实保持未知；采集时间可以另形成采集事实。
+
+- 接入状态：原生核心断言
+- CLI 来源：`otlp-json`；[格式与运行规则](./telemetry.mdx)
+- 命名断言：`TelemetrySourceTests.LogsUseEventTimeNeverObservedTimeAsFactTime`
+- 测试文件：`tests/Heartbeat.Model.Tests/TelemetrySourceTests.cs`
+- 剩余缺口：原生 event time 缺失时保持 null，即使 observed time 已知；身份明确限制在 capture-position。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/provenance.json` 中的 `D22`
+
+## D23
+
+**Avro 默认值与原始缺字段**
+
+原场景验收点：解析后默认值不能冒充源中确实存在的字段。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 Avro 二进制解码/Schema 解析；普通 JSON 不能证明默认值与显式值区别。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/provenance.json` 中的 `D23`
+
+## D24
+
+**问卷嵌套答案引用要进图**
+
+原场景验收点：拆成答案/成员实体可表达；当前 API 无逆向遍历。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 FHIR 原生资源适配器；问卷、certainty、correction 与 missing/absent 语义需要明确 profile/extension 映射。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/provenance.json` 中的 `D24`
+
+## D25
+
+**JWE 密文尚不能解密**
+
+原场景验收点：记录可获得的密文材料与状态，不声称知道明文。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 JWE 原生输入适配器；没有密钥时不声称认证有效或已获明文。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/provenance.json` 中的 `D25`

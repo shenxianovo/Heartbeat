@@ -1,0 +1,341 @@
+---
+title: "A 组：数字活动与文件接入"
+description: "A01–A25 的实际来源、原生测试及明确缺口"
+---
+
+[返回 100 场景目录](./coverage.mdx)。原模型结构、完整输入和官方来源依据见[模型压力：数字活动与文件](../../testing/model-generality/digital.mdx)；以下只说明来源接入层。测试入口名称不是当次执行报告，也不代表线上账号或真实设备验证。
+
+## A01
+
+**应用只改了显示名称**
+
+原场景验收点：本机安装身份沿用；观测内容保留当时名称。
+
+- 接入状态：既有采集器·平台未实跑
+- 现有程序：[macOS 前台状态](../foreground-state.mdx)，不属于新 Sources CLI
+- 命名断言：`ForegroundTimelineTests.RenameAndTimeZoneChangeSplitContentWithoutReplacingApplicationIdentity`
+- 测试文件：`tests/Heartbeat.Integration.Tests/ForegroundTimelineTests.cs`
+- 剩余缺口：已有 macOS 采集器；本轮 Linux 未实际运行 macOS。所列测试使用模拟 reader/timeline 验证改名与身份。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/digital.json` 中的 `A01`
+
+## A02
+
+**休眠或墙上时钟跳变**
+
+原场景验收点：断点两侧分段；不把未采集空档当成连续使用。
+
+- 接入状态：既有采集器·平台未实跑
+- 现有程序：[macOS 前台状态](../foreground-state.mdx)，不属于新 Sources CLI
+- 命名断言：`ForegroundTimelineTests.InterruptionsStartNewPeriodWithoutFillingTheGap`
+- 测试文件：`tests/Heartbeat.Integration.Tests/ForegroundTimelineTests.cs`
+- 剩余缺口：已有 macOS 采集器；本轮未实际触发 macOS 休眠或系统时钟跳变。所列断点参数测试是逻辑验证。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/digital.json` 中的 `A02`
+
+## A03
+
+**应用移动路径或重新安装**
+
+原场景验收点：路径是识别线索，不等于安装身份；无法确认时保留不确定。
+
+- 接入状态：既有采集器·平台未实跑
+- 现有程序：[macOS 前台状态](../foreground-state.mdx)，不属于新 Sources CLI
+- 命名断言：`LocalApplicationIdentityTests.RestartAndRenameReuseInstallationButAnotherPathOrDeviceDoesNot`
+- 测试文件：`tests/Heartbeat.Integration.Tests/LocalApplicationIdentityTests.cs`
+- 剩余缺口：已有安装身份 registry；路径或设备变化的模拟测试不是实际搬移/重装 macOS 应用的运行证据。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/digital.json` 中的 `A03`
+
+## A04
+
+**Android 查询缺少结束事件**
+
+原场景验收点：EndAt 保持未知；未知不代表仍在前台。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 Android UsageEvents 采集或原生导入；需要实际设备与使用记录权限，缺失结束事件不能补造。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/digital.json` 中的 `A04`
+- 来源规范：[来源1](https://developer.android.com/reference/android/app/usage/UsageEvents.Event)、[来源2](https://developer.android.com/reference/android/app/usage/UsageStatsManager)
+
+## A05
+
+**Activity 生命周期与注意力不同**
+
+原场景验收点：记录实际生命周期事件；不要直接声称用户一直在看。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 Android UsageEvents 采集或原生导入；需要实际设备与使用记录权限，缺失结束事件不能补造。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/digital.json` 中的 `A05`
+- 来源规范：[来源1](https://developer.android.com/reference/android/app/usage/UsageEvents.Event)
+
+## A06
+
+**反复访问同一网址**
+
+原场景验收点：访问事件各有身份；URL 相同不代表同一次访问。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 Chrome history 原生事件接入；仅数据库快照不能证明删除事件、漏采或同步历史。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/digital.json` 中的 `A06`
+- 来源规范：[来源1](https://developer.chrome.com/docs/extensions/reference/api/history)
+
+## A07
+
+**历史删除与跨设备同步**
+
+原场景验收点：删除信号不补造原始访问；保留来源与同步范围。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 Chrome history 原生事件接入；仅数据库快照不能证明删除事件、漏采或同步历史。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/digital.json` 中的 `A07`
+- 来源规范：[来源1](https://developer.chrome.com/docs/extensions/reference/api/history)
+
+## A08
+
+**Gmail 历史游标失效后标签变化**
+
+原场景验收点：区分补扫快照和已知变更；缺失区间无法复原。
+
+- 接入状态：原生实现·部分
+- CLI 来源：`gmail-history`；[格式与运行规则](./communication.mdx)
+- 命名断言：`GmailSourceTests.NativeHistoryKeepsSpecificChangesUnknownTimeAndIncompletePage`
+- 测试文件：`tests/Heartbeat.Model.Tests/GmailSourceTests.cs`
+- 剩余缺口：只导入成功的原生 history 页；错误响应拒绝，不修复过期游标、不执行全量补扫，也不声称没有历史缺口。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/digital.json` 中的 `A08`
+- 来源规范：[来源1](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages)、[来源2](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.history/list)
+
+## A09
+
+**Gmail 草稿编辑与发送**
+
+原场景验收点：草稿、底层邮件和已发送邮件分清身份。
+
+- 接入状态：原生实现·部分
+- CLI 来源：`gmail-drafts`；[格式与运行规则](./communication.mdx)
+- 命名断言：`GmailSourceTests.NativeDraftReplacedMessageKeepsDraftIdentityAndHistoryAcrossRestart`
+- 测试文件：`tests/Heartbeat.Model.Tests/GmailSourceTests.cs`
+- 剩余缺口：草稿 ID 在底层 message 替换后保持稳定并留历史；草稿发送到新 sent message 的实际流程未集成。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/digital.json` 中的 `A09`
+- 来源规范：[来源1](https://developers.google.com/workspace/gmail/api/guides/drafts)
+
+## A10
+
+**邮件 MIME 层次与附件**
+
+原场景验收点：附件和成员关系按业务实体保存；声明引用，不扫描字符串。
+
+- 接入状态：原生实现·部分
+- CLI 来源：`gmail-messages`；[格式与运行规则](./communication.mdx)
+- 命名断言：`GmailSourceTests.NativeMessagePreservesMimeMembershipHeadersAndUndownloadedAttachment`
+- 测试文件：`tests/Heartbeat.Model.Tests/GmailSourceTests.cs`
+- 剩余缺口：保留 MIME 路径、重复 header 顺序、thread 引用和 attachment ID；不解码邮件字符集、不下载附件或建立完整附件实体图。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/digital.json` 中的 `A10`
+- 来源规范：[来源1](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages)
+
+## A11
+
+**Outlook 移动文件夹后的 ID 变化**
+
+原场景验收点：采用来源支持的稳定标识或保存映射；不把新 ID 自动当新邮件。
+
+- 接入状态：原生实现·部分
+- CLI 来源：`graph-messages`；[格式与运行规则](./communication.mdx)
+- 命名断言：`CommunicationSourceTests.GraphImmutableIdSurvivesFolderChangeButDefaultReplacementIsNotGuessed`
+- 测试文件：`tests/Heartbeat.Model.Tests/CommunicationSourceTests.cs`
+- 剩余缺口：仅 JSON 不能证明 ImmutableId 请求模式；支持相同原生 ID 的文件夹变化，不提供 default-ID 替换映射或真实邮箱移动实测。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/digital.json` 中的 `A11`
+- 来源规范：[来源1](https://learn.microsoft.com/en-us/graph/outlook-immutable-id)
+
+## A12
+
+**Outlook 修订与移除标记**
+
+原场景验收点：区分内容修订、位置变化与删除；需要历史就保存内容版本。
+
+- 接入状态：原生实现·部分
+- CLI 来源：`graph-messages`；[格式与运行规则](./communication.mdx)
+- 命名断言：`CommunicationSourceTests.GraphNativeDeltaPreservesDraftRevisionIdentityAndFolderRemoval`
+- 测试文件：`tests/Heartbeat.Model.Tests/CommunicationSourceTests.cs`
+- 剩余缺口：body/draft/changeKey/flagStatus 修订及集合移除已有断言；flag 日期未映射，delta 游标和真实邮箱同步未实现。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/digital.json` 中的 `A12`
+- 来源规范：[来源1](https://learn.microsoft.com/en-us/graph/api/resources/message?view=graph-rest-1.0)、[来源2](https://learn.microsoft.com/en-us/graph/delta-query-messages)
+
+## A13
+
+**Slack 编辑乱序到达**
+
+原场景验收点：按来源修订事实排序；接收晚不等于编辑晚。
+
+- 接入状态：原生核心断言
+- CLI 来源：`slack-events`；[格式与运行规则](./communication.mdx)
+- 命名断言：`CommunicationSourceTests.SlackOutOfOrderEditAndCreationKeepHistoricalContentThroughRestart`
+- 测试文件：`tests/Heartbeat.Model.Tests/CommunicationSourceTests.cs`
+- 剩余缺口：合成的原生 Slack callback 验证乱序编辑/创建与持久历史；没有线上订阅和签名校验。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/digital.json` 中的 `A13`
+- 来源规范：[来源1](https://docs.slack.dev/reference/events/message/message_changed/)
+
+## A14
+
+**只收到 Slack 删除事件**
+
+原场景验收点：保存已知删除，不补造没见过的正文。
+
+- 接入状态：原生核心断言
+- CLI 来源：`slack-events`；[格式与运行规则](./communication.mdx)
+- 命名断言：`CommunicationSourceTests.SlackDeleteWithoutCapturedOriginalDoesNotInventText`
+- 测试文件：`tests/Heartbeat.Model.Tests/CommunicationSourceTests.cs`
+- 剩余缺口：合成删除 callback 可在没有旧正文时保存已知删除；没有线上订阅，也不补造历史正文。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/digital.json` 中的 `A14`
+- 来源规范：[来源1](https://docs.slack.dev/reference/events/message/message_deleted/)
+
+## A15
+
+**Matrix 密文稍后可解密**
+
+原场景验收点：密文材料与后续解释分开；新解释不覆盖原证据。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 Matrix 原生事件/解密接入；密文保留、后续密钥与新解释需要独立证据。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/digital.json` 中的 `A15`
+- 来源规范：[来源1](https://spec.matrix.org/v1.16/client-server-api/#mroomencrypted)
+
+## A16
+
+**聊天分享多个鉴权文件**
+
+原场景验收点：文件引用与临时下载地址分开；鉴权 URL 不是内容本身。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 Slack 文件对象与鉴权下载接入；消息事件解析器不覆盖共享文件身份与临时 URL。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/digital.json` 中的 `A16`
+- 来源规范：[来源1](https://docs.slack.dev/reference/objects/file-object/)
+
+## A17
+
+**Claude 日志最后一行尚未写完**
+
+原场景验收点：完整输入再形成观测；不完整读取属于采集诊断。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无固定版本的 SDK/session 原生文件适配器；不能把任意内部 JSONL 当稳定协议。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/digital.json` 中的 `A17`
+- 来源规范：[来源1](https://code.claude.com/docs/en/hooks)、[来源2](https://code.claude.com/docs/en/agent-sdk/sessions)
+
+## A18
+
+**会话分叉与文件副本**
+
+原场景验收点：复制路径不决定新会话；分叉与重放分别处理。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无固定版本的 SDK/session 原生文件适配器；不能把任意内部 JSONL 当稳定协议。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/digital.json` 中的 `A18`
+- 来源规范：[来源1](https://code.claude.com/docs/en/agent-sdk/sessions)
+
+## A19
+
+**重命名与硬链接**
+
+原场景验收点：同一 inode 可有多个路径；保留设备范围和路径成员关系。
+
+- 接入状态：原生实现·部分
+- CLI 来源：`file`；[格式与运行规则](./local.mdx)
+- 命名断言：`LocalSourceTests.FileCapturePreservesBytesLinkIdentityAndDoesNotTraverseSymlinks`
+- 测试文件：`tests/Heartbeat.Model.Tests/LocalSourceTests.cs`
+- 剩余缺口：birth time 可用时断言重命名身份；不可用时只保证 capture 内身份，完整硬链接成员图未实现。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/digital.json` 中的 `A19`
+- 来源规范：[来源1](https://docs.python.org/3/library/os.html#os.stat_result)
+
+## A20
+
+**符号链接与目标分离**
+
+原场景验收点：链接本身、目标及解析时状态是不同事实。
+
+- 接入状态：原生实现·部分
+- CLI 来源：`file`；[格式与运行规则](./local.mdx)
+- 命名断言：`LocalSourceTests.FileCapturePreservesBytesLinkIdentityAndDoesNotTraverseSymlinks`
+- 测试文件：`tests/Heartbeat.Model.Tests/LocalSourceTests.cs`
+- 剩余缺口：保存失效符号链接字节且不遍历目标；未建立独立目标实体与解析状态。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/digital.json` 中的 `A20`
+- 来源规范：[来源1](https://docs.python.org/3/library/os.html#os.stat_result)
+
+## A21
+
+**纳秒文件时间与任意字节**
+
+原场景验收点：纳秒留显式源字段；非 UTF-8 名称和 NUL 内容按声明的字节编码保留。
+
+- 接入状态：原生实现·部分
+- CLI 来源：`file`；[格式与运行规则](./local.mdx)
+- 命名断言：`LocalSourceTests.FileCapturePreservesBytesLinkIdentityAndDoesNotTraverseSymlinks`
+- 测试文件：`tests/Heartbeat.Model.Tests/LocalSourceTests.cs`
+- 剩余缺口：任意文件内容字节和纳秒 stat 文本保留；非 UTF-8 路径字节尚不支持。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/digital.json` 中的 `A21`
+- 来源规范：[来源1](https://docs.python.org/3/library/os.html#os.stat_result)
+
+## A22
+
+**不同时刻的相同截图**
+
+原场景验收点：内容可复用；独立截图观测不因像素相同而合并。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无实际屏幕/browser capture 接入；文件哈希不能替代截图身份或拍摄时刻。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/digital.json` 中的 `A22`
+- 来源规范：[来源1](https://developer.chrome.com/docs/extensions/reference/api/tabs#method-captureVisibleTab)
+
+## A23
+
+**OCR 重跑得到不同结果**
+
+原场景验收点：识别结果归各次模型运行；置信度不等于事实真假。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 OCR 原生输出适配器或推理执行；各次运行和来源图像需显式识别。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/digital.json` 中的 `A23`
+- 来源规范：[来源1](https://docs.cloud.google.com/vision/docs/reference/rest/v1/AnnotateImageResponse)
+
+## A24
+
+**键盘重复与组合输入**
+
+原场景验收点：保留来源顺序与组合事件；相同时间戳不去重。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无键盘/组合输入监听；需要实际设备权限与隐私策略，导入手写 JSON 不算实采。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/digital.json` 中的 `A24`
+- 来源规范：[来源1](https://www.w3.org/TR/uievents/#interface-keyboardevent)
+
+## A25
+
+**隐私抑制与空字符串**
+
+原场景验收点：显式记录抑制状态；不等同于没有输入或采集失败。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无键盘/组合输入监听；需要实际设备权限与隐私策略，导入手写 JSON 不算实采。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/digital.json` 中的 `A25`
+- 来源规范：[来源1](https://www.w3.org/TR/uievents/#interface-keyboardevent)

@@ -1,0 +1,1585 @@
+{
+  "description": "100 个原始模型场景的来源接入目录。状态表示实现与命名断言范围，不是最近一次测试执行结果。native-targeted 不表示完整生产集成。",
+  "cases": [
+    {
+      "id": "A01",
+      "title": "应用只改了显示名称",
+      "family": "foreground",
+      "adapters": [],
+      "semanticStatus": "existing-native-unverified",
+      "acceptance": "本机安装身份沿用；观测内容保留当时名称",
+      "nativeTests": [
+        {
+          "name": "ForegroundTimelineTests.RenameAndTimeZoneChangeSplitContentWithoutReplacingApplicationIdentity",
+          "file": "tests/Heartbeat.Integration.Tests/ForegroundTimelineTests.cs"
+        }
+      ],
+      "remainingGap": "已有 macOS 采集器；本轮 Linux 未实际运行 macOS。所列测试使用模拟 reader/timeline 验证改名与身份。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/digital.json",
+      "sources": []
+    },
+    {
+      "id": "A02",
+      "title": "休眠或墙上时钟跳变",
+      "family": "foreground",
+      "adapters": [],
+      "semanticStatus": "existing-native-unverified",
+      "acceptance": "断点两侧分段；不把未采集空档当成连续使用",
+      "nativeTests": [
+        {
+          "name": "ForegroundTimelineTests.InterruptionsStartNewPeriodWithoutFillingTheGap",
+          "file": "tests/Heartbeat.Integration.Tests/ForegroundTimelineTests.cs"
+        }
+      ],
+      "remainingGap": "已有 macOS 采集器；本轮未实际触发 macOS 休眠或系统时钟跳变。所列断点参数测试是逻辑验证。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/digital.json",
+      "sources": []
+    },
+    {
+      "id": "A03",
+      "title": "应用移动路径或重新安装",
+      "family": "foreground",
+      "adapters": [],
+      "semanticStatus": "existing-native-unverified",
+      "acceptance": "路径是识别线索，不等于安装身份；无法确认时保留不确定",
+      "nativeTests": [
+        {
+          "name": "LocalApplicationIdentityTests.RestartAndRenameReuseInstallationButAnotherPathOrDeviceDoesNot",
+          "file": "tests/Heartbeat.Integration.Tests/LocalApplicationIdentityTests.cs"
+        }
+      ],
+      "remainingGap": "已有安装身份 registry；路径或设备变化的模拟测试不是实际搬移/重装 macOS 应用的运行证据。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/digital.json",
+      "sources": []
+    },
+    {
+      "id": "A04",
+      "title": "Android 查询缺少结束事件",
+      "family": "android-usage",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "EndAt 保持未知；未知不代表仍在前台",
+      "nativeTests": [],
+      "remainingGap": "尚无 Android UsageEvents 采集或原生导入；需要实际设备与使用记录权限，缺失结束事件不能补造。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/digital.json",
+      "sources": [
+        "https://developer.android.com/reference/android/app/usage/UsageEvents.Event",
+        "https://developer.android.com/reference/android/app/usage/UsageStatsManager"
+      ]
+    },
+    {
+      "id": "A05",
+      "title": "Activity 生命周期与注意力不同",
+      "family": "android-usage",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "记录实际生命周期事件；不要直接声称用户一直在看",
+      "nativeTests": [],
+      "remainingGap": "尚无 Android UsageEvents 采集或原生导入；需要实际设备与使用记录权限，缺失结束事件不能补造。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/digital.json",
+      "sources": [
+        "https://developer.android.com/reference/android/app/usage/UsageEvents.Event"
+      ]
+    },
+    {
+      "id": "A06",
+      "title": "反复访问同一网址",
+      "family": "browser-history",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "访问事件各有身份；URL 相同不代表同一次访问",
+      "nativeTests": [],
+      "remainingGap": "尚无 Chrome history 原生事件接入；仅数据库快照不能证明删除事件、漏采或同步历史。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/digital.json",
+      "sources": [
+        "https://developer.chrome.com/docs/extensions/reference/api/history"
+      ]
+    },
+    {
+      "id": "A07",
+      "title": "历史删除与跨设备同步",
+      "family": "browser-history",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "删除信号不补造原始访问；保留来源与同步范围",
+      "nativeTests": [],
+      "remainingGap": "尚无 Chrome history 原生事件接入；仅数据库快照不能证明删除事件、漏采或同步历史。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/digital.json",
+      "sources": [
+        "https://developer.chrome.com/docs/extensions/reference/api/history"
+      ]
+    },
+    {
+      "id": "A08",
+      "title": "Gmail 历史游标失效后标签变化",
+      "family": "gmail",
+      "adapters": [
+        "gmail-history"
+      ],
+      "semanticStatus": "native-partial",
+      "acceptance": "区分补扫快照和已知变更；缺失区间无法复原",
+      "nativeTests": [
+        {
+          "name": "GmailSourceTests.NativeHistoryKeepsSpecificChangesUnknownTimeAndIncompletePage",
+          "file": "tests/Heartbeat.Model.Tests/GmailSourceTests.cs"
+        }
+      ],
+      "remainingGap": "只导入成功的原生 history 页；错误响应拒绝，不修复过期游标、不执行全量补扫，也不声称没有历史缺口。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/digital.json",
+      "sources": [
+        "https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages",
+        "https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.history/list"
+      ]
+    },
+    {
+      "id": "A09",
+      "title": "Gmail 草稿编辑与发送",
+      "family": "gmail",
+      "adapters": [
+        "gmail-drafts"
+      ],
+      "semanticStatus": "native-partial",
+      "acceptance": "草稿、底层邮件和已发送邮件分清身份",
+      "nativeTests": [
+        {
+          "name": "GmailSourceTests.NativeDraftReplacedMessageKeepsDraftIdentityAndHistoryAcrossRestart",
+          "file": "tests/Heartbeat.Model.Tests/GmailSourceTests.cs"
+        }
+      ],
+      "remainingGap": "草稿 ID 在底层 message 替换后保持稳定并留历史；草稿发送到新 sent message 的实际流程未集成。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/digital.json",
+      "sources": [
+        "https://developers.google.com/workspace/gmail/api/guides/drafts"
+      ]
+    },
+    {
+      "id": "A10",
+      "title": "邮件 MIME 层次与附件",
+      "family": "gmail",
+      "adapters": [
+        "gmail-messages"
+      ],
+      "semanticStatus": "native-partial",
+      "acceptance": "附件和成员关系按业务实体保存；声明引用，不扫描字符串",
+      "nativeTests": [
+        {
+          "name": "GmailSourceTests.NativeMessagePreservesMimeMembershipHeadersAndUndownloadedAttachment",
+          "file": "tests/Heartbeat.Model.Tests/GmailSourceTests.cs"
+        }
+      ],
+      "remainingGap": "保留 MIME 路径、重复 header 顺序、thread 引用和 attachment ID；不解码邮件字符集、不下载附件或建立完整附件实体图。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/digital.json",
+      "sources": [
+        "https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages"
+      ]
+    },
+    {
+      "id": "A11",
+      "title": "Outlook 移动文件夹后的 ID 变化",
+      "family": "outlook",
+      "adapters": [
+        "graph-messages"
+      ],
+      "semanticStatus": "native-partial",
+      "acceptance": "采用来源支持的稳定标识或保存映射；不把新 ID 自动当新邮件",
+      "nativeTests": [
+        {
+          "name": "CommunicationSourceTests.GraphImmutableIdSurvivesFolderChangeButDefaultReplacementIsNotGuessed",
+          "file": "tests/Heartbeat.Model.Tests/CommunicationSourceTests.cs"
+        }
+      ],
+      "remainingGap": "仅 JSON 不能证明 ImmutableId 请求模式；支持相同原生 ID 的文件夹变化，不提供 default-ID 替换映射或真实邮箱移动实测。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/digital.json",
+      "sources": [
+        "https://learn.microsoft.com/en-us/graph/outlook-immutable-id"
+      ]
+    },
+    {
+      "id": "A12",
+      "title": "Outlook 修订与移除标记",
+      "family": "outlook",
+      "adapters": [
+        "graph-messages"
+      ],
+      "semanticStatus": "native-partial",
+      "acceptance": "区分内容修订、位置变化与删除；需要历史就保存内容版本",
+      "nativeTests": [
+        {
+          "name": "CommunicationSourceTests.GraphNativeDeltaPreservesDraftRevisionIdentityAndFolderRemoval",
+          "file": "tests/Heartbeat.Model.Tests/CommunicationSourceTests.cs"
+        }
+      ],
+      "remainingGap": "body/draft/changeKey/flagStatus 修订及集合移除已有断言；flag 日期未映射，delta 游标和真实邮箱同步未实现。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/digital.json",
+      "sources": [
+        "https://learn.microsoft.com/en-us/graph/api/resources/message?view=graph-rest-1.0",
+        "https://learn.microsoft.com/en-us/graph/delta-query-messages"
+      ]
+    },
+    {
+      "id": "A13",
+      "title": "Slack 编辑乱序到达",
+      "family": "slack",
+      "adapters": [
+        "slack-events"
+      ],
+      "semanticStatus": "native-targeted",
+      "acceptance": "按来源修订事实排序；接收晚不等于编辑晚",
+      "nativeTests": [
+        {
+          "name": "CommunicationSourceTests.SlackOutOfOrderEditAndCreationKeepHistoricalContentThroughRestart",
+          "file": "tests/Heartbeat.Model.Tests/CommunicationSourceTests.cs"
+        }
+      ],
+      "remainingGap": "合成的原生 Slack callback 验证乱序编辑/创建与持久历史；没有线上订阅和签名校验。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/digital.json",
+      "sources": [
+        "https://docs.slack.dev/reference/events/message/message_changed/"
+      ]
+    },
+    {
+      "id": "A14",
+      "title": "只收到 Slack 删除事件",
+      "family": "slack",
+      "adapters": [
+        "slack-events"
+      ],
+      "semanticStatus": "native-targeted",
+      "acceptance": "保存已知删除，不补造没见过的正文",
+      "nativeTests": [
+        {
+          "name": "CommunicationSourceTests.SlackDeleteWithoutCapturedOriginalDoesNotInventText",
+          "file": "tests/Heartbeat.Model.Tests/CommunicationSourceTests.cs"
+        }
+      ],
+      "remainingGap": "合成删除 callback 可在没有旧正文时保存已知删除；没有线上订阅，也不补造历史正文。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/digital.json",
+      "sources": [
+        "https://docs.slack.dev/reference/events/message/message_deleted/"
+      ]
+    },
+    {
+      "id": "A15",
+      "title": "Matrix 密文稍后可解密",
+      "family": "matrix",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "密文材料与后续解释分开；新解释不覆盖原证据",
+      "nativeTests": [],
+      "remainingGap": "尚无 Matrix 原生事件/解密接入；密文保留、后续密钥与新解释需要独立证据。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/digital.json",
+      "sources": [
+        "https://spec.matrix.org/v1.16/client-server-api/#mroomencrypted"
+      ]
+    },
+    {
+      "id": "A16",
+      "title": "聊天分享多个鉴权文件",
+      "family": "slack",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "文件引用与临时下载地址分开；鉴权 URL 不是内容本身",
+      "nativeTests": [],
+      "remainingGap": "尚无 Slack 文件对象与鉴权下载接入；消息事件解析器不覆盖共享文件身份与临时 URL。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/digital.json",
+      "sources": [
+        "https://docs.slack.dev/reference/objects/file-object/"
+      ]
+    },
+    {
+      "id": "A17",
+      "title": "Claude 日志最后一行尚未写完",
+      "family": "agent-transcript",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "完整输入再形成观测；不完整读取属于采集诊断",
+      "nativeTests": [],
+      "remainingGap": "尚无固定版本的 SDK/session 原生文件适配器；不能把任意内部 JSONL 当稳定协议。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/digital.json",
+      "sources": [
+        "https://code.claude.com/docs/en/hooks",
+        "https://code.claude.com/docs/en/agent-sdk/sessions"
+      ]
+    },
+    {
+      "id": "A18",
+      "title": "会话分叉与文件副本",
+      "family": "agent-transcript",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "复制路径不决定新会话；分叉与重放分别处理",
+      "nativeTests": [],
+      "remainingGap": "尚无固定版本的 SDK/session 原生文件适配器；不能把任意内部 JSONL 当稳定协议。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/digital.json",
+      "sources": [
+        "https://code.claude.com/docs/en/agent-sdk/sessions"
+      ]
+    },
+    {
+      "id": "A19",
+      "title": "重命名与硬链接",
+      "family": "filesystem",
+      "adapters": [
+        "file"
+      ],
+      "semanticStatus": "native-partial",
+      "acceptance": "同一 inode 可有多个路径；保留设备范围和路径成员关系",
+      "nativeTests": [
+        {
+          "name": "LocalSourceTests.FileCapturePreservesBytesLinkIdentityAndDoesNotTraverseSymlinks",
+          "file": "tests/Heartbeat.Model.Tests/LocalSourceTests.cs"
+        }
+      ],
+      "remainingGap": "birth time 可用时断言重命名身份；不可用时只保证 capture 内身份，完整硬链接成员图未实现。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/digital.json",
+      "sources": [
+        "https://docs.python.org/3/library/os.html#os.stat_result"
+      ]
+    },
+    {
+      "id": "A20",
+      "title": "符号链接与目标分离",
+      "family": "filesystem",
+      "adapters": [
+        "file"
+      ],
+      "semanticStatus": "native-partial",
+      "acceptance": "链接本身、目标及解析时状态是不同事实",
+      "nativeTests": [
+        {
+          "name": "LocalSourceTests.FileCapturePreservesBytesLinkIdentityAndDoesNotTraverseSymlinks",
+          "file": "tests/Heartbeat.Model.Tests/LocalSourceTests.cs"
+        }
+      ],
+      "remainingGap": "保存失效符号链接字节且不遍历目标；未建立独立目标实体与解析状态。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/digital.json",
+      "sources": [
+        "https://docs.python.org/3/library/os.html#os.stat_result"
+      ]
+    },
+    {
+      "id": "A21",
+      "title": "纳秒文件时间与任意字节",
+      "family": "filesystem",
+      "adapters": [
+        "file"
+      ],
+      "semanticStatus": "native-partial",
+      "acceptance": "纳秒留显式源字段；非 UTF-8 名称和 NUL 内容按声明的字节编码保留",
+      "nativeTests": [
+        {
+          "name": "LocalSourceTests.FileCapturePreservesBytesLinkIdentityAndDoesNotTraverseSymlinks",
+          "file": "tests/Heartbeat.Model.Tests/LocalSourceTests.cs"
+        }
+      ],
+      "remainingGap": "任意文件内容字节和纳秒 stat 文本保留；非 UTF-8 路径字节尚不支持。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/digital.json",
+      "sources": [
+        "https://docs.python.org/3/library/os.html#os.stat_result"
+      ]
+    },
+    {
+      "id": "A22",
+      "title": "不同时刻的相同截图",
+      "family": "screenshot",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "内容可复用；独立截图观测不因像素相同而合并",
+      "nativeTests": [],
+      "remainingGap": "尚无实际屏幕/browser capture 接入；文件哈希不能替代截图身份或拍摄时刻。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/digital.json",
+      "sources": [
+        "https://developer.chrome.com/docs/extensions/reference/api/tabs#method-captureVisibleTab"
+      ]
+    },
+    {
+      "id": "A23",
+      "title": "OCR 重跑得到不同结果",
+      "family": "ocr",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "识别结果归各次模型运行；置信度不等于事实真假",
+      "nativeTests": [],
+      "remainingGap": "尚无 OCR 原生输出适配器或推理执行；各次运行和来源图像需显式识别。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/digital.json",
+      "sources": [
+        "https://docs.cloud.google.com/vision/docs/reference/rest/v1/AnnotateImageResponse"
+      ]
+    },
+    {
+      "id": "A24",
+      "title": "键盘重复与组合输入",
+      "family": "keyboard",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "保留来源顺序与组合事件；相同时间戳不去重",
+      "nativeTests": [],
+      "remainingGap": "尚无键盘/组合输入监听；需要实际设备权限与隐私策略，导入手写 JSON 不算实采。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/digital.json",
+      "sources": [
+        "https://www.w3.org/TR/uievents/#interface-keyboardevent"
+      ]
+    },
+    {
+      "id": "A25",
+      "title": "隐私抑制与空字符串",
+      "family": "keyboard",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "显式记录抑制状态；不等同于没有输入或采集失败",
+      "nativeTests": [],
+      "remainingGap": "尚无键盘/组合输入监听；需要实际设备权限与隐私策略，导入手写 JSON 不算实采。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/digital.json",
+      "sources": [
+        "https://www.w3.org/TR/uievents/#interface-keyboardevent"
+      ]
+    },
+    {
+      "id": "B01",
+      "title": "Git 作者时间与提交时间",
+      "family": "git",
+      "adapters": [
+        "git"
+      ],
+      "semanticStatus": "native-targeted",
+      "acceptance": "两种事实分别解释，不能拼成一个持续区间",
+      "nativeTests": [
+        {
+          "name": "LocalSourceTests.GitReadsNativeCommitTimesOrderedParentsAndRefKinds",
+          "file": "tests/Heartbeat.Model.Tests/LocalSourceTests.cs"
+        }
+      ],
+      "remainingGap": "实际临时 Git 仓库断言作者/提交者各自时间；只捕获 HEAD，不遍历全部提交。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/systems.json",
+      "sources": []
+    },
+    {
+      "id": "B02",
+      "title": "Merge 多父节点与顺序",
+      "family": "git",
+      "adapters": [
+        "git"
+      ],
+      "semanticStatus": "native-partial",
+      "acceptance": "父节点出现关系可有顺序；引用数组不能直接声明",
+      "nativeTests": [
+        {
+          "name": "LocalSourceTests.GitReadsNativeCommitTimesOrderedParentsAndRefKinds",
+          "file": "tests/Heartbeat.Model.Tests/LocalSourceTests.cs"
+        }
+      ],
+      "remainingGap": "实际两父 merge 顺序有断言；零父和 octopus 变体没有专门测试。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/systems.json",
+      "sources": []
+    },
+    {
+      "id": "B03",
+      "title": "附注标签与轻量标签",
+      "family": "git",
+      "adapters": [
+        "git"
+      ],
+      "semanticStatus": "native-partial",
+      "acceptance": "标签对象、引用名和目标分别识别",
+      "nativeTests": [
+        {
+          "name": "LocalSourceTests.GitReadsNativeCommitTimesOrderedParentsAndRefKinds",
+          "file": "tests/Heartbeat.Model.Tests/LocalSourceTests.cs"
+        }
+      ],
+      "remainingGap": "区分 annotated/lightweight ref 的对象类型；没有完整 tag 对象、tagger 与 peeling 投影。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/systems.json",
+      "sources": []
+    },
+    {
+      "id": "B04",
+      "title": "强推、重写与 reflog 过期",
+      "family": "git",
+      "adapters": [
+        "git"
+      ],
+      "semanticStatus": "related-only",
+      "acceptance": "记录已见对象和引用变化；过期历史不能猜回",
+      "nativeTests": [],
+      "remainingGap": "存在当前 ref 快照适配器，但没有 reflog/expiry 读取或 force-push 重写的原生断言。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/systems.json",
+      "sources": []
+    },
+    {
+      "id": "B05",
+      "title": "Git 编码与签名原始字节",
+      "family": "git",
+      "adapters": [
+        "git"
+      ],
+      "semanticStatus": "native-partial",
+      "acceptance": "签名依赖精确字节，文本展示不是原始材料替代品",
+      "nativeTests": [
+        {
+          "name": "LocalSourceTests.GitReadsNativeCommitTimesOrderedParentsAndRefKinds",
+          "file": "tests/Heartbeat.Model.Tests/LocalSourceTests.cs"
+        }
+      ],
+      "remainingGap": "原始普通 commit 字节保留；签名与非 UTF-8 commit 尚无专项来源 fixture 断言。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/systems.json",
+      "sources": []
+    },
+    {
+      "id": "B06",
+      "title": "Span 先于父 Span 到达",
+      "family": "otlp",
+      "adapters": [
+        "otlp-json"
+      ],
+      "semanticStatus": "native-partial",
+      "acceptance": "允许未到达引用；应用稍后核验，API 不保证目标存在",
+      "nativeTests": [
+        {
+          "name": "TelemetrySourceTests.NativeSpanKeepsMissingRemoteParentAsAReference",
+          "file": "tests/Heartbeat.Model.Tests/TelemetrySourceTests.cs"
+        }
+      ],
+      "remainingGap": "已断言未知 parent 引用；后续 parent 接入和 remote flag 的全部语义未完整断言。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/systems.json",
+      "sources": []
+    },
+    {
+      "id": "B07",
+      "title": "Span links 扇入与属性",
+      "family": "otlp",
+      "adapters": [
+        "otlp-json"
+      ],
+      "semanticStatus": "native-targeted",
+      "acceptance": "链接出现次数、顺序、属性可成为普通业务实体",
+      "nativeTests": [
+        {
+          "name": "TelemetrySourceTests.NativeLinksKeepOrderDuplicatesAttributesAndBothEnds",
+          "file": "tests/Heartbeat.Model.Tests/TelemetrySourceTests.cs"
+        }
+      ],
+      "remainingGap": "有序重复 link、属性和两端引用有原生断言；只支持有界 OTLP JSON。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/systems.json",
+      "sources": []
+    },
+    {
+      "id": "B08",
+      "title": "纳秒 Span 映射到微秒",
+      "family": "otlp",
+      "adapters": [
+        "otlp-json"
+      ],
+      "semanticStatus": "native-targeted",
+      "acceptance": "保留原始纳秒字段；通用时间轴会损失细粒度顺序",
+      "nativeTests": [
+        {
+          "name": "TelemetrySourceTests.SubTickSpanBoundariesRemainExactInTypedSourceFields",
+          "file": "tests/Heartbeat.Model.Tests/TelemetrySourceTests.cs"
+        }
+      ],
+      "remainingGap": "精确纳秒与折叠后的时间投影有断言；API/PostgreSQL 时间投影由另行集成测试验证。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/systems.json",
+      "sources": []
+    },
+    {
+      "id": "B09",
+      "title": "Span 事件乱序与活动区间",
+      "family": "otlp",
+      "adapters": [
+        "otlp-json"
+      ],
+      "semanticStatus": "native-partial",
+      "acceptance": "来源事件序列和结束未知分开，不用到达顺序替代",
+      "nativeTests": [
+        {
+          "name": "TelemetrySourceTests.EventArrayOrderDoesNotRewriteSourceEventTimesOrMissingEnd",
+          "file": "tests/Heartbeat.Model.Tests/TelemetrySourceTests.cs"
+        }
+      ],
+      "remainingGap": "event 原生顺序/时间与缺少结束边界有断言；活跃到结束的完整领域生命周期仍需专项证据。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/systems.json",
+      "sources": []
+    },
+    {
+      "id": "B10",
+      "title": "丢弃遥测与重复导出",
+      "family": "otlp",
+      "adapters": [
+        "otlp-json"
+      ],
+      "semanticStatus": "native-partial",
+      "acceptance": "丢弃计数是证据；重试映射沿用，不杜撰缺失事件",
+      "nativeTests": [
+        {
+          "name": "TelemetrySourceTests.DroppedCountsRemainEvidenceAndSpanReplayUsesNativeIdentity",
+          "file": "tests/Heartbeat.Model.Tests/TelemetrySourceTests.cs"
+        }
+      ],
+      "remainingGap": "保留 dropped counts 与原生 replay key；无法因此声称缺失遥测已找回或完整。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/systems.json",
+      "sources": []
+    },
+    {
+      "id": "B11",
+      "title": "Agent 工具并发扇出",
+      "family": "agent-trace",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "工具调用独立身份；父任务引用不等于串行执行",
+      "nativeTests": [],
+      "remainingGap": "尚无此 Agent 场景的原生接入；OTLP 只有实际来源明确提供 call/attempt 标识时才有相关证据，不能按相同文本猜重试。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/systems.json",
+      "sources": []
+    },
+    {
+      "id": "B12",
+      "title": "传输重试与真正重执行",
+      "family": "agent-trace",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "同一输入重放复用映射；再次执行是新的运行事实",
+      "nativeTests": [],
+      "remainingGap": "尚无此 Agent 场景的原生接入；OTLP 只有实际来源明确提供 call/attempt 标识时才有相关证据，不能按相同文本猜重试。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/systems.json",
+      "sources": []
+    },
+    {
+      "id": "B13",
+      "title": "流式增量没有时间戳",
+      "family": "responses-stream",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "保存序号与增量身份；事实时间保持未知",
+      "nativeTests": [],
+      "remainingGap": "尚无 Responses 流事件接入；sequence/item ID 应来自原生事件，缺失时间不能猜测。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/systems.json",
+      "sources": []
+    },
+    {
+      "id": "B14",
+      "title": "异构模型元数据",
+      "family": "agent-trace",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "用有类型的属性条目；联合类型互斥仍需适配器校验",
+      "nativeTests": [],
+      "remainingGap": "尚无此 Agent 场景的原生接入；OTLP 只有实际来源明确提供 call/attempt 标识时才有相关证据，不能按相同文本猜重试。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/systems.json",
+      "sources": []
+    },
+    {
+      "id": "B15",
+      "title": "PID 重用",
+      "family": "linux-process",
+      "adapters": [
+        "process"
+      ],
+      "semanticStatus": "native-partial",
+      "acceptance": "进程身份需要启动范围，不仅是 PID",
+      "nativeTests": [
+        {
+          "name": "SourceRuntimeTests.ProcStatHandlesParenthesesInProcessNameAndReadsActualSelf",
+          "file": "tests/Heartbeat.Model.Tests/SourceRuntimeTests.cs"
+        }
+      ],
+      "remainingGap": "实际读取当前 PID/boot/start-ticks；未实际制造 PID 重用和 incarnation 更替。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/systems.json",
+      "sources": []
+    },
+    {
+      "id": "B16",
+      "title": "嵌套 PID 命名空间",
+      "family": "linux-process",
+      "adapters": [
+        "process"
+      ],
+      "semanticStatus": "native-partial",
+      "acceptance": "同一进程的多个可见 PID 需要命名空间限定",
+      "nativeTests": [
+        {
+          "name": "SourceRuntimeTests.ProcStatHandlesParenthesesInProcessNameAndReadsActualSelf",
+          "file": "tests/Heartbeat.Model.Tests/SourceRuntimeTests.cs"
+        }
+      ],
+      "remainingGap": "读取原生 namespace PID 列表；未创建嵌套 namespace 或验证多层可见 PID 场景。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/systems.json",
+      "sources": []
+    },
+    {
+      "id": "B17",
+      "title": "容器重启与 Pod 身份",
+      "family": "kubernetes",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "Pod、容器实例和重启次数分开",
+      "nativeTests": [],
+      "remainingGap": "尚无 Kubernetes watch 或原生资源导入；需要 UID、resourceVersion、删除及重建的真实来源边界。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/systems.json",
+      "sources": []
+    },
+    {
+      "id": "B18",
+      "title": "Prometheus 计数器重置",
+      "family": "prometheus",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "保留序列标签与重置证据，不把下降当负增量",
+      "nativeTests": [],
+      "remainingGap": "尚无 Prometheus 原生指标/抓取适配器；不能用 OTLP gauge/sum 冒充 histogram、staleness 或漏抓语义。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/systems.json",
+      "sources": []
+    },
+    {
+      "id": "B19",
+      "title": "直方图正无穷桶与非有限值",
+      "family": "prometheus",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "有限数值与特殊值标签分开；JSON number 不能写 Infinity",
+      "nativeTests": [],
+      "remainingGap": "尚无 Prometheus 原生指标/抓取适配器；不能用 OTLP gauge/sum 冒充 histogram、staleness 或漏抓语义。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/systems.json",
+      "sources": []
+    },
+    {
+      "id": "B20",
+      "title": "原生直方图稀疏桶",
+      "family": "prometheus",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "保留桶结构与定义变化，不能只保留均值",
+      "nativeTests": [],
+      "remainingGap": "尚无 Prometheus 原生指标/抓取适配器；不能用 OTLP gauge/sum 冒充 histogram、staleness 或漏抓语义。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/systems.json",
+      "sources": []
+    },
+    {
+      "id": "B21",
+      "title": "漏抓与过期序列",
+      "family": "prometheus",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "缺样不是数值为零，也不能推出真实状态",
+      "nativeTests": [],
+      "remainingGap": "尚无 Prometheus 原生指标/抓取适配器；不能用 OTLP gauge/sum 冒充 histogram、staleness 或漏抓语义。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/systems.json",
+      "sources": []
+    },
+    {
+      "id": "B22",
+      "title": "日志事件时间与采集时间",
+      "family": "otlp",
+      "adapters": [
+        "otlp-json"
+      ],
+      "semanticStatus": "native-targeted",
+      "acceptance": "事实时间按定义选；采集时间另作业务字段",
+      "nativeTests": [
+        {
+          "name": "TelemetrySourceTests.LogsUseEventTimeNeverObservedTimeAsFactTime",
+          "file": "tests/Heartbeat.Model.Tests/TelemetrySourceTests.cs"
+        }
+      ],
+      "remainingGap": "event/observed 双时钟与未知事实时间有断言；日志身份是 capture-position，不是提供商永久 event ID。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/systems.json",
+      "sources": []
+    },
+    {
+      "id": "B23",
+      "title": "Journal 游标与启动时钟",
+      "family": "journal",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "游标、boot ID、单调时钟和墙钟各有含义",
+      "nativeTests": [],
+      "remainingGap": "尚无 systemd journal 原生导入；实际 journal 权限、boot 范围与双时钟需单独验证。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/systems.json",
+      "sources": []
+    },
+    {
+      "id": "B24",
+      "title": "CI 重跑沿用 run ID",
+      "family": "github-actions",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "执行身份包含 attempt；run ID 相同不合并重跑",
+      "nativeTests": [],
+      "remainingGap": "尚无 GitHub Actions 原生 API 导入或轮询；分页、rerun 与执行/尝试身份未接入。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/systems.json",
+      "sources": []
+    },
+    {
+      "id": "B25",
+      "title": "构件摘要、过期与来源",
+      "family": "github-actions",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "可记录元数据与来源链；过期字节无法凭摘要还原",
+      "nativeTests": [],
+      "remainingGap": "尚无 GitHub Actions 原生 API 导入或轮询；分页、rerun 与执行/尝试身份未接入。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/systems.json",
+      "sources": []
+    },
+    {
+      "id": "C01",
+      "title": "GPS 定位及误差",
+      "family": "location",
+      "adapters": [
+        "gpx-xml"
+      ],
+      "semanticStatus": "related-only",
+      "acceptance": "经纬度之外保留误差半径；不能把估计写成精确位置",
+      "nativeTests": [
+        {
+          "name": "PhysicalCalendarSourceTests.GpxPreservesBackwardClockAndRepeatedIdenticalPoints",
+          "file": "tests/Heartbeat.Model.Tests/PhysicalCalendarSourceTests.cs"
+        }
+      ],
+      "remainingGap": "仅相关 GPX 点位/fix/DOP 适配器；Android 设备、boot elapsed time 与米制 accuracy 未接入，DOP 不能替代误差半径。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/physical.json",
+      "sources": [
+        "https://developer.android.com/reference/android/location/Location"
+      ]
+    },
+    {
+      "id": "C02",
+      "title": "轨迹跨时区",
+      "family": "location",
+      "adapters": [
+        "gpx-xml"
+      ],
+      "semanticStatus": "alternate-format-partial",
+      "acceptance": "位置不自动给出 IANA 时区；未知留空，成员点独立记录",
+      "nativeTests": [
+        {
+          "name": "PhysicalCalendarSourceTests.GpxTrackSegmentMembershipIsARealReference",
+          "file": "tests/Heartbeat.Model.Tests/PhysicalCalendarSourceTests.cs"
+        }
+      ],
+      "remainingGap": "替代格式 GPX 的 track/segment 引用和 offset 有断言；Android 设备/单调时钟/IANA 时区变化证据缺失。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/physical.json",
+      "sources": [
+        "https://developer.android.com/reference/android/location/Location"
+      ]
+    },
+    {
+      "id": "C03",
+      "title": "定位时墙钟回拨",
+      "family": "location",
+      "adapters": [
+        "gpx-xml"
+      ],
+      "semanticStatus": "alternate-format-partial",
+      "acceptance": "保留单调时钟与来源顺序，不伪造时间递增",
+      "nativeTests": [
+        {
+          "name": "PhysicalCalendarSourceTests.GpxPreservesBackwardClockAndRepeatedIdenticalPoints",
+          "file": "tests/Heartbeat.Model.Tests/PhysicalCalendarSourceTests.cs"
+        }
+      ],
+      "remainingGap": "替代格式 GPX 保留倒退时间及重复点顺序；没有 Android elapsedRealtime/boot 次序证据。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/physical.json",
+      "sources": [
+        "https://developer.android.com/reference/android/location/Location"
+      ]
+    },
+    {
+      "id": "C04",
+      "title": "传感器采样空档",
+      "family": "sensors",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "只保存实际样本；缺样不插值成观测事实",
+      "nativeTests": [],
+      "remainingGap": "尚无 Android sensor 采集；需要设备、启动时钟及来源精度证据。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/physical.json",
+      "sources": [
+        "https://developer.android.com/reference/android/hardware/SensorEvent"
+      ]
+    },
+    {
+      "id": "C05",
+      "title": "启动后纳秒传感器时钟",
+      "family": "sensors",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "没有绝对锚点就不编造 UTC；保留 boot 范围与原始计数",
+      "nativeTests": [],
+      "remainingGap": "尚无 Android sensor 采集；需要设备、启动时钟及来源精度证据。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/physical.json",
+      "sources": [
+        "https://developer.android.com/reference/android/hardware/SensorEvent"
+      ]
+    },
+    {
+      "id": "C06",
+      "title": "每日累计步数上调",
+      "family": "health-connect",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "这是派生汇总，区别于 Health Connect 区间计数",
+      "nativeTests": [],
+      "remainingGap": "尚无 Health Connect 采集或原生导入；真实设备与健康数据访问需授权，不使用私有健康数据充当测试前提。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/physical.json",
+      "sources": [
+        "https://developer.android.com/reference/androidx/health/connect/client/records/StepsRecord",
+        "https://developer.android.com/health-and-fitness/health-connect/write-data"
+      ]
+    },
+    {
+      "id": "C07",
+      "title": "旅行时的每日步数",
+      "family": "health-connect",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "日期归属政策与聚合时区显式声明",
+      "nativeTests": [],
+      "remainingGap": "尚无 Health Connect 采集或原生导入；真实设备与健康数据访问需授权，不使用私有健康数据充当测试前提。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/physical.json",
+      "sources": [
+        "https://developer.android.com/reference/androidx/health/connect/client/records/StepsRecord"
+      ]
+    },
+    {
+      "id": "C08",
+      "title": "重启后计步器归零",
+      "family": "sensors",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "以启动范围解释累计值，不能跨重启直接相减",
+      "nativeTests": [],
+      "remainingGap": "尚无 Android sensor 采集；需要设备、启动时钟及来源精度证据。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/physical.json",
+      "sources": [
+        "https://developer.android.com/reference/android/hardware/SensorEvent"
+      ]
+    },
+    {
+      "id": "C09",
+      "title": "睡眠跨夏令时回拨",
+      "family": "health-connect",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "使用带偏移的时刻；本地同名小时不能合并",
+      "nativeTests": [],
+      "remainingGap": "尚无 Health Connect 采集或原生导入；真实设备与健康数据访问需授权，不使用私有健康数据充当测试前提。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/physical.json",
+      "sources": [
+        "https://developer.android.com/reference/android/health/connect/datatypes/SleepSessionRecord"
+      ]
+    },
+    {
+      "id": "C10",
+      "title": "睡眠阶段有未知空档",
+      "family": "health-connect",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "已知各段分别保存；空档不推成睡醒",
+      "nativeTests": [],
+      "remainingGap": "尚无 Health Connect 采集或原生导入；真实设备与健康数据访问需授权，不使用私有健康数据充当测试前提。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/physical.json",
+      "sources": [
+        "https://developer.android.com/reference/android/health/connect/datatypes/SleepSessionRecord"
+      ]
+    },
+    {
+      "id": "C11",
+      "title": "全天日历事件",
+      "family": "calendar",
+      "adapters": [
+        "icalendar-ics"
+      ],
+      "semanticStatus": "alternate-format-partial",
+      "acceptance": "保留本地日期及排他结束日；不是自动 UTC 午夜",
+      "nativeTests": [
+        {
+          "name": "PhysicalCalendarSourceTests.CalendarAllDayDatesStayDatesWithoutInventedInstants",
+          "file": "tests/Heartbeat.Model.Tests/PhysicalCalendarSourceTests.cs"
+        }
+      ],
+      "remainingGap": "ICS DATE 语义有断言；原场景 Google Calendar 的账号身份与 payload 不支持。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/physical.json",
+      "sources": [
+        "https://developers.google.com/workspace/calendar/api/v3/reference/events"
+      ]
+    },
+    {
+      "id": "C12",
+      "title": "周期日历的改期例外",
+      "family": "calendar",
+      "adapters": [
+        "icalendar-ics"
+      ],
+      "semanticStatus": "alternate-format-partial",
+      "acceptance": "系列与发生实例分开，保留原 occurrence 标识",
+      "nativeTests": [
+        {
+          "name": "PhysicalCalendarSourceTests.CalendarRecurrenceIdentityUsesOriginalStartNotMovedStart",
+          "file": "tests/Heartbeat.Model.Tests/PhysicalCalendarSourceTests.cs"
+        }
+      ],
+      "remainingGap": "ICS UID/RECURRENCE-ID 保持移动 occurrence 的身份；Google payload、series 显式引用、规则展开与 TZID 转换未实现。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/physical.json",
+      "sources": [
+        "https://developers.google.com/workspace/calendar/api/v3/reference/events"
+      ]
+    },
+    {
+      "id": "C13",
+      "title": "浮动本地日历时间",
+      "family": "calendar",
+      "adapters": [
+        "icalendar-ics"
+      ],
+      "semanticStatus": "native-targeted",
+      "acceptance": "无时区的本地约定不猜成 UTC；保留本地时间字符串语义",
+      "nativeTests": [
+        {
+          "name": "PhysicalCalendarSourceTests.CalendarFloatingAndFoldedEscapedTextRemainNative",
+          "file": "tests/Heartbeat.Model.Tests/PhysicalCalendarSourceTests.cs"
+        }
+      ],
+      "remainingGap": "原生 ICS 浮动时间不伪造绝对时刻/时区；只支持有界 VEVENT 子集，不是完整 RFC recurrence engine。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/physical.json",
+      "sources": [
+        "https://www.rfc-editor.org/rfc/rfc5545.html"
+      ]
+    },
+    {
+      "id": "C14",
+      "title": "取消某次周期日程",
+      "family": "calendar",
+      "adapters": [
+        "icalendar-ics"
+      ],
+      "semanticStatus": "alternate-format-partial",
+      "acceptance": "取消是业务状态；不能用 null 结束时间表达",
+      "nativeTests": [
+        {
+          "name": "PhysicalCalendarSourceTests.CalendarCancellationDoesNotBecomeDeletionOrImportTime",
+          "file": "tests/Heartbeat.Model.Tests/PhysicalCalendarSourceTests.cs"
+        }
+      ],
+      "remainingGap": "ICS CANCELLED occurrence 保留，缺失边界不使用导入时间；Google canceled-event 形状尚不支持。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/physical.json",
+      "sources": [
+        "https://developers.google.com/workspace/calendar/api/v3/reference/events"
+      ]
+    },
+    {
+      "id": "C15",
+      "title": "VRChat 本地加入实例",
+      "family": "vrchat",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "只确认本地事件与已知实例，不扩展成所有人的到达时间",
+      "nativeTests": [],
+      "remainingGap": "尚无 VRChat/Udon 实际采集；普通日志不能证明没有记录的历史到达、离开或实例关系。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/physical.json",
+      "sources": [
+        "https://creators.vrchat.com/worlds/udon/graph/event-nodes/",
+        "https://udonsharp.docs.vrchat.com/vrchat-api/"
+      ]
+    },
+    {
+      "id": "C16",
+      "title": "VRChat 切世界与重连",
+      "family": "vrchat",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "区分新会话、恢复连接与重复回调",
+      "nativeTests": [],
+      "remainingGap": "尚无 VRChat/Udon 实际采集；普通日志不能证明没有记录的历史到达、离开或实例关系。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/physical.json",
+      "sources": [
+        "https://creators.vrchat.com/worlds/udon/graph/event-nodes/",
+        "https://udonsharp.docs.vrchat.com/vrchat-api/"
+      ]
+    },
+    {
+      "id": "C17",
+      "title": "VRChat 初始名单回调",
+      "family": "vrchat",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "看到在场不等于知道对方何时到达",
+      "nativeTests": [],
+      "remainingGap": "尚无 VRChat/Udon 实际采集；普通日志不能证明没有记录的历史到达、离开或实例关系。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/physical.json",
+      "sources": [
+        "https://creators.vrchat.com/worlds/udon/graph/event-nodes/"
+      ]
+    },
+    {
+      "id": "C18",
+      "title": "音乐暂停",
+      "family": "music",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "显式暂停状态；未知结束不代表播放中",
+      "nativeTests": [],
+      "remainingGap": "尚无播放器/音乐服务原生接入；稀疏轮询之间不能推断连续播放、crossfade 或实际时长。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/physical.json",
+      "sources": [
+        "https://developer.spotify.com/documentation/web-api/reference/get-the-users-currently-playing-track"
+      ]
+    },
+    {
+      "id": "C19",
+      "title": "音乐向后拖进度",
+      "family": "music",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "位置可以倒退；播放时间和媒体位置不是同一条轴",
+      "nativeTests": [],
+      "remainingGap": "尚无播放器/音乐服务原生接入；稀疏轮询之间不能推断连续播放、crossfade 或实际时长。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/physical.json",
+      "sources": [
+        "https://developer.spotify.com/documentation/web-api/reference/get-the-users-currently-playing-track"
+      ]
+    },
+    {
+      "id": "C20",
+      "title": "来源不报告交叉淡入淡出",
+      "family": "music",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "不推造重叠区间；这是来源缺失，不是模型新增字段能解决",
+      "nativeTests": [],
+      "remainingGap": "尚无播放器/音乐服务原生接入；稀疏轮询之间不能推断连续播放、crossfade 或实际时长。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/physical.json",
+      "sources": [
+        "https://developer.spotify.com/documentation/web-api/reference/get-the-users-currently-playing-track"
+      ]
+    },
+    {
+      "id": "C21",
+      "title": "照片 EXIF 没有 UTC 偏移",
+      "family": "photo-exif",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "保留来源本地日期时间；绝对事实时间保持未知",
+      "nativeTests": [],
+      "remainingGap": "尚无照片二进制/EXIF 适配器；导入归一化 JSON 不能证明原始图片中的时区和方向语义。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/physical.json",
+      "sources": [
+        "https://developer.android.com/reference/androidx/exifinterface/media/ExifInterface"
+      ]
+    },
+    {
+      "id": "C22",
+      "title": "照片原始与修改日期",
+      "family": "photo-exif",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "两个日期对应不同事实，不拼成一次拍摄区间",
+      "nativeTests": [],
+      "remainingGap": "尚无照片二进制/EXIF 适配器；导入归一化 JSON 不能证明原始图片中的时区和方向语义。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/physical.json",
+      "sources": [
+        "https://developer.android.com/reference/androidx/exifinterface/media/ExifInterface"
+      ]
+    },
+    {
+      "id": "C23",
+      "title": "OTLP 窗口边界与纳秒",
+      "family": "otlp",
+      "adapters": [
+        "otlp-json"
+      ],
+      "semanticStatus": "native-partial",
+      "acceptance": "原始 (start,end] 边界语义保留；不能悄悄改成 [start,end)",
+      "nativeTests": [
+        {
+          "name": "TelemetrySourceTests.CumulativeSumKeepsWindowUnitAndLosslessInteger",
+          "file": "tests/Heartbeat.Model.Tests/TelemetrySourceTests.cs"
+        }
+      ],
+      "remainingGap": "OTLP cumulative 窗口、temporality、单位、精确整数/纳秒保留；专用 metricStream 实体身份未实现。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/physical.json",
+      "sources": [
+        "https://opentelemetry.io/docs/specs/otel/metrics/data-model/",
+        "https://opentelemetry.io/docs/specs/otel/protocol/file-exporter/"
+      ]
+    },
+    {
+      "id": "C24",
+      "title": "设备 gauge 的起点未知",
+      "family": "otlp",
+      "adapters": [
+        "otlp-json"
+      ],
+      "semanticStatus": "native-partial",
+      "acceptance": "保留已知边界；不凭采集时刻补窗口起点",
+      "nativeTests": [
+        {
+          "name": "TelemetrySourceTests.GaugeIsAPointAndDoesNotInventAWindowStart",
+          "file": "tests/Heartbeat.Model.Tests/TelemetrySourceTests.cs"
+        }
+      ],
+      "remainingGap": "gauge 点时间和值有断言，不伪造窗口起点；显式 device/metricStream 实体未实现。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/physical.json",
+      "sources": [
+        "https://opentelemetry.io/docs/specs/otel/metrics/data-model/"
+      ]
+    },
+    {
+      "id": "C25",
+      "title": "设备日志晚到",
+      "family": "otlp",
+      "adapters": [
+        "otlp-json"
+      ],
+      "semanticStatus": "related-only",
+      "acceptance": "事实时间来自事件；到达时间另存，不覆盖历史",
+      "nativeTests": [
+        {
+          "name": "TelemetrySourceTests.LogsUseEventTimeNeverObservedTimeAsFactTime",
+          "file": "tests/Heartbeat.Model.Tests/TelemetrySourceTests.cs"
+        }
+      ],
+      "remainingGap": "只有相关 OTLP 日志双时钟断言；device 引用及延迟设备日志的特定场景未直接验证。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/physical.json",
+      "sources": [
+        "https://opentelemetry.io/docs/specs/otel/logs/data-model/"
+      ]
+    },
+    {
+      "id": "D01",
+      "title": "CDC 事务顺序与到达顺序",
+      "family": "cdc",
+      "adapters": [
+        "debezium-json"
+      ],
+      "semanticStatus": "native-partial",
+      "acceptance": "事务内序号单独保留，接收先后不替代来源顺序",
+      "nativeTests": [
+        {
+          "name": "TelemetrySourceTests.CdcUsesSourceClockAndTransactionOrderIndependentOfDelivery",
+          "file": "tests/Heartbeat.Model.Tests/TelemetrySourceTests.cs"
+        }
+      ],
+      "remainingGap": "保留事务 ID/次序/来源与处理时钟；没有按主键识别行或原子 sink 的保证。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/provenance.json",
+      "sources": []
+    },
+    {
+      "id": "D02",
+      "title": "SQL 删除与 Kafka 空 tombstone",
+      "family": "cdc",
+      "adapters": [
+        "debezium-json"
+      ],
+      "semanticStatus": "native-partial",
+      "acceptance": "业务删除事实和传输清理标记不是一回事",
+      "nativeTests": [
+        {
+          "name": "TelemetrySourceTests.CdcDeleteIsAChangeAndKafkaTombstoneIsRejected",
+          "file": "tests/Heartbeat.Model.Tests/TelemetrySourceTests.cs"
+        }
+      ],
+      "remainingGap": "原生 delete envelope 支持；缺少 Kafka key/header 的 null tombstone 明确拒绝。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/provenance.json",
+      "sources": []
+    },
+    {
+      "id": "D03",
+      "title": "主键变化",
+      "family": "cdc",
+      "adapters": [
+        "debezium-json"
+      ],
+      "semanticStatus": "related-only",
+      "acceptance": "保留 before/after 及身份关系，不只保存最后一个键",
+      "nativeTests": [
+        {
+          "name": "TelemetrySourceTests.CdcUpdateKeepsBothRowImagesAndNativeExtension",
+          "file": "tests/Heartbeat.Model.Tests/TelemetrySourceTests.cs"
+        }
+      ],
+      "remainingGap": "before/after 行镜像保留不等于主键切换关联；Kafka keys/headers 与旧新行关联未实现。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/provenance.json",
+      "sources": []
+    },
+    {
+      "id": "D04",
+      "title": "Webhook 重试与同秒事件",
+      "family": "stripe",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "来源事件 ID 加作用域；时间相同不能自动去重",
+      "nativeTests": [],
+      "remainingGap": "尚无 Stripe 原生 Webhook 导入/接收；保存 payload 不等于完成签名校验。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/provenance.json",
+      "sources": []
+    },
+    {
+      "id": "D05",
+      "title": "CouchDB 并存冲突版本",
+      "family": "couchdb",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "多个分支都保留；不能只当作线性最新版本",
+      "nativeTests": [],
+      "remainingGap": "尚无 CouchDB 修订树接入；单个 winning document 不足以证明冲突、祖先与正文可用性。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/provenance.json",
+      "sources": []
+    },
+    {
+      "id": "D06",
+      "title": "修订祖先存在但正文丢失",
+      "family": "couchdb",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "保留已知祖先关系，明确正文不可得",
+      "nativeTests": [],
+      "remainingGap": "尚无 CouchDB 修订树接入；单个 winning document 不足以证明冲突、祖先与正文可用性。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/provenance.json",
+      "sources": []
+    },
+    {
+      "id": "D07",
+      "title": "BagIt 部分下载与中断",
+      "family": "bagit",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "清单、已取得材料和缺失状态分别表达",
+      "nativeTests": [],
+      "remainingGap": "尚无 BagIt 包、manifest、payload 或 fetch.txt 校验；不自动网络抓取。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/provenance.json",
+      "sources": []
+    },
+    {
+      "id": "D08",
+      "title": "归档重放但 UUID 映射丢失",
+      "family": "bagit",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "无法保证自动识别旧记录；持久映射是采集职责",
+      "nativeTests": [],
+      "remainingGap": "尚无 BagIt 包、manifest、payload 或 fetch.txt 校验；不自动网络抓取。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/provenance.json",
+      "sources": []
+    },
+    {
+      "id": "D09",
+      "title": "问卷回答修正",
+      "family": "fhir",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "历史内容版本与当前回答身份分开",
+      "nativeTests": [],
+      "remainingGap": "尚无 FHIR 原生资源适配器；问卷、certainty、correction 与 missing/absent 语义需要明确 profile/extension 映射。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/provenance.json",
+      "sources": []
+    },
+    {
+      "id": "D10",
+      "title": "受访者确定程度与提取置信度",
+      "family": "fhir",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "不同主体不同含义；类型校验不保证 0–1 范围",
+      "nativeTests": [],
+      "remainingGap": "尚无 FHIR 原生资源适配器；问卷、certainty、correction 与 missing/absent 语义需要明确 profile/extension 映射。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/provenance.json",
+      "sources": []
+    },
+    {
+      "id": "D11",
+      "title": "同图多个同类检测框",
+      "family": "rekognition",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "每个检测实例独立，不按标签文字合并",
+      "nativeTests": [],
+      "remainingGap": "尚无 Rekognition 结果导入/推理；相同输出的不同运行仍需不同运行证据。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/provenance.json",
+      "sources": []
+    },
+    {
+      "id": "D12",
+      "title": "两次模型运行意见不同",
+      "family": "rekognition",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "保留运行来源和各自结果，不覆盖成一个真值",
+      "nativeTests": [],
+      "remainingGap": "尚无 Rekognition 结果导入/推理；相同输出的不同运行仍需不同运行证据。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/provenance.json",
+      "sources": []
+    },
+    {
+      "id": "D13",
+      "title": "音频分轨只有相对时间",
+      "family": "transcribe",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "相对偏移有意义；没有锚点就不声称绝对时间",
+      "nativeTests": [],
+      "remainingGap": "尚无转写原生结果导入；片段相对时间不能冒充墙上时钟。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/provenance.json",
+      "sources": []
+    },
+    {
+      "id": "D14",
+      "title": "重叠讲话与不连续说话段",
+      "family": "diarization",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "多个普通片段表示重叠或离散，不塞成一个连续区间",
+      "nativeTests": [],
+      "remainingGap": "尚无说话人分离原生文件契约；需要显式 track/channel/speaker 身份，不把 Python 对象当文件协议。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/provenance.json",
+      "sources": []
+    },
+    {
+      "id": "D15",
+      "title": "多元 PROV 关联",
+      "family": "provenance",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "活动、代理和计划用普通业务实体的具名引用连接",
+      "nativeTests": [],
+      "remainingGap": "尚无 PROV 关系原生导入；多元关系与活动范围委托仍只有模型样本。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/provenance.json",
+      "sources": []
+    },
+    {
+      "id": "D16",
+      "title": "嵌套群组形成环",
+      "family": "scim",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "引用可表示环；是否允许环需要领域规则",
+      "nativeTests": [],
+      "remainingGap": "尚无 SCIM 原生导入；externalId 自身不含客户端范围，循环关系需保留。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/provenance.json",
+      "sources": []
+    },
+    {
+      "id": "D17",
+      "title": "限于活动的责任关系",
+      "family": "provenance",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "关系实体表达其作用域与时间，不让主体整体承担该时间",
+      "nativeTests": [],
+      "remainingGap": "尚无 PROV 关系原生导入；多元关系与活动范围委托仍只有模型样本。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/provenance.json",
+      "sources": []
+    },
+    {
+      "id": "D18",
+      "title": "多个供应客户端相同 externalId",
+      "family": "scim",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "外部 ID 必须有来源作用域",
+      "nativeTests": [],
+      "remainingGap": "尚无 SCIM 原生导入；externalId 自身不含客户端范围，循环关系需保留。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/provenance.json",
+      "sources": []
+    },
+    {
+      "id": "D19",
+      "title": "人员记录合并方向",
+      "family": "fhir",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "保留替代方向及旧身份，不把合并当删除历史",
+      "nativeTests": [],
+      "remainingGap": "尚无 FHIR 原生资源适配器；问卷、certainty、correction 与 missing/absent 语义需要明确 profile/extension 映射。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/provenance.json",
+      "sources": []
+    },
+    {
+      "id": "D20",
+      "title": "CloudEvents 时间完全相同",
+      "family": "cloudevents",
+      "adapters": [
+        "cloudevents-json"
+      ],
+      "semanticStatus": "native-targeted",
+      "acceptance": "source+id 区分事件；时间仅是事实属性",
+      "nativeTests": [
+        {
+          "name": "TelemetrySourceTests.CloudEventsAtSameTimeKeepSourceAndEventIdentity",
+          "file": "tests/Heartbeat.Model.Tests/TelemetrySourceTests.cs"
+        }
+      ],
+      "remainingGap": "原生 source+id 与相同 event time 有断言；只支持 structured JSON binding。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/provenance.json",
+      "sources": []
+    },
+    {
+      "id": "D21",
+      "title": "纳秒日志在微秒存储中重合",
+      "family": "otlp",
+      "adapters": [
+        "otlp-json"
+      ],
+      "semanticStatus": "related-only",
+      "acceptance": "原始时间与来源序号保留，通用时间比较不够",
+      "nativeTests": [],
+      "remainingGap": "OTLP 留精确纳秒，但两个不同日志在微秒投影碰撞的场景尚无直接原生断言。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/provenance.json",
+      "sources": []
+    },
+    {
+      "id": "D22",
+      "title": "缺事件时间但有采集时间",
+      "family": "otlp",
+      "adapters": [
+        "otlp-json"
+      ],
+      "semanticStatus": "native-targeted",
+      "acceptance": "未知事实保持未知；采集时间可以另形成采集事实",
+      "nativeTests": [
+        {
+          "name": "TelemetrySourceTests.LogsUseEventTimeNeverObservedTimeAsFactTime",
+          "file": "tests/Heartbeat.Model.Tests/TelemetrySourceTests.cs"
+        }
+      ],
+      "remainingGap": "原生 event time 缺失时保持 null，即使 observed time 已知；身份明确限制在 capture-position。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/provenance.json",
+      "sources": []
+    },
+    {
+      "id": "D23",
+      "title": "Avro 默认值与原始缺字段",
+      "family": "avro",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "解析后默认值不能冒充源中确实存在的字段",
+      "nativeTests": [],
+      "remainingGap": "尚无 Avro 二进制解码/Schema 解析；普通 JSON 不能证明默认值与显式值区别。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/provenance.json",
+      "sources": []
+    },
+    {
+      "id": "D24",
+      "title": "问卷嵌套答案引用要进图",
+      "family": "fhir",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "拆成答案/成员实体可表达；当前 API 无逆向遍历",
+      "nativeTests": [],
+      "remainingGap": "尚无 FHIR 原生资源适配器；问卷、certainty、correction 与 missing/absent 语义需要明确 profile/extension 映射。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/provenance.json",
+      "sources": []
+    },
+    {
+      "id": "D25",
+      "title": "JWE 密文尚不能解密",
+      "family": "jwe",
+      "adapters": [],
+      "semanticStatus": "model-only",
+      "acceptance": "记录可获得的密文材料与状态，不声称知道明文",
+      "nativeTests": [],
+      "remainingGap": "尚无 JWE 原生输入适配器；没有密钥时不声称认证有效或已获明文。",
+      "modelFixture": "tests/Heartbeat.Model.Tests/Fixtures/provenance.json",
+      "sources": []
+    }
+  ]
+}

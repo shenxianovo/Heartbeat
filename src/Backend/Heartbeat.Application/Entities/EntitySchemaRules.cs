@@ -10,13 +10,13 @@ public static partial class EntitySchemaRules
     public static bool ValidResource(string value) => ResourcePattern().IsMatch(value)
         && value is not ("schemas" or "observers" or "observations");
 
-    public static bool ValidFields(JsonElement fields) => fields.ValueKind == JsonValueKind.Object
+    public static bool ValidFields(JsonElement fields) => UniqueProperties(fields)
         && fields.EnumerateObject().All(field => field.Name is not ("id" or "__omitted_fields")
             && ValidDefinition(field.Value, true, true));
 
     private static bool ValidDefinition(JsonElement value, bool field, bool topLevel)
     {
-        if (value.ValueKind != JsonValueKind.Object
+        if (!UniqueProperties(value)
             || !value.TryGetProperty("type", out var type) || type.ValueKind != JsonValueKind.String
             || !value.TryGetProperty("nullable", out var nullable)
             || nullable.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) return false;
@@ -30,7 +30,7 @@ public static partial class EntitySchemaRules
             || (kind == "array") != value.TryGetProperty("items", out var items)) return false;
         return kind switch
         {
-            "object" => fields.ValueKind == JsonValueKind.Object
+            "object" => UniqueProperties(fields)
                 && fields.EnumerateObject().All(p => ValidDefinition(p.Value, true, false)),
             "array" => ValidDefinition(items, false, false),
             _ => true,
@@ -39,7 +39,7 @@ public static partial class EntitySchemaRules
 
     public static bool ValidEntity(JsonElement fields, JsonElement references, JsonElement properties)
     {
-        if (references.ValueKind != JsonValueKind.Object || properties.ValueKind != JsonValueKind.Object) return false;
+        if (!UniqueProperties(references) || !UniqueProperties(properties)) return false;
         if (references.EnumerateObject().Any(p => !fields.TryGetProperty(p.Name, out var f) || f.GetProperty("type").GetString() != "reference")
             || properties.EnumerateObject().Any(p => !fields.TryGetProperty(p.Name, out var f) || f.GetProperty("type").GetString() == "reference")) return false;
         foreach (var field in fields.EnumerateObject())
@@ -76,7 +76,7 @@ public static partial class EntitySchemaRules
 
     private static bool ValidObject(JsonElement fields, JsonElement value)
     {
-        if (value.ValueKind != JsonValueKind.Object || value.EnumerateObject().Any(p => !fields.TryGetProperty(p.Name, out _))) return false;
+        if (!UniqueProperties(value) || value.EnumerateObject().Any(p => !fields.TryGetProperty(p.Name, out _))) return false;
         foreach (var field in fields.EnumerateObject())
         {
             if (!value.TryGetProperty(field.Name, out var member))
@@ -86,6 +86,14 @@ public static partial class EntitySchemaRules
             else if (!ValidValue(field.Value, member)) return false;
         }
         return true;
+    }
+
+    // TryGetProperty and jsonb otherwise keep only the last occurrence, losing evidence.
+    private static bool UniqueProperties(JsonElement value)
+    {
+        if (value.ValueKind != JsonValueKind.Object) return false;
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        return value.EnumerateObject().All(property => names.Add(property.Name));
     }
 
     public static bool TryInteger(JsonElement value, out long result)

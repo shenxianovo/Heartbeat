@@ -1,0 +1,96 @@
+---
+title: "来源采集与导入"
+description: "真实来源适配器、持久身份与 100 个场景的逐项接入范围"
+---
+
+## 100 个场景在哪里？
+
+[100 个场景接入目录](./coverage.mdx)逐项列出 A01–D25 的来源、当前实现、对应测试与剩余缺口。原来的[模型压力测试](../../testing/model-generality/index.mdx)仍在 Testing；它检验表达、校验与 API 读回，不能当作 100 个生产来源已经接通。
+
+这里记录的是 `src/Observers/Heartbeat.Observer.Sources/` 的实际程序。当前 CLI 有 13 个来源选择：3 个按需本机读取入口、10 个离线原生格式导入入口。来源选项的数量不是 Observer 实例数量，也不是完整覆盖的场景数量。
+
+## 先选择输入方式
+
+| 输入方式 | CLI 来源 | 要求与边界 |
+| --- | --- | --- |
+| [本机读取](./local.mdx) | `git`、`file`、`process` | 显式选择仓库、单个路径或 PID；Linux 文件与进程读取有平台要求；不递归监控 |
+| [邮件与消息](./communication.mdx) | `graph-messages`、`slack-events`、`gmail-messages`、`gmail-drafts`、`gmail-history` | 已获授权、保存到本机的服务原生响应或事件；本程序不登录、不创建令牌、不抓取下一页 |
+| [遥测与变更流](./telemetry.mdx) | `otlp-json`、`cloudevents-json`、`debezium-json` | 支持范围内的原生 JSON；不是 HTTP/gRPC 接收端或 Kafka 消费者 |
+| [日历与轨迹](./calendar-track.mdx) | `icalendar-ics`、`gpx-xml` | 本机 ICS/GPX 文件；有界格式投影，不操作日历账号或定位设备 |
+
+原生格式是来源真实定义的输入，例如 Slack `event_callback`、Graph `value`、OTLP `resourceSpans`、ICS `VEVENT`。测试使用的原生格式文件明确标为合成样本；不是把归一化场景 JSON 改名成来源接入。
+
+## 从一个离线样本开始
+
+在仓库根目录执行，使用 `global.json` 指定的 .NET SDK：
+
+```sh
+dotnet run --project src/Observers/Heartbeat.Observer.Sources -- \
+  --source slack-events \
+  --input tests/Heartbeat.Model.Tests/NativeFixtures/Communication/slack-edit.json \
+  --scope example-slack-workspace \
+  --state .local/observers/source-demo.sqlite \
+  --offline
+```
+
+这会读取一个合成 Slack 编辑事件，创建或复用本地采集主体、来源身份和历史内容，并将提交保存到 SQLite Outbox。`--offline` 不访问后端。再次导入同一文件会沿用已保存的证据身份；不要删除状态文件来“重试”。
+
+不加 `--offline` 时，程序尝试向 `--api` 指定的 Heartbeat API 提交，并用后续 GET 验证内容。API 默认地址是 `http://localhost:8080/api/`。完整本地环境按 [AppHost 运行说明](../../adr/0008-aspire-local-development.mdx)由 Aspire 管理；需要可用的容器运行时。可以先离线采集，环境就绪后只排空已保存队列：
+
+```sh
+aspire run
+```
+
+另一个终端执行：
+
+```sh
+dotnet run --project src/Observers/Heartbeat.Observer.Sources -- \
+  --state .local/observers/source-demo.sqlite \
+  --api http://localhost:8080/api/ --drain
+```
+
+API/数据库链路的专项测试不能代替完整 Aspire 启动成功、浏览器检查或真实外部账号接通的证据。当前业务前端没有可运行实现，不属于本命令的完成条件。
+
+## 身份、重放和历史
+
+一个 `--state` 文件代表一个持久采集主体实例，保存稳定的 `ObserverId`。解析器选择、数据格式、文件扩展名或输出 Schema 变化，不自动创建新的主体。不同职责确实需要不同实例时，才选择不同状态文件。
+
+- `--scope` 是稳定的仓库、设备、账号或日历范围，不是访问令牌；同一来源的后续读取必须沿用该范围
+- 来源 ID 保留原含义；共享运行时在来源范围内持久映射为 UUIDv7，不把 PID、时间戳或邮件 ID 强行当 UUID
+- 来源身份节点表示“知道这个标识”，不宣称已采集其正文；普通具名引用仍参与实体关系
+- 本实现选择保留不可变内容快照；相同内容可复用，同一来源的新证据可形成新的 Observation；这是此采集器的历史策略，不是 Core 对所有实体强制的保留模式
+- 保存输入的重放沿用证据身份；来源有原生事件/修订标识时由适配器使用它。无原生标识时使用 capture key 与来源位置等证据，具体规则见各来源页面
+- 离线导入默认以输入文件 SHA-256 作为 capture key；本机按需快照默认创建新 key。`--capture-key` 用于明确一次捕获及重试边界，不能用来隐藏同一证据内容变化
+
+JSON 规范化只统一对象字段顺序与空白，不实现 RFC 8785/JCS，也不改写任意精度数字的原始写法。补充 JSON 字段中 `1` 与 `1.0` 会保留为不同证据；若沿用同一原生事件键，当前运行时会报冲突并保留已有本地记录，不会静默覆盖。格式重编码不保证都被识别为同一次重放。
+
+请保护并备份状态文件：丢失 SQLite 会丢失 UUID 映射与重放连续性。确认发送后的历史内容在后端保存；SQLite 留身份/证据映射，但 Outbox 确认后不保留每份已交付 payload 的完整副本。没有自动备份、GC 或保留期管理。
+
+职责决定见 [ADR 0014](../../adr/0014-source-collector-and-native-imports.mdx)。
+
+## 时间不是统一的“导入时间”
+
+Observation 使用来源事实时间，未知边界保持 `null`。本机 file/process/ref 快照记录实际看到状态的时刻；历史消息编辑、Git 提交、追踪和日历分别遵循其原生语义。原生纳秒、偏移、本地日期与浮动时间可以保留在内容字段中，不被压成一种伪造时间。
+
+运行时提交到 API 的时间投影截断到微秒；需要更高精度的来源保留原始时间字段。偏移量不自动生成 IANA 时区。来源时间缺失，不用 HTTP 接收时间、文件 mtime 或机器本地时区补齐。
+
+## 提交、恢复与已知边界
+
+输入有大小、深度或记录数限制；整次捕获解析完成后才在 SQLite 事务中登记身份和 Outbox。共享宿主限制单次 10,000 条映射记录及映射属性大小。解析失败不会把已解析的半份输入当作完整批次提交。
+
+发送器按依赖顺序检查或提交 Observer、Schema、来源身份、业务内容和 Observation。PUT 成功还不等于交付完成：必须在后续 GET 中比对类别、定义身份、引用、属性，才从本地队列确认。Schema 仅显示名称变化不构成结构冲突；当前 Observer 显示名由采集器精确拥有（`Source observer`），手工修改远端名称会报告冲突而不覆盖。其他内容冲突、网络失败和未成功读回的项保留在本地，不悄悄覆盖远端。
+
+HTTP 层没有多实体原子提交保证；一次失败可能留下部分已写实体。重试会使用稳定 ID 逐项检查并继续。本地事务不是跨服务事务，也不提供消息系统的 exactly-once 承诺。
+
+本程序是一次性、有界运行的采集/导入入口。它尚不提供持续监控、OAuth、分页自动抓取、外部游标维护、保留期清理、吞吐量 SLA 或全量账号同步。输入内容可能含私人邮件、正文或文件字节；只选择有权处理的材料，并自行保护本地状态目录与目标 API。
+
+## 验证入口与查询范围
+
+```sh
+dotnet test --project tests/Heartbeat.Model.Tests/Heartbeat.Model.Tests.csproj
+dotnet test --project tests/Heartbeat.Integration.Tests/Heartbeat.Integration.Tests.csproj
+```
+
+单元/来源测试直接检查原生输入及本机读取。`SourcePipelineTests` 检查原生输入 → SQLite 重启 → 重放稳定 ID → 实际 HTTP/PostgreSQL → 每个实体读回；测试存在不等于最近一次执行成功，实际运行范围以[测试报告](../../testing/reports/integration.mdx)及本次验证结果为准。
+
+当前公共 API 主要按 ID 读取，缺少列表、逆向引用与图遍历入口。这是 API 能力缺口；不表示底层按 Schema 建表的数据不能通过 SQL 查询，也不证明现有 SQL 索引已满足具体检索任务。

@@ -1,0 +1,69 @@
+[
+  {
+    "schema": {
+      "type": "struct"
+    },
+    "payload": {
+      "before": {
+        "id": 1,
+        "amount": 1
+      },
+      "after": {
+        "id": 1,
+        "amount": 2
+      },
+      "source": {
+        "version": "3.3.0",
+        "connector": "postgresql",
+        "name": "orders-db",
+        "db": "orders",
+        "schema": "public",
+        "table": "orders",
+        "txId": 44,
+        "lsn": 123456,
+        "ts_ms": 1700000000000,
+        "ts_ns": 1700000000000000001
+      },
+      "op": "u",
+      "ts_ms": 1700000099999,
+      "transaction": {
+        "id": "44",
+        "total_order": 2,
+        "data_collection_order": 2
+      },
+      "vendorFuture": true
+    }
+  },
+  {
+    "schema": {
+      "type": "struct"
+    },
+    "payload": {
+      "before": {
+        "id": 1,
+        "amount": 2
+      },
+      "after": null,
+      "source": {
+        "version": "3.3.0",
+        "connector": "postgresql",
+        "name": "orders-db",
+        "db": "orders",
+        "schema": "public",
+        "table": "orders",
+        "txId": 44,
+        "lsn": 123456,
+        "ts_ms": 1700000000000,
+        "ts_ns": 1700000000000000001
+      },
+      "op": "d",
+      "ts_ms": 1700000099999,
+      "transaction": {
+        "id": "44",
+        "total_order": 3,
+        "data_collection_order": 3
+      },
+      "vendorFuture": true
+    }
+  }
+]

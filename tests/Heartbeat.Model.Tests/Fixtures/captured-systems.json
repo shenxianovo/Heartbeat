@@ -1,0 +1,233 @@
+[
+  {
+    "id": "B-RAW-01",
+    "title": "Actual baseline commit object",
+    "source": "Evidence/source-evidence.json (Git and process capture; see sourceCommands)",
+    "evidence": "actual local capture; UUID mapping constructed",
+    "fields": {
+      "objectId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "treeId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "authorEpoch": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "authorOffset": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "committerEpoch": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "committerOffset": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "treeId": "0192b056-7300-7000-8000-00000000c352"
+    },
+    "properties": {
+      "objectId": "1330e68e4b9373c8e844d95cf5e4d7c012445675",
+      "authorEpoch": 1791723615,
+      "authorOffset": "+0800",
+      "committerEpoch": 1791723615,
+      "committerOffset": "+0800"
+    },
+    "expectedValid": true,
+    "reason": "Author and committer clocks retained separately; tree reference is mapped UUIDv7."
+  },
+  {
+    "id": "B-RAW-02",
+    "title": "Actual root tree object",
+    "source": "Evidence/source-evidence.json (Git and process capture; see sourceCommands)",
+    "evidence": "actual local capture; UUID mapping constructed",
+    "fields": {
+      "objectId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "objectType": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {},
+    "properties": {
+      "objectId": "8fc1621e50e5aa8248249efb0f0ac6467c7361e1",
+      "objectType": "tree"
+    },
+    "expectedValid": true,
+    "reason": "Git tree hash stored without treating external hash as EntityId."
+  },
+  {
+    "id": "B-RAW-03",
+    "title": "Actual README tree entry",
+    "source": "Evidence/source-evidence.json (Git and process capture; see sourceCommands)",
+    "evidence": "actual local capture; UUID mapping constructed",
+    "fields": {
+      "treeId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "blobId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "mode": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "path": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "treeId": "0192b056-7300-7000-8000-00000000c352",
+      "blobId": "0192b056-7300-7000-8000-00000000c354"
+    },
+    "properties": {
+      "mode": "100644",
+      "path": "README.md"
+    },
+    "expectedValid": true,
+    "reason": "Named occurrence preserves entry path/mode and links tree to blob; not a special core relationship."
+  },
+  {
+    "id": "B-RAW-04",
+    "title": "Actual README blob metadata",
+    "source": "Evidence/source-evidence.json (Git and process capture; see sourceCommands)",
+    "evidence": "actual local capture; UUID mapping constructed",
+    "fields": {
+      "objectId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "byteLength": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "hashVerified": {
+        "type": "boolean",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {},
+    "properties": {
+      "objectId": "ece7526aa60106ba0c0ce86a6f447cdce3abfff8",
+      "byteLength": 1929,
+      "hashVerified": true
+    },
+    "expectedValid": true,
+    "reason": "Byte-length and Git hash independently recomputed from actual blob; fixture does not claim to store full file contents."
+  },
+  {
+    "id": "B-RAW-05-0",
+    "title": "Actual commit parent occurrence",
+    "source": "Evidence/source-evidence.json (Git and process capture; see sourceCommands)",
+    "evidence": "actual local capture; UUID mapping constructed",
+    "fields": {
+      "childId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "parentId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "ordinal": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "parentObjectId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "childId": "0192b056-7300-7000-8000-00000000c351",
+      "parentId": "0192b056-7300-7000-8000-00000000c738"
+    },
+    "properties": {
+      "ordinal": 0,
+      "parentObjectId": "4fbef58b729178967097a7209612a2ded0cb9d34"
+    },
+    "expectedValid": true,
+    "reason": "Parent occurrence preserves actual parent order and external parent identity."
+  },
+  {
+    "id": "B-RAW-06",
+    "title": "Actual bounded process observation",
+    "source": "Evidence/source-evidence.json (Git and process capture; see sourceCommands)",
+    "evidence": "actual local capture; UUID mapping constructed",
+    "fields": {
+      "pid": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "comm": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "state": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "startTicks": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "clockTicksPerSecond": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "bootId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {},
+    "properties": {
+      "pid": 6,
+      "comm": "python",
+      "state": "R",
+      "startTicks": 2231736,
+      "clockTicksPerSecond": 100,
+      "bootId": "9432e3db-65a7-4250-a736-b70030ebd23b"
+    },
+    "expectedValid": true,
+    "reason": "PID+boot+startTicks identifies observed incarnation within this capture namespace; unknown UTC lifetime is not invented."
+  }
+]

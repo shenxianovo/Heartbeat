@@ -262,6 +262,24 @@ public sealed class EntityApiTests
         }
     }
 
+    [Test]
+    [Arguments("{\"references\":{},\"properties\":{\"name\":\"first\",\"name\":\"second\"}}")]
+    [Arguments("{\"references\":{},\"properties\":{\"name\":\"first\"},\"properties\":{\"name\":\"second\"}}")]
+    [Arguments("{\"references\":{},\"references\":{},\"properties\":{\"name\":\"first\"}}")]
+    [Arguments("{\"references\":{},\"properties\":{\"name\":\"first\"},\"propert\\u0069es\":{\"name\":\"second\"}}")]
+    public async Task DuplicateJsonNamesAreRejectedBeforeSaving(string body)
+    {
+        var ct = TestContext.Current!.Execution.CancellationToken;
+        await using var factory = new HeartbeatApiFactory(_database!.ConnectionString);
+        using var client = factory.CreateClient();
+        var id = EntityId.New().Value;
+        using var content = new StringContent(body, Encoding.UTF8, "application/json");
+        using var response = await client.PutAsync($"entities/observers/{id}", content, ct);
+        await AssertProblemAsync(response, HttpStatusCode.BadRequest, ct);
+        using var read = await client.GetAsync($"entities/{id}", ct);
+        await Assert.That(read.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
+    }
+
     private static JsonObject NewUnknownTimeObservation() => new()
     {
         ["references"] = new JsonObject

@@ -13,7 +13,9 @@ RUN --mount=type=cache,id=heartbeat-docs-pnpm,target=/var/cache/pnpm,sharing=loc
 
 FROM dependencies AS build
 COPY --exclude=*.md --exclude=Dockerfile src/Docs/Heartbeat.Docs/ .
-RUN mkdir -p public && pnpm exec next build
+COPY tests/Heartbeat.Model.Tests/Fixtures/ /model-tests/Fixtures/
+COPY tests/Heartbeat.Model.Tests/Evidence/ /model-tests/Evidence/
+RUN HEARTBEAT_MODEL_FIXTURES_DIR=/model-tests/Fixtures pnpm build
 
 FROM node:24.21.0-bookworm-slim AS final
 WORKDIR /app

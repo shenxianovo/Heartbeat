@@ -1,0 +1,82 @@
+{
+  "gitAndProcess": {
+    "captureKind": "actual bounded local capture",
+    "capturedAtUtc": "2026-10-11T14:12:31.151635+00:00",
+    "baselineCommit": "1330e68e4b9373c8e844d95cf5e4d7c012445675",
+    "sourceCommands": [
+      "git cat-file -p 1330e68e4b9373c8e844d95cf5e4d7c012445675",
+      "git ls-tree 1330e68e4b9373c8e844d95cf5e4d7c012445675 README.md",
+      "git cat-file -s ece7526aa60106ba0c0ce86a6f447cdce3abfff8",
+      "git cat-file blob ece7526aa60106ba0c0ce86a6f447cdce3abfff8 (hash/size only retained)",
+      "read selected /proc/self/stat fields 1,2,3,22; sysconf SC_CLK_TCK; /proc/sys/kernel/random/boot_id"
+    ],
+    "rawReadmeTreeEntry": "100644 blob ece7526aa60106ba0c0ce86a6f447cdce3abfff8\tREADME.md",
+    "rawBlobByteLength": 1929,
+    "blobObjectHashRecomputed": "ece7526aa60106ba0c0ce86a6f447cdce3abfff8",
+    "blobHashMatches": true,
+    "procRawSelectedFields": {
+      "1_pid": "6",
+      "2_comm": "(python)",
+      "3_state": "R",
+      "22_starttime": "2231736"
+    },
+    "procClockTicksPerSecond": 100,
+    "procBootId": "9432e3db-65a7-4250-a736-b70030ebd23b",
+    "limitations": [
+      "No process environment or command line read",
+      "PID and boot metadata are this execution environment, not the user laptop",
+      "Raw process stat was immediately reduced to bounded fields; memory addresses were not retained",
+      "Not a full production adapter; entity UUIDs are constructed review mappings",
+      "Collection clock value recorded as environment supplied; not asserted to be a source event time"
+    ],
+    "commitEvidenceNote": "Public repository commit can be reproduced with the listed git command; author/committer contact text is deliberately not included in this downloadable snapshot."
+  },
+  "isolatedFilesystem": {
+    "rename": {
+      "before": {
+        "st_dev": 27,
+        "st_ino": 524346
+      },
+      "after": {
+        "st_dev": 27,
+        "st_ino": 524346,
+        "st_nlink": 2,
+        "st_mode": 33188,
+        "st_size": 13,
+        "st_mtime_ns": 1791712800123456789
+      },
+      "hardlink": {
+        "st_dev": 27,
+        "st_ino": 524346,
+        "st_nlink": 2,
+        "st_mode": 33188,
+        "st_size": 13,
+        "st_mtime_ns": 1791712800123456789
+      }
+    },
+    "symlink": {
+      "lstat": {
+        "st_dev": 27,
+        "st_ino": 524347,
+        "st_nlink": 1,
+        "st_mode": 41471,
+        "st_size": 11,
+        "st_mtime_ns": 1791727484926527476
+      },
+      "stat": {
+        "st_dev": 27,
+        "st_ino": 524346,
+        "st_nlink": 2,
+        "st_mode": 33188,
+        "st_size": 13,
+        "st_mtime_ns": 1791712800123456789
+      },
+      "target": "renamed.txt"
+    },
+    "snapshot": {
+      "nameBytesHex": "6e6f6e7574662dff",
+      "bytesHex": "410042",
+      "mtimeNs": 1791712800123456789
+    }
+  }
+}

@@ -1,0 +1,173 @@
+[
+  {
+    "id": "D24-nested-reference",
+    "title": "Nested reference declaration",
+    "source": "https://hl7.org/fhir/R4/questionnaireresponse.html",
+    "evidence": "Derived current-validator adversarial variant of D24, not a source fixture.",
+    "fields": {
+      "answer": {
+        "type": "object",
+        "required": true,
+        "nullable": false,
+        "fields": {
+          "target": {
+            "type": "reference",
+            "required": true,
+            "nullable": false
+          }
+        }
+      }
+    },
+    "references": {},
+    "properties": {
+      "answer": {
+        "target": "0192b056-7300-7000-8000-000000000127"
+      }
+    },
+    "expectedValid": false,
+    "reason": "ValidFields rejects reference below top level"
+  },
+  {
+    "id": "D24-array-reference",
+    "title": "Reference-array declaration",
+    "source": "https://hl7.org/fhir/R4/questionnaireresponse.html",
+    "evidence": "Derived current-validator adversarial variant of D24, not a source fixture.",
+    "fields": {
+      "targets": {
+        "type": "array",
+        "required": true,
+        "nullable": false,
+        "items": {
+          "type": "reference",
+          "nullable": false
+        }
+      }
+    },
+    "references": {},
+    "properties": {
+      "targets": [
+        "0192b056-7300-7000-8000-000000000127"
+      ]
+    },
+    "expectedValid": false,
+    "reason": "ValidFields rejects reference array item"
+  },
+  {
+    "id": "D24-string-array",
+    "title": "Text IDs inside array are data, not graph edges",
+    "source": "https://hl7.org/fhir/R4/questionnaireresponse.html",
+    "evidence": "Derived current-validator adversarial variant of D24, not a source fixture.",
+    "fields": {
+      "targets": {
+        "type": "array",
+        "required": true,
+        "nullable": false,
+        "items": {
+          "type": "string",
+          "nullable": false
+        }
+      }
+    },
+    "references": {},
+    "properties": {
+      "targets": [
+        "0192b056-7300-7000-8000-000000000127"
+      ]
+    },
+    "expectedValid": true,
+    "reason": "Valid ordinary string array; no reference enumeration for its strings"
+  },
+  {
+    "id": "D24-null-optional",
+    "title": "Optional nullable top-level reference null",
+    "source": "https://hl7.org/fhir/R4/questionnaireresponse.html",
+    "evidence": "Derived current-validator adversarial variant of D24, not a source fixture.",
+    "fields": {
+      "target": {
+        "type": "reference",
+        "required": false,
+        "nullable": true
+      }
+    },
+    "references": {
+      "target": null
+    },
+    "properties": {},
+    "expectedValid": true,
+    "reason": "Explicit null is valid and distinct from omitted"
+  },
+  {
+    "id": "D24-absent-optional",
+    "title": "Optional nonnullable top-level reference absent",
+    "source": "https://hl7.org/fhir/R4/questionnaireresponse.html",
+    "evidence": "Derived current-validator adversarial variant of D24, not a source fixture.",
+    "fields": {
+      "target": {
+        "type": "reference",
+        "required": false,
+        "nullable": false
+      }
+    },
+    "references": {},
+    "properties": {},
+    "expectedValid": true,
+    "reason": "Nonnullable does not mean required"
+  },
+  {
+    "id": "D24-uuidv4",
+    "title": "External UUIDv4 used directly as entity reference",
+    "source": "https://hl7.org/fhir/R4/questionnaireresponse.html",
+    "evidence": "Derived current-validator adversarial variant of D24, not a source fixture.",
+    "fields": {
+      "target": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "target": "550e8400-e29b-41d4-a716-446655440000"
+    },
+    "properties": {},
+    "expectedValid": false,
+    "reason": "Only RFC-variant UUIDv7 reference accepted"
+  },
+  {
+    "id": "D24-wrong-placement",
+    "title": "Reference placed in properties",
+    "source": "https://hl7.org/fhir/R4/questionnaireresponse.html",
+    "evidence": "Derived current-validator adversarial variant of D24, not a source fixture.",
+    "fields": {
+      "target": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {},
+    "properties": {
+      "target": "0192b056-7300-7000-8000-000000000127"
+    },
+    "expectedValid": false,
+    "reason": "Top-level declared reference must appear in references"
+  },
+  {
+    "id": "D10-confidence-range",
+    "title": "Out-of-range confidence accepted structurally",
+    "source": "https://hl7.org/fhir/R4/questionnaireresponse.html",
+    "evidence": "Derived current-validator adversarial variant of D24, not a source fixture.",
+    "fields": {
+      "confidence": {
+        "type": "number",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {},
+    "properties": {
+      "confidence": 12
+    },
+    "expectedValid": true,
+    "reason": "Domain confidence range is not enforceable by current field grammar"
+  }
+]

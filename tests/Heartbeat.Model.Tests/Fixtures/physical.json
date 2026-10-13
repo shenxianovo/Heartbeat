@@ -1,0 +1,1806 @@
+[
+  {
+    "id": "C01",
+    "title": "GPS fix and uncertainty",
+    "source": [
+      "https://developer.android.com/reference/android/location/Location"
+    ],
+    "evidence": "Constructed fixture using verified official source fields; values are synthetic, not a captured source response.",
+    "fields": {
+      "latitude": {
+        "type": "number",
+        "nullable": false,
+        "required": true
+      },
+      "longitude": {
+        "type": "number",
+        "nullable": false,
+        "required": true
+      },
+      "accuracy": {
+        "type": "number",
+        "nullable": false,
+        "required": true
+      },
+      "time": {
+        "type": "integer",
+        "nullable": false,
+        "required": true
+      },
+      "elapsedRealtimeNanos": {
+        "type": "integer",
+        "nullable": false,
+        "required": true
+      },
+      "deviceId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "deviceId": "019a0000-0000-7000-8000-00000000000a"
+    },
+    "properties": {
+      "latitude": 37.4,
+      "longitude": -122.1,
+      "accuracy": 12.5,
+      "time": 1791712800000,
+      "elapsedRealtimeNanos": 1000000000
+    },
+    "expectedValid": true,
+    "reason": "Accuracy remains a measured radius, not invented exact position. Source time maps to fact instant; collector arrival must not replace it.",
+    "verdict": "A",
+    "entityId": "019a0000-0000-7000-8000-0000000007d1",
+    "observation": {
+      "id": "019a0000-0000-7000-8000-0000000003e9",
+      "references": {
+        "observerId": "019a0000-0000-7000-8000-000000000001",
+        "contentId": "019a0000-0000-7000-8000-0000000007d1",
+        "schemaId": "019a0000-0000-7000-8000-000000000bb9"
+      },
+      "properties": {
+        "startAt": "2026-10-11T10:00:00Z",
+        "endAt": "2026-10-11T10:00:00Z",
+        "timeZone": null
+      }
+    },
+    "identity": "Fix = device + boot + persisted source sequence. Android Location has no globally stable fix ID.",
+    "history": "Replay reuses persisted input-to-UUIDv7 mapping; a new independently collected fact gets a new Observation. Historical contents are not overwritten."
+  },
+  {
+    "id": "C02",
+    "title": "GPS track crosses time zones",
+    "source": [
+      "https://developer.android.com/reference/android/location/Location"
+    ],
+    "evidence": "Constructed fixture using verified official source fields; values are synthetic, not a captured source response.",
+    "fields": {
+      "latitude": {
+        "type": "number",
+        "nullable": false,
+        "required": true
+      },
+      "longitude": {
+        "type": "number",
+        "nullable": false,
+        "required": true
+      },
+      "time": {
+        "type": "integer",
+        "nullable": false,
+        "required": true
+      },
+      "elapsedRealtimeNanos": {
+        "type": "integer",
+        "nullable": false,
+        "required": true
+      },
+      "trackSequence": {
+        "type": "integer",
+        "nullable": false,
+        "required": true
+      },
+      "sourceTimeZone": {
+        "type": "string",
+        "nullable": true,
+        "required": true
+      },
+      "deviceId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "trackId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "deviceId": "019a0000-0000-7000-8000-00000000000a",
+      "trackId": "019a0000-0000-7000-8000-00000000000b"
+    },
+    "properties": {
+      "latitude": 35.0,
+      "longitude": 139.0,
+      "time": 1791720000000,
+      "elapsedRealtimeNanos": 7200000000000,
+      "trackSequence": 2,
+      "sourceTimeZone": null
+    },
+    "expectedValid": true,
+    "reason": "Android Location does not supply an IANA zone. Preserve UTC and leave zone unknown; a cross-zone track cannot honestly have one inferred zone. Many member entities rather than nested reference array.",
+    "verdict": "B",
+    "entityId": "019a0000-0000-7000-8000-0000000007d2",
+    "observation": {
+      "id": "019a0000-0000-7000-8000-0000000003ea",
+      "references": {
+        "observerId": "019a0000-0000-7000-8000-000000000001",
+        "contentId": "019a0000-0000-7000-8000-0000000007d2",
+        "schemaId": "019a0000-0000-7000-8000-000000000bba"
+      },
+      "properties": {
+        "startAt": "2026-10-11T12:00:00Z",
+        "endAt": "2026-10-11T12:00:00Z",
+        "timeZone": null
+      }
+    },
+    "identity": "Track member fix gets its own persisted UUID; track and device are referenced UUID nodes. trackSequence/sourceTimeZone are explicit adapter metadata.",
+    "history": "Replay reuses persisted input-to-UUIDv7 mapping; a new independently collected fact gets a new Observation. Historical contents are not overwritten."
+  },
+  {
+    "id": "C03",
+    "title": "Location wall clock moves backwards",
+    "source": [
+      "https://developer.android.com/reference/android/location/Location"
+    ],
+    "evidence": "Constructed fixture using verified official source fields; values are synthetic, not a captured source response.",
+    "fields": {
+      "time": {
+        "type": "integer",
+        "nullable": false,
+        "required": true
+      },
+      "elapsedRealtimeNanos": {
+        "type": "integer",
+        "nullable": false,
+        "required": true
+      },
+      "latitude": {
+        "type": "number",
+        "nullable": false,
+        "required": true
+      },
+      "longitude": {
+        "type": "number",
+        "nullable": false,
+        "required": true
+      },
+      "deviceId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "deviceId": "019a0000-0000-7000-8000-00000000000a"
+    },
+    "properties": {
+      "time": 1791712799000,
+      "elapsedRealtimeNanos": 2000000000,
+      "latitude": 37.4,
+      "longitude": -122.1
+    },
+    "expectedValid": true,
+    "reason": "Raw epoch and monotonic time both survive. Do not construct an inverted ITimed interval from clock-drift endpoints; independent points retain source evidence.",
+    "verdict": "B",
+    "entityId": "019a0000-0000-7000-8000-0000000007d3",
+    "observation": {
+      "id": "019a0000-0000-7000-8000-0000000003eb",
+      "references": {
+        "observerId": "019a0000-0000-7000-8000-000000000001",
+        "contentId": "019a0000-0000-7000-8000-0000000007d3",
+        "schemaId": "019a0000-0000-7000-8000-000000000bbb"
+      },
+      "properties": {
+        "startAt": "2026-10-11T09:59:59Z",
+        "endAt": "2026-10-11T09:59:59Z",
+        "timeZone": null
+      }
+    },
+    "identity": "Device + boot + monotonic sample identity, not wall-clock timestamp alone.",
+    "history": "Replay reuses persisted input-to-UUIDv7 mapping; a new independently collected fact gets a new Observation. Historical contents are not overwritten."
+  },
+  {
+    "id": "C04",
+    "title": "Sensor readings missing between samples",
+    "source": [
+      "https://developer.android.com/reference/android/hardware/SensorEvent"
+    ],
+    "evidence": "Constructed fixture using verified official source fields; values are synthetic, not a captured source response.",
+    "fields": {
+      "timestamp": {
+        "type": "integer",
+        "nullable": false,
+        "required": true
+      },
+      "accuracy": {
+        "type": "integer",
+        "nullable": false,
+        "required": true
+      },
+      "values": {
+        "type": "array",
+        "nullable": false,
+        "required": true,
+        "items": {
+          "type": "number",
+          "nullable": false
+        }
+      },
+      "sensorType": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "deviceId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "deviceId": "019a0000-0000-7000-8000-00000000000a"
+    },
+    "properties": {
+      "timestamp": 1000000010,
+      "accuracy": 0,
+      "values": [
+        0.1,
+        0.2,
+        9.8
+      ],
+      "sensorType": "accelerometer"
+    },
+    "expectedValid": true,
+    "reason": "Only observed samples are entities. A gap is not zero or an invented reading. Without a wall-clock anchor the fact instant is unknown; nanoseconds remain exact signed integers.",
+    "verdict": "B",
+    "entityId": "019a0000-0000-7000-8000-0000000007d4",
+    "observation": {
+      "id": "019a0000-0000-7000-8000-0000000003ec",
+      "references": {
+        "observerId": "019a0000-0000-7000-8000-000000000001",
+        "contentId": "019a0000-0000-7000-8000-0000000007d4",
+        "schemaId": "019a0000-0000-7000-8000-000000000bbc"
+      },
+      "properties": {
+        "startAt": null,
+        "endAt": null,
+        "timeZone": null
+      }
+    },
+    "identity": "Sensor event = device + boot + sensor + persisted event sequence. sensorType is adapter representation of source sensor.",
+    "history": "Replay reuses persisted input-to-UUIDv7 mapping; a new independently collected fact gets a new Observation. Historical contents are not overwritten."
+  },
+  {
+    "id": "C05",
+    "title": "Sensor boot clock nanoseconds",
+    "source": [
+      "https://developer.android.com/reference/android/hardware/SensorEvent"
+    ],
+    "evidence": "Constructed fixture using verified official source fields; values are synthetic, not a captured source response.",
+    "fields": {
+      "timestamp": {
+        "type": "integer",
+        "nullable": false,
+        "required": true
+      },
+      "accuracy": {
+        "type": "integer",
+        "nullable": false,
+        "required": true
+      },
+      "values": {
+        "type": "array",
+        "nullable": false,
+        "required": true,
+        "items": {
+          "type": "number",
+          "nullable": false
+        }
+      },
+      "firstEventAfterDiscontinuity": {
+        "type": "boolean",
+        "nullable": false,
+        "required": true
+      },
+      "deviceId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "deviceId": "019a0000-0000-7000-8000-00000000000a"
+    },
+    "properties": {
+      "timestamp": 1000000011,
+      "accuracy": 3,
+      "values": [
+        0.1,
+        0.2,
+        9.8
+      ],
+      "firstEventAfterDiscontinuity": false
+    },
+    "expectedValid": true,
+    "reason": "Preserve timestamp rather than treating uptime as Unix time. firstEventAfterDiscontinuity is source-specific, not a universal missing-reading indicator.",
+    "verdict": "B",
+    "entityId": "019a0000-0000-7000-8000-0000000007d5",
+    "observation": {
+      "id": "019a0000-0000-7000-8000-0000000003ed",
+      "references": {
+        "observerId": "019a0000-0000-7000-8000-000000000001",
+        "contentId": "019a0000-0000-7000-8000-0000000007d5",
+        "schemaId": "019a0000-0000-7000-8000-000000000bbd"
+      },
+      "properties": {
+        "startAt": null,
+        "endAt": null,
+        "timeZone": null
+      }
+    },
+    "identity": "Same sensor source as C04 but different monotonic nanoseconds means distinct event, even if rounded wall time collides.",
+    "history": "Replay reuses persisted input-to-UUIDv7 mapping; a new independently collected fact gets a new Observation. Historical contents are not overwritten."
+  },
+  {
+    "id": "C06",
+    "title": "Cumulative daily steps revised upward",
+    "source": [
+      "https://developer.android.com/reference/androidx/health/connect/client/records/StepsRecord",
+      "https://developer.android.com/health-and-fitness/health-connect/write-data"
+    ],
+    "evidence": "Constructed daily aggregation snapshot using verified Health Connect interval count and metadata fields; not a native cumulative StepsRecord response. localDate/dayZone are explicit derived metadata.",
+    "fields": {
+      "count": {
+        "type": "integer",
+        "nullable": false,
+        "required": true
+      },
+      "sourceId": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "clientRecordVersion": {
+        "type": "integer",
+        "nullable": false,
+        "required": true
+      },
+      "localDate": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "dayZone": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "personId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "personId": "019a0000-0000-7000-8000-00000000000c"
+    },
+    "properties": {
+      "count": 5000,
+      "sourceId": "hc-record-1",
+      "clientRecordVersion": 2,
+      "localDate": "2026-10-11",
+      "dayZone": "Asia/Tokyo"
+    },
+    "expectedValid": true,
+    "reason": "Health Connect StepsRecord is a nonoverlapping interval count, not a cumulative counter. This case explicitly aggregates those records into a person/day cumulative summary. Daily total is not an increment. Full-day interval names the bucket, not collection time.",
+    "verdict": "B",
+    "entityId": "019a0000-0000-7000-8000-0000000007d6",
+    "observation": {
+      "id": "019a0000-0000-7000-8000-0000000003ee",
+      "references": {
+        "observerId": "019a0000-0000-7000-8000-000000000001",
+        "contentId": "019a0000-0000-7000-8000-0000000007d6",
+        "schemaId": "019a0000-0000-7000-8000-000000000bbe"
+      },
+      "properties": {
+        "startAt": "2026-10-10T15:00:00Z",
+        "endAt": "2026-10-11T15:00:00Z",
+        "timeZone": "Asia/Tokyo"
+      }
+    },
+    "identity": "Source Health Connect ID maps to UUID; derived person/day summary identity includes defined day-zone policy. localDate/dayZone are aggregation metadata.",
+    "history": "Updating the latest daily entity is allowed. If old Observations claim snapshots, each version needs an unchanged content UUID; otherwise old 3000 becomes 5000."
+  },
+  {
+    "id": "C07",
+    "title": "Daily steps while traveling",
+    "source": [
+      "https://developer.android.com/reference/androidx/health/connect/client/records/StepsRecord"
+    ],
+    "evidence": "Constructed fixture using verified official source fields; values are synthetic, not a captured source response.",
+    "fields": {
+      "count": {
+        "type": "integer",
+        "nullable": false,
+        "required": true
+      },
+      "startZoneOffset": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "endZoneOffset": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "localDate": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "aggregationPolicy": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "personId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "personId": "019a0000-0000-7000-8000-00000000000c"
+    },
+    "properties": {
+      "count": 1000,
+      "startZoneOffset": "+09:00",
+      "endZoneOffset": "-07:00",
+      "localDate": "2026-10-11",
+      "aggregationPolicy": "source interval"
+    },
+    "expectedValid": true,
+    "reason": "Two source offsets cannot be inferred from one IANA zone. Keep both offsets in typed content; duration uses actual instants. Daily interpretation requires source policy, not guessed geography.",
+    "verdict": "B",
+    "entityId": "019a0000-0000-7000-8000-0000000007d7",
+    "observation": {
+      "id": "019a0000-0000-7000-8000-0000000003ef",
+      "references": {
+        "observerId": "019a0000-0000-7000-8000-000000000001",
+        "contentId": "019a0000-0000-7000-8000-0000000007d7",
+        "schemaId": "019a0000-0000-7000-8000-000000000bbf"
+      },
+      "properties": {
+        "startAt": "2026-10-11T00:00:00Z",
+        "endAt": "2026-10-11T12:00:00Z",
+        "timeZone": null
+      }
+    },
+    "identity": "Persist source record mapping; do not merge solely on displayed local date across changing zones. aggregationPolicy/localDate are adapter metadata.",
+    "history": "Replay reuses persisted input-to-UUIDv7 mapping; a new independently collected fact gets a new Observation. Historical contents are not overwritten."
+  },
+  {
+    "id": "C08",
+    "title": "Step counter resets after reboot",
+    "source": [
+      "https://developer.android.com/reference/android/hardware/SensorEvent"
+    ],
+    "evidence": "Constructed fixture using verified official source fields; values are synthetic, not a captured source response.",
+    "fields": {
+      "timestamp": {
+        "type": "integer",
+        "nullable": false,
+        "required": true
+      },
+      "values": {
+        "type": "array",
+        "nullable": false,
+        "required": true,
+        "items": {
+          "type": "number",
+          "nullable": false
+        }
+      },
+      "sensorType": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "bootKey": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "deviceId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "deviceId": "019a0000-0000-7000-8000-00000000000a"
+    },
+    "properties": {
+      "timestamp": 2000000000,
+      "values": [
+        12.0
+      ],
+      "sensorType": "TYPE_STEP_COUNTER",
+      "bootKey": "synthetic-boot-B"
+    },
+    "expectedValid": true,
+    "reason": "Counter is since reboot while activated, not lifetime or daily. Lower count after a new boot is no negative activity and must not overwrite the previous boot sample.",
+    "verdict": "B",
+    "entityId": "019a0000-0000-7000-8000-0000000007d8",
+    "observation": {
+      "id": "019a0000-0000-7000-8000-0000000003f0",
+      "references": {
+        "observerId": "019a0000-0000-7000-8000-000000000001",
+        "contentId": "019a0000-0000-7000-8000-0000000007d8",
+        "schemaId": "019a0000-0000-7000-8000-000000000bc0"
+      },
+      "properties": {
+        "startAt": null,
+        "endAt": null,
+        "timeZone": null
+      }
+    },
+    "identity": "Boot-scoped sample identity; bootKey is collector metadata, not SensorEvent field.",
+    "history": "Replay reuses persisted input-to-UUIDv7 mapping; a new independently collected fact gets a new Observation. Historical contents are not overwritten."
+  },
+  {
+    "id": "C09",
+    "title": "Sleep spans DST fallback",
+    "source": [
+      "https://developer.android.com/reference/android/health/connect/datatypes/SleepSessionRecord"
+    ],
+    "evidence": "Constructed fixture using verified official source fields; values are synthetic, not a captured source response.",
+    "fields": {
+      "sourceId": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "startZoneOffset": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "endZoneOffset": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "title": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "personId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "personId": "019a0000-0000-7000-8000-00000000000c"
+    },
+    "properties": {
+      "sourceId": "sleep-1",
+      "startZoneOffset": "-04:00",
+      "endZoneOffset": "-05:00",
+      "title": "Sleep"
+    },
+    "expectedValid": true,
+    "reason": "Real duration is three hours despite two-hour wall-clock difference. Known offsets resolve repeated local hour. Later import uses same past interval.",
+    "verdict": "A",
+    "entityId": "019a0000-0000-7000-8000-0000000007d9",
+    "observation": {
+      "id": "019a0000-0000-7000-8000-0000000003f1",
+      "references": {
+        "observerId": "019a0000-0000-7000-8000-000000000001",
+        "contentId": "019a0000-0000-7000-8000-0000000007d9",
+        "schemaId": "019a0000-0000-7000-8000-000000000bc1"
+      },
+      "properties": {
+        "startAt": "2026-11-01T00:30:00-04:00",
+        "endAt": "2026-11-01T02:30:00-05:00",
+        "timeZone": "America/New_York"
+      }
+    },
+    "identity": "Source record ID scoped to Health Connect store maps to stable UUID.",
+    "history": "Replay reuses persisted input-to-UUIDv7 mapping; a new independently collected fact gets a new Observation. Historical contents are not overwritten."
+  },
+  {
+    "id": "C10",
+    "title": "Sleep stages contain an unobserved gap",
+    "source": [
+      "https://developer.android.com/reference/android/health/connect/datatypes/SleepSessionRecord"
+    ],
+    "evidence": "Constructed fixture using verified official source fields; values are synthetic, not a captured source response.",
+    "fields": {
+      "stages": {
+        "type": "array",
+        "nullable": false,
+        "required": true,
+        "items": {
+          "type": "object",
+          "nullable": false,
+          "fields": {
+            "startTime": {
+              "type": "string",
+              "nullable": false,
+              "required": true
+            },
+            "endTime": {
+              "type": "string",
+              "nullable": false,
+              "required": true
+            },
+            "stage": {
+              "type": "integer",
+              "nullable": false,
+              "required": true
+            }
+          }
+        }
+      },
+      "sleepSessionId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "sleepSessionId": "019a0000-0000-7000-8000-00000000000d"
+    },
+    "properties": {
+      "stages": [
+        {
+          "startTime": "2026-11-01T04:30:00Z",
+          "endTime": "2026-11-01T05:30:00Z",
+          "stage": 1
+        },
+        {
+          "startTime": "2026-11-01T06:00:00Z",
+          "endTime": "2026-11-01T07:30:00Z",
+          "stage": 2
+        }
+      ]
+    },
+    "expectedValid": true,
+    "reason": "Nested ordinary stage values are legal. Stages need not be continuous. Schema validator checks types only; stage overlap or range containment is not enforced by Core.",
+    "verdict": "B",
+    "entityId": "019a0000-0000-7000-8000-0000000007da",
+    "observation": {
+      "id": "019a0000-0000-7000-8000-0000000003f2",
+      "references": {
+        "observerId": "019a0000-0000-7000-8000-000000000001",
+        "contentId": "019a0000-0000-7000-8000-0000000007da",
+        "schemaId": "019a0000-0000-7000-8000-000000000bc2"
+      },
+      "properties": {
+        "startAt": "2026-11-01T04:30:00Z",
+        "endAt": "2026-11-01T07:30:00Z",
+        "timeZone": "America/New_York"
+      }
+    },
+    "identity": "One stage-list snapshot per source sleep revision; stages are value objects unless independently identified.",
+    "history": "Replay reuses persisted input-to-UUIDv7 mapping; a new independently collected fact gets a new Observation. Historical contents are not overwritten."
+  },
+  {
+    "id": "C11",
+    "title": "All-day calendar event",
+    "source": [
+      "https://developers.google.com/workspace/calendar/api/v3/reference/events"
+    ],
+    "evidence": "Constructed fixture using verified official source fields; values are synthetic, not a captured source response.",
+    "fields": {
+      "sourceId": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "start": {
+        "type": "object",
+        "nullable": false,
+        "required": true,
+        "fields": {
+          "date": {
+            "type": "string",
+            "nullable": false,
+            "required": true
+          }
+        }
+      },
+      "end": {
+        "type": "object",
+        "nullable": false,
+        "required": true,
+        "fields": {
+          "date": {
+            "type": "string",
+            "nullable": false,
+            "required": true
+          }
+        }
+      },
+      "status": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "calendarId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "calendarId": "019a0000-0000-7000-8000-00000000000e"
+    },
+    "properties": {
+      "sourceId": "calendar-event-a",
+      "start": {
+        "date": "2026-10-11"
+      },
+      "end": {
+        "date": "2026-10-12"
+      },
+      "status": "confirmed"
+    },
+    "expectedValid": true,
+    "reason": "Date-only all-day semantics survive as explicit dates. No source zone means no fabricated midnight UTC. Observation null bounds mean absolute boundaries unknown, not ongoing.",
+    "verdict": "B",
+    "entityId": "019a0000-0000-7000-8000-0000000007db",
+    "observation": {
+      "id": "019a0000-0000-7000-8000-0000000003f3",
+      "references": {
+        "observerId": "019a0000-0000-7000-8000-000000000001",
+        "contentId": "019a0000-0000-7000-8000-0000000007db",
+        "schemaId": "019a0000-0000-7000-8000-000000000bc3"
+      },
+      "properties": {
+        "startAt": null,
+        "endAt": null,
+        "timeZone": null
+      }
+    },
+    "identity": "Calendar account + calendar ID + event ID maps to entity UUID.",
+    "history": "Replay reuses persisted input-to-UUIDv7 mapping; a new independently collected fact gets a new Observation. Historical contents are not overwritten."
+  },
+  {
+    "id": "C12",
+    "title": "Recurring calendar moved exception",
+    "source": [
+      "https://developers.google.com/workspace/calendar/api/v3/reference/events"
+    ],
+    "evidence": "Constructed fixture using verified official source fields; values are synthetic, not a captured source response.",
+    "fields": {
+      "sourceId": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "recurringEventId": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "originalStartTime": {
+        "type": "object",
+        "nullable": false,
+        "required": true,
+        "fields": {
+          "dateTime": {
+            "type": "string",
+            "nullable": false,
+            "required": true
+          }
+        }
+      },
+      "start": {
+        "type": "object",
+        "nullable": false,
+        "required": true,
+        "fields": {
+          "dateTime": {
+            "type": "string",
+            "nullable": false,
+            "required": true
+          }
+        }
+      },
+      "end": {
+        "type": "object",
+        "nullable": false,
+        "required": true,
+        "fields": {
+          "dateTime": {
+            "type": "string",
+            "nullable": false,
+            "required": true
+          }
+        }
+      },
+      "seriesId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "seriesId": "019a0000-0000-7000-8000-00000000000f"
+    },
+    "properties": {
+      "sourceId": "event-occurrence",
+      "recurringEventId": "series-source",
+      "originalStartTime": {
+        "dateTime": "2026-10-11T09:00:00-04:00"
+      },
+      "start": {
+        "dateTime": "2026-10-11T11:00:00-04:00"
+      },
+      "end": {
+        "dateTime": "2026-10-11T12:00:00-04:00"
+      }
+    },
+    "expectedValid": true,
+    "reason": "Raw recurringEventId is source string; seriesId is mapped internal reference. Observation records moved fact time, originalStartTime preserves recurrence identity.",
+    "verdict": "A",
+    "entityId": "019a0000-0000-7000-8000-0000000007dc",
+    "observation": {
+      "id": "019a0000-0000-7000-8000-0000000003f4",
+      "references": {
+        "observerId": "019a0000-0000-7000-8000-000000000001",
+        "contentId": "019a0000-0000-7000-8000-0000000007dc",
+        "schemaId": "019a0000-0000-7000-8000-000000000bc4"
+      },
+      "properties": {
+        "startAt": "2026-10-11T15:00:00Z",
+        "endAt": "2026-10-11T16:00:00Z",
+        "timeZone": "America/New_York"
+      }
+    },
+    "identity": "Occurrence source ID or series+originalStartTime stable mapping; moved start is not identity.",
+    "history": "Replay reuses persisted input-to-UUIDv7 mapping; a new independently collected fact gets a new Observation. Historical contents are not overwritten."
+  },
+  {
+    "id": "C13",
+    "title": "Floating iCalendar local appointment",
+    "source": [
+      "https://www.rfc-editor.org/rfc/rfc5545.html"
+    ],
+    "evidence": "Constructed fixture using verified official source fields; values are synthetic, not a captured source response.",
+    "fields": {
+      "UID": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "DTSTART": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "DTEND": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      }
+    },
+    "references": {},
+    "properties": {
+      "UID": "floating-example",
+      "DTSTART": "20261011T110000",
+      "DTEND": "20261011T130000"
+    },
+    "expectedValid": true,
+    "reason": "Floating times are not absolute instants. Raw typed strings retain local-time semantics; null Observation bounds avoid false offset. Generic UTC filtering cannot answer this without business interpretation.",
+    "verdict": "B",
+    "entityId": "019a0000-0000-7000-8000-0000000007dd",
+    "observation": {
+      "id": "019a0000-0000-7000-8000-0000000003f5",
+      "references": {
+        "observerId": "019a0000-0000-7000-8000-000000000001",
+        "contentId": "019a0000-0000-7000-8000-0000000007dd",
+        "schemaId": "019a0000-0000-7000-8000-000000000bc5"
+      },
+      "properties": {
+        "startAt": null,
+        "endAt": null,
+        "timeZone": null
+      }
+    },
+    "identity": "UID scoped to calendar feed maps to UUID; recurrence identity separately when applicable.",
+    "history": "Replay reuses persisted input-to-UUIDv7 mapping; a new independently collected fact gets a new Observation. Historical contents are not overwritten."
+  },
+  {
+    "id": "C14",
+    "title": "Cancelled recurring occurrence",
+    "source": [
+      "https://developers.google.com/workspace/calendar/api/v3/reference/events"
+    ],
+    "evidence": "Constructed fixture using verified official source fields; values are synthetic, not a captured source response.",
+    "fields": {
+      "sourceId": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "status": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "originalStartTime": {
+        "type": "object",
+        "nullable": false,
+        "required": true,
+        "fields": {
+          "date": {
+            "type": "string",
+            "nullable": false,
+            "required": true
+          }
+        }
+      },
+      "seriesId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "seriesId": "019a0000-0000-7000-8000-00000000000f"
+    },
+    "properties": {
+      "sourceId": "cancelled-occurrence",
+      "status": "cancelled",
+      "originalStartTime": {
+        "date": "2026-10-11"
+      }
+    },
+    "expectedValid": true,
+    "reason": "Cancellation is explicit business status, not encoded as null EndAt. Preserve sparse originalStartTime plus series reference; no need to delete the entity.",
+    "verdict": "A",
+    "entityId": "019a0000-0000-7000-8000-0000000007de",
+    "observation": {
+      "id": "019a0000-0000-7000-8000-0000000003f6",
+      "references": {
+        "observerId": "019a0000-0000-7000-8000-000000000001",
+        "contentId": "019a0000-0000-7000-8000-0000000007de",
+        "schemaId": "019a0000-0000-7000-8000-000000000bc6"
+      },
+      "properties": {
+        "startAt": null,
+        "endAt": null,
+        "timeZone": null
+      }
+    },
+    "identity": "Cancellation keeps occurrence identity; originalStartTime identifies which occurrence.",
+    "history": "If previous scheduled facts must remain, keep old content snapshot and separately record cancellation revision; repeated cancel import reuses mapping."
+  },
+  {
+    "id": "C15",
+    "title": "VRChat local instance join",
+    "source": [
+      "https://creators.vrchat.com/worlds/udon/graph/event-nodes/",
+      "https://udonsharp.docs.vrchat.com/vrchat-api/"
+    ],
+    "evidence": "Constructed fixture using verified official source fields; values are synthetic, not a captured source response.",
+    "fields": {
+      "event": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "playerId": {
+        "type": "integer",
+        "nullable": false,
+        "required": true
+      },
+      "isLocal": {
+        "type": "boolean",
+        "nullable": false,
+        "required": true
+      },
+      "displayName": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "collectorInstanceKey": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "instanceId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "instanceId": "019a0000-0000-7000-8000-000000000010"
+    },
+    "properties": {
+      "event": "OnPlayerJoined",
+      "playerId": 7,
+      "isLocal": true,
+      "displayName": "Synthetic Player",
+      "collectorInstanceKey": "session-A"
+    },
+    "expectedValid": true,
+    "reason": "Official callback supplies player, not full historical session or durable world/account ID. Internal instance UUID is instrumentation identity. Join observation is the callback fact; no invented session end.",
+    "verdict": "B",
+    "entityId": "019a0000-0000-7000-8000-0000000007df",
+    "observation": {
+      "id": "019a0000-0000-7000-8000-0000000003f7",
+      "references": {
+        "observerId": "019a0000-0000-7000-8000-000000000001",
+        "contentId": "019a0000-0000-7000-8000-0000000007df",
+        "schemaId": "019a0000-0000-7000-8000-000000000bc7"
+      },
+      "properties": {
+        "startAt": "2026-10-11T10:00:00Z",
+        "endAt": "2026-10-11T10:00:00Z",
+        "timeZone": null
+      }
+    },
+    "identity": "playerId is instance-scoped, not durable account identity. collectorInstanceKey and timestamp come from constructed instrumentation.",
+    "history": "Replay reuses persisted input-to-UUIDv7 mapping; a new independently collected fact gets a new Observation. Historical contents are not overwritten."
+  },
+  {
+    "id": "C16",
+    "title": "VRChat world transition and reconnect",
+    "source": [
+      "https://creators.vrchat.com/worlds/udon/graph/event-nodes/",
+      "https://udonsharp.docs.vrchat.com/vrchat-api/"
+    ],
+    "evidence": "Constructed fixture using verified official source fields; values are synthetic, not a captured source response.",
+    "fields": {
+      "event": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "playerId": {
+        "type": "integer",
+        "nullable": false,
+        "required": true
+      },
+      "isLocal": {
+        "type": "boolean",
+        "nullable": false,
+        "required": true
+      },
+      "displayName": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "collectorInstanceKey": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "instanceId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "instanceId": "019a0000-0000-7000-8000-000000000011"
+    },
+    "properties": {
+      "event": "OnPlayerJoined",
+      "playerId": 7,
+      "isLocal": true,
+      "displayName": "Synthetic Player",
+      "collectorInstanceKey": "session-B"
+    },
+    "expectedValid": true,
+    "reason": "Different world/session reference separates memberships. Official callbacks do not prove continuity across reconnect or supply exact old-instance exit; missing end stays unknown, not transition timestamp by assumption.",
+    "verdict": "B",
+    "entityId": "019a0000-0000-7000-8000-0000000007e0",
+    "observation": {
+      "id": "019a0000-0000-7000-8000-0000000003f8",
+      "references": {
+        "observerId": "019a0000-0000-7000-8000-000000000001",
+        "contentId": "019a0000-0000-7000-8000-0000000007e0",
+        "schemaId": "019a0000-0000-7000-8000-000000000bc8"
+      },
+      "properties": {
+        "startAt": "2026-10-11T10:05:00Z",
+        "endAt": "2026-10-11T10:05:00Z",
+        "timeZone": null
+      }
+    },
+    "identity": "New instance/session mapping even when playerId reused; reconnect is a distinct callback, replay is not.",
+    "history": "Replay reuses persisted input-to-UUIDv7 mapping; a new independently collected fact gets a new Observation. Historical contents are not overwritten."
+  },
+  {
+    "id": "C17",
+    "title": "VRChat roster join is not historical arrival",
+    "source": [
+      "https://creators.vrchat.com/worlds/udon/graph/event-nodes/"
+    ],
+    "evidence": "Constructed fixture using verified official source fields; values are synthetic, not a captured source response.",
+    "fields": {
+      "event": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "playerId": {
+        "type": "integer",
+        "nullable": false,
+        "required": true
+      },
+      "isLocal": {
+        "type": "boolean",
+        "nullable": false,
+        "required": true
+      },
+      "displayName": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "instanceId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "instanceId": "019a0000-0000-7000-8000-000000000010"
+    },
+    "properties": {
+      "event": "OnPlayerJoined",
+      "playerId": 8,
+      "isLocal": false,
+      "displayName": "Existing Player"
+    },
+    "expectedValid": true,
+    "reason": "On own join, OnPlayerJoined fires for players already present. This is evidence of presence now, not those players historical arrival; fact schema must mean observed presence.",
+    "verdict": "B",
+    "entityId": "019a0000-0000-7000-8000-0000000007e1",
+    "observation": {
+      "id": "019a0000-0000-7000-8000-0000000003f9",
+      "references": {
+        "observerId": "019a0000-0000-7000-8000-000000000001",
+        "contentId": "019a0000-0000-7000-8000-0000000007e1",
+        "schemaId": "019a0000-0000-7000-8000-000000000bc9"
+      },
+      "properties": {
+        "startAt": "2026-10-11T10:00:00Z",
+        "endAt": "2026-10-11T10:00:00Z",
+        "timeZone": null
+      }
+    },
+    "identity": "One observed presence per callback input; do not deduplicate players globally by displayName.",
+    "history": "Replay reuses persisted input-to-UUIDv7 mapping; a new independently collected fact gets a new Observation. Historical contents are not overwritten."
+  },
+  {
+    "id": "C18",
+    "title": "Music pause state",
+    "source": [
+      "https://developer.spotify.com/documentation/web-api/reference/get-the-users-currently-playing-track"
+    ],
+    "evidence": "Constructed fixture using verified official source fields; values are synthetic, not a captured source response.",
+    "fields": {
+      "timestamp": {
+        "type": "integer",
+        "nullable": false,
+        "required": true
+      },
+      "progress_ms": {
+        "type": "integer",
+        "nullable": false,
+        "required": true
+      },
+      "is_playing": {
+        "type": "boolean",
+        "nullable": false,
+        "required": true
+      },
+      "currently_playing_type": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "trackId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "trackId": "019a0000-0000-7000-8000-000000000012"
+    },
+    "properties": {
+      "timestamp": 1791712800000,
+      "progress_ms": 120000,
+      "is_playing": false,
+      "currently_playing_type": "track"
+    },
+    "expectedValid": true,
+    "reason": "State-change timestamp plus false is_playing expresses pause. progress_ms is track position, not elapsed listening. Observation is source playback state-change fact, not poll time.",
+    "verdict": "A",
+    "entityId": "019a0000-0000-7000-8000-0000000007e2",
+    "observation": {
+      "id": "019a0000-0000-7000-8000-0000000003fa",
+      "references": {
+        "observerId": "019a0000-0000-7000-8000-000000000001",
+        "contentId": "019a0000-0000-7000-8000-0000000007e2",
+        "schemaId": "019a0000-0000-7000-8000-000000000bca"
+      },
+      "properties": {
+        "startAt": "2026-10-11T10:00:00Z",
+        "endAt": "2026-10-11T10:00:00Z",
+        "timeZone": null
+      }
+    },
+    "identity": "Poll evidence maps to snapshot UUID; Spotify item ID maps separately to stable track UUID.",
+    "history": "Replay reuses persisted input-to-UUIDv7 mapping; a new independently collected fact gets a new Observation. Historical contents are not overwritten."
+  },
+  {
+    "id": "C19",
+    "title": "Music backward seek",
+    "source": [
+      "https://developer.spotify.com/documentation/web-api/reference/get-the-users-currently-playing-track"
+    ],
+    "evidence": "Constructed fixture using verified official source fields; values are synthetic, not a captured source response.",
+    "fields": {
+      "timestamp": {
+        "type": "integer",
+        "nullable": false,
+        "required": true
+      },
+      "progress_ms": {
+        "type": "integer",
+        "nullable": false,
+        "required": true
+      },
+      "is_playing": {
+        "type": "boolean",
+        "nullable": false,
+        "required": true
+      },
+      "currently_playing_type": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "trackId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "trackId": "019a0000-0000-7000-8000-000000000012"
+    },
+    "properties": {
+      "timestamp": 1791712810000,
+      "progress_ms": 30000,
+      "is_playing": true,
+      "currently_playing_type": "track"
+    },
+    "expectedValid": true,
+    "reason": "A seek changes playhead position. Do not turn 120000 to 30000 into negative listening duration. Immutable snapshots preserve sequence.",
+    "verdict": "A",
+    "entityId": "019a0000-0000-7000-8000-0000000007e3",
+    "observation": {
+      "id": "019a0000-0000-7000-8000-0000000003fb",
+      "references": {
+        "observerId": "019a0000-0000-7000-8000-000000000001",
+        "contentId": "019a0000-0000-7000-8000-0000000007e3",
+        "schemaId": "019a0000-0000-7000-8000-000000000bcb"
+      },
+      "properties": {
+        "startAt": "2026-10-11T10:00:10Z",
+        "endAt": "2026-10-11T10:00:10Z",
+        "timeZone": null
+      }
+    },
+    "identity": "New playback state snapshot, same track entity; no identity change because progress decreased.",
+    "history": "Replay reuses persisted input-to-UUIDv7 mapping; a new independently collected fact gets a new Observation. Historical contents are not overwritten."
+  },
+  {
+    "id": "C20",
+    "title": "Music crossfade not reported by source",
+    "source": [
+      "https://developer.spotify.com/documentation/web-api/reference/get-the-users-currently-playing-track"
+    ],
+    "evidence": "Constructed fixture using verified official source fields; values are synthetic, not a captured source response.",
+    "fields": {
+      "timestamp": {
+        "type": "integer",
+        "nullable": false,
+        "required": true
+      },
+      "progress_ms": {
+        "type": "integer",
+        "nullable": false,
+        "required": true
+      },
+      "is_playing": {
+        "type": "boolean",
+        "nullable": false,
+        "required": true
+      },
+      "currently_playing_type": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "trackId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "trackId": "019a0000-0000-7000-8000-000000000013"
+    },
+    "properties": {
+      "timestamp": 1791712820000,
+      "progress_ms": 2000,
+      "is_playing": true,
+      "currently_playing_type": "track"
+    },
+    "expectedValid": true,
+    "reason": "Currently-playing supplies one item, no overlap duration or mixer gain. Preserve what is known; exact crossfade cannot be reconstructed from this evidence. Source incompleteness, not a frozen-model loss.",
+    "verdict": "B",
+    "entityId": "019a0000-0000-7000-8000-0000000007e4",
+    "observation": {
+      "id": "019a0000-0000-7000-8000-0000000003fc",
+      "references": {
+        "observerId": "019a0000-0000-7000-8000-000000000001",
+        "contentId": "019a0000-0000-7000-8000-0000000007e4",
+        "schemaId": "019a0000-0000-7000-8000-000000000bcc"
+      },
+      "properties": {
+        "startAt": "2026-10-11T10:00:20Z",
+        "endAt": "2026-10-11T10:00:20Z",
+        "timeZone": null
+      }
+    },
+    "identity": "Source poll snapshot + item mapping.",
+    "history": "Replay reuses persisted input-to-UUIDv7 mapping; a new independently collected fact gets a new Observation. Historical contents are not overwritten."
+  },
+  {
+    "id": "C21",
+    "title": "Photo EXIF lacks UTC offset",
+    "source": [
+      "https://developer.android.com/reference/androidx/exifinterface/media/ExifInterface"
+    ],
+    "evidence": "Constructed fixture using verified official source fields; values are synthetic, not a captured source response.",
+    "fields": {
+      "DateTimeOriginal": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "SubSecTimeOriginal": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "photoId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "photoId": "019a0000-0000-7000-8000-000000000014"
+    },
+    "properties": {
+      "DateTimeOriginal": "2026:10:11 12:00:00",
+      "SubSecTimeOriginal": "123456789"
+    },
+    "expectedValid": true,
+    "reason": "OffsetTimeOriginal absent means absolute time unknown. Preserve local time/subseconds strings exactly; never infer device timezone at import.",
+    "verdict": "B",
+    "entityId": "019a0000-0000-7000-8000-0000000007e5",
+    "observation": {
+      "id": "019a0000-0000-7000-8000-0000000003fd",
+      "references": {
+        "observerId": "019a0000-0000-7000-8000-000000000001",
+        "contentId": "019a0000-0000-7000-8000-0000000007e5",
+        "schemaId": "019a0000-0000-7000-8000-000000000bcd"
+      },
+      "properties": {
+        "startAt": null,
+        "endAt": null,
+        "timeZone": null
+      }
+    },
+    "identity": "Image asset identity from import mapping/content version, not EXIF time; EXIF has no universal image identity.",
+    "history": "Replay reuses persisted input-to-UUIDv7 mapping; a new independently collected fact gets a new Observation. Historical contents are not overwritten."
+  },
+  {
+    "id": "C22",
+    "title": "Edited photo has original and modification dates",
+    "source": [
+      "https://developer.android.com/reference/androidx/exifinterface/media/ExifInterface"
+    ],
+    "evidence": "Constructed fixture using verified official source fields; values are synthetic, not a captured source response.",
+    "fields": {
+      "DateTimeOriginal": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "OffsetTimeOriginal": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "DateTime": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "OffsetTime": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "photoId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "photoId": "019a0000-0000-7000-8000-000000000014"
+    },
+    "properties": {
+      "DateTimeOriginal": "2026:10:11 12:00:00",
+      "OffsetTimeOriginal": "+09:00",
+      "DateTime": "2026:10:12 09:00:00",
+      "OffsetTime": "+09:00"
+    },
+    "expectedValid": true,
+    "reason": "Capture fact time uses original date+offset, not modification/import date. Offset is not sufficient to identify IANA zone. Modification remains a separate source field/fact.",
+    "verdict": "A",
+    "entityId": "019a0000-0000-7000-8000-0000000007e6",
+    "observation": {
+      "id": "019a0000-0000-7000-8000-0000000003fe",
+      "references": {
+        "observerId": "019a0000-0000-7000-8000-000000000001",
+        "contentId": "019a0000-0000-7000-8000-0000000007e6",
+        "schemaId": "019a0000-0000-7000-8000-000000000bce"
+      },
+      "properties": {
+        "startAt": "2026-10-11T03:00:00Z",
+        "endAt": "2026-10-11T03:00:00Z",
+        "timeZone": null
+      }
+    },
+    "identity": "Original asset entity stays stable; edited bytes/metadata snapshot gets distinct content UUID if preserving history.",
+    "history": "Replay reuses persisted input-to-UUIDv7 mapping; a new independently collected fact gets a new Observation. Historical contents are not overwritten."
+  },
+  {
+    "id": "C23",
+    "title": "OTLP cumulative window and nanosecond precision",
+    "source": [
+      "https://opentelemetry.io/docs/specs/otel/metrics/data-model/",
+      "https://opentelemetry.io/docs/specs/otel/protocol/file-exporter/"
+    ],
+    "evidence": "Selected values verbatim from official OTLP file-exporter sample second data point: startTimeUnixNano, timeUnixNano, asInt; aggregationTemporality/isMonotonic copied from enclosing sum. Internal reference and Observation are constructed mapping.",
+    "fields": {
+      "startTimeUnixNano": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "timeUnixNano": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "asInt": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "aggregationTemporality": {
+        "type": "integer",
+        "nullable": false,
+        "required": true
+      },
+      "isMonotonic": {
+        "type": "boolean",
+        "nullable": false,
+        "required": true
+      },
+      "metricStreamId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "metricStreamId": "019a0000-0000-7000-8000-000000000015"
+    },
+    "properties": {
+      "startTimeUnixNano": "1581452772000000321",
+      "timeUnixNano": "1581452773000000789",
+      "asInt": "456",
+      "aggregationTemporality": 2,
+      "isMonotonic": true
+    },
+    "expectedValid": true,
+    "reason": "Exact strings preserve OTLP nanoseconds; Observation is capture-point projection, not falsely equivalent [start,end) sum window. Source interval semantics remain (start,end].",
+    "verdict": "B",
+    "entityId": "019a0000-0000-7000-8000-0000000007e7",
+    "observation": {
+      "id": "019a0000-0000-7000-8000-0000000003ff",
+      "references": {
+        "observerId": "019a0000-0000-7000-8000-000000000001",
+        "contentId": "019a0000-0000-7000-8000-0000000007e7",
+        "schemaId": "019a0000-0000-7000-8000-000000000bcf"
+      },
+      "properties": {
+        "startAt": "2020-02-11T20:26:13.000000Z",
+        "endAt": "2020-02-11T20:26:13.000000Z",
+        "timeZone": null
+      }
+    },
+    "identity": "Metric identity includes resource/scope/name/attributes; data-point identity includes source input and capture timestamp, not value alone.",
+    "history": "Replay reuses persisted input-to-UUIDv7 mapping; a new independently collected fact gets a new Observation. Historical contents are not overwritten."
+  },
+  {
+    "id": "C24",
+    "title": "Device gauge has unknown window start",
+    "source": [
+      "https://opentelemetry.io/docs/specs/otel/metrics/data-model/"
+    ],
+    "evidence": "Constructed fixture using verified official source fields; values are synthetic, not a captured source response.",
+    "fields": {
+      "timeUnixNano": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "asDouble": {
+        "type": "number",
+        "nullable": false,
+        "required": true
+      },
+      "metricName": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "deviceId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "metricStreamId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "deviceId": "019a0000-0000-7000-8000-00000000000a",
+      "metricStreamId": "019a0000-0000-7000-8000-000000000016"
+    },
+    "properties": {
+      "timeUnixNano": "1791712800000000000",
+      "asDouble": 63.5,
+      "metricName": "synthetic.cpu.temperature"
+    },
+    "expectedValid": true,
+    "reason": "Gauge is sampled value, not an interval integral. Missing start timestamp remains absent, not fabricated. Integer/string raw timestamp preserves exactness if later samples need it.",
+    "verdict": "A",
+    "entityId": "019a0000-0000-7000-8000-0000000007e8",
+    "observation": {
+      "id": "019a0000-0000-7000-8000-000000000400",
+      "references": {
+        "observerId": "019a0000-0000-7000-8000-000000000001",
+        "contentId": "019a0000-0000-7000-8000-0000000007e8",
+        "schemaId": "019a0000-0000-7000-8000-000000000bd0"
+      },
+      "properties": {
+        "startAt": "2026-10-11T10:00:00Z",
+        "endAt": "2026-10-11T10:00:00Z",
+        "timeZone": null
+      }
+    },
+    "identity": "Resource+scope+metric+attributes define stream; each sample independently mapped. metricName is adapter projection of metric name.",
+    "history": "Replay reuses persisted input-to-UUIDv7 mapping; a new independently collected fact gets a new Observation. Historical contents are not overwritten."
+  },
+  {
+    "id": "C25",
+    "title": "Device log event arrives late",
+    "source": [
+      "https://opentelemetry.io/docs/specs/otel/logs/data-model/"
+    ],
+    "evidence": "Constructed fixture using verified official source fields; values are synthetic, not a captured source response.",
+    "fields": {
+      "Timestamp": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "ObservedTimestamp": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "SeverityText": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "Body": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "deviceId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "deviceId": "019a0000-0000-7000-8000-00000000000a"
+    },
+    "properties": {
+      "Timestamp": "1791712800000000000",
+      "ObservedTimestamp": "1791716400000000000",
+      "SeverityText": "INFO",
+      "Body": "synthetic reconnect event"
+    },
+    "expectedValid": true,
+    "reason": "Timestamp is occurrence; ObservedTimestamp is collection. Both remain in content, while Observation bounds use occurrence. Delayed arrival does not move historical event to ingestion time.",
+    "verdict": "A",
+    "entityId": "019a0000-0000-7000-8000-0000000007e9",
+    "observation": {
+      "id": "019a0000-0000-7000-8000-000000000401",
+      "references": {
+        "observerId": "019a0000-0000-7000-8000-000000000001",
+        "contentId": "019a0000-0000-7000-8000-0000000007e9",
+        "schemaId": "019a0000-0000-7000-8000-000000000bd1"
+      },
+      "properties": {
+        "startAt": "2026-10-11T10:00:00Z",
+        "endAt": "2026-10-11T10:00:00Z",
+        "timeZone": null
+      }
+    },
+    "identity": "Persisted source-log input/sequence maps to UUID; identical text is not identity.",
+    "history": "Replay reuses persisted input-to-UUIDv7 mapping; a new independently collected fact gets a new Observation. Historical contents are not overwritten."
+  },
+  {
+    "id": "C02-N1",
+    "title": "Array of entity references disallowed",
+    "source": [
+      "local EntitySchemaRules.cs"
+    ],
+    "evidence": "Constructed validator negative control",
+    "fields": {
+      "fixes": {
+        "type": "array",
+        "required": true,
+        "nullable": false,
+        "items": {
+          "type": "reference",
+          "nullable": false
+        }
+      }
+    },
+    "references": {},
+    "properties": {
+      "fixes": [
+        "019a0000-0000-7000-8000-000000000001"
+      ]
+    },
+    "expectedValid": false,
+    "reason": "ValidFields rejects nested reference; individually referenced membership entities remain expressible."
+  },
+  {
+    "id": "C15-N1",
+    "title": "External player identifier is not EntityId",
+    "source": [
+      "local EntitySchemaRules.cs"
+    ],
+    "evidence": "Constructed validator negative control",
+    "fields": {
+      "playerId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "playerId": "usr_source-id"
+    },
+    "properties": {},
+    "expectedValid": false,
+    "reason": "References require RFC-variant UUIDv7, not source IDs."
+  },
+  {
+    "id": "C18-N1",
+    "title": "Duplicated reference inside properties",
+    "source": [
+      "local EntitySchemaRules.cs"
+    ],
+    "evidence": "Constructed validator negative control",
+    "fields": {
+      "trackId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "trackId": "019a0000-0000-7000-8000-000000000012"
+    },
+    "properties": {
+      "trackId": "019a0000-0000-7000-8000-000000000012"
+    },
+    "expectedValid": false,
+    "reason": "Reference field value belongs only in references."
+  },
+  {
+    "id": "C21-N1",
+    "title": "Undeclared EXIF field",
+    "source": [
+      "local EntitySchemaRules.cs"
+    ],
+    "evidence": "Constructed validator negative control",
+    "fields": {
+      "DateTimeOriginal": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "SubSecTimeOriginal": {
+        "type": "string",
+        "nullable": false,
+        "required": true
+      },
+      "photoId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "photoId": "019a0000-0000-7000-8000-000000000014"
+    },
+    "properties": {
+      "DateTimeOriginal": "2026:10:11 12:00:00",
+      "SubSecTimeOriginal": "123456789",
+      "OffsetTimeOriginal": "+09:00"
+    },
+    "expectedValid": false,
+    "reason": "Immutable field declaration cannot silently gain a source field; new schema or predeclared optional field needed."
+  }
+]

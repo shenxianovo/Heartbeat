@@ -1,0 +1,29 @@
+{
+  "resourceLogs": [
+    {
+      "scopeLogs": [
+        {
+          "logRecords": [
+            {
+              "timeUnixNano": "1700000000000000001",
+              "observedTimeUnixNano": "1700000000999999999",
+              "severityNumber": 9,
+              "severityText": "INFO",
+              "body": {
+                "stringValue": "event"
+              },
+              "traceId": "12345678901234567890123456789012",
+              "spanId": "1234567890123456"
+            },
+            {
+              "observedTimeUnixNano": "1700000000999999999",
+              "body": {
+                "stringValue": "unknown event time"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

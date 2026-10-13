@@ -1,0 +1,59 @@
+---
+title: "本机：Git、文件与进程"
+description: "显式读取真实本机状态，不运行远程同步或递归监控"
+---
+
+这些入口按需读取真正的本机来源。测试在隔离临时目录创建 Git 仓库和文件，并读取当前 Linux 进程；没有把场景 JSON 当作本机观测。共有参数、恢复与发送规则见[来源采集概览](./index.mdx)。以下命令从仓库根目录运行。
+
+## Git
+
+```sh
+dotnet run --project src/Observers/Heartbeat.Observer.Sources -- \
+  --source git --input . --scope heartbeat-repository \
+  --state .local/observers/local-demo.sqlite --offline
+```
+
+需要 PATH 中可用的 Git、一个可读取且有 HEAD 提交的本机仓库。不 fetch、不 checkout、不执行仓库 hooks，也不需要远程账号。
+
+读取 HEAD 的原始 commit 字节、tree ID、有序 parent、作者和提交者各自的 epoch/offset，以及当前 refs 的对象类型和目标。提交事实时间使用 committer epoch；author 时间仍独立保存。parent 的位置是 Git 原生顺序，不按时间排序。ref 表示本次看到的状态，其事实时间使用持久捕获时刻。
+
+提交对象 ID 在 scope 内形成稳定身份；ref 名称在 scope 内形成稳定身份，每次捕获可形成新的 ref 状态证据。未知 parent/target 可以被引用，不补造其内容。原始 commit 字节编码保存，未解析的签名字节不被改写。
+
+没有遍历全部提交、tree/blob、读取 reflog、修复浅克隆、判断 force-push、验证签名或完成 annotated tag 剥离。一次 ref 快照不能证明此前何时发生移动。对应 B01–B05，其中 B04 仍只有相关适配器，缺少该场景断言。
+
+## 单个文件或符号链接
+
+```sh
+dotnet run --project src/Observers/Heartbeat.Observer.Sources -- \
+  --source file --input README.md --scope example-linux-device \
+  --state .local/observers/local-demo.sqlite --offline
+```
+
+当前需要 Linux、GNU `stat`/`readlink`，以及所选路径的读取权限。只读取显式给定的普通文件或符号链接；不递归扫描，不接受设备和管道，不跟随符号链接去采集目标。
+
+保留设备/inode、链接数、mtime/birth-time 的来源文本、路径、文件原始字节与哈希。读取前后检查元数据，发生变化则拒绝混合快照。符号链接保存目标路径字节，包括失效链接；这不等于目标实体已被采集。
+
+已知 birth time 时，设备/inode/birth-time 共同提供身份线索；未知时只使用 capture-local 身份，不承诺跨次捕获识别重命名或 inode 重用。路径仍是当前快照数据。任意文件内容字节支持 NUL；非 UTF-8 路径字节尚不支持。输入文件上限为 8 MiB。对应 A19–A21 的部分语义，尚未建立独立的路径成员与链接解析状态图。
+
+## 显式 Linux PID
+
+```sh
+dotnet run --project src/Observers/Heartbeat.Observer.Sources -- \
+  --source process --input self --scope example-linux-device \
+  --state .local/observers/local-demo.sqlite --offline
+```
+
+需要可读取的 Linux procfs。`self` 指本次采集程序；也可指定正整数 PID。只读取 boot ID、`stat`、`status` 与 PID namespace 链接；不读取命令参数、环境变量、进程内存或凭据。
+
+身份使用 boot ID、namespace、PID 与 start ticks，不把 PID 当永久身份。读取前后核对进程 incarnation，防止读取过程中 PID 已被复用。`startTicks` 是启动后的原生计数，不能当绝对时间；本观测表达“本次看见的进程状态”，使用捕获时刻。
+
+保留 namespace PID 列表，但不创建或进入新的 namespace。当前测试不等于已经实际制造并验证 PID 重用。对应 B15–B16 的部分语义。
+
+## 测试与来源
+
+- `LocalSourceTests.GitReadsNativeCommitTimesOrderedParentsAndRefKinds`
+- `LocalSourceTests.FileCapturePreservesBytesLinkIdentityAndDoesNotTraverseSymlinks`
+- `SourceRuntimeTests.ProcStatHandlesParenthesesInProcessNameAndReadsActualSelf`
+- `SourcePipelineTests.LiveLocalCaptureReachesActualApi`、`LiveProcessCaptureReachesActualApi` 检查实际 API/数据库链路；运行结果另见报告
+
+依据：[Git cat-file](https://git-scm.com/docs/git-cat-file)、[Git for-each-ref](https://git-scm.com/docs/git-for-each-ref)、[Linux proc_pid_stat](https://man7.org/linux/man-pages/man5/proc_pid_stat.5.html)、[GNU stat](https://www.gnu.org/software/coreutils/manual/html_node/stat-invocation.html)。未覆盖项按[100 场景目录](./coverage.mdx)保留，不能从读取成功推出来源家族已经完整实现。

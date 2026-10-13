@@ -11,7 +11,9 @@
     "0009-entity-reference-enumeration",
     "0010-observation-content-and-business-entities",
     "0011-entity-schema-driven-storage",
-    "0012-foreground-application-periods"
+    "0012-foreground-application-periods",
+    "0013-business-schema-discovery",
+    "0014-source-collector-and-native-imports"
   ],
   "title": "Heartbeat ADR",
   "description": "架构决策记录",

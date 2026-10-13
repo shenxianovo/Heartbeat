@@ -26,3 +26,6 @@ test-results/
 
 # Aspire generated deployment output
 aspire-output/
+
+# Generated review downloads; canonical inputs live in Model.Tests.
+src/Docs/Heartbeat.Docs/public/model-stress/

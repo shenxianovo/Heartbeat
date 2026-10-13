@@ -2,7 +2,7 @@
   "openapi": "3.1.1",
   "info": {
     "title": "Heartbeat API",
-    "description": "Heartbeat HTTP 接口契约。维护者直接修改此文件。文档站读取此文件展示接口，后端按契约实现。",
+    "description": "Heartbeat HTTP 接口契约。维护者直接修改此文件。文档站读取此文件展示接口，后端按契约实现。\n\nJSON 对象中的字段名必须唯一（按解码后的大小写敏感名称比较），包括嵌套对象与字段定义。重复字段名返回 400，避免只保留最后一个值造成信息丢失；数组中的重复值不受此限制。",
     "version": "draft"
   },
   "servers": [
@@ -50,7 +50,8 @@
                       },
                       "properties": {
                         "name": "示例实体"
-                      }
+                      },
+                      "schemaId": "0192b056-7300-7000-8000-000000000004"
                     }
                   },
                   "observer": {
@@ -684,10 +685,39 @@
                 ]
               }
             }
+          },
+          "schemaId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
+            "description": "仅 category=entity 时必须返回的业务实体定义标识。客户端可据此按 ID 读取 EntitySchema。固定模型不返回此字段。这是读取元数据，不属于业务 references。"
           }
         },
         "description": "统一实体读取响应。category 声明模型类别，references 保存具名引用，properties 保存其他业务属性。实体 id 由请求路径提供。 读取保留字段省略与显式 null 的区别。省略的业务字段不出现在响应中；已提交的 null 按 null 返回。__omitted_fields 是后端维护的存储系统列，不出现在业务请求或响应中。",
-        "additionalProperties": false
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "category": {
+                  "const": "entity"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "schemaId"
+              ]
+            },
+            "else": {
+              "not": {
+                "required": [
+                  "schemaId"
+                ]
+              }
+            }
+          }
+        ]
       },
       "Observation": {
         "type": "object",

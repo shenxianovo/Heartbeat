@@ -26,6 +26,10 @@ TUnit 通过 Microsoft.Testing.Platform 运行，版本 `1.72.16` 由 `Directory
 
 测试框架调用工具的生命周期方法。集成测试和端到端测试各自创建独立实例，规则见[测试数据库](./database.mdx)。组件职责见 [ADR 0005](../adr/0005-backend-project-organization.mdx#测试数据库)。
 
+## 无数据库的模型检查
+
+`tests/Heartbeat.Model.Tests` 直接执行实际 EntitySchemaRules，包含 [100 场景映射与边界回归](./model-generality/index.mdx)，不启动容器。运行 `dotnet test --project tests/Heartbeat.Model.Tests/Heartbeat.Model.Tests.csproj`。它证明类型声明和值校验，不代替 HTTP、数据库或来源接入测试。
+
 ## 当前验证边界
 
 集成测试项目位于 `tests/Heartbeat.Integration.Tests`。数据库用例使用真实 PostgreSQL 和 Infrastructure 迁移。

@@ -10,6 +10,8 @@
     "foreground-state",
     "input-events",
     "device-state",
+    "---来源接入---",
+    "sources",
     "---Entities---",
     "...entities",
     "---EntitySchemas---",

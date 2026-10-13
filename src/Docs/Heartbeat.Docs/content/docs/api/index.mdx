@@ -40,7 +40,7 @@ NGINX 使用 `/api` 作为 API 服务前缀。OpenAPI 的 `servers` 声明相对
 
 请求体上限为 10 MiB（10,485,760 字节），按完整请求体的字节数计算。超过上限时，NGINX 或后端返回 `413`。
 
-JSON 字段名与字符串值必须是有效的 Unicode。如果内容包含未配对的代理码点，后端返回 `400`。字段名区分大小写。固定模型与业务实体都拒绝未声明字段，包括嵌套对象成员；校验失败返回 `400`。字段定义本身也拒绝未声明配置，`fields` 仅用于 `object`，`items` 仅用于 `array`。
+JSON 字段名与字符串值必须是有效的 Unicode。如果内容包含未配对的代理码点，后端返回 `400`。字段名区分大小写。同一 JSON 对象中不得重复字段名（包括转义后相同的名称）；外层封装、字段定义、嵌套对象和数组内的对象均遵守此规则，重复时返回 `400`。这是为了避免解析器或数据库只保留最后一个值而悄悄丢失信息。数组中的重复值可以保留。固定模型与业务实体都拒绝未声明字段，包括嵌套对象成员；校验失败返回 `400`。字段定义本身也拒绝未声明配置，`fields` 仅用于 `object`，`items` 仅用于 `array`。
 
 Observation 的 `references` 必须包含 `observerId`、`contentId` 和 `schemaId`。Observation 的 `properties` 必须包含时间边界和事实时区。未知值必须为 `null`。
 
@@ -90,11 +90,14 @@ Observer 和 EntitySchema 的 `references` 必须为 `{}`。`properties.name` �
 
 ### 成功响应
 
+业务实体读回后，客户端可按顶层 `schemaId` 读取定义，取得字段及资源名。无需预先找到引用它的 Observation。职责见 [ADR 0013](../adr/0013-business-schema-discovery.mdx)。
+
 读取成功时，后端返回 `200 OK` 和 JSON 响应体。所有类别使用同一响应结构。
 
 | 字段 | 内容 |
 | --- | --- |
 | `category` | 实体的模型类别 |
+| `schemaId` | 仅业务实体 `category: entity` 返回，指向其 EntitySchema；固定模型不返回。它是读取元数据，不加入业务 `references` |
 | `references` | JSON 对象；键是业务定义的引用名称，非空值是目标实体的 UUIDv7；字段定义允许空值时可以为 `null`；没有引用字段时为 `{}` |
 | `properties` | 其他业务属性，不重复引用字段 |
 

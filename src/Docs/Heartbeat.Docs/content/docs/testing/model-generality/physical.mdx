@@ -1,0 +1,44 @@
+---
+title: "物理世界、时间与媒体"
+description: "25 个有来源依据的观测映射用例"
+---
+
+这组包含 25 个场景。每行是一个有明确含义的最小记录切片，不等于完整接入了对应服务。测试输入、身份约定与原始来源保存在 `tests/Heartbeat.Model.Tests/Fixtures/physical.json`。
+
+[下载全部 100 个场景的完整 JSON](/model-stress/scenarios.json)，按本页编号查找，可以检查精确 Schema、输入、身份规则、时间和重放约定。
+
+实际覆盖与限制见[验证证据](./evidence.mdx)。字段能存下来，不代表自动满足领域约束、历史保真或图查询。
+
+| 编号 | 场景 | 关键处理 | 依据 |
+| --- | --- | --- | --- |
+| C01 | GPS 定位及误差 | 经纬度之外保留误差半径；不能把估计写成精确位置 | [来源1](https://developer.android.com/reference/android/location/Location) |
+| C02 | 轨迹跨时区 | 位置不自动给出 IANA 时区；未知留空，成员点独立记录 | [来源1](https://developer.android.com/reference/android/location/Location) |
+| C03 | 定位时墙钟回拨 | 保留单调时钟与来源顺序，不伪造时间递增 | [来源1](https://developer.android.com/reference/android/location/Location) |
+| C04 | 传感器采样空档 | 只保存实际样本；缺样不插值成观测事实 | [来源1](https://developer.android.com/reference/android/hardware/SensorEvent) |
+| C05 | 启动后纳秒传感器时钟 | 没有绝对锚点就不编造 UTC；保留 boot 范围与原始计数 | [来源1](https://developer.android.com/reference/android/hardware/SensorEvent) |
+| C06 | 每日累计步数上调 | 这是派生汇总，区别于 Health Connect 区间计数 | [来源1](https://developer.android.com/reference/androidx/health/connect/client/records/StepsRecord)、[来源2](https://developer.android.com/health-and-fitness/health-connect/write-data) |
+| C07 | 旅行时的每日步数 | 日期归属政策与聚合时区显式声明 | [来源1](https://developer.android.com/reference/androidx/health/connect/client/records/StepsRecord) |
+| C08 | 重启后计步器归零 | 以启动范围解释累计值，不能跨重启直接相减 | [来源1](https://developer.android.com/reference/android/hardware/SensorEvent) |
+| C09 | 睡眠跨夏令时回拨 | 使用带偏移的时刻；本地同名小时不能合并 | [来源1](https://developer.android.com/reference/android/health/connect/datatypes/SleepSessionRecord) |
+| C10 | 睡眠阶段有未知空档 | 已知各段分别保存；空档不推成睡醒 | [来源1](https://developer.android.com/reference/android/health/connect/datatypes/SleepSessionRecord) |
+| C11 | 全天日历事件 | 保留本地日期及排他结束日；不是自动 UTC 午夜 | [来源1](https://developers.google.com/workspace/calendar/api/v3/reference/events) |
+| C12 | 周期日历的改期例外 | 系列与发生实例分开，保留原 occurrence 标识 | [来源1](https://developers.google.com/workspace/calendar/api/v3/reference/events) |
+| C13 | 浮动本地日历时间 | 无时区的本地约定不猜成 UTC；保留本地时间字符串语义 | [来源1](https://www.rfc-editor.org/rfc/rfc5545.html) |
+| C14 | 取消某次周期日程 | 取消是业务状态；不能用 null 结束时间表达 | [来源1](https://developers.google.com/workspace/calendar/api/v3/reference/events) |
+| C15 | VRChat 本地加入实例 | 只确认本地事件与已知实例，不扩展成所有人的到达时间 | [来源1](https://creators.vrchat.com/worlds/udon/graph/event-nodes/)、[来源2](https://udonsharp.docs.vrchat.com/vrchat-api/) |
+| C16 | VRChat 切世界与重连 | 区分新会话、恢复连接与重复回调 | [来源1](https://creators.vrchat.com/worlds/udon/graph/event-nodes/)、[来源2](https://udonsharp.docs.vrchat.com/vrchat-api/) |
+| C17 | VRChat 初始名单回调 | 看到在场不等于知道对方何时到达 | [来源1](https://creators.vrchat.com/worlds/udon/graph/event-nodes/) |
+| C18 | 音乐暂停 | 显式暂停状态；未知结束不代表播放中 | [来源1](https://developer.spotify.com/documentation/web-api/reference/get-the-users-currently-playing-track) |
+| C19 | 音乐向后拖进度 | 位置可以倒退；播放时间和媒体位置不是同一条轴 | [来源1](https://developer.spotify.com/documentation/web-api/reference/get-the-users-currently-playing-track) |
+| C20 | 来源不报告交叉淡入淡出 | 不推造重叠区间；这是来源缺失，不是模型新增字段能解决 | [来源1](https://developer.spotify.com/documentation/web-api/reference/get-the-users-currently-playing-track) |
+| C21 | 照片 EXIF 没有 UTC 偏移 | 保留来源本地日期时间；绝对事实时间保持未知 | [来源1](https://developer.android.com/reference/androidx/exifinterface/media/ExifInterface) |
+| C22 | 照片原始与修改日期 | 两个日期对应不同事实，不拼成一次拍摄区间 | [来源1](https://developer.android.com/reference/androidx/exifinterface/media/ExifInterface) |
+| C23 | OTLP 窗口边界与纳秒 | 原始 (start,end] 边界语义保留；不能悄悄改成 [start,end) | [来源1](https://opentelemetry.io/docs/specs/otel/metrics/data-model/)、[来源2](https://opentelemetry.io/docs/specs/otel/protocol/file-exporter/) |
+| C24 | 设备 gauge 的起点未知 | 保留已知边界；不凭采集时刻补窗口起点 | [来源1](https://opentelemetry.io/docs/specs/otel/metrics/data-model/) |
+| C25 | 设备日志晚到 | 事实时间来自事件；到达时间另存，不覆盖历史 | [来源1](https://opentelemetry.io/docs/specs/otel/logs/data-model/) |
+
+## 怎么读这些结果
+
+这些映射没有依靠一个万能原始 JSON 字段把所有问题藏起来。来源标识、原始时间、状态、顺序和关系都有声明过的业务字段；确实需要保留字节时，才用明确的编码。
+
+如果一个来源没有提供历史正文、结束事件、时区或准确到达时间，测试不会替它补造。映射成功也不表示来源鉴权、生产采集、查询性能或长期运行已经验证。

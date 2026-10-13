@@ -1,0 +1,78 @@
+{
+  "resourceSpans": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "checkout"
+            }
+          }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "scope": {
+            "name": "example.sdk"
+          },
+          "spans": [
+            {
+              "traceId": "12345678901234567890123456789012",
+              "spanId": "1234567890123456",
+              "parentSpanId": "abcdefabcdefabcd",
+              "name": "GET /orders",
+              "startTimeUnixNano": "1700000000000000001",
+              "endTimeUnixNano": "1700000000000000099",
+              "attributes": [
+                {
+                  "key": "http.method",
+                  "value": {
+                    "stringValue": "GET"
+                  }
+                }
+              ],
+              "events": [
+                {
+                  "name": "late",
+                  "timeUnixNano": "1700000000000000088"
+                },
+                {
+                  "name": "early",
+                  "timeUnixNano": "1700000000000000002"
+                }
+              ],
+              "links": [
+                {
+                  "traceId": "abcdefabcdefabcdefabcdefabcdefab",
+                  "spanId": "abcdefabcdefabcd",
+                  "attributes": [
+                    {
+                      "key": "relation",
+                      "value": {
+                        "stringValue": "retry"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "traceId": "abcdefabcdefabcdefabcdefabcdefab",
+                  "spanId": "abcdefabcdefabcd",
+                  "flags": 1
+                }
+              ],
+              "droppedEventsCount": 4,
+              "vendorFuture": {
+                "nested": [
+                  true,
+                  null,
+                  99
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+---
+title: "遥测、CloudEvents 与 CDC"
+description: "原生 JSON 的有界导入、来源时钟与变更证据"
+---
+
+输入是已经导出的原生材料。本程序不启用接收端，不读取云端账户，不创建 Kafka 消费组，不连接数据库抓 WAL。取得真实材料需要来源系统自身的导出能力及相应授权；仓库合成 fixture 无需外部账号。公共参数与持久主体见[概览](./index.mdx)。
+
+## OTLP JSON
+
+```sh
+dotnet run --project src/Observers/Heartbeat.Observer.Sources -- \
+  --source otlp-json --input tests/Heartbeat.Model.Tests/NativeFixtures/Telemetry/otlp-traces.json \
+  --scope example-otel-service --state .local/observers/telemetry-demo.sqlite --offline
+```
+
+一份文件包含一种信号的原生 export request：`resourceSpans`、`resourceLogs` 或 `resourceMetrics`。可将示例文件换为 `otlp-logs.json` 或 `otlp-metrics.json`。
+
+- Span、event 与有序 link 分别映射；重复 link 保留不同位置、属性及两端引用。remote parent 可以尚未采集，不制造目标 Span
+- Span 身份使用 trace/span ID，原生修订指纹区分活跃、结束或补充材料；相同材料重放稳定
+- 日志分开保存 event time 与 observed time；前者未知时不使用后者补齐。日志缺少强制原生 event ID，因此使用 capture 范围及来源位置
+- 指标只支持 gauge 与 sum；保留单位、temporality、monotonicity、窗口时间及精确整数。Int64 以来源十进制字符串保存，避免浮点损失
+- 纳秒来源字段保留精确十进制；绝对时间投影可能降到 .NET tick，再在共同存储中降到微秒。零时间按 OTLP 含义处理为未知
+
+来源属性和扩展使用 Schema 声明的 `{name,type,valueJson}` 条目保存；JSON 字符串用于保留该值，不把它当未声明的任意对象。resource/scope 与 wrapper 元数据也保留。保留未知字段不等于替它完成业务语义验证。 数字原始写法也保留；`1` 与 `1.0` 的重编码不保证归为同一次证据，具体见[运行时重放边界](./index.mdx#身份重放和历史)。
+
+不支持 protobuf、HTTP/gRPC 收集器、多信号混合、旧 instrumentation-library 字段名、histogram/exponential-histogram/summary、不有限浮点数。未知 metric kind 拒绝，不悄悄跳过。此入口不覆盖独立 Prometheus、Sentry 或 Agent 提供商 API。
+
+依据：[OTLP JSON](https://opentelemetry.io/docs/specs/otlp/#json-protobuf-encoding)、[trace](https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/trace/v1/trace.proto)、[logs](https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/logs/v1/logs.proto)、[metrics](https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/metrics/v1/metrics.proto)。
+
+## CloudEvents 1.0 structured JSON
+
+```sh
+dotnet run --project src/Observers/Heartbeat.Observer.Sources -- \
+  --source cloudevents-json --input tests/Heartbeat.Model.Tests/NativeFixtures/Telemetry/cloudevents.json \
+  --scope example-event-source --state .local/observers/telemetry-demo.sqlite --offline
+```
+
+支持 structured JSON 单对象和离线 batch 数组。身份由 `source + id` 决定，不能按相同时间合并事件。JSON `data` 与 `data_base64` 保留，互斥字段同时出现会拒绝。扩展保持类型化属性；时间缺失保持未知。
+
+不支持 HTTP binary binding、XML/Avro/Protobuf、其他版本或 .NET 无法投影的 leap second。离线 payload 导入不是 Webhook 验签或订阅接收。依据：[CloudEvents JSON format](https://github.com/cloudevents/spec/blob/main/cloudevents/formats/json-format.md)。
+
+## Debezium PostgreSQL 变更信封
+
+```sh
+dotnet run --project src/Observers/Heartbeat.Observer.Sources -- \
+  --source debezium-json --input tests/Heartbeat.Model.Tests/NativeFixtures/Telemetry/debezium.json \
+  --scope example-postgres-connector --state .local/observers/telemetry-demo.sqlite --offline
+```
+
+支持 PostgreSQL 的 `c/u/d/r` envelope，直接输入或位于 Kafka Connect `payload`，单项或离线数组。保留 before/after、WAL 位置、事务 ID/顺序、来源时钟与 connector 处理时钟。source 时间未知时不以处理时钟替代。
+
+原生 transaction ID 与 total order 均已提供时可识别同一事务内事件。仅有 LSN 不足以区分所有行变更：缺少事务次序时，各 capture-array occurrence 分开识别，包括字节相同的重复项。没有 LSN 的 snapshot 使用 capture-local 身份；其他变更需要 `source.lsn`。不根据任意 `id` 列猜测行主键身份，也不制造 Kafka offset。
+
+支持 delete envelope；JSON null tombstone 因缺少 Kafka key/header 上下文会拒绝。尚不支持其他 connector、Kafka offsets/headers、事务边界、heartbeat、schema change、truncate 与主键切换关联。before/after 同时存在不证明旧新主键为同一行。本地批次保存也不是跨事务的原子 sink 或 exactly-once 保证。
+
+依据：[Debezium PostgreSQL](https://debezium.io/documentation/reference/stable/connectors/postgresql.html#postgresql-events)。
+
+## 测试及范围
+
+合成原生输入位于 `tests/Heartbeat.Model.Tests/NativeFixtures/Telemetry/`，测试为 `TelemetrySourceTests`；API/SQLite 重启链路使用 `SourcePipelineTests`。B06–B10、B22、C23–C24、D01–D02、D20、D22 各有不同程度的断言；B11–B14、Prometheus 系列及 D03 主键关联不能因为存在 OTLP/CDC 解析器就标为完成。精确项见[100 场景目录](./coverage.mdx)。
+
+单文件 8 MiB、重复解码 JSON key 拒绝、读取可取消；宿主另限制映射记录数与大小。不会自动抓取缺失遥测或证明来源采集完整。

@@ -1,0 +1,1126 @@
+[
+  {
+    "id": "D01",
+    "title": "CDC transaction order differs from delivery order",
+    "source": "https://debezium.io/documentation/reference/stable/connectors/postgresql.html",
+    "evidence": "Transaction metadata exposes id, total_order and data_collection_order; source and connector timestamps have different meanings.",
+    "fixtureKind": "docs-grounded constructed; not captured production data",
+    "fields": {
+      "transactionId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "rowId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "totalOrder": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "collectionOrder": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      },
+      "op": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "transactionId": "0192b056-7300-7000-8000-000000000101",
+      "rowId": "0192b056-7300-7000-8000-000000000102"
+    },
+    "properties": {
+      "totalOrder": 2,
+      "collectionOrder": 1,
+      "op": "u"
+    },
+    "expectedValid": true,
+    "reason": "Typed scalar order and ordinary row/transaction references fit. No global multi-entity commit/read snapshot or sequence-order enforcement exists in current PUT API. Required references must be UUIDv7 but can be unresolved. Preserving ordering facts is B; claiming transactional sink guarantees would overstate the API.",
+    "identity": "Allocate separate UUIDv7 identities for source database, scoped transaction, business row and each change. Map transaction source id plus event position; row primary key alone cannot identify changes.",
+    "observation": "Observer is the responsible CDC interpreting collector. ContentId identifies this change; SchemaId describes row-change facts. StartAt=EndAt uses known source change time, never arrival or UUID creation; preserve ordering integers independently.",
+    "history": "Replayed source position reuses change and Observation IDs. A later row update has new change content and Observation. Out-of-order arrival must not overwrite a newer row snapshot.",
+    "verdict": "B"
+  },
+  {
+    "id": "D02",
+    "title": "SQL delete event versus Kafka null tombstone",
+    "source": "https://debezium.io/documentation/reference/stable/connectors/postgresql.html",
+    "evidence": "Delete is followed by same-key null-valued tombstone when configured; tombstone enables log compaction.",
+    "fixtureKind": "docs-grounded constructed; not captured production data",
+    "fields": {
+      "rowId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "recordKind": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "payloadPresent": {
+        "type": "boolean",
+        "required": true,
+        "nullable": false
+      },
+      "beforeValue": {
+        "type": "string",
+        "required": false,
+        "nullable": true
+      }
+    },
+    "references": {
+      "rowId": "0192b056-7300-7000-8000-000000000102"
+    },
+    "properties": {
+      "recordKind": "tombstone",
+      "payloadPresent": false
+    },
+    "expectedValid": true,
+    "reason": "Observation requires non-null ContentId, but typed tombstone content faithfully expresses absence. This is record granularity friction, not inability to represent deletion. No DELETE endpoint or built-in tombstone semantics is implied.",
+    "identity": "Row identity remains distinct from delete-record and tombstone-record identity; topic/partition/offset identifies each retained input. Do not use a null ContentId.",
+    "observation": "Content is a transport-tombstone fact, with its own schema. A known broker record timestamp is a broker fact; deleted-row fact time remains unknown if absent. Observation permits both boundaries null.",
+    "history": "Duplicate delivery reuses tombstone mapping. Keep delete evidence separately from tombstone; replacing delete content with null destroys evidence.",
+    "verdict": "B"
+  },
+  {
+    "id": "D03",
+    "title": "Primary-key change with before/after identities",
+    "source": "https://debezium.io/documentation/reference/stable/connectors/postgresql.html",
+    "evidence": "Primary-key changes emit old-key delete/tombstone and new-key create records, with old/new key headers linking the transition.",
+    "fixtureKind": "docs-grounded constructed; not captured production data",
+    "fields": {
+      "oldRowId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "newRowId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "sourceTransactionId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "oldKey": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "newKey": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "oldRowId": "0192b056-7300-7000-8000-000000000102",
+      "newRowId": "0192b056-7300-7000-8000-000000000103"
+    },
+    "properties": {
+      "sourceTransactionId": "571:53195832",
+      "oldKey": "7",
+      "newKey": "9"
+    },
+    "expectedValid": true,
+    "reason": "Two top-level references fit even before rows arrive. The source may provide link evidence but Core neither proves identity continuity nor enforces transaction ordering.",
+    "identity": "Keep old and new scoped keys as evidence; whether they identify one persistent business thing is a domain claim. Transition gets independent UUIDv7; do not equate all matching numeric keys across tables.",
+    "observation": "Content is the explicit key-transition evidence, schema defines this fact; time is source transition time or unknown, not sink merge time.",
+    "history": "Replay retains transition ID and both reference mappings. Never silently repoint all past Observations to the newly keyed mutable row.",
+    "verdict": "B"
+  },
+  {
+    "id": "D04",
+    "title": "Webhook retry and separate same-second events",
+    "source": "https://docs.stripe.com/webhooks",
+    "evidence": "Stripe does not guarantee delivery order and recommends event IDs for duplicate detection; created has second precision.",
+    "fixtureKind": "docs-grounded constructed; not captured production data",
+    "fields": {
+      "sourceEventId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "objectId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "eventType": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "createdSeconds": {
+        "type": "integer",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "objectId": "0192b056-7300-7000-8000-000000000104"
+    },
+    "properties": {
+      "sourceEventId": "evt_constructed_1",
+      "eventType": "invoice.paid",
+      "createdSeconds": 1720000000
+    },
+    "expectedValid": true,
+    "reason": "Current Core accommodates the identities but collector must persist mapping. PUT has no deduplication by external ID or conditional event ordering. No distinct source timestamp can be inferred inside the same second.",
+    "identity": "Map account/context plus event ID to event-content and Observation UUIDs. Delivery attempt is not automatically a new independent observation. Two different event IDs remain distinct even when timestamps and object agree.",
+    "observation": "Responsible interpreter is Observer; event snapshot is content. Schema gives event occurrence meaning; equal StartAt/EndAt derived from created, with second precision retained as source semantics.",
+    "history": "Retries preserve IDs; an explicitly observed delivery-attempt fact can have its own content/Observation. Reprocessing should not create duplicated source facts.",
+    "verdict": "B"
+  },
+  {
+    "id": "D05",
+    "title": "CouchDB two live conflicting revisions",
+    "source": "https://docs.couchdb.org/en/stable/replication/conflicts.html",
+    "evidence": "Conflicting leaf revisions can coexist; ordinary reads choose a winning revision and _conflicts lists other leaf revision IDs.",
+    "fixtureKind": "docs-grounded constructed; not captured production data",
+    "fields": {
+      "documentId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "revision": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "parentRevisionId": {
+        "type": "reference",
+        "required": false,
+        "nullable": true
+      },
+      "text": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "documentId": "0192b056-7300-7000-8000-000000000105",
+      "parentRevisionId": "0192b056-7300-7000-8000-000000000106"
+    },
+    "properties": {
+      "revision": "2-constructed-left",
+      "text": "left"
+    },
+    "expectedValid": true,
+    "reason": "Parent-reference and document-reference graph fits; conflict membership needs multiple legitimate entities for variable cardinality. Core does not choose a winner or preserve revisions if the importer overwrites one content entity.",
+    "identity": "Stable document UUID differs from immutable revision UUID. Map database identity, _id and _rev; branch revisions require separate identities, not an unqualified version number.",
+    "observation": "ContentId is the revision snapshot, schema defines observed revision content. Reading time can represent seeing the revision; document edit fact time is null when not supplied.",
+    "history": "Refetch of same revision reuses mapping. Both branches remain available as separate immutable content; winner selection is another fact, not erasure of loser.",
+    "verdict": "B"
+  },
+  {
+    "id": "D06",
+    "title": "Revision ancestry survives but body is unavailable",
+    "source": "https://docs.couchdb.org/en/stable/api/document/common.html",
+    "evidence": "Document API exposes revision metadata; revision availability and document body retrieval are distinct.",
+    "fixtureKind": "docs-grounded constructed; not captured production data",
+    "fields": {
+      "documentId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "revision": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "bodyState": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "bodyText": {
+        "type": "string",
+        "required": false,
+        "nullable": true
+      }
+    },
+    "references": {
+      "documentId": "0192b056-7300-7000-8000-000000000105"
+    },
+    "properties": {
+      "revision": "1-constructed-old",
+      "bodyState": "unavailable"
+    },
+    "expectedValid": true,
+    "reason": "Optional body distinguishes absent value from explicit null. Unavailable original text is source loss, not Core information loss. Do not replace unknown with empty string or claim byte recovery.",
+    "identity": "Create known revision identity from scoped revision metadata, not a fabricated body. Entity can exist as metadata without claiming complete content.",
+    "observation": "Observation states revision metadata was seen. Schema must not label it a complete text snapshot. Historical event time is unknown without evidence.",
+    "history": "Read retry preserves identity; if body later becomes available, historical metadata Observation must retain its original evidence state when history matters.",
+    "verdict": "A"
+  },
+  {
+    "id": "D07",
+    "title": "BagIt partial fetch and interrupted import",
+    "source": "https://www.rfc-editor.org/rfc/rfc8493",
+    "evidence": "BagIt lists payload checksums and optional fetch.txt remote payloads; completeness and checksum validity are separate conditions.",
+    "fixtureKind": "docs-grounded constructed; not captured production data",
+    "fields": {
+      "archiveId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "path": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "checksumAlgorithm": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "checksum": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "availability": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "archiveId": "0192b056-7300-7000-8000-000000000107"
+    },
+    "properties": {
+      "path": "data/photo.jpg",
+      "checksumAlgorithm": "sha256",
+      "checksum": "constructed-checksum",
+      "availability": "not-fetched"
+    },
+    "expectedValid": true,
+    "reason": "Partial graph ingestion is representable and does not require fake payload bytes. Missing-target tolerance means graph completeness and hash verification are not guaranteed by API success.",
+    "identity": "Archive instance, manifest entry and payload object are independently identifiable. Map entry by archive identity plus exact path; checksum equality alone does not prove same archive-entry occurrence.",
+    "observation": "Content is manifest-entry evidence, not successful payload extraction. Schema makes that distinction. Source payload creation time remains unknown; manifest inspection time may form a separate known fact.",
+    "history": "Interrupted import may save entry before payload; ordinary references allow that. Resume preserves allocated IDs and marks verification evidence separately if historical state retained.",
+    "verdict": "B"
+  },
+  {
+    "id": "D08",
+    "title": "Archive replay after UUID mapping was lost",
+    "source": "https://www.rfc-editor.org/rfc/rfc8493",
+    "evidence": "Manifest checksums identify payload integrity; the format does not define Heartbeat observation identity.",
+    "fixtureKind": "docs-grounded constructed; not captured production data",
+    "fields": {
+      "archiveDigest": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "entryPath": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "contentDigest": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "mappingState": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {},
+    "properties": {
+      "archiveDigest": "constructed-bag-digest",
+      "entryPath": "data/a.txt",
+      "contentDigest": "constructed-file-digest",
+      "mappingState": "lost"
+    },
+    "expectedValid": true,
+    "reason": "Known evidence fits typed fields. Identity cannot be recovered from missing evidence by any model; report unresolved correspondence. This is an operational provenance limit B, not a new Core identity primitive.",
+    "identity": "Given old Heartbeat UUID mapping loss, identical content bytes do not prove same occurrence. Known archive locator/path/digest are evidence; old Observation UUID is not reconstructable from UUIDv7 time.",
+    "observation": "New importer can only express current evidence or recovered correspondence. Schema must distinguish replay candidate from confirmed independent observation; fact time unknown if archive lacks it.",
+    "history": "Exact retry identity is only assured when mapping survives or is reliably recovered. Reallocating UUIDs duplicates identity; collapsing by content hash can conflate genuine duplicate entries.",
+    "verdict": "B"
+  },
+  {
+    "id": "D09",
+    "title": "Corrected questionnaire response preserves earlier answer",
+    "source": "https://hl7.org/fhir/R4/questionnaireresponse.html",
+    "evidence": "FHIR QuestionnaireResponse has status including amended/entered-in-error, authored, subject and nested answer items.",
+    "fixtureKind": "docs-grounded constructed; not captured production data",
+    "fields": {
+      "responseId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "supersedesId": {
+        "type": "reference",
+        "required": false,
+        "nullable": true
+      },
+      "status": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "linkId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "answerText": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "responseId": "0192b056-7300-7000-8000-000000000109",
+      "supersedesId": "0192b056-7300-7000-8000-000000000110"
+    },
+    "properties": {
+      "status": "amended",
+      "linkId": "q1",
+      "answerText": "corrected"
+    },
+    "expectedValid": true,
+    "reason": "Top-level response/supersedes links preserve provenance. Core accepts status strings without FHIR enum or version rules; amendment semantics and immutability remain business obligations.",
+    "identity": "Logical response UUID differs from each answer/revision content UUID. Scoped resource/version keys map separately; subject is not Observer merely because questionnaire is about them.",
+    "observation": "Content is corrected answer evidence, schema specifies whether fact is reported state or answer-authoring event. Authored time does not automatically establish time of the reported historical event.",
+    "history": "Correction gets new snapshot content and ordinarily new independent Observation; original points to original content. Updating same content while retaining old Observation falsifies history.",
+    "verdict": "B"
+  },
+  {
+    "id": "D10",
+    "title": "Respondent certainty is not extractor confidence",
+    "source": "https://hl7.org/fhir/R4/questionnaireresponse.html",
+    "evidence": "FHIR answers support decimal values identified by item linkId; an explicit questionnaire item can ask for self-rated certainty.",
+    "fixtureKind": "docs-grounded constructed; not captured production data",
+    "fields": {
+      "responseId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "linkId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "respondentCertainty": {
+        "type": "number",
+        "required": true,
+        "nullable": false
+      },
+      "extractionConfidence": {
+        "type": "number",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "responseId": "0192b056-7300-7000-8000-000000000109"
+    },
+    "properties": {
+      "linkId": "certainty-about-q1",
+      "respondentCertainty": 0.4,
+      "extractionConfidence": 0.97
+    },
+    "expectedValid": true,
+    "reason": "Numbers preserve both judgments, but validator enforces neither range [0,1] nor calibration nor epistemic truth. This is domain validation burden, not missing universal confidence in Observation.",
+    "identity": "Answer item content is distinct from extraction assessment. Constructed questionnaire explicitly defines certainty scale; extractionConfidence is a business-assessment field, not claimed to be a FHIR core field.",
+    "observation": "Observer for extraction is the responsible interpreting system; respondent certainty describes answer content. Separate schemas/facts or explicit typed fields prevent mixing whose judgment it is. Fact time follows the judgment being observed.",
+    "history": "Revised self-rating and rerun extraction are distinct facts; rerun on same evidence does not justify overwriting prior confidence when history retained.",
+    "verdict": "B"
+  },
+  {
+    "id": "D11",
+    "title": "Image has many instances of one object label",
+    "source": "https://docs.aws.amazon.com/rekognition/latest/APIReference/API_DetectLabels.html",
+    "evidence": "DetectLabels returns label names/confidence and arrays of instances with bounding boxes and instance confidence.",
+    "fixtureKind": "docs-grounded constructed; not captured production data",
+    "fields": {
+      "imageId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "runId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "label": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "confidence": {
+        "type": "number",
+        "required": true,
+        "nullable": false
+      },
+      "box": {
+        "type": "object",
+        "required": true,
+        "nullable": false,
+        "fields": {
+          "left": {
+            "type": "number",
+            "required": true,
+            "nullable": false
+          },
+          "top": {
+            "type": "number",
+            "required": true,
+            "nullable": false
+          },
+          "width": {
+            "type": "number",
+            "required": true,
+            "nullable": false
+          },
+          "height": {
+            "type": "number",
+            "required": true,
+            "nullable": false
+          }
+        }
+      }
+    },
+    "references": {
+      "imageId": "0192b056-7300-7000-8000-000000000111",
+      "runId": "0192b056-7300-7000-8000-000000000112"
+    },
+    "properties": {
+      "label": "Person",
+      "confidence": 98.2,
+      "box": {
+        "left": 0.1,
+        "top": 0.2,
+        "width": 0.3,
+        "height": 0.4
+      }
+    },
+    "expectedValid": true,
+    "reason": "Boxes and scores fit normal typed objects. Individually traversable objects require decomposition because reference arrays are forbidden. No need for a Core multi-object primitive; exact graph shape is less direct.",
+    "identity": "Image, inference run and each detection instance receive separate UUIDv7 identities. Same class label is not shared object identity. Within saved output, stable run plus instance ordinal maps retries.",
+    "observation": "Each detection content points to image/run. Schema describes detection evidence. Fact can mean inference assertion time; photographed scene time must stay unknown if image metadata does not establish it.",
+    "history": "Replay same saved result retains detection IDs. Additional object boxes require additional content entities/Observations or a typed array when no independent references are needed.",
+    "verdict": "B"
+  },
+  {
+    "id": "D12",
+    "title": "Two model runs disagree about image detections",
+    "source": "https://docs.aws.amazon.com/rekognition/latest/APIReference/API_DetectLabels.html",
+    "evidence": "DetectLabels response includes LabelModelVersion; detections are evidence from a model response, not persistent tracked-object IDs.",
+    "fixtureKind": "docs-grounded constructed; not captured production data",
+    "fields": {
+      "imageId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "previousDetectionId": {
+        "type": "reference",
+        "required": false,
+        "nullable": true
+      },
+      "modelVersion": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "label": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "confidence": {
+        "type": "number",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "imageId": "0192b056-7300-7000-8000-000000000111"
+    },
+    "properties": {
+      "modelVersion": "constructed-v2",
+      "label": "Dog",
+      "confidence": 61.4
+    },
+    "expectedValid": true,
+    "reason": "Independent identities and source model version preserve disagreement. API does not validate provenance target categories or enforce score scales; no automatic object tracking is warranted.",
+    "identity": "Run UUID and detection UUID change for independent re-inference. Do not match detections solely by bbox equality or reuse an entity as a claimed real-world animal without evidence.",
+    "observation": "Observation names responsible detector Observer, detection content and detector-result schema. Its time is the assertion/scene time chosen explicitly by schema, not model-version publication time.",
+    "history": "Conflicting runs coexist. Optional previousDetectionId omitted means no established correspondence, unlike explicit null if domain uses null distinctly.",
+    "verdict": "B"
+  },
+  {
+    "id": "D13",
+    "title": "Audio diarization has relative times but no wall clock",
+    "source": "https://docs.aws.amazon.com/transcribe/latest/dg/diarization.html",
+    "evidence": "Speaker partitioning output uses speaker_label with start_time/end_time offsets and nested word items.",
+    "fixtureKind": "docs-grounded constructed; not captured production data",
+    "fields": {
+      "recordingId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "speakerClusterId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "offsetStartSeconds": {
+        "type": "number",
+        "required": true,
+        "nullable": false
+      },
+      "offsetEndSeconds": {
+        "type": "number",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "recordingId": "0192b056-7300-7000-8000-000000000113",
+      "speakerClusterId": "0192b056-7300-7000-8000-000000000114"
+    },
+    "properties": {
+      "offsetStartSeconds": 4.87,
+      "offsetEndSeconds": 6.88
+    },
+    "expectedValid": true,
+    "reason": "Offset numbers preserve source temporal semantics, so absent wall-clock anchor is B query friction rather than information loss. Generic Observation-time queries cannot order these on a wall-clock timeline.",
+    "identity": "Recording, diarization run, speaker cluster and segment each have UUIDs; spk_0 is scoped to run/recording, not a globally identified person.",
+    "observation": "Content records typed relative offsets. Observation absolute StartAt/EndAt remain null when recording origin is unknown. Schema defines an audio-segment assertion, not a fabricated 1970 absolute interval.",
+    "history": "Replay fixed output reuses segment mapping; rerun segmentation gets new evidence identity. Corrected labels should not mutate snapshots referenced by earlier Observations.",
+    "verdict": "B"
+  },
+  {
+    "id": "D14",
+    "title": "Overlapping speech and disjoint speaker turns",
+    "source": "https://github.com/pyannote/pyannote-core",
+    "evidence": "pyannote-core models temporal segments with labels and supports overlapping segments; this case is constructed, not a measured recording.",
+    "fixtureKind": "docs-grounded constructed; not captured production data",
+    "fields": {
+      "recordingId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "speakerClusterId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "offsetStartSeconds": {
+        "type": "number",
+        "required": true,
+        "nullable": false
+      },
+      "offsetEndSeconds": {
+        "type": "number",
+        "required": true,
+        "nullable": false
+      },
+      "track": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "recordingId": "0192b056-7300-7000-8000-000000000113",
+      "speakerClusterId": "0192b056-7300-7000-8000-000000000115"
+    },
+    "properties": {
+      "offsetStartSeconds": 5.2,
+      "offsetEndSeconds": 7.0,
+      "track": "B"
+    },
+    "expectedValid": true,
+    "reason": "Independent segments naturally preserve overlap. A single bounding interval for a speaker with silence gaps loses information; ordinary multi-entity granularity avoids that without Core changes.",
+    "identity": "Each labeled track segment has independent UUID. A second speaker overlapping 5.2\u20136.88 does not share segment identity; noncontiguous turns are not one bounding interval.",
+    "observation": "Each segment is content under same schema; absolute bounds can be known only with anchor. Overlapping Observation intervals are valid; there is no exclusivity constraint.",
+    "history": "Same diarization output replays unchanged. Revised overlap inference is new history if retained; unknown speaker cluster identity is not invented person identity.",
+    "verdict": "A"
+  },
+  {
+    "id": "D15",
+    "title": "N-ary provenance association with activity agent plan",
+    "source": "https://www.w3.org/TR/prov-dm/",
+    "evidence": "PROV association can have its own identity and identify activity, agent and plan.",
+    "fixtureKind": "docs-grounded constructed; not captured production data",
+    "fields": {
+      "activityId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "agentId": {
+        "type": "reference",
+        "required": false,
+        "nullable": true
+      },
+      "planId": {
+        "type": "reference",
+        "required": false,
+        "nullable": true
+      },
+      "role": {
+        "type": "string",
+        "required": false,
+        "nullable": false
+      }
+    },
+    "references": {
+      "activityId": "0192b056-7300-7000-8000-000000000116",
+      "agentId": "0192b056-7300-7000-8000-000000000117",
+      "planId": "0192b056-7300-7000-8000-000000000118"
+    },
+    "properties": {
+      "role": "operator"
+    },
+    "expectedValid": true,
+    "reason": "Three top-level ordinary references fully represent the n-ary fact, with no special edge type. Existence/type consistency is not API-enforced; source relation constraints are domain checks.",
+    "identity": "Association UUID is separate from its three targets. Source PROV identifier maps when provided; anonymous relation occurrence needs persisted local mapping.",
+    "observation": "Association is ordinary content entity; schema defines responsibility fact. Observation timing can be unknown without source temporal qualification. Agent in relation is not necessarily Observer of the provenance assertion.",
+    "history": "Replay same association retains identity. Changed plan/role is new relationship history when old responsibility assertions must remain available.",
+    "verdict": "A"
+  },
+  {
+    "id": "D16",
+    "title": "Nested groups form a membership cycle",
+    "source": "https://www.rfc-editor.org/rfc/rfc7643",
+    "evidence": "SCIM Group members can refer to Users or Groups; scenario intentionally stresses a two-group cycle and does not assert all providers accept cycles.",
+    "fixtureKind": "docs-grounded constructed; not captured production data",
+    "fields": {
+      "groupId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "memberId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "memberType": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "groupId": "0192b056-7300-7000-8000-000000000119",
+      "memberId": "0192b056-7300-7000-8000-000000000120"
+    },
+    "properties": {
+      "memberType": "Group"
+    },
+    "expectedValid": true,
+    "reason": "Ordinary references allow cycles and unresolved targets, so insert order imposes no deadlock in graph construction. Traversal termination/cycle validity are business concerns; not a Core expressiveness failure.",
+    "identity": "Group A and B have independently scoped UUIDs; A\u2192B membership and B\u2192A membership have distinct entity UUIDs. Member ID is not membership ID.",
+    "observation": "Content is one membership assertion under membership schema; source retrieval time may describe observed membership state. No unavailable creation time is fabricated.",
+    "history": "Persist both membership occurrences, retaining mapping on repeated pulls. Removing membership later changes current state or creates a historical ended assertion according to explicit business policy.",
+    "verdict": "A"
+  },
+  {
+    "id": "D17",
+    "title": "Temporal responsibility scoped to a PROV activity",
+    "source": "https://www.w3.org/TR/prov-dm/",
+    "evidence": "PROV delegation identifies delegate, responsible agent and optionally activity; activity has temporal extent.",
+    "fixtureKind": "docs-grounded constructed; not captured production data",
+    "fields": {
+      "delegateId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "responsibleId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "activityId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "delegateId": "0192b056-7300-7000-8000-000000000117",
+      "responsibleId": "0192b056-7300-7000-8000-000000000121",
+      "activityId": "0192b056-7300-7000-8000-000000000116"
+    },
+    "properties": {},
+    "expectedValid": true,
+    "reason": "Ordinary relation entity carries three references. A separate observation of activity duration is not interchangeable with relation effective time; Core can preserve both but does not infer cross-fact temporal rules.",
+    "identity": "Delegation assertion has independent UUID, even when same two agents recur in different activities. Preserve source relation ID or scoped occurrence key.",
+    "observation": "Content schema states this is delegation for the referenced activity. Known activity bounds may describe activity, but do not automatically prove exact delegation bounds; leave Observation limits unknown if not established.",
+    "history": "Repeated evidence reuses mapping; newly asserted delegation for a later activity gets a new relationship entity. History does not require EntitySchema to be ITimed.",
+    "verdict": "B"
+  },
+  {
+    "id": "D18",
+    "title": "Same externalId from different provisioning clients",
+    "source": "https://www.rfc-editor.org/rfc/rfc7643",
+    "evidence": "SCIM externalId is client-issued and scoped to its provisioning domain.",
+    "fixtureKind": "docs-grounded constructed; not captured production data",
+    "fields": {
+      "provisioningDomainId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "serviceProviderId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "externalId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "userName": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "provisioningDomainId": "0192b056-7300-7000-8000-000000000122"
+    },
+    "properties": {
+      "serviceProviderId": "provider/user-17",
+      "externalId": "42",
+      "userName": "constructed-user"
+    },
+    "expectedValid": true,
+    "reason": "Top-level domain reference plus typed external ID encodes scope. Neither UUIDv7 nor current schema validator supplies uniqueness of (domain, externalId), alias matching or reconciliation.",
+    "identity": "Heartbeat identity maps provider resource identity separately from client/domain externalId. Different clients externalId=42 must not collapse into one UUID.",
+    "observation": "Content schema is account-identity evidence. Observation time is observed account state or known source update time, with responsibility assigned to interpreting collector.",
+    "history": "Changed external alias should not create a new person absent evidence. Alias history can be separate identity-binding content; old Observations must retain prior asserted mapping.",
+    "verdict": "B"
+  },
+  {
+    "id": "D19",
+    "title": "Merged person records keep replacement direction",
+    "source": "https://hl7.org/fhir/R4/patient.html",
+    "evidence": "FHIR Patient.link includes other resource and typed links such as replaced-by/replaces/refer/seealso.",
+    "fixtureKind": "docs-grounded constructed; not captured production data",
+    "fields": {
+      "fromPatientId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "toPatientId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "linkType": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "fromPatientId": "0192b056-7300-7000-8000-000000000123",
+      "toPatientId": "0192b056-7300-7000-8000-000000000124"
+    },
+    "properties": {
+      "linkType": "replaced-by"
+    },
+    "expectedValid": true,
+    "reason": "Named references preserve directed replacement and linkType. Core does not compute equivalence classes, enforce acyclicity or distinguish FHIR-valid targets; these are domain semantics.",
+    "identity": "Keep two source patient-record UUIDs distinct from any asserted real-person identity. Replacement link is independently identifiable provenance; alias/refer is not automatic equivalence.",
+    "observation": "Content is link assertion under link schema. Observation reflects when replacement relation was observed or known effective time, not birth or arbitrary merge-processing time.",
+    "history": "Old observations stay tied to historical records/content. Corrected merge creates or updates link assertions under explicit history rules; do not erase original record IDs.",
+    "verdict": "B"
+  },
+  {
+    "id": "D20",
+    "title": "Distinct CloudEvents share exact timestamp",
+    "source": "https://github.com/cloudevents/spec/blob/v1.0.2/cloudevents/spec.md",
+    "evidence": "CloudEvents source plus id identifies an event; time is optional and subject describes context, not event identity.",
+    "fixtureKind": "docs-grounded constructed; not captured production data",
+    "fields": {
+      "source": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "sourceEventId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "eventType": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "subject": {
+        "type": "string",
+        "required": false,
+        "nullable": false
+      }
+    },
+    "references": {},
+    "properties": {
+      "source": "/constructed/source",
+      "sourceEventId": "event-2",
+      "eventType": "sample.changed",
+      "subject": "record/7"
+    },
+    "expectedValid": true,
+    "reason": "Exact simultaneity and optional times are directly representable. Source-scoped deduplication is collector responsibility, not a uniqueness constraint implied by Core.",
+    "identity": "Map (source,id) to stable event and Observation UUIDs. Event-1 and event-2 at exactly t remain separate; UUID generation time is irrelevant to event time.",
+    "observation": "Content is event evidence, SchemaId gives event meaning. If time known use StartAt=EndAt=t, otherwise both null; TimeZone may remain null even with UTC offset.",
+    "history": "Replay same source/id retains mapping; different id creates another event. Equal content and equal timestamp do not prove retry.",
+    "verdict": "A"
+  },
+  {
+    "id": "D21",
+    "title": "Nanosecond logs collide after microsecond storage",
+    "source": "https://opentelemetry.io/docs/specs/otel/logs/data-model/",
+    "evidence": "OpenTelemetry log Timestamp and ObservedTimestamp use unsigned 64-bit epoch nanoseconds.",
+    "fixtureKind": "docs-grounded constructed; not captured production data",
+    "fields": {
+      "timestampUnixNano": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "observedTimestampUnixNano": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "body": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {},
+    "properties": {
+      "timestampUnixNano": "1720000000000000101",
+      "observedTimestampUnixNano": "1720000000000000999",
+      "body": "constructed-event"
+    },
+    "expectedValid": true,
+    "reason": "DateTimeOffset 100 ns and stored microseconds cannot provide exact ns generic time ordering. Explicit natural timestamp field retains source information, so B query/normalization friction, not a Core information-loss proof. No raw JSON escape is required.",
+    "identity": "Log record identity needs saved stream/record key or persisted occurrence mapping; nanosecond timestamp alone is not unique. Separate two records 1 ns apart.",
+    "observation": "Observation stores source fact time at supported precision; typed decimal-digit string retains full uint64 nanoseconds, including values beyond signed Int64. Schema defines raw timestamp semantics explicitly.",
+    "history": "Replay retains each record identity. Do not merge records because rounded Observation intervals coincide; retain both original timestamps for exact ordering.",
+    "verdict": "B"
+  },
+  {
+    "id": "D22",
+    "title": "Missing event timestamp versus known collection time",
+    "source": "https://opentelemetry.io/docs/specs/otel/logs/data-model/",
+    "evidence": "OpenTelemetry distinguishes event Timestamp from collection ObservedTimestamp; absent timestamp is represented separately from collection time.",
+    "fixtureKind": "docs-grounded constructed; not captured production data",
+    "fields": {
+      "eventTimeKnown": {
+        "type": "boolean",
+        "required": true,
+        "nullable": false
+      },
+      "observedTimestampUnixNano": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "body": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {},
+    "properties": {
+      "eventTimeKnown": false,
+      "observedTimestampUnixNano": "1720000000000000000",
+      "body": "time-not-provided"
+    },
+    "expectedValid": true,
+    "reason": "Unknown endpoints and typed acquisition metadata suffice. null does not mean infinity/ongoing or lost connection; statuses belong in content. Generic time queries only cover genuinely known fact bounds.",
+    "identity": "Log occurrence UUID remains independent of collection clock. Observer is responsible collector/interpreter, not clock or transport.",
+    "observation": "Observation of the underlying event has unknown bounds; content retains known collection time. A separate seen-at observation may have known point time. Do not silently substitute observation timestamp while claiming event occurrence.",
+    "history": "Replayed stored input reuses mapping. A genuinely new acquisition can be another observation if schema states acquisition fact, keeping source event identity stable.",
+    "verdict": "A"
+  },
+  {
+    "id": "D23",
+    "title": "Avro reader default differs from source field presence",
+    "source": "https://avro.apache.org/docs/1.12.0/specification/",
+    "evidence": "Avro defaults are applied during schema resolution for missing writer fields; defaults do not make encoded fields optional.",
+    "fixtureKind": "docs-grounded constructed; not captured production data",
+    "fields": {
+      "writerSchemaId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "readerSchemaId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "nickname": {
+        "type": "string",
+        "required": false,
+        "nullable": true
+      },
+      "defaultApplied": {
+        "type": "boolean",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "writerSchemaId": "0192b056-7300-7000-8000-000000000125",
+      "readerSchemaId": "0192b056-7300-7000-8000-000000000126"
+    },
+    "properties": {
+      "defaultApplied": false
+    },
+    "expectedValid": true,
+    "reason": "Typed omission/null is round-trippable but source defaults/aliases/unions are not automatically interpreted. Schema evolution entails new resource and content mapping, significant B friction; no ITimed/schema timestamp may be invented.",
+    "identity": "Writer and reader schema documents and source record versions have independent IDs. Heartbeat EntitySchema is another entity, not automatically either Avro schema.",
+    "observation": "Content under a writer-aware schema records field absence; a transformed defaulted view is different content/interpretation. Observation time remains the source fact time, not schema registration time.",
+    "history": "Original content preserves omission versus explicit null. New Heartbeat structure requires new SchemaId and resourceName; changing registered fields in place returns conflict, even adding optional nickname.",
+    "verdict": "B"
+  },
+  {
+    "id": "D24",
+    "title": "Questionnaire nested answer references require graph visibility",
+    "source": "https://hl7.org/fhir/R4/questionnaireresponse.html",
+    "evidence": "QuestionnaireResponse permits nested item/answer structure and valueReference answers.",
+    "fixtureKind": "docs-grounded constructed; not captured production data",
+    "fields": {
+      "responseId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "targetId": {
+        "type": "reference",
+        "required": false,
+        "nullable": true
+      },
+      "itemPath": {
+        "type": "array",
+        "required": true,
+        "nullable": false,
+        "items": {
+          "type": "integer",
+          "nullable": false
+        }
+      },
+      "linkId": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      }
+    },
+    "references": {
+      "responseId": "0192b056-7300-7000-8000-000000000109",
+      "targetId": "0192b056-7300-7000-8000-000000000127"
+    },
+    "properties": {
+      "itemPath": [
+        0,
+        1,
+        0
+      ],
+      "linkId": "target-selection"
+    },
+    "expectedValid": true,
+    "reason": "Literal nested reference or array-of-reference declaration fails ValidFields. Strings inside arrays preserve identifier text but are not graph edges. Legitimate answer decomposition is B; preserving exact nested shape AND universal reference enumeration in that same record is unsupported. See D24-negative fixtures.",
+    "identity": "For independently referenced answer target, create an answer-occurrence identity scoped to saved response version and positional path/linkId. Repeated linkId alone need not uniquely identify nested occurrence.",
+    "observation": "Content is one reference-bearing answer occurrence under answer schema; response and target are normal top-level references. Authored/source fact time or unknown, per declared meaning.",
+    "history": "Preserve ordinal path and response version so repeated answers and history can be reconstructed. Replay keeps occurrence mappings; amended answers belong to amended content history.",
+    "verdict": "B"
+  },
+  {
+    "id": "D25",
+    "title": "Encrypted JWE evidence with unavailable plaintext",
+    "source": "https://www.rfc-editor.org/rfc/rfc7516",
+    "evidence": "JWE compact serialization carries protected header, encrypted key, IV, ciphertext and authentication tag; ciphertext is not plaintext evidence.",
+    "fixtureKind": "docs-grounded constructed; not captured production data",
+    "fields": {
+      "artifactId": {
+        "type": "reference",
+        "required": true,
+        "nullable": false
+      },
+      "protectedHeader": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "ciphertext": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "authenticationTag": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "plaintextState": {
+        "type": "string",
+        "required": true,
+        "nullable": false
+      },
+      "plaintext": {
+        "type": "string",
+        "required": false,
+        "nullable": true
+      }
+    },
+    "references": {
+      "artifactId": "0192b056-7300-7000-8000-000000000128"
+    },
+    "properties": {
+      "protectedHeader": "constructed-base64url-header",
+      "ciphertext": "constructed-base64url-ciphertext",
+      "authenticationTag": "constructed-base64url-tag",
+      "plaintextState": "key-unavailable"
+    },
+    "expectedValid": true,
+    "reason": "String fields naturally preserve base64url evidence; no core binary field needed. Missing keys are source/access limitation. API does not verify JWE authentication or provenance, and accepted bytes do not establish plaintext truth.",
+    "identity": "Encrypted artifact UUID and any decrypted interpretation UUID are distinct. Map artifact occurrence/digest as supported; matching ciphertext is not global plaintext identity. Fixture values are schema-testing placeholders, not valid cryptographic material.",
+    "observation": "Content schema asserts envelope was observed with unavailable plaintext. Observation fact time is envelope observation time if known; plaintext event time remains unknown. Never create guessed plaintext claims.",
+    "history": "Replay envelope reuses identity. Later authorized decryption can form new content/Observation retaining envelope reference and original evidence state.",
+    "verdict": "B"
+  }
+]

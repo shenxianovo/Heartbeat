@@ -1,0 +1,44 @@
+---
+title: "数字活动与文件"
+description: "25 个有来源依据的观测映射用例"
+---
+
+这组包含 25 个场景。每行是一个有明确含义的最小记录切片，不等于完整接入了对应服务。测试输入、身份约定与原始来源保存在 `tests/Heartbeat.Model.Tests/Fixtures/digital.json`。
+
+[下载全部 100 个场景的完整 JSON](/model-stress/scenarios.json)，按本页编号查找，可以检查精确 Schema、输入、身份规则、时间和重放约定。
+
+实际覆盖与限制见[验证证据](./evidence.mdx)。字段能存下来，不代表自动满足领域约束、历史保真或图查询。
+
+| 编号 | 场景 | 关键处理 | 依据 |
+| --- | --- | --- | --- |
+| A01 | 应用只改了显示名称 | 本机安装身份沿用；观测内容保留当时名称 | 当前仓库及隔离本地样本 |
+| A02 | 休眠或墙上时钟跳变 | 断点两侧分段；不把未采集空档当成连续使用 | 当前仓库及隔离本地样本 |
+| A03 | 应用移动路径或重新安装 | 路径是识别线索，不等于安装身份；无法确认时保留不确定 | 当前仓库及隔离本地样本 |
+| A04 | Android 查询缺少结束事件 | EndAt 保持未知；未知不代表仍在前台 | [来源1](https://developer.android.com/reference/android/app/usage/UsageEvents.Event)、[来源2](https://developer.android.com/reference/android/app/usage/UsageStatsManager) |
+| A05 | Activity 生命周期与注意力不同 | 记录实际生命周期事件；不要直接声称用户一直在看 | [来源1](https://developer.android.com/reference/android/app/usage/UsageEvents.Event) |
+| A06 | 反复访问同一网址 | 访问事件各有身份；URL 相同不代表同一次访问 | [来源1](https://developer.chrome.com/docs/extensions/reference/api/history) |
+| A07 | 历史删除与跨设备同步 | 删除信号不补造原始访问；保留来源与同步范围 | [来源1](https://developer.chrome.com/docs/extensions/reference/api/history) |
+| A08 | Gmail 历史游标失效后标签变化 | 区分补扫快照和已知变更；缺失区间无法复原 | [来源1](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages)、[来源2](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.history/list) |
+| A09 | Gmail 草稿编辑与发送 | 草稿、底层邮件和已发送邮件分清身份 | [来源1](https://developers.google.com/workspace/gmail/api/guides/drafts) |
+| A10 | 邮件 MIME 层次与附件 | 附件和成员关系按业务实体保存；声明引用，不扫描字符串 | [来源1](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages) |
+| A11 | Outlook 移动文件夹后的 ID 变化 | 采用来源支持的稳定标识或保存映射；不把新 ID 自动当新邮件 | [来源1](https://learn.microsoft.com/en-us/graph/outlook-immutable-id) |
+| A12 | Outlook 修订与移除标记 | 区分内容修订、位置变化与删除；需要历史就保存内容版本 | [来源1](https://learn.microsoft.com/en-us/graph/api/resources/message?view=graph-rest-1.0)、[来源2](https://learn.microsoft.com/en-us/graph/delta-query-messages) |
+| A13 | Slack 编辑乱序到达 | 按来源修订事实排序；接收晚不等于编辑晚 | [来源1](https://docs.slack.dev/reference/events/message/message_changed/) |
+| A14 | 只收到 Slack 删除事件 | 保存已知删除，不补造没见过的正文 | [来源1](https://docs.slack.dev/reference/events/message/message_deleted/) |
+| A15 | Matrix 密文稍后可解密 | 密文材料与后续解释分开；新解释不覆盖原证据 | [来源1](https://spec.matrix.org/v1.16/client-server-api/#mroomencrypted) |
+| A16 | 聊天分享多个鉴权文件 | 文件引用与临时下载地址分开；鉴权 URL 不是内容本身 | [来源1](https://docs.slack.dev/reference/objects/file-object/) |
+| A17 | Claude 日志最后一行尚未写完 | 完整输入再形成观测；不完整读取属于采集诊断 | [来源1](https://code.claude.com/docs/en/hooks)、[来源2](https://code.claude.com/docs/en/agent-sdk/sessions) |
+| A18 | 会话分叉与文件副本 | 复制路径不决定新会话；分叉与重放分别处理 | [来源1](https://code.claude.com/docs/en/agent-sdk/sessions) |
+| A19 | 重命名与硬链接 | 同一 inode 可有多个路径；保留设备范围和路径成员关系 | [来源1](https://docs.python.org/3/library/os.html#os.stat_result) |
+| A20 | 符号链接与目标分离 | 链接本身、目标及解析时状态是不同事实 | [来源1](https://docs.python.org/3/library/os.html#os.stat_result) |
+| A21 | 纳秒文件时间与任意字节 | 纳秒留显式源字段；非 UTF-8 名称和 NUL 内容按声明的字节编码保留 | [来源1](https://docs.python.org/3/library/os.html#os.stat_result) |
+| A22 | 不同时刻的相同截图 | 内容可复用；独立截图观测不因像素相同而合并 | [来源1](https://developer.chrome.com/docs/extensions/reference/api/tabs#method-captureVisibleTab) |
+| A23 | OCR 重跑得到不同结果 | 识别结果归各次模型运行；置信度不等于事实真假 | [来源1](https://docs.cloud.google.com/vision/docs/reference/rest/v1/AnnotateImageResponse) |
+| A24 | 键盘重复与组合输入 | 保留来源顺序与组合事件；相同时间戳不去重 | [来源1](https://www.w3.org/TR/uievents/#interface-keyboardevent) |
+| A25 | 隐私抑制与空字符串 | 显式记录抑制状态；不等同于没有输入或采集失败 | [来源1](https://www.w3.org/TR/uievents/#interface-keyboardevent) |
+
+## 怎么读这些结果
+
+这些映射没有依靠一个万能原始 JSON 字段把所有问题藏起来。来源标识、原始时间、状态、顺序和关系都有声明过的业务字段；确实需要保留字节时，才用明确的编码。
+
+如果一个来源没有提供历史正文、结束事件、时区或准确到达时间，测试不会替它补造。映射成功也不表示来源鉴权、生产采集、查询性能或长期运行已经验证。

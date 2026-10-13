@@ -6,6 +6,7 @@
   "pages": [
     "---指南---",
     "index",
+    "mapping-guide",
     "glossary",
     "...model"
   ]

@@ -6,6 +6,12 @@
   "pages": [
     "index",
     "database",
+    "model-generality/index",
+    "model-generality/digital",
+    "model-generality/systems",
+    "model-generality/physical",
+    "model-generality/provenance",
+    "model-generality/evidence",
     "---实体定义登记---",
     "entity-schemas/table-creation-failure",
     "---前台应用采集---",

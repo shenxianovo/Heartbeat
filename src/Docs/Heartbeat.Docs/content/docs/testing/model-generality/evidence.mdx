@@ -1,0 +1,92 @@
+---
+title: "证据、结果与未验证范围"
+description: "分清场景数量、真实样本、规则检查与数据库读写"
+---
+
+## 第一阶段历史记录（2026-10-11）
+
+本页对应 2026-10-11 的模型压力阶段，以下 148/232 等计数是该阶段的执行结果，不是当前分支加入原生 Observer 接入后的总数。本轮新增实现与验证单独见[来源采集验证](../../observers/sources/verification.mdx)，逐项来源覆盖见[100 场景接入目录](../../observers/sources/coverage.mdx)。
+
+## 验证对象
+
+基线为 `1330e68e4b9373c8e844d95cf5e4d7c012445675`（2026-10-11 获取的 main）。本页记录在它之上进行的隔离实验；未合并主分支，未部署业务服务。
+
+当前代码仍是 `IEntity + ITimed + Observer + Observation + EntitySchema`，观测内容是普通业务实体。IEntity 已含 `GetReferences()`，Observation 使用 `ContentId`；EntitySchema 没有时间有效期。本次没有把旧设计重新塞回来。
+
+## 实际执行结果
+
+| 层次 | 结果 | 范围 |
+| --- | --- | --- |
+| .NET 10.0.401 全解决方案构建 | 通过，0 警告、0 错误 | 当前实现、测试与 Aspire AppHost |
+| 独立模型测试 | 148 / 148 通过 | 100 场景 + 18 对照 + 6 实际采样记录 + 24 边界/回归用例 |
+| API 与数据库集成测试 | 232 / 232 通过，未跳过 | 真实 API、EF、Npgsql、迁移、并发、回滚、Observer Outbox 及新增场景 |
+| 文档类型、测试与生产构建 | 通过；5 / 5 文档测试 | 保留 Fumadocs、原始分区、接口页、关系图与可下载输入；浏览器预览另查 |
+| 基线对比质量扫描 | 完成，退出码 0 | 生产代码增加 43 行，无新增生产重复块或无用项；测试数据中的重复声明保留便于独立复现 |
+| 数学整数等价表示 | 8,004 组检查，包含在一个模型测试中 | -1000 到 1000 的四种等价表示；不是额外的 8,004 个场景 |
+
+集成测试中的 110 个参数化读回用例是：100 场景、4 个允许的对照、6 个实际采样记录。每项登记 Schema、保存内容、同 ID 重放、读回全部属性和引用，再按顶层 `schemaId` 找到实际定义。固定模型不出现这个元数据字段。
+
+A、C 两组提供 50 份可执行时间封装，测试核对 UTC 微秒读回及 TimeZone。其余文字时间映射没有被冒充可执行时刻断言，使用未知边界。
+
+## 数据库环境必须说清
+
+标准测试使用 Docker 中的 PostgreSQL 18.6。本次云环境没有 Docker，使用官方 Debian PostgreSQL 17.11 和隔离测试库。
+
+替代启动器只替换容器启动：测试正文、API、EF/Npgsql、迁移、每例独立建库及清理保持不变。232 / 232 是这个实际环境的结果，不是 Docker 18.6 的结果。标准容器流程与生产部署未验证。
+
+Developer CLI 的保留清理用例在当前 Linux 文件系统上失败：设置目录创建时间没有改变读取到的 birth time，预期 3 个候选却得到 0。在未修改的基线分离工作树中也复现了同一失败（18/19 通过），当前为 19/20 通过。不能把整体收口称为全绿。
+
+标准 `verify closeout` 也实际执行过，但当前沙箱的并行 MSBuild / `dotnet test` 命名管道启动受限，聚合命令没有通过。上表构建使用单节点 `-m:1 --disable-build-servers`，测试直接运行编译后的原生 TUnit 程序集；API 测试另外使用上述 PostgreSQL 替代启动器。没有把这些成功替换成标准全流程通过。
+
+## 哪些是真实材料
+
+- Git：实际读取基线提交对象、树项、README blob 摘要与长度、父提交；源哈希另行计算核对
+- 文件：隔离目录中实际创建重命名、硬链接、符号链接、非 UTF-8 文件名、含 NUL 内容与纳秒 mtime 样本
+- 进程：实际读取本机 `/proc` 的有限字段与启动范围；不是生产监控接入
+- 其余：按核对的官方文档构造最小记录，少量取官方示例中的值；不是用户邮箱、聊天或健康数据的实采
+
+每条 JSON 保留来源、证据类别、字段声明、输入、预期与理由。UUIDv7 是构造的内部映射，不声称来源原本给了这些标识。
+
+## 两个有证据的修正
+
+### 拒绝重复字段
+
+原实现实际接受两个 `message`、两个定义 `type` 或两个嵌套 `value`。解析器和 jsonb 可能只留下最后一个，静默丢失信息。
+
+现在按每个对象解码后的字段名、区分大小写检查唯一性。转义后相同名称也拒绝；不同对象的同名成员、大小写不同名称、重复数组值仍允许。HTTP 回归确认歧义输入返回 400，已有内容保持不变。
+
+### 独立实体也能找到定义
+
+原响应只有 `category: entity`，通用客户端仅凭实体 ID 无法知道字段遵循哪个 Schema。现在读取返回顶层 `schemaId`，来自存储已有的权威映射；不加入业务引用图。见 [ADR 0013](../../adr/0013-business-schema-discovery.mdx)。
+
+## 仍不能推出的结论
+
+- 不是 100 个生产连接器，未验证服务鉴权、速率限制或长期采集
+- 范围、联合类型、图环、来源版本与身份识别仍需领域校验
+- 不保证引用目标存在或类型正确，没有列表、逆向引用或图遍历
+- 不自动保存历史，不是多实体原子事务，也没有 compare-and-swap
+- 未验证百万记录性能、表数量增长、存储开销或灾难恢复
+- 未在 macOS 实际触发切换与休眠；相关逻辑使用既有模拟与真实存储测试
+
+结论是“这些已知事实能有结构地保存，指定记录能读回，两个边界缺陷已修正”，不是“所有接入、查询和运行问题都解决了”。
+
+## 下载精确输入
+
+- [100 个语义场景：完整字段、内容、来源与映射理由](/model-stress/scenarios.json)
+- [18 个有效/无效对照](/model-stress/controls.json)
+- [6 个实际 Git/进程采样记录](/model-stress/captured.json)
+- [Git/进程选取字段与隔离文件系统原始读数](/model-stress/source-evidence.json)
+
+这些文件由测试的权威输入自动生成。查看其中的 `id`、`fields`、`references`、`properties`、证据说明、身份与历史约定，可以逐项核查，而不必相信一句“能表示”。多数原始评审说明为英文；各组页面提供中文要点。
+
+## 复跑
+
+```sh
+dotnet test --project tests/Heartbeat.Model.Tests/Heartbeat.Model.Tests.csproj
+# 以下标准集成测试需要 Docker
+dotnet test --project tests/Heartbeat.Integration.Tests/Heartbeat.Integration.Tests.csproj
+dotnet run --project tools/Heartbeat.Dev -- verify closeout --base 1330e68 --plan
+dotnet run --project tools/Heartbeat.Dev -- verify closeout --base 1330e68
+```
+
+模型输入的权威测试副本位于 `tests/Heartbeat.Model.Tests/Fixtures/`。正文说明测试为什么存在，运行报告才是当次执行证据。

@@ -1,0 +1,39 @@
+{
+  "resourceMetrics": [
+    {
+      "scopeMetrics": [
+        {
+          "metrics": [
+            {
+              "name": "requests",
+              "unit": "{request}",
+              "sum": {
+                "aggregationTemporality": 2,
+                "isMonotonic": true,
+                "dataPoints": [
+                  {
+                    "startTimeUnixNano": "1700000000000000001",
+                    "timeUnixNano": "1700000001000000002",
+                    "asInt": "9007199254740993"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "temperature",
+              "unit": "Cel",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "1700000001000000002",
+                    "asDouble": 21.25
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

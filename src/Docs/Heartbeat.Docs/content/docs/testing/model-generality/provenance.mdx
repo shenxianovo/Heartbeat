@@ -1,0 +1,44 @@
+---
+title: "修订、身份与证据关系"
+description: "25 个有来源依据的观测映射用例"
+---
+
+这组包含 25 个场景。每行是一个有明确含义的最小记录切片，不等于完整接入了对应服务。测试输入、身份约定与原始来源保存在 `tests/Heartbeat.Model.Tests/Fixtures/provenance.json`。
+
+[下载全部 100 个场景的完整 JSON](/model-stress/scenarios.json)，按本页编号查找，可以检查精确 Schema、输入、身份规则、时间和重放约定。
+
+实际覆盖与限制见[验证证据](./evidence.mdx)。字段能存下来，不代表自动满足领域约束、历史保真或图查询。
+
+| 编号 | 场景 | 关键处理 | 依据 |
+| --- | --- | --- | --- |
+| D01 | CDC 事务顺序与到达顺序 | 事务内序号单独保留，接收先后不替代来源顺序 | [来源1](https://debezium.io/documentation/reference/stable/connectors/postgresql.html) |
+| D02 | SQL 删除与 Kafka 空 tombstone | 业务删除事实和传输清理标记不是一回事 | [来源1](https://debezium.io/documentation/reference/stable/connectors/postgresql.html) |
+| D03 | 主键变化 | 保留 before/after 及身份关系，不只保存最后一个键 | [来源1](https://debezium.io/documentation/reference/stable/connectors/postgresql.html) |
+| D04 | Webhook 重试与同秒事件 | 来源事件 ID 加作用域；时间相同不能自动去重 | [来源1](https://docs.stripe.com/webhooks) |
+| D05 | CouchDB 并存冲突版本 | 多个分支都保留；不能只当作线性最新版本 | [来源1](https://docs.couchdb.org/en/stable/replication/conflicts.html) |
+| D06 | 修订祖先存在但正文丢失 | 保留已知祖先关系，明确正文不可得 | [来源1](https://docs.couchdb.org/en/stable/api/document/common.html) |
+| D07 | BagIt 部分下载与中断 | 清单、已取得材料和缺失状态分别表达 | [来源1](https://www.rfc-editor.org/rfc/rfc8493) |
+| D08 | 归档重放但 UUID 映射丢失 | 无法保证自动识别旧记录；持久映射是采集职责 | [来源1](https://www.rfc-editor.org/rfc/rfc8493) |
+| D09 | 问卷回答修正 | 历史内容版本与当前回答身份分开 | [来源1](https://hl7.org/fhir/R4/questionnaireresponse.html) |
+| D10 | 受访者确定程度与提取置信度 | 不同主体不同含义；类型校验不保证 0–1 范围 | [来源1](https://hl7.org/fhir/R4/questionnaireresponse.html) |
+| D11 | 同图多个同类检测框 | 每个检测实例独立，不按标签文字合并 | [来源1](https://docs.aws.amazon.com/rekognition/latest/APIReference/API_DetectLabels.html) |
+| D12 | 两次模型运行意见不同 | 保留运行来源和各自结果，不覆盖成一个真值 | [来源1](https://docs.aws.amazon.com/rekognition/latest/APIReference/API_DetectLabels.html) |
+| D13 | 音频分轨只有相对时间 | 相对偏移有意义；没有锚点就不声称绝对时间 | [来源1](https://docs.aws.amazon.com/transcribe/latest/dg/diarization.html) |
+| D14 | 重叠讲话与不连续说话段 | 多个普通片段表示重叠或离散，不塞成一个连续区间 | [来源1](https://github.com/pyannote/pyannote-core) |
+| D15 | 多元 PROV 关联 | 活动、代理和计划用普通业务实体的具名引用连接 | [来源1](https://www.w3.org/TR/prov-dm/) |
+| D16 | 嵌套群组形成环 | 引用可表示环；是否允许环需要领域规则 | [来源1](https://www.rfc-editor.org/rfc/rfc7643) |
+| D17 | 限于活动的责任关系 | 关系实体表达其作用域与时间，不让主体整体承担该时间 | [来源1](https://www.w3.org/TR/prov-dm/) |
+| D18 | 多个供应客户端相同 externalId | 外部 ID 必须有来源作用域 | [来源1](https://www.rfc-editor.org/rfc/rfc7643) |
+| D19 | 人员记录合并方向 | 保留替代方向及旧身份，不把合并当删除历史 | [来源1](https://hl7.org/fhir/R4/patient.html) |
+| D20 | CloudEvents 时间完全相同 | source+id 区分事件；时间仅是事实属性 | [来源1](https://github.com/cloudevents/spec/blob/v1.0.2/cloudevents/spec.md) |
+| D21 | 纳秒日志在微秒存储中重合 | 原始时间与来源序号保留，通用时间比较不够 | [来源1](https://opentelemetry.io/docs/specs/otel/logs/data-model/) |
+| D22 | 缺事件时间但有采集时间 | 未知事实保持未知；采集时间可以另形成采集事实 | [来源1](https://opentelemetry.io/docs/specs/otel/logs/data-model/) |
+| D23 | Avro 默认值与原始缺字段 | 解析后默认值不能冒充源中确实存在的字段 | [来源1](https://avro.apache.org/docs/1.12.0/specification/) |
+| D24 | 问卷嵌套答案引用要进图 | 拆成答案/成员实体可表达；当前 API 无逆向遍历 | [来源1](https://hl7.org/fhir/R4/questionnaireresponse.html) |
+| D25 | JWE 密文尚不能解密 | 记录可获得的密文材料与状态，不声称知道明文 | [来源1](https://www.rfc-editor.org/rfc/rfc7516) |
+
+## 怎么读这些结果
+
+这些映射没有依靠一个万能原始 JSON 字段把所有问题藏起来。来源标识、原始时间、状态、顺序和关系都有声明过的业务字段；确实需要保留字节时，才用明确的编码。
+
+如果一个来源没有提供历史正文、结束事件、时区或准确到达时间，测试不会替它补造。映射成功也不表示来源鉴权、生产采集、查询性能或长期运行已经验证。

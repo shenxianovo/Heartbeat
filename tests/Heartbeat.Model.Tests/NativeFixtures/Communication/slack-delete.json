@@ -1,0 +1,15 @@
+{
+  "team_id": "TSYNTHETIC",
+  "type": "event_callback",
+  "event_id": "EvSyntheticDelete",
+  "event_time": 1791635900,
+  "event": {
+    "type": "message",
+    "subtype": "message_deleted",
+    "channel": "CSYNTHETIC",
+    "hidden": true,
+    "deleted_ts": "1791635696.123456",
+    "previous_message": { "user": "USYNTHETIC", "text": "After edit", "ts": "1791635696.123456" },
+    "event_ts": "1791635856.000001"
+  }
+}

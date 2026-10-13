@@ -1,0 +1,78 @@
+---
+title: "邮件与消息原生导入"
+description: "Graph、Slack、Gmail 的原生响应、身份与历史边界"
+---
+
+这些入口只读取已保存、已授权处理的本机文件，不访问邮箱或聊天账号。导出材料的取得与权限管理在本程序之外；运行合成样本不需要 OAuth、Slack 安装或邮箱连接。正文、邮件地址和 MIME 字节本身可能敏感，应保护状态文件及目标 API。公共参数见[采集概览](./index.mdx)。
+
+## Microsoft Graph：一份邮件或一页 delta
+
+```sh
+dotnet run --project src/Observers/Heartbeat.Observer.Sources -- \
+  --source graph-messages \
+  --input tests/Heartbeat.Model.Tests/NativeFixtures/Communication/graph-delta.json \
+  --scope example-outlook-account --state .local/observers/mail-demo.sqlite --offline
+```
+
+输入是原生 Message 对象，或 `value` 为数组的消息列表/delta 响应。保留已提供的 subject、body 内容/类型、预览、sender/from 地址、收件人、草稿/已读状态、`changeKey`、`flagStatus` 与文件夹/会话引用。HTML 是未执行的字面文本。省略字段与显式 null 分开保存。尚不投影 flag 的开始、截止与完成时间。
+
+消息身份是账号 scope 与原生 `id`，区分大小写，不用主题、地址或 `internetMessageId` 猜测合并。默认 Graph ID 可能因移动文件夹变化；采集响应时使用 `Prefer: IdType="ImmutableId"` 才能获得同邮箱内移动稳定的 ID。仅凭响应 JSON 无法证明请求使用了该 header，跨归档邮箱等边界也不承诺稳定。没有原生映射时，不把替换 ID 自动接回旧消息。
+
+`changeKey` 与原生内容的规范化指纹区分修订证据；没有修订号的项使用 capture key。相同 ID 的编辑保留来源身份，各版本的历史内容不互相覆盖。本定义表达消息修订，事实时间取 `lastModifiedDateTime`；缺失时保持未知，不拿 receipt、sent 或导入时间替代。
+
+`@removed` 保存为“从该集合移除”。文件夹 delta 的此标记也可能来自移出文件夹，不等于邮件已从邮箱永久删除；其发生时间未知。单独的 tombstone 不能可靠恢复查询文件夹。
+
+`@odata.nextLink` 不会被跟随，也不保存包含 token 的游标 URL。每次命令只导入指定页面，不能宣称 delta 同步完整。附件、批请求、Graph 通知与账号同步尚不支持。依据：[Message](https://learn.microsoft.com/en-us/graph/api/resources/message?view=graph-rest-1.0)、[delta](https://learn.microsoft.com/en-us/graph/api/message-delta?view=graph-rest-1.0)、[Immutable ID](https://learn.microsoft.com/en-us/graph/outlook-immutable-id)。
+
+## Slack：原生创建、编辑与删除回调
+
+```sh
+dotnet run --project src/Observers/Heartbeat.Observer.Sources -- \
+  --source slack-events \
+  --input tests/Heartbeat.Model.Tests/NativeFixtures/Communication/slack-delete.json \
+  --scope example-slack-installation --state .local/observers/mail-demo.sqlite --offline
+```
+
+只接受 Events API `event_callback`，其中 `event.type` 为 `message`；支持普通消息、`message_changed`、`message_deleted`。其他 subtype 明确拒绝；Web API 历史列表、workspace export、文件/反应/blocks 与 bot/system 消息不在本投影范围。
+
+消息身份包含 scope、`team_id`、channel 和精确 `ts`。创建、编辑、删除沿用同一消息身份；`event_id` 标识证据重放。thread root、channel、user 是具名引用，不因目标未采集就补造正文。编辑/删除提供 `previous_message.text` 时保留历史线索；没有旧正文时不补写。
+
+创建时间是消息 `ts`；编辑优先使用 `message.edited.ts`，否则使用原生 `event.event_ts`；删除使用 `event.event_ts`。未知时间保持 null，不使用 envelope 的分发时间 `event_time`。六位小数秒用十进制解析，避免浮点丢失微秒。乱序导入不会把到达顺序当成编辑先后。
+
+此入口不验证 HTTP 请求签名、不接收订阅、不回复 challenge、不下载文件。保存到文件的 payload 能证明“导入了该材料”，不能自行证明材料的远端真实性。依据：[Events API](https://docs.slack.dev/apis/events-api/)、[message_changed](https://docs.slack.dev/reference/events/message/message_changed/)、[message_deleted](https://docs.slack.dev/reference/events/message/message_deleted/)。
+
+## Gmail：消息、草稿和历史页分别导入
+
+```sh
+dotnet run --project src/Observers/Heartbeat.Observer.Sources -- \
+  --source gmail-messages --input tests/Heartbeat.Model.Tests/NativeFixtures/Gmail/message.json \
+  --scope example-gmail-account --state .local/observers/mail-demo.sqlite --offline
+
+dotnet run --project src/Observers/Heartbeat.Observer.Sources -- \
+  --source gmail-drafts --input tests/Heartbeat.Model.Tests/NativeFixtures/Gmail/draft-after.json \
+  --scope example-gmail-account --state .local/observers/mail-demo.sqlite --offline
+
+dotnet run --project src/Observers/Heartbeat.Observer.Sources -- \
+  --source gmail-history --input tests/Heartbeat.Model.Tests/NativeFixtures/Gmail/history.json \
+  --scope example-gmail-account --state .local/observers/mail-demo.sqlite --offline
+```
+
+分别接受 `users.messages.get` Message、`users.drafts.get` Draft 与一次成功的 `users.history.list` 响应。`me` 不是跨账号范围，必须给出稳定账号 scope。
+
+草稿使用 `draft.id` 保持身份，单独引用可被替换的底层 message ID。草稿编辑不因 nested message 被替换就变成新草稿；已发送邮件不能仅凭主题或 headers 推断为同一草稿实体。
+
+Message 投影保留邮箱 labels、history ID、internalDate、MIME 路径/父路径/partId、有序且允许重名的 headers、base64url body/raw、附件 retrieval ID。Workspace classification labels 与邮箱 labels 分开保存。尚不支持的 Message/MIME 字段明确拒绝，避免声称成功却静默丢失新字段。base64url 经过校验后保留原编码，不推断字符集、不执行 HTML、不下载附件；retrieval ID 不是“已取得附件字节”的证据。
+
+消息/草稿表达保存材料中的快照，来源没有快照采集时间，因此绝对事实边界未知。`internalDate` 留作消息原生内部创建时间，Date header 仍是独立 header；两者都不能为标签更新或草稿编辑定时。
+
+历史导入保留 `messagesAdded`、`messagesDeleted`、`labelsAdded`、`labelsRemoved`；通用 `messages` 与具体项重叠时不重复推断事件。history ID 是顺序游标，不是时间戳。页面记录 `hasMorePages`、`continuationFetched=false` 与完整性说明；即使末页也不证明起始游标和前页完整。原生错误响应会拒绝，不伪造变更或猜测错误原因；过期游标补扫/全量同步不在实现范围。继续页 token 不持久化。
+
+依据：[Message/MIME](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages)、[草稿替换](https://developers.google.com/workspace/gmail/api/guides/drafts)、[History](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.history/list)。
+
+## 边界与测试
+
+通信 JSON 文件上限 8 MiB、深度 32、单个解码字符串 262,144 个 UTF-16 字符。重复解码字段名、非法选定字段类型或超限输入拒绝，不截断正文。读取与记录生成支持取消。没有保存 envelope 凭据和游标 token，但来源正文自身可能包含敏感内容。
+
+原生合成 fixture 位于 `tests/Heartbeat.Model.Tests/NativeFixtures/Communication/` 和 `Gmail/`。`CommunicationSourceTests`、`GmailSourceTests` 检查映射、重放、范围、历史、时间及失败边界；专项 API 管道由 `SourcePipelineTests.NativeImportSurvivesSqliteRestartAndApiReadback` 检查。
+
+[A08–A14 的逐项覆盖](./coverage-digital.mdx#a08)仍有明确缺口。格式可导入不等于已经完成生产账号接入、Gmail 发送流程或完整 Graph delta 同步。

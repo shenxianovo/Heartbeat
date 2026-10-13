@@ -23,7 +23,7 @@ dotnet run --project tools/Heartbeat.Dev -- verify closeout --base HEAD --plan
 dotnet run --project tools/Heartbeat.Dev -- verify closeout --base HEAD
 ```
 
-`full` 构建 .NET 解决方案，运行集成测试和开发工具测试，再检查、构建文档站。集成测试使用独立 PostgreSQL 测试实例，需要 Docker。
+`full` 构建 .NET 解决方案，运行无数据库的模型规则测试、集成测试和开发工具测试，再检查、构建文档站。集成测试使用独立 PostgreSQL 测试实例，需要 Docker。
 
 `changed` 根据相对基点的已跟踪改动和未跟踪文件选择检查。如果路径无法识别，工具执行全量检查。如果存在未提交改动，可以省略基点，默认使用 `HEAD`。如果工作树没有改动，必须指定基点。`--plan` 只显示选择结果。
 

@@ -82,3 +82,7 @@ Testing 侧栏按能力组织独立 Case，首个样板地址为 `/testing/entit
 完整本地环境由 Aspire 管理，启动、日志和停止见 [AppHost README](../../../tools/Heartbeat.AppHost/README.md)。文档站使用本机 `pnpm dev`。Aspire 的 pnpm 集成按锁文件安装依赖。`node_modules` 与 `.next` 缓存在本机目录。独立运行文档站时可以使用前面的本地命令，但不要同时占用 NGINX 的 3000 端口。
 
 Dockerfile 保留镜像构建能力，使用 BuildKit 缓存 pnpm 依赖安装，构建时读取仓库中的 OpenAPI 文件。构建阶段使用 Node 24 LTS 和 pnpm 12.3.4。运行阶段采用 Next.js standalone，只保留 Node 与运行产物。容器以非 root 用户运行。报告在容器运行时通过只读挂载提供，不打包进镜像。
+
+## 模型压力测试下载
+
+`pnpm dev` 和 `pnpm build` 从 `tests/Heartbeat.Model.Tests/Fixtures` 生成 `public/model-stress` 下的 100 场景、18 对照、6 实际采样下载文件。输入只维护一份；生成产物不提交。独立打包可通过 `HEARTBEAT_MODEL_FIXTURES_DIR` 指定同一份输入，Dockerfile 会复制它们。下载数据不含私有账号实采；范围见 Testing 的“证据、结果与未验证范围”。

@@ -1,0 +1,141 @@
+---
+title: "100 个场景接入目录"
+description: "逐项核对原生来源、命名测试与仍未实现的语义"
+---
+
+这 100 项沿用第一阶段的 A01–D25 编号。每项标出真正的来源入口、原生测试和剩余缺口；**不是 100 个已完成连接器**。纯模型表达与 HTTP 类型读回仍见[模型压力测试](../../testing/model-generality/index.mdx)，完整原始 fixture 可[下载](/model-stress/scenarios.json)。
+
+机器可核对的权威接入清单位于 `src/Observers/Heartbeat.Observer.Sources/scenario-coverage.json`。测试名表示对应断言已写入仓库；当次执行结果与平台范围见[来源验证](./verification.mdx)。不能用解析器存在或项目总通过数替代逐项语义覆盖。
+
+## 状态怎么读
+
+| 状态 | 含义 |
+| --- | --- |
+| 原生核心断言 | 对原生格式写了该场景核心语义断言；仍有页面内列出的范围，不代表完整生产服务 |
+| 原生实现·部分 | 有可运行来源路径和直接测试，只覆盖原场景的一部分 |
+| 替代格式·部分 | 如 ICS 对 Google Calendar、GPX 对 Android Location；不冒充原提供商接入 |
+| 仅相关适配器 | 同家族有解析器，但原场景关键语义未实现或没有直接断言 |
+| 仅模型样本 | 保留原来的模型/Schema fixture，尚无本场景原生来源实现 |
+| 既有采集器·平台未实跑 | 已有 macOS 采集器和逻辑测试；本轮 Linux 未实跑 macOS 来源 |
+
+## 四组逐项入口
+
+### 数字活动与文件（A01–A25）
+
+| 编号 | 场景 | 来源接入状态 |
+| --- | --- | --- |
+| [A01](./coverage-digital.mdx#a01) | 应用只改了显示名称 | 既有采集器·平台未实跑 |
+| [A02](./coverage-digital.mdx#a02) | 休眠或墙上时钟跳变 | 既有采集器·平台未实跑 |
+| [A03](./coverage-digital.mdx#a03) | 应用移动路径或重新安装 | 既有采集器·平台未实跑 |
+| [A04](./coverage-digital.mdx#a04) | Android 查询缺少结束事件 | 仅模型样本 |
+| [A05](./coverage-digital.mdx#a05) | Activity 生命周期与注意力不同 | 仅模型样本 |
+| [A06](./coverage-digital.mdx#a06) | 反复访问同一网址 | 仅模型样本 |
+| [A07](./coverage-digital.mdx#a07) | 历史删除与跨设备同步 | 仅模型样本 |
+| [A08](./coverage-digital.mdx#a08) | Gmail 历史游标失效后标签变化 | 原生实现·部分 |
+| [A09](./coverage-digital.mdx#a09) | Gmail 草稿编辑与发送 | 原生实现·部分 |
+| [A10](./coverage-digital.mdx#a10) | 邮件 MIME 层次与附件 | 原生实现·部分 |
+| [A11](./coverage-digital.mdx#a11) | Outlook 移动文件夹后的 ID 变化 | 原生实现·部分 |
+| [A12](./coverage-digital.mdx#a12) | Outlook 修订与移除标记 | 原生实现·部分 |
+| [A13](./coverage-digital.mdx#a13) | Slack 编辑乱序到达 | 原生核心断言 |
+| [A14](./coverage-digital.mdx#a14) | 只收到 Slack 删除事件 | 原生核心断言 |
+| [A15](./coverage-digital.mdx#a15) | Matrix 密文稍后可解密 | 仅模型样本 |
+| [A16](./coverage-digital.mdx#a16) | 聊天分享多个鉴权文件 | 仅模型样本 |
+| [A17](./coverage-digital.mdx#a17) | Claude 日志最后一行尚未写完 | 仅模型样本 |
+| [A18](./coverage-digital.mdx#a18) | 会话分叉与文件副本 | 仅模型样本 |
+| [A19](./coverage-digital.mdx#a19) | 重命名与硬链接 | 原生实现·部分 |
+| [A20](./coverage-digital.mdx#a20) | 符号链接与目标分离 | 原生实现·部分 |
+| [A21](./coverage-digital.mdx#a21) | 纳秒文件时间与任意字节 | 原生实现·部分 |
+| [A22](./coverage-digital.mdx#a22) | 不同时刻的相同截图 | 仅模型样本 |
+| [A23](./coverage-digital.mdx#a23) | OCR 重跑得到不同结果 | 仅模型样本 |
+| [A24](./coverage-digital.mdx#a24) | 键盘重复与组合输入 | 仅模型样本 |
+| [A25](./coverage-digital.mdx#a25) | 隐私抑制与空字符串 | 仅模型样本 |
+
+### 系统与分布式记录（B01–B25）
+
+| 编号 | 场景 | 来源接入状态 |
+| --- | --- | --- |
+| [B01](./coverage-systems.mdx#b01) | Git 作者时间与提交时间 | 原生核心断言 |
+| [B02](./coverage-systems.mdx#b02) | Merge 多父节点与顺序 | 原生实现·部分 |
+| [B03](./coverage-systems.mdx#b03) | 附注标签与轻量标签 | 原生实现·部分 |
+| [B04](./coverage-systems.mdx#b04) | 强推、重写与 reflog 过期 | 仅相关适配器 |
+| [B05](./coverage-systems.mdx#b05) | Git 编码与签名原始字节 | 原生实现·部分 |
+| [B06](./coverage-systems.mdx#b06) | Span 先于父 Span 到达 | 原生实现·部分 |
+| [B07](./coverage-systems.mdx#b07) | Span links 扇入与属性 | 原生核心断言 |
+| [B08](./coverage-systems.mdx#b08) | 纳秒 Span 映射到微秒 | 原生核心断言 |
+| [B09](./coverage-systems.mdx#b09) | Span 事件乱序与活动区间 | 原生实现·部分 |
+| [B10](./coverage-systems.mdx#b10) | 丢弃遥测与重复导出 | 原生实现·部分 |
+| [B11](./coverage-systems.mdx#b11) | Agent 工具并发扇出 | 仅模型样本 |
+| [B12](./coverage-systems.mdx#b12) | 传输重试与真正重执行 | 仅模型样本 |
+| [B13](./coverage-systems.mdx#b13) | 流式增量没有时间戳 | 仅模型样本 |
+| [B14](./coverage-systems.mdx#b14) | 异构模型元数据 | 仅模型样本 |
+| [B15](./coverage-systems.mdx#b15) | PID 重用 | 原生实现·部分 |
+| [B16](./coverage-systems.mdx#b16) | 嵌套 PID 命名空间 | 原生实现·部分 |
+| [B17](./coverage-systems.mdx#b17) | 容器重启与 Pod 身份 | 仅模型样本 |
+| [B18](./coverage-systems.mdx#b18) | Prometheus 计数器重置 | 仅模型样本 |
+| [B19](./coverage-systems.mdx#b19) | 直方图正无穷桶与非有限值 | 仅模型样本 |
+| [B20](./coverage-systems.mdx#b20) | 原生直方图稀疏桶 | 仅模型样本 |
+| [B21](./coverage-systems.mdx#b21) | 漏抓与过期序列 | 仅模型样本 |
+| [B22](./coverage-systems.mdx#b22) | 日志事件时间与采集时间 | 原生核心断言 |
+| [B23](./coverage-systems.mdx#b23) | Journal 游标与启动时钟 | 仅模型样本 |
+| [B24](./coverage-systems.mdx#b24) | CI 重跑沿用 run ID | 仅模型样本 |
+| [B25](./coverage-systems.mdx#b25) | 构件摘要、过期与来源 | 仅模型样本 |
+
+### 物理世界与时间（C01–C25）
+
+| 编号 | 场景 | 来源接入状态 |
+| --- | --- | --- |
+| [C01](./coverage-physical.mdx#c01) | GPS 定位及误差 | 仅相关适配器 |
+| [C02](./coverage-physical.mdx#c02) | 轨迹跨时区 | 替代格式·部分 |
+| [C03](./coverage-physical.mdx#c03) | 定位时墙钟回拨 | 替代格式·部分 |
+| [C04](./coverage-physical.mdx#c04) | 传感器采样空档 | 仅模型样本 |
+| [C05](./coverage-physical.mdx#c05) | 启动后纳秒传感器时钟 | 仅模型样本 |
+| [C06](./coverage-physical.mdx#c06) | 每日累计步数上调 | 仅模型样本 |
+| [C07](./coverage-physical.mdx#c07) | 旅行时的每日步数 | 仅模型样本 |
+| [C08](./coverage-physical.mdx#c08) | 重启后计步器归零 | 仅模型样本 |
+| [C09](./coverage-physical.mdx#c09) | 睡眠跨夏令时回拨 | 仅模型样本 |
+| [C10](./coverage-physical.mdx#c10) | 睡眠阶段有未知空档 | 仅模型样本 |
+| [C11](./coverage-physical.mdx#c11) | 全天日历事件 | 替代格式·部分 |
+| [C12](./coverage-physical.mdx#c12) | 周期日历的改期例外 | 替代格式·部分 |
+| [C13](./coverage-physical.mdx#c13) | 浮动本地日历时间 | 原生核心断言 |
+| [C14](./coverage-physical.mdx#c14) | 取消某次周期日程 | 替代格式·部分 |
+| [C15](./coverage-physical.mdx#c15) | VRChat 本地加入实例 | 仅模型样本 |
+| [C16](./coverage-physical.mdx#c16) | VRChat 切世界与重连 | 仅模型样本 |
+| [C17](./coverage-physical.mdx#c17) | VRChat 初始名单回调 | 仅模型样本 |
+| [C18](./coverage-physical.mdx#c18) | 音乐暂停 | 仅模型样本 |
+| [C19](./coverage-physical.mdx#c19) | 音乐向后拖进度 | 仅模型样本 |
+| [C20](./coverage-physical.mdx#c20) | 来源不报告交叉淡入淡出 | 仅模型样本 |
+| [C21](./coverage-physical.mdx#c21) | 照片 EXIF 没有 UTC 偏移 | 仅模型样本 |
+| [C22](./coverage-physical.mdx#c22) | 照片原始与修改日期 | 仅模型样本 |
+| [C23](./coverage-physical.mdx#c23) | OTLP 窗口边界与纳秒 | 原生实现·部分 |
+| [C24](./coverage-physical.mdx#c24) | 设备 gauge 的起点未知 | 原生实现·部分 |
+| [C25](./coverage-physical.mdx#c25) | 设备日志晚到 | 仅相关适配器 |
+
+### 修订与证据关系（D01–D25）
+
+| 编号 | 场景 | 来源接入状态 |
+| --- | --- | --- |
+| [D01](./coverage-provenance.mdx#d01) | CDC 事务顺序与到达顺序 | 原生实现·部分 |
+| [D02](./coverage-provenance.mdx#d02) | SQL 删除与 Kafka 空 tombstone | 原生实现·部分 |
+| [D03](./coverage-provenance.mdx#d03) | 主键变化 | 仅相关适配器 |
+| [D04](./coverage-provenance.mdx#d04) | Webhook 重试与同秒事件 | 仅模型样本 |
+| [D05](./coverage-provenance.mdx#d05) | CouchDB 并存冲突版本 | 仅模型样本 |
+| [D06](./coverage-provenance.mdx#d06) | 修订祖先存在但正文丢失 | 仅模型样本 |
+| [D07](./coverage-provenance.mdx#d07) | BagIt 部分下载与中断 | 仅模型样本 |
+| [D08](./coverage-provenance.mdx#d08) | 归档重放但 UUID 映射丢失 | 仅模型样本 |
+| [D09](./coverage-provenance.mdx#d09) | 问卷回答修正 | 仅模型样本 |
+| [D10](./coverage-provenance.mdx#d10) | 受访者确定程度与提取置信度 | 仅模型样本 |
+| [D11](./coverage-provenance.mdx#d11) | 同图多个同类检测框 | 仅模型样本 |
+| [D12](./coverage-provenance.mdx#d12) | 两次模型运行意见不同 | 仅模型样本 |
+| [D13](./coverage-provenance.mdx#d13) | 音频分轨只有相对时间 | 仅模型样本 |
+| [D14](./coverage-provenance.mdx#d14) | 重叠讲话与不连续说话段 | 仅模型样本 |
+| [D15](./coverage-provenance.mdx#d15) | 多元 PROV 关联 | 仅模型样本 |
+| [D16](./coverage-provenance.mdx#d16) | 嵌套群组形成环 | 仅模型样本 |
+| [D17](./coverage-provenance.mdx#d17) | 限于活动的责任关系 | 仅模型样本 |
+| [D18](./coverage-provenance.mdx#d18) | 多个供应客户端相同 externalId | 仅模型样本 |
+| [D19](./coverage-provenance.mdx#d19) | 人员记录合并方向 | 仅模型样本 |
+| [D20](./coverage-provenance.mdx#d20) | CloudEvents 时间完全相同 | 原生核心断言 |
+| [D21](./coverage-provenance.mdx#d21) | 纳秒日志在微秒存储中重合 | 仅相关适配器 |
+| [D22](./coverage-provenance.mdx#d22) | 缺事件时间但有采集时间 | 原生核心断言 |
+| [D23](./coverage-provenance.mdx#d23) | Avro 默认值与原始缺字段 | 仅模型样本 |
+| [D24](./coverage-provenance.mdx#d24) | 问卷嵌套答案引用要进图 | 仅模型样本 |
+| [D25](./coverage-provenance.mdx#d25) | JWE 密文尚不能解密 | 仅模型样本 |

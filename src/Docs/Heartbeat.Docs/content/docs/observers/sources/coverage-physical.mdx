@@ -1,0 +1,341 @@
+---
+title: "C 组：物理世界与时间接入"
+description: "C01–C25 的实际来源、原生测试及明确缺口"
+---
+
+[返回 100 场景目录](./coverage.mdx)。原模型结构、完整输入和官方来源依据见[模型压力：物理世界与时间](../../testing/model-generality/physical.mdx)；以下只说明来源接入层。测试入口名称不是当次执行报告，也不代表线上账号或真实设备验证。
+
+## C01
+
+**GPS 定位及误差**
+
+原场景验收点：经纬度之外保留误差半径；不能把估计写成精确位置。
+
+- 接入状态：仅相关适配器
+- CLI 来源：`gpx-xml`；[格式与运行规则](./calendar-track.mdx)
+- 命名断言：`PhysicalCalendarSourceTests.GpxPreservesBackwardClockAndRepeatedIdenticalPoints`
+- 测试文件：`tests/Heartbeat.Model.Tests/PhysicalCalendarSourceTests.cs`
+- 剩余缺口：仅相关 GPX 点位/fix/DOP 适配器；Android 设备、boot elapsed time 与米制 accuracy 未接入，DOP 不能替代误差半径。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/physical.json` 中的 `C01`
+- 来源规范：[来源1](https://developer.android.com/reference/android/location/Location)
+
+## C02
+
+**轨迹跨时区**
+
+原场景验收点：位置不自动给出 IANA 时区；未知留空，成员点独立记录。
+
+- 接入状态：替代格式·部分
+- CLI 来源：`gpx-xml`；[格式与运行规则](./calendar-track.mdx)
+- 命名断言：`PhysicalCalendarSourceTests.GpxTrackSegmentMembershipIsARealReference`
+- 测试文件：`tests/Heartbeat.Model.Tests/PhysicalCalendarSourceTests.cs`
+- 剩余缺口：替代格式 GPX 的 track/segment 引用和 offset 有断言；Android 设备/单调时钟/IANA 时区变化证据缺失。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/physical.json` 中的 `C02`
+- 来源规范：[来源1](https://developer.android.com/reference/android/location/Location)
+
+## C03
+
+**定位时墙钟回拨**
+
+原场景验收点：保留单调时钟与来源顺序，不伪造时间递增。
+
+- 接入状态：替代格式·部分
+- CLI 来源：`gpx-xml`；[格式与运行规则](./calendar-track.mdx)
+- 命名断言：`PhysicalCalendarSourceTests.GpxPreservesBackwardClockAndRepeatedIdenticalPoints`
+- 测试文件：`tests/Heartbeat.Model.Tests/PhysicalCalendarSourceTests.cs`
+- 剩余缺口：替代格式 GPX 保留倒退时间及重复点顺序；没有 Android elapsedRealtime/boot 次序证据。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/physical.json` 中的 `C03`
+- 来源规范：[来源1](https://developer.android.com/reference/android/location/Location)
+
+## C04
+
+**传感器采样空档**
+
+原场景验收点：只保存实际样本；缺样不插值成观测事实。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 Android sensor 采集；需要设备、启动时钟及来源精度证据。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/physical.json` 中的 `C04`
+- 来源规范：[来源1](https://developer.android.com/reference/android/hardware/SensorEvent)
+
+## C05
+
+**启动后纳秒传感器时钟**
+
+原场景验收点：没有绝对锚点就不编造 UTC；保留 boot 范围与原始计数。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 Android sensor 采集；需要设备、启动时钟及来源精度证据。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/physical.json` 中的 `C05`
+- 来源规范：[来源1](https://developer.android.com/reference/android/hardware/SensorEvent)
+
+## C06
+
+**每日累计步数上调**
+
+原场景验收点：这是派生汇总，区别于 Health Connect 区间计数。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 Health Connect 采集或原生导入；真实设备与健康数据访问需授权，不使用私有健康数据充当测试前提。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/physical.json` 中的 `C06`
+- 来源规范：[来源1](https://developer.android.com/reference/androidx/health/connect/client/records/StepsRecord)、[来源2](https://developer.android.com/health-and-fitness/health-connect/write-data)
+
+## C07
+
+**旅行时的每日步数**
+
+原场景验收点：日期归属政策与聚合时区显式声明。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 Health Connect 采集或原生导入；真实设备与健康数据访问需授权，不使用私有健康数据充当测试前提。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/physical.json` 中的 `C07`
+- 来源规范：[来源1](https://developer.android.com/reference/androidx/health/connect/client/records/StepsRecord)
+
+## C08
+
+**重启后计步器归零**
+
+原场景验收点：以启动范围解释累计值，不能跨重启直接相减。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 Android sensor 采集；需要设备、启动时钟及来源精度证据。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/physical.json` 中的 `C08`
+- 来源规范：[来源1](https://developer.android.com/reference/android/hardware/SensorEvent)
+
+## C09
+
+**睡眠跨夏令时回拨**
+
+原场景验收点：使用带偏移的时刻；本地同名小时不能合并。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 Health Connect 采集或原生导入；真实设备与健康数据访问需授权，不使用私有健康数据充当测试前提。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/physical.json` 中的 `C09`
+- 来源规范：[来源1](https://developer.android.com/reference/android/health/connect/datatypes/SleepSessionRecord)
+
+## C10
+
+**睡眠阶段有未知空档**
+
+原场景验收点：已知各段分别保存；空档不推成睡醒。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 Health Connect 采集或原生导入；真实设备与健康数据访问需授权，不使用私有健康数据充当测试前提。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/physical.json` 中的 `C10`
+- 来源规范：[来源1](https://developer.android.com/reference/android/health/connect/datatypes/SleepSessionRecord)
+
+## C11
+
+**全天日历事件**
+
+原场景验收点：保留本地日期及排他结束日；不是自动 UTC 午夜。
+
+- 接入状态：替代格式·部分
+- CLI 来源：`icalendar-ics`；[格式与运行规则](./calendar-track.mdx)
+- 命名断言：`PhysicalCalendarSourceTests.CalendarAllDayDatesStayDatesWithoutInventedInstants`
+- 测试文件：`tests/Heartbeat.Model.Tests/PhysicalCalendarSourceTests.cs`
+- 剩余缺口：ICS DATE 语义有断言；原场景 Google Calendar 的账号身份与 payload 不支持。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/physical.json` 中的 `C11`
+- 来源规范：[来源1](https://developers.google.com/workspace/calendar/api/v3/reference/events)
+
+## C12
+
+**周期日历的改期例外**
+
+原场景验收点：系列与发生实例分开，保留原 occurrence 标识。
+
+- 接入状态：替代格式·部分
+- CLI 来源：`icalendar-ics`；[格式与运行规则](./calendar-track.mdx)
+- 命名断言：`PhysicalCalendarSourceTests.CalendarRecurrenceIdentityUsesOriginalStartNotMovedStart`
+- 测试文件：`tests/Heartbeat.Model.Tests/PhysicalCalendarSourceTests.cs`
+- 剩余缺口：ICS UID/RECURRENCE-ID 保持移动 occurrence 的身份；Google payload、series 显式引用、规则展开与 TZID 转换未实现。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/physical.json` 中的 `C12`
+- 来源规范：[来源1](https://developers.google.com/workspace/calendar/api/v3/reference/events)
+
+## C13
+
+**浮动本地日历时间**
+
+原场景验收点：无时区的本地约定不猜成 UTC；保留本地时间字符串语义。
+
+- 接入状态：原生核心断言
+- CLI 来源：`icalendar-ics`；[格式与运行规则](./calendar-track.mdx)
+- 命名断言：`PhysicalCalendarSourceTests.CalendarFloatingAndFoldedEscapedTextRemainNative`
+- 测试文件：`tests/Heartbeat.Model.Tests/PhysicalCalendarSourceTests.cs`
+- 剩余缺口：原生 ICS 浮动时间不伪造绝对时刻/时区；只支持有界 VEVENT 子集，不是完整 RFC recurrence engine。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/physical.json` 中的 `C13`
+- 来源规范：[来源1](https://www.rfc-editor.org/rfc/rfc5545.html)
+
+## C14
+
+**取消某次周期日程**
+
+原场景验收点：取消是业务状态；不能用 null 结束时间表达。
+
+- 接入状态：替代格式·部分
+- CLI 来源：`icalendar-ics`；[格式与运行规则](./calendar-track.mdx)
+- 命名断言：`PhysicalCalendarSourceTests.CalendarCancellationDoesNotBecomeDeletionOrImportTime`
+- 测试文件：`tests/Heartbeat.Model.Tests/PhysicalCalendarSourceTests.cs`
+- 剩余缺口：ICS CANCELLED occurrence 保留，缺失边界不使用导入时间；Google canceled-event 形状尚不支持。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/physical.json` 中的 `C14`
+- 来源规范：[来源1](https://developers.google.com/workspace/calendar/api/v3/reference/events)
+
+## C15
+
+**VRChat 本地加入实例**
+
+原场景验收点：只确认本地事件与已知实例，不扩展成所有人的到达时间。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 VRChat/Udon 实际采集；普通日志不能证明没有记录的历史到达、离开或实例关系。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/physical.json` 中的 `C15`
+- 来源规范：[来源1](https://creators.vrchat.com/worlds/udon/graph/event-nodes/)、[来源2](https://udonsharp.docs.vrchat.com/vrchat-api/)
+
+## C16
+
+**VRChat 切世界与重连**
+
+原场景验收点：区分新会话、恢复连接与重复回调。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 VRChat/Udon 实际采集；普通日志不能证明没有记录的历史到达、离开或实例关系。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/physical.json` 中的 `C16`
+- 来源规范：[来源1](https://creators.vrchat.com/worlds/udon/graph/event-nodes/)、[来源2](https://udonsharp.docs.vrchat.com/vrchat-api/)
+
+## C17
+
+**VRChat 初始名单回调**
+
+原场景验收点：看到在场不等于知道对方何时到达。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 VRChat/Udon 实际采集；普通日志不能证明没有记录的历史到达、离开或实例关系。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/physical.json` 中的 `C17`
+- 来源规范：[来源1](https://creators.vrchat.com/worlds/udon/graph/event-nodes/)
+
+## C18
+
+**音乐暂停**
+
+原场景验收点：显式暂停状态；未知结束不代表播放中。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无播放器/音乐服务原生接入；稀疏轮询之间不能推断连续播放、crossfade 或实际时长。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/physical.json` 中的 `C18`
+- 来源规范：[来源1](https://developer.spotify.com/documentation/web-api/reference/get-the-users-currently-playing-track)
+
+## C19
+
+**音乐向后拖进度**
+
+原场景验收点：位置可以倒退；播放时间和媒体位置不是同一条轴。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无播放器/音乐服务原生接入；稀疏轮询之间不能推断连续播放、crossfade 或实际时长。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/physical.json` 中的 `C19`
+- 来源规范：[来源1](https://developer.spotify.com/documentation/web-api/reference/get-the-users-currently-playing-track)
+
+## C20
+
+**来源不报告交叉淡入淡出**
+
+原场景验收点：不推造重叠区间；这是来源缺失，不是模型新增字段能解决。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无播放器/音乐服务原生接入；稀疏轮询之间不能推断连续播放、crossfade 或实际时长。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/physical.json` 中的 `C20`
+- 来源规范：[来源1](https://developer.spotify.com/documentation/web-api/reference/get-the-users-currently-playing-track)
+
+## C21
+
+**照片 EXIF 没有 UTC 偏移**
+
+原场景验收点：保留来源本地日期时间；绝对事实时间保持未知。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无照片二进制/EXIF 适配器；导入归一化 JSON 不能证明原始图片中的时区和方向语义。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/physical.json` 中的 `C21`
+- 来源规范：[来源1](https://developer.android.com/reference/androidx/exifinterface/media/ExifInterface)
+
+## C22
+
+**照片原始与修改日期**
+
+原场景验收点：两个日期对应不同事实，不拼成一次拍摄区间。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无照片二进制/EXIF 适配器；导入归一化 JSON 不能证明原始图片中的时区和方向语义。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/physical.json` 中的 `C22`
+- 来源规范：[来源1](https://developer.android.com/reference/androidx/exifinterface/media/ExifInterface)
+
+## C23
+
+**OTLP 窗口边界与纳秒**
+
+原场景验收点：原始 (start,end] 边界语义保留；不能悄悄改成 [start,end)。
+
+- 接入状态：原生实现·部分
+- CLI 来源：`otlp-json`；[格式与运行规则](./telemetry.mdx)
+- 命名断言：`TelemetrySourceTests.CumulativeSumKeepsWindowUnitAndLosslessInteger`
+- 测试文件：`tests/Heartbeat.Model.Tests/TelemetrySourceTests.cs`
+- 剩余缺口：OTLP cumulative 窗口、temporality、单位、精确整数/纳秒保留；专用 metricStream 实体身份未实现。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/physical.json` 中的 `C23`
+- 来源规范：[来源1](https://opentelemetry.io/docs/specs/otel/metrics/data-model/)、[来源2](https://opentelemetry.io/docs/specs/otel/protocol/file-exporter/)
+
+## C24
+
+**设备 gauge 的起点未知**
+
+原场景验收点：保留已知边界；不凭采集时刻补窗口起点。
+
+- 接入状态：原生实现·部分
+- CLI 来源：`otlp-json`；[格式与运行规则](./telemetry.mdx)
+- 命名断言：`TelemetrySourceTests.GaugeIsAPointAndDoesNotInventAWindowStart`
+- 测试文件：`tests/Heartbeat.Model.Tests/TelemetrySourceTests.cs`
+- 剩余缺口：gauge 点时间和值有断言，不伪造窗口起点；显式 device/metricStream 实体未实现。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/physical.json` 中的 `C24`
+- 来源规范：[来源1](https://opentelemetry.io/docs/specs/otel/metrics/data-model/)
+
+## C25
+
+**设备日志晚到**
+
+原场景验收点：事实时间来自事件；到达时间另存，不覆盖历史。
+
+- 接入状态：仅相关适配器
+- CLI 来源：`otlp-json`；[格式与运行规则](./telemetry.mdx)
+- 命名断言：`TelemetrySourceTests.LogsUseEventTimeNeverObservedTimeAsFactTime`
+- 测试文件：`tests/Heartbeat.Model.Tests/TelemetrySourceTests.cs`
+- 剩余缺口：只有相关 OTLP 日志双时钟断言；device 引用及延迟设备日志的特定场景未直接验证。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/physical.json` 中的 `C25`
+- 来源规范：[来源1](https://opentelemetry.io/docs/specs/otel/logs/data-model/)

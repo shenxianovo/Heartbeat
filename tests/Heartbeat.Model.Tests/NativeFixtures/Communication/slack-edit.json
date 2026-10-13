@@ -1,0 +1,22 @@
+{
+  "team_id": "TSYNTHETIC",
+  "type": "event_callback",
+  "event_id": "EvSyntheticEdit",
+  "event_time": 1791635800,
+  "event": {
+    "type": "message",
+    "subtype": "message_changed",
+    "channel": "CSYNTHETIC",
+    "hidden": true,
+    "message": {
+      "type": "message",
+      "user": "USYNTHETIC",
+      "text": "After edit",
+      "ts": "1791635696.123456",
+      "thread_ts": "1791635600.000001",
+      "edited": { "user": "USYNTHETIC", "ts": "1791635756.654321" }
+    },
+    "previous_message": { "user": "USYNTHETIC", "text": "Before edit café 🛰️", "ts": "1791635696.123456" },
+    "event_ts": "1791635756.654322"
+  }
+}

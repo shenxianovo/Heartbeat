@@ -6,9 +6,10 @@ public sealed class DeveloperCliTests
 {
     [Test]
     [Arguments("src/Docs/Heartbeat.Docs/content/docs/core/index.mdx", "docs-types,docs-build")]
-    [Arguments("src/Backend/Heartbeat.Api/Program.cs", "dotnet-build,integration-tests")]
+    [Arguments("src/Backend/Heartbeat.Api/Program.cs", "dotnet-build,model-tests,integration-tests")]
+    [Arguments("tests/Heartbeat.Model.Tests/JsonAmbiguityTests.cs", "dotnet-build,model-tests")]
     [Arguments("tools/Heartbeat.Dev/DeveloperCli.cs", "dotnet-build,developer-cli-tests")]
-    [Arguments("unclassified.config", "dotnet-build,integration-tests,developer-cli-tests,docs-types,docs-build")]
+    [Arguments("unclassified.config", "dotnet-build,model-tests,integration-tests,developer-cli-tests,docs-types,docs-build")]
     public async Task ChangedVerificationSelectsCurrentChecks(string path, string expected)
     {
         var runner = new RecordingRunner { ChangedPath = path };

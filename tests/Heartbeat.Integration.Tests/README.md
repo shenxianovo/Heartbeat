@@ -20,6 +20,8 @@ dotnet test --project tests/Heartbeat.Integration.Tests/Heartbeat.Integration.Te
 
 ## 当前用例
 
+`ModelScenarioTests` 复用 100 个语义场景、4 个允许的对照和 6 个实际采样记录，检查真实 API/PostgreSQL 读回、同 ID 重放、Schema 发现和固定实体响应。`JsonDuplicateApiTests` 检查嵌套和转义后重复字段返回 400 并保留旧内容。
+
 `EntityReferenceTests` 检查统一引用枚举。Observation 返回三个目标标识。没有引用的实体返回空集合。字符串和 JSON 中的标识不自动成为引用。这组用例不创建数据库。
 
 `SavedObserverCanBeReadFromANewContext` 通过 `HeartbeatDbContext` 保存统一索引与 `Observer`，再使用新的上下文读取，核对实体标识、名称和存储表名。
@@ -44,3 +46,9 @@ dotnet test --project tests/Heartbeat.Integration.Tests/Heartbeat.Integration.Te
 这些用例不调用 macOS 原生接口。原生读取需在 macOS 上实际运行 [前台状态程序](../../src/Observers/Heartbeat.Observer.ForegroundState/README.md)验证。
 
 前台应用采集的行为 Case 见文档站 [本机身份](../../src/Docs/Heartbeat.Docs/content/docs/testing/observers/local-application-identity.mdx)、[时段边界](../../src/Docs/Heartbeat.Docs/content/docs/testing/observers/application-period-boundaries.mdx)、[时段保存](../../src/Docs/Heartbeat.Docs/content/docs/testing/observers/period-submission.mdx)和[Outbox 恢复](../../src/Docs/Heartbeat.Docs/content/docs/testing/observers/outbox-recovery.mdx)。
+
+### Sources 原生来源流水线
+
+`SourcePipelineTests` 使用实际来源解析器、SQLite Outbox、API 和独立 PostgreSQL：15 份原生合成输入，Git/文件/procfs 三个真实隔离读取，以及精确来源时间与微秒投影对照。每条管道检查持久状态重启、重放身份、逐实体 GET、Schema 发现、后续读回确认及保留用户修改的 Schema 显示名。
+
+标准入口仍使用上面的 PostgreSQL 18.6 Testcontainers。当前云环境的 PostgreSQL 17.11 替代启动结果、聚合 runner 限制与未验证范围见[来源验证](../../src/Docs/Heartbeat.Docs/content/docs/observers/sources/verification.mdx)，不要把替代环境通过写成容器或完整 Aspire 已验证。

@@ -209,7 +209,7 @@ public sealed class EntityStore(HeartbeatDbContext dbContext) : IEntityStore
             if (!omitted.Contains(column.FieldName))
                 (column.Reference ? references : properties).Add(column.FieldName, row.GetProperty(column.Name).Clone());
         return new StoredEntity(EntityCategories.Entity, new BusinessEntity(
-            JsonSerializer.SerializeToElement(references), JsonSerializer.SerializeToElement(properties)));
+            JsonSerializer.SerializeToElement(references), JsonSerializer.SerializeToElement(properties)), schema.Id);
     }
 
     private Task<int> CoordinateDdlAsync(bool exclusive, CancellationToken cancellationToken) =>

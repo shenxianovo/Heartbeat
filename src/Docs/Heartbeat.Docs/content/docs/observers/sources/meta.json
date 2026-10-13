@@ -1,0 +1,16 @@
+{
+  "title": "来源接入",
+  "pages": [
+    "index",
+    "verification",
+    "local",
+    "communication",
+    "telemetry",
+    "calendar-track",
+    "coverage",
+    "coverage-digital",
+    "coverage-systems",
+    "coverage-physical",
+    "coverage-provenance"
+  ]
+}

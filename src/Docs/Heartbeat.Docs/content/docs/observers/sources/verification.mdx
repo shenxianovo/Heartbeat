@@ -1,0 +1,80 @@
+---
+title: "本轮来源验证与未验证范围"
+description: "2026-10-12 原生来源、持久恢复和真实 API/数据库管道证据"
+---
+
+## 与第一阶段分开看
+
+第一阶段（2026-10-11）的[模型压力证据](../../testing/model-generality/evidence.mdx)记录 148 项模型测试和 232 项集成测试。本页是之后的 Observer 来源实现阶段；两个阶段的计数不能互相替换，也不能相加冒充额外场景。
+
+本轮在 `src/Observers/Heartbeat.Observer.Sources/` 新增共享运行时及原生来源适配器，Core 模型未扩充。100 个原始场景的接入层状态、命名断言及缺口见[逐项目录](./coverage.mdx)；原生 JSON/ICS/GPX 样本和真正本机读取被明确区分。
+
+## 实际执行记录（2026-10-12）
+
+| 检查 | 结果 | 能证明的范围 |
+| --- | --- | --- |
+| .NET 全解决方案构建 | 通过，0 警告、0 错误 | 当前代码及测试可编译；使用单节点、禁用 build servers |
+| `Heartbeat.Model.Tests` | 279 / 279 通过 | 包含原始模型场景、直接原生解析、本机读取、共享运行时及 CLI 回归；不是 279 个生产来源 |
+| `Heartbeat.Integration.Tests` | 251 / 251 通过，0 跳过 | 真实 API、EF/Npgsql、迁移、独立 PostgreSQL 测试库及读回 |
+| 其中 `SourcePipelineTests` | 19 / 19 通过 | 15 份原生导入 fixture、3 个真实本机来源与 offset/亚微秒时间投影回归 |
+| 文档类型、测试与生产构建 | 通过；5 / 5 文档测试 | 新来源页面、100 项目录、ADR、历史证据区分及现有下载输入 |
+
+上述测试使用编译后的原生 TUnit 程序集执行；它们的成功不是标准聚合 closeout 全绿的替代说法。没有从 .NET 结果推断浏览器或完整运行环境已通过。文档构建保留现有非阻断 Node/CSS 警告，未将其改写成无警告。
+
+## 原生管道实际检查了什么
+
+`SourcePipelineTests.NativeImportSurvivesSqliteRestartAndApiReadback` 读取 Graph、Slack、Gmail、OTLP、CloudEvents、Debezium、ICS、GPX 的合成原生材料，再执行：
+
+1. 按来源规则生成固定 Schema、属性、引用和时间
+2. SQLite 保存身份、历史证据及 Outbox，关闭并重新打开
+3. 重放相同材料，核对持久 UUID 和 Observation 身份
+4. 通过实际 HTTP API 写入独立 PostgreSQL 测试库
+5. 在后续 GET 中逐项核对所有实体的类别、定义身份、引用、属性及 Observation 时间
+6. 只有读回一致后确认 Outbox；合法 Schema 显示名修改不被回放覆盖
+
+`LiveProcessCaptureReachesActualApi` 和 `LiveLocalCaptureReachesActualApi` 分别使用实际 Linux procfs、临时 Git 仓库和隔离二进制文件。它们不依赖私人邮箱、聊天、定位或健康数据。
+
+专项管道通过不会自动补齐 100 项中的来源业务缺口。例如，before/after 都能读回仍不证明主键切换关联；GPX 点能存储仍不证明 Android boot/accuracy；ICS 能保留 DATE 仍不等于 Google Calendar API 接通。
+
+## 数据库与运行环境限制
+
+标准测试/开发环境按项目配置使用 PostgreSQL 18.6 与 Testcontainers/Docker。本次受环境限制，集成测试使用 PostgreSQL 17.11 的隔离替代启动器；API、EF/Npgsql、迁移及每测试数据库隔离逻辑仍实际执行。
+
+因此 `251 / 251` 是 **PostgreSQL 17.11 替代环境**的结果，不是 18.6 容器或完整 Aspire 的运行结果。标准容器流程、Aspire 端到端启动、线上来源鉴权与生产部署未验证。
+
+本轮 Linux 无法运行原生 macOS 前台读取；A01–A03 的既有 timeline/registry 模拟测试和存储测试有执行证据，实际 macOS 应用切换、休眠及安装变化没有新增实跑证据。
+
+## 标准收口的失败仍保留
+
+标准 Developer CLI closeout 已实际执行，但沙箱的 MSBuild/测试启动 IPC 限制使聚合收口未通过；不能用直接程序集执行的成功替换该结果。该流程中的文档类型与构建阶段有通过记录。
+
+另一个既有 Developer CLI 保留清理测试在本文件系统失败：当前为 19/20，未修改的基线 `1330e68` 为 18/19，并复现同一 birth-time/清理候选问题。本轮没有借来源接入改写这项既有逻辑，不宣称全仓库所有检查全绿。
+
+## 质量扫描观察
+
+首次扫描因缺少依赖未完成；安装锁定的扫描器依赖后，独立质量扫描完成，退出码 0。它报告生产代码 3 组重复、共 24 行（主要为适配器初始化与边界检查）；测试代码 32 组重复，其中 25 组新增；工具代码无重复组。复杂度报告有 25 处热点，其中 17 处新增或回归；未使用项 7 个，均为既有项，没有新增。
+
+退出码 0 表示扫描完成，不表示没有质量发现。上述结果已审阅，本轮没有为了隐藏报告而扩大重构范围。独立扫描恢复成功也不改变标准 closeout 因沙箱 IPC 失败、未全绿的结论。
+
+## 没有声称的能力
+
+- 不声称 100 个连接器已完成；目录逐项保留仅模型、仅相关和部分替代格式状态
+- 不声称真实账号同步、自动分页、cursor 修复、订阅验签或附件下载已接通
+- 不声称完整 ICS recurrence engine、Google Calendar 或 Android 原生设备支持
+- 不声称长期监控、保留清理、备份恢复、吞吐量和大量 Schema 的性能已经验证
+- 不声称 HTTP 跨实体原子提交、Kafka exactly-once 或所有来源历史完整
+- 不声称公共 API 已提供列表、逆向引用或图查询；SQL 查询能力与具体索引设计是另一层问题
+
+## 复跑入口
+
+从仓库根目录：
+
+```sh
+dotnet test --project tests/Heartbeat.Model.Tests/Heartbeat.Model.Tests.csproj
+# 标准集成路径需要 Docker/Testcontainers
+dotnet test --project tests/Heartbeat.Integration.Tests/Heartbeat.Integration.Tests.csproj
+dotnet run --project tools/Heartbeat.Dev -- verify closeout --base 1330e68e4b9373c8e844d95cf5e4d7c012445675 --plan
+dotnet run --project tools/Heartbeat.Dev -- verify closeout --base 1330e68e4b9373c8e844d95cf5e4d7c012445675
+```
+
+文档目录执行 `pnpm types:check`、`pnpm test`、`pnpm build`，并实际检查新页面与导航。命令是复现入口；标准流程被环境阻塞时，应保留实际失败与替代验证说明，不把局部通过改写成整套通过。

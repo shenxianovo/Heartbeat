@@ -1,0 +1,318 @@
+---
+title: "B 组：系统与分布式记录接入"
+description: "B01–B25 的实际来源、原生测试及明确缺口"
+---
+
+[返回 100 场景目录](./coverage.mdx)。原模型结构、完整输入和官方来源依据见[模型压力：系统与分布式记录](../../testing/model-generality/systems.mdx)；以下只说明来源接入层。测试入口名称不是当次执行报告，也不代表线上账号或真实设备验证。
+
+## B01
+
+**Git 作者时间与提交时间**
+
+原场景验收点：两种事实分别解释，不能拼成一个持续区间。
+
+- 接入状态：原生核心断言
+- CLI 来源：`git`；[格式与运行规则](./local.mdx)
+- 命名断言：`LocalSourceTests.GitReadsNativeCommitTimesOrderedParentsAndRefKinds`
+- 测试文件：`tests/Heartbeat.Model.Tests/LocalSourceTests.cs`
+- 剩余缺口：实际临时 Git 仓库断言作者/提交者各自时间；只捕获 HEAD，不遍历全部提交。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/systems.json` 中的 `B01`
+
+## B02
+
+**Merge 多父节点与顺序**
+
+原场景验收点：父节点出现关系可有顺序；引用数组不能直接声明。
+
+- 接入状态：原生实现·部分
+- CLI 来源：`git`；[格式与运行规则](./local.mdx)
+- 命名断言：`LocalSourceTests.GitReadsNativeCommitTimesOrderedParentsAndRefKinds`
+- 测试文件：`tests/Heartbeat.Model.Tests/LocalSourceTests.cs`
+- 剩余缺口：实际两父 merge 顺序有断言；零父和 octopus 变体没有专门测试。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/systems.json` 中的 `B02`
+
+## B03
+
+**附注标签与轻量标签**
+
+原场景验收点：标签对象、引用名和目标分别识别。
+
+- 接入状态：原生实现·部分
+- CLI 来源：`git`；[格式与运行规则](./local.mdx)
+- 命名断言：`LocalSourceTests.GitReadsNativeCommitTimesOrderedParentsAndRefKinds`
+- 测试文件：`tests/Heartbeat.Model.Tests/LocalSourceTests.cs`
+- 剩余缺口：区分 annotated/lightweight ref 的对象类型；没有完整 tag 对象、tagger 与 peeling 投影。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/systems.json` 中的 `B03`
+
+## B04
+
+**强推、重写与 reflog 过期**
+
+原场景验收点：记录已见对象和引用变化；过期历史不能猜回。
+
+- 接入状态：仅相关适配器
+- CLI 来源：`git`；[格式与运行规则](./local.mdx)
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：存在当前 ref 快照适配器，但没有 reflog/expiry 读取或 force-push 重写的原生断言。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/systems.json` 中的 `B04`
+
+## B05
+
+**Git 编码与签名原始字节**
+
+原场景验收点：签名依赖精确字节，文本展示不是原始材料替代品。
+
+- 接入状态：原生实现·部分
+- CLI 来源：`git`；[格式与运行规则](./local.mdx)
+- 命名断言：`LocalSourceTests.GitReadsNativeCommitTimesOrderedParentsAndRefKinds`
+- 测试文件：`tests/Heartbeat.Model.Tests/LocalSourceTests.cs`
+- 剩余缺口：原始普通 commit 字节保留；签名与非 UTF-8 commit 尚无专项来源 fixture 断言。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/systems.json` 中的 `B05`
+
+## B06
+
+**Span 先于父 Span 到达**
+
+原场景验收点：允许未到达引用；应用稍后核验，API 不保证目标存在。
+
+- 接入状态：原生实现·部分
+- CLI 来源：`otlp-json`；[格式与运行规则](./telemetry.mdx)
+- 命名断言：`TelemetrySourceTests.NativeSpanKeepsMissingRemoteParentAsAReference`
+- 测试文件：`tests/Heartbeat.Model.Tests/TelemetrySourceTests.cs`
+- 剩余缺口：已断言未知 parent 引用；后续 parent 接入和 remote flag 的全部语义未完整断言。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/systems.json` 中的 `B06`
+
+## B07
+
+**Span links 扇入与属性**
+
+原场景验收点：链接出现次数、顺序、属性可成为普通业务实体。
+
+- 接入状态：原生核心断言
+- CLI 来源：`otlp-json`；[格式与运行规则](./telemetry.mdx)
+- 命名断言：`TelemetrySourceTests.NativeLinksKeepOrderDuplicatesAttributesAndBothEnds`
+- 测试文件：`tests/Heartbeat.Model.Tests/TelemetrySourceTests.cs`
+- 剩余缺口：有序重复 link、属性和两端引用有原生断言；只支持有界 OTLP JSON。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/systems.json` 中的 `B07`
+
+## B08
+
+**纳秒 Span 映射到微秒**
+
+原场景验收点：保留原始纳秒字段；通用时间轴会损失细粒度顺序。
+
+- 接入状态：原生核心断言
+- CLI 来源：`otlp-json`；[格式与运行规则](./telemetry.mdx)
+- 命名断言：`TelemetrySourceTests.SubTickSpanBoundariesRemainExactInTypedSourceFields`
+- 测试文件：`tests/Heartbeat.Model.Tests/TelemetrySourceTests.cs`
+- 剩余缺口：精确纳秒与折叠后的时间投影有断言；API/PostgreSQL 时间投影由另行集成测试验证。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/systems.json` 中的 `B08`
+
+## B09
+
+**Span 事件乱序与活动区间**
+
+原场景验收点：来源事件序列和结束未知分开，不用到达顺序替代。
+
+- 接入状态：原生实现·部分
+- CLI 来源：`otlp-json`；[格式与运行规则](./telemetry.mdx)
+- 命名断言：`TelemetrySourceTests.EventArrayOrderDoesNotRewriteSourceEventTimesOrMissingEnd`
+- 测试文件：`tests/Heartbeat.Model.Tests/TelemetrySourceTests.cs`
+- 剩余缺口：event 原生顺序/时间与缺少结束边界有断言；活跃到结束的完整领域生命周期仍需专项证据。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/systems.json` 中的 `B09`
+
+## B10
+
+**丢弃遥测与重复导出**
+
+原场景验收点：丢弃计数是证据；重试映射沿用，不杜撰缺失事件。
+
+- 接入状态：原生实现·部分
+- CLI 来源：`otlp-json`；[格式与运行规则](./telemetry.mdx)
+- 命名断言：`TelemetrySourceTests.DroppedCountsRemainEvidenceAndSpanReplayUsesNativeIdentity`
+- 测试文件：`tests/Heartbeat.Model.Tests/TelemetrySourceTests.cs`
+- 剩余缺口：保留 dropped counts 与原生 replay key；无法因此声称缺失遥测已找回或完整。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/systems.json` 中的 `B10`
+
+## B11
+
+**Agent 工具并发扇出**
+
+原场景验收点：工具调用独立身份；父任务引用不等于串行执行。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无此 Agent 场景的原生接入；OTLP 只有实际来源明确提供 call/attempt 标识时才有相关证据，不能按相同文本猜重试。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/systems.json` 中的 `B11`
+
+## B12
+
+**传输重试与真正重执行**
+
+原场景验收点：同一输入重放复用映射；再次执行是新的运行事实。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无此 Agent 场景的原生接入；OTLP 只有实际来源明确提供 call/attempt 标识时才有相关证据，不能按相同文本猜重试。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/systems.json` 中的 `B12`
+
+## B13
+
+**流式增量没有时间戳**
+
+原场景验收点：保存序号与增量身份；事实时间保持未知。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 Responses 流事件接入；sequence/item ID 应来自原生事件，缺失时间不能猜测。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/systems.json` 中的 `B13`
+
+## B14
+
+**异构模型元数据**
+
+原场景验收点：用有类型的属性条目；联合类型互斥仍需适配器校验。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无此 Agent 场景的原生接入；OTLP 只有实际来源明确提供 call/attempt 标识时才有相关证据，不能按相同文本猜重试。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/systems.json` 中的 `B14`
+
+## B15
+
+**PID 重用**
+
+原场景验收点：进程身份需要启动范围，不仅是 PID。
+
+- 接入状态：原生实现·部分
+- CLI 来源：`process`；[格式与运行规则](./local.mdx)
+- 命名断言：`SourceRuntimeTests.ProcStatHandlesParenthesesInProcessNameAndReadsActualSelf`
+- 测试文件：`tests/Heartbeat.Model.Tests/SourceRuntimeTests.cs`
+- 剩余缺口：实际读取当前 PID/boot/start-ticks；未实际制造 PID 重用和 incarnation 更替。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/systems.json` 中的 `B15`
+
+## B16
+
+**嵌套 PID 命名空间**
+
+原场景验收点：同一进程的多个可见 PID 需要命名空间限定。
+
+- 接入状态：原生实现·部分
+- CLI 来源：`process`；[格式与运行规则](./local.mdx)
+- 命名断言：`SourceRuntimeTests.ProcStatHandlesParenthesesInProcessNameAndReadsActualSelf`
+- 测试文件：`tests/Heartbeat.Model.Tests/SourceRuntimeTests.cs`
+- 剩余缺口：读取原生 namespace PID 列表；未创建嵌套 namespace 或验证多层可见 PID 场景。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/systems.json` 中的 `B16`
+
+## B17
+
+**容器重启与 Pod 身份**
+
+原场景验收点：Pod、容器实例和重启次数分开。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 Kubernetes watch 或原生资源导入；需要 UID、resourceVersion、删除及重建的真实来源边界。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/systems.json` 中的 `B17`
+
+## B18
+
+**Prometheus 计数器重置**
+
+原场景验收点：保留序列标签与重置证据，不把下降当负增量。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 Prometheus 原生指标/抓取适配器；不能用 OTLP gauge/sum 冒充 histogram、staleness 或漏抓语义。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/systems.json` 中的 `B18`
+
+## B19
+
+**直方图正无穷桶与非有限值**
+
+原场景验收点：有限数值与特殊值标签分开；JSON number 不能写 Infinity。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 Prometheus 原生指标/抓取适配器；不能用 OTLP gauge/sum 冒充 histogram、staleness 或漏抓语义。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/systems.json` 中的 `B19`
+
+## B20
+
+**原生直方图稀疏桶**
+
+原场景验收点：保留桶结构与定义变化，不能只保留均值。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 Prometheus 原生指标/抓取适配器；不能用 OTLP gauge/sum 冒充 histogram、staleness 或漏抓语义。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/systems.json` 中的 `B20`
+
+## B21
+
+**漏抓与过期序列**
+
+原场景验收点：缺样不是数值为零，也不能推出真实状态。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 Prometheus 原生指标/抓取适配器；不能用 OTLP gauge/sum 冒充 histogram、staleness 或漏抓语义。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/systems.json` 中的 `B21`
+
+## B22
+
+**日志事件时间与采集时间**
+
+原场景验收点：事实时间按定义选；采集时间另作业务字段。
+
+- 接入状态：原生核心断言
+- CLI 来源：`otlp-json`；[格式与运行规则](./telemetry.mdx)
+- 命名断言：`TelemetrySourceTests.LogsUseEventTimeNeverObservedTimeAsFactTime`
+- 测试文件：`tests/Heartbeat.Model.Tests/TelemetrySourceTests.cs`
+- 剩余缺口：event/observed 双时钟与未知事实时间有断言；日志身份是 capture-position，不是提供商永久 event ID。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/systems.json` 中的 `B22`
+
+## B23
+
+**Journal 游标与启动时钟**
+
+原场景验收点：游标、boot ID、单调时钟和墙钟各有含义。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 systemd journal 原生导入；实际 journal 权限、boot 范围与双时钟需单独验证。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/systems.json` 中的 `B23`
+
+## B24
+
+**CI 重跑沿用 run ID**
+
+原场景验收点：执行身份包含 attempt；run ID 相同不合并重跑。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 GitHub Actions 原生 API 导入或轮询；分页、rerun 与执行/尝试身份未接入。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/systems.json` 中的 `B24`
+
+## B25
+
+**构件摘要、过期与来源**
+
+原场景验收点：可记录元数据与来源链；过期字节无法凭摘要还原。
+
+- 接入状态：仅模型样本
+- CLI 来源：尚无该场景的原生入口
+- 原生断言：尚无；仅有原始模型 fixture（或相关适配器）
+- 剩余缺口：尚无 GitHub Actions 原生 API 导入或轮询；分页、rerun 与执行/尝试身份未接入。
+- 模型输入：`tests/Heartbeat.Model.Tests/Fixtures/systems.json` 中的 `B25`

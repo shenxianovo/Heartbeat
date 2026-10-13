@@ -1,0 +1,35 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#Collection(message)",
+  "@odata.nextLink": "https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta?$skiptoken=SYNTHETIC-NOT-A-SECRET",
+  "value": [
+    {
+      "id": "SYNTHETIC-IMMUTABLE-MESSAGE-1",
+      "changeKey": "synthetic-revision-1",
+      "parentFolderId": "synthetic-drafts",
+      "conversationId": "synthetic-conversation-1",
+      "subject": "Draft outline",
+      "flag": { "flagStatus": "notFlagged" },
+      "body": { "contentType": "text", "content": "Before edit\nUnicode: café 🛰️" },
+      "from": { "emailAddress": { "name": "Example Sender", "address": "sender@example.invalid" } },
+      "sender": { "emailAddress": { "name": "Example Delegate", "address": "delegate@example.invalid" } },
+      "toRecipients": [{ "emailAddress": { "name": "Example Reader", "address": "reader@example.invalid" } }],
+      "ccRecipients": [],
+      "isDraft": true,
+      "isRead": true,
+      "hasAttachments": false,
+      "lastModifiedDateTime": "2026-10-10T12:34:56Z"
+    },
+    {
+      "id": "SYNTHETIC-IMMUTABLE-MESSAGE-1",
+      "changeKey": "synthetic-revision-2",
+      "parentFolderId": "synthetic-drafts",
+      "conversationId": "synthetic-conversation-1",
+      "subject": "Draft outline revised",
+      "flag": { "flagStatus": "flagged" },
+      "body": { "contentType": "html", "content": "<p>After edit</p>" },
+      "isDraft": true,
+      "lastModifiedDateTime": "2026-10-10T12:35:56Z"
+    },
+    { "id": "SYNTHETIC-IMMUTABLE-MESSAGE-1", "@removed": { "reason": "deleted" } }
+  ]
+}

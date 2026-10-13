@@ -1,0 +1,55 @@
+---
+title: "日历 ICS 与轨迹 GPX"
+description: "日期、浮动时间、重复事件与轨迹成员的有界原生格式投影"
+---
+
+这两个入口读取显式给定的本机文件，不连接私人日历、不创建授权、不操作 GPS 设备。可运行仓库合成样本，也可处理已授权导出的真实文件。ICS 不等于 Google Calendar API；GPX 不等于 Android Location 原生事件。公共参数见[概览](./index.mdx)。
+
+## iCalendar 2.0 的有界 VEVENT 投影
+
+```sh
+dotnet run --project src/Observers/Heartbeat.Observer.Sources -- \
+  --source icalendar-ics --input tests/Heartbeat.Model.Tests/NativeFixtures/PhysicalCalendar/calendar.ics \
+  --scope example-calendar-feed --state .local/observers/calendar-demo.sqlite --offline
+```
+
+支持 UTF-8、content-line unfolding、带引号的参数分隔、TEXT 转义，以及选定的 UID、RECURRENCE-ID（含 RANGE）、SEQUENCE、DTSTART/DTEND、DTSTAMP、summary/description/location/status。保留 RRULE、EXDATE、RDATE 的原生内容行及 DURATION 的值，但不展开、不计算，也不声称完整验证其所有语法。
+
+事件身份由日历 scope、UID 与 recurrence identity 形成。SEQUENCE 改变证据，不改变事件身份；移动某个 occurrence 的 DTSTART 不改写其原始 RECURRENCE-ID。同一捕获内出现重复 UID/recurrence/sequence 会拒绝，不默默挑选最后一条。相同捕获重放稳定，新 capture 产生新证据。
+
+| 来源时间 | 记录方式 |
+| --- | --- |
+| `DATE` 全天日期 | 保留日期值，绝对 StartAt/EndAt 未知 |
+| 浮动 `DATE-TIME` | 保留本地值，不套用运行机器时区 |
+| 带 `TZID` 的本地时间 | 保留来源 TZID，不猜测自定义 VTIMEZONE 的绝对偏移 |
+| 明确 UTC 的 DTSTART/DTEND | 投影为绝对边界；DTEND 保持来源排他结束语义 |
+| 缺少结束时间 | EndAt 未知，不按持续时间或默认规则补齐 |
+| DTSTAMP | 作为来源元数据，不代替事件发生时间 |
+
+取消的 recurrence instance 保存为带 CANCELLED 状态的事件证据，不抹掉旧版本，也不自动等于数据库删除。
+
+这是自有的有界解析与字段投影，**不是完整 RFC 5545 验证器或日历 recurrence engine**。未知事件属性、嵌套 VALARM、VTIMEZONE 定义与其他组件不被投影；文件读入成功不表示导出了其中的每个项目。TZID 转换、全天转绝对时间、重复规则展开、邀请调度、VTODO、attendees、附件与账号同步尚不支持。参数歧义、被映射单值字段重复、非法日期、start/end 类型不兼容、DURATION 与 DTEND 冲突会拒绝。
+
+对应 C13 的原生 ICS 断言；C11/C12/C14 只提供替代格式的部分语义，不覆盖原来 Google Calendar 的 payload/ID/同步规则。依据：[RFC 5545](https://www.rfc-editor.org/rfc/rfc5545)。
+
+## GPX 1.1 waypoint 与 track
+
+```sh
+dotnet run --project src/Observers/Heartbeat.Observer.Sources -- \
+  --source gpx-xml --input tests/Heartbeat.Model.Tests/NativeFixtures/PhysicalCalendar/track.gpx \
+  --scope example-gpx-capture --state .local/observers/calendar-demo.sqlite --offline
+```
+
+track、segment 与 point 分别形成实体，成员关系使用真实具名引用。保留文档顺序、坐标、可选 elevation/time/name/fix/satellites 与 HDOP/VDOP/PDOP。DOP 是精度衰减系数，不是米制误差半径。
+
+重复且值完全相同的点仍是不同 occurrence，位置由捕获内的 track/segment/point ordinal 表达。GPX 没有持久 fix ID；身份包含 scope 与 capture key，不能凭相同坐标跨文件合并轨迹或 waypoint。
+
+带 Z/offset 的来源时间投影为绝对时刻，可以保留倒退的墙上时钟顺序。超出 .NET tick 的小数截断，不四舍五入跨越秒边界；原始时间字符串仍保留，公共存储随后投影到微秒。缺少时间或没有 offset 的 XSD dateTime 保持绝对边界未知。不会从 offset 生成 IANA 时区，不把文档顺序冒充 Android boot/elapsedRealtime 时钟。
+
+目前不采集 GPS 设备，不计算 speed、轨迹区间或米制不确定度，不解释扩展，不做跨文件去重。route 明确拒绝；metadata、links 与 extensions 不投影。C02/C03 的 GPX 替代证据只覆盖部分语义，C01 的 Android 设备/启动时间/accuracy 原生需求仍未实现。
+
+XML 禁止 DTD/外部实体且关闭外部解析，深度限制 32；输入上限 8 MiB，输出上限 10,000 记录，选定单值字段重复会拒绝。两个适配器均检查取消与已解码选定字段大小。依据：[GPX 1.1](https://www.topografix.com/GPX/1/1/)。
+
+## 直接测试
+
+`PhysicalCalendarSourceTests` 直接读取 `.ics`/`.gpx` fixture，检查日期/浮动/UTC、recurrence identity、取消、重复点、真实成员引用、回放范围、Schema、XML 安全与失败边界。完整测试名在[物理与时间目录](./coverage-physical.mdx)。`SourcePipelineTests` 另外检查实际 API/数据库读回；这不替代真实日历或 Android 设备运行验证。

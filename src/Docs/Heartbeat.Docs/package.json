@@ -3,11 +3,11 @@
   "version": "0.0.40",
   "private": true,
   "scripts": {
-    "build": "next build",
-    "dev": "next dev",
+    "build": "node scripts/export-model-fixtures.mjs && next build",
+    "dev": "node scripts/export-model-fixtures.mjs && next dev",
     "start": "next start",
     "types:check": "next typegen && tsc --noEmit",
-    "test": "node --experimental-strip-types --test tests/*.test.ts"
+    "test": "node scripts/export-model-fixtures.mjs && node --experimental-strip-types --test tests/*.test.ts"
   },
   "dependencies": {
     "cn": "^0.4.0",

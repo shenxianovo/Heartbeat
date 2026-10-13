@@ -50,6 +50,17 @@ aspire stop
 
 当前前端目录不具备可运行实现，因此尚未纳入本地编排。前台状态 Observer 继续按其 [README](../../src/Observers/Heartbeat.Observer.ForegroundState/README.md) 单独运行。
 
+来源采集程序也按 [Sources README](../../src/Observers/Heartbeat.Observer.Sources/README.md) 单独运行，不因为增加格式适配器就新增 AppHost 资源。`aspire wait nginx --timeout 180` 确认环境就绪后，可以在另一个终端提交已保存的离线队列：
+
+```sh
+dotnet run --project src/Observers/Heartbeat.Observer.Sources -- \
+  --state .local/observers/sources.sqlite \
+  --api http://localhost:8080/api/ --drain
+```
+
+首次采集可以使用 `--offline`，无需先启动 Aspire；来源账号鉴权、设备权限与输入格式边界见 [Observers 来源接入](../../src/Docs/Heartbeat.Docs/content/docs/observers/sources/index.mdx)。API/数据库专项测试通过不表示完整 Aspire、PostgreSQL 18.6 容器或真实来源账号已经运行验证。
+
+
 ## 配置与镜像
 
 `appsettings.json` 提供开发参数、公开端口和数据库卷名；可用 .NET 配置的命令行参数或环境变量覆盖。开发用户名和密码均为 `heartbeat`。如需覆盖密码，使用 Aspire user secrets。
