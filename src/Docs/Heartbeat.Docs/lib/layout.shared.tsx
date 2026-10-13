@@ -1,6 +1,6 @@
 import type { BaseLayoutProps } from 'fumadocs-ui/layouts/shared';
 import { SiteIcon } from '@/components/site-icon';
-import { appName, gitConfig } from './shared';
+import { appName, gitConfig } from './site-config';
 
 export function baseOptions(): BaseLayoutProps {
   return {

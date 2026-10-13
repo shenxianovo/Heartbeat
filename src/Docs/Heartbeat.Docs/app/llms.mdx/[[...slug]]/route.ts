@@ -1,5 +1,5 @@
 import { docsLlms, source } from '@/lib/source';
-import { getPageMarkdownUrl } from '@/lib/shared';
+import { getPageMarkdownUrl } from '@/lib/routes';
 import { notFound } from 'next/navigation';
 
 export const revalidate = false;

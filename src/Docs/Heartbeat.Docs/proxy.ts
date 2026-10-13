@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isMarkdownPreferred, rewritePath } from 'fumadocs-core/negotiation';
-import { docsContentRoute } from '@/lib/shared';
+import { docsContentRoute } from '@/lib/routes';
 
 const { rewrite: rewriteDocs } = rewritePath(
   '{/*path}',

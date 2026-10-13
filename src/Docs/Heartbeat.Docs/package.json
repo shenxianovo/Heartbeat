@@ -5,7 +5,7 @@
   "scripts": {
     "build": "next build",
     "dev": "next dev",
-    "start": "next start",
+    "start": "node scripts/start.mjs",
     "types:check": "next typegen && tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts"
   },
@@ -14,7 +14,7 @@
     "fumadocs-core": "16.17.1",
     "fumadocs-mdx": "15.4.7",
     "fumadocs-openapi": "12.4.1",
-    "fumadocs-page-history": "0.2.0",
+    "fumadocs-page-history": "0.3.0",
     "fumadocs-test-reports": "0.1.1",
     "fumadocs-ui": "npm:@fumadocs/base-ui@16.17.1",
     "lucide-react": "^1.50.0",

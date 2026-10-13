@@ -3,7 +3,7 @@ import './global.css';
 import { Inter } from 'next/font/google';
 import { i18nProvider } from 'fumadocs-ui/i18n';
 import { translations } from '@/lib/translations';
-import { appName } from '@/lib/shared';
+import { appName } from '@/lib/site-config';
 import type { Metadata } from 'next';
 
 const inter = Inter({

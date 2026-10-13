@@ -13,11 +13,8 @@ import { OpenAPIPage } from '@/components/api-page';
 import type { ReactNode } from 'react';
 import type { Metadata } from 'next';
 import { createRelativeLink } from 'fumadocs-ui/mdx';
-import {
-  getPageImageUrl,
-  getPageMarkdownUrl,
-  gitConfig,
-} from '@/lib/shared';
+import { getPageImageUrl, getPageMarkdownUrl } from '@/lib/routes';
+import { gitConfig } from '@/lib/site-config';
 
 export default async function Page(props: PageProps<'/[[...slug]]'>) {
   const params = await props.params;

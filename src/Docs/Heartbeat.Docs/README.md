@@ -23,7 +23,7 @@ Core 侧栏按“指南、基础契约、观测模型”分组，页面直接显
 
 ## 页面历史
 
-MDX 页末尾使用 [`fumadocs-page-history@0.2.0`](https://github.com/shenxianovo/fumadocs-page-history) 显示贡献者和可折叠的提交历史。`source.config.ts` 注册 Remark 插件，仓库链接复用 `lib/shared.ts` 的 Git 配置；样式在 `app/global.css` 引入，中文翻译在 `lib/translations.ts` 注册，日期使用上海时区。贡献者注册表将 Git 作者 `shenxianovo` 手动关联到同名 GitHub 账号，提供头像和个人主页链接。OpenAPI 自动生成的接口页不经过 MDX 编译，因此没有这个页尾。
+MDX 页末尾使用 [`fumadocs-page-history@0.3.0`](https://github.com/shenxianovo/fumadocs-page-history) 显示贡献者和可折叠的提交历史。`source.config.ts` 注册 Remark 插件，`repository.url` 复用 `lib/site-config.ts` 的 Git 配置；样式在 `app/global.css` 引入，中文翻译在 `lib/translations.ts` 注册。日期在服务端使用 UTC，浏览器接管后自动使用读者的本地时区。`authorMappings` 将 Git 作者 `shenxianovo` 手动关联到同名 GitHub 账号，提供头像和个人主页链接。OpenAPI 自动生成的接口页不经过 MDX 编译，因此没有这个页尾。
 
 历史在编译时从完整 Git checkout 读取，支持文件更名。未提交的新文件没有历史；已提交文件的未提交修改不产生历史条目。新增提交后重新构建；开发期间仅 Git 记录变化时需要重启文档站。浅克隆需先执行 `git fetch --unshallow`。默认不请求 GitHub API，也不需要 GitHub token。
 
@@ -50,13 +50,15 @@ pnpm dev
 
 验证：访问 <http://localhost:3000/core>，确认模型概览页面可以打开。
 
-生产构建使用 `pnpm build`，启动使用 `pnpm start`。类型检查使用 `pnpm types:check`。Case 关联逻辑检查使用 `pnpm test`。开发和构建均读取仓库中的 OpenAPI 文件。
+生产构建使用 `pnpm build`，本地启动使用 `pnpm start`。启动脚本先将 `public` 与 `.next/static` 复制到 standalone 目录，再运行 Next.js 生成的服务器；使用 `PORT` 和 `HOSTNAME` 环境变量指定监听地址。脚本在服务器切换工作目录前确定测试报告路径，默认仍读取仓库根目录的 `TestResults`。类型检查使用 `pnpm types:check`。Case 关联逻辑检查使用 `pnpm test`。开发和构建均读取仓库中的 OpenAPI 文件。
 
 修改接口时，将用户在讨论中确认的结果直接写入 `content/docs/api/openapi.json`。接口页展示确定的契约，不记录实现进度。实现、测试和接口说明文档按契约同步。代码和其他文档不得反向修改契约。提交时审查契约差异。客户端按同一契约手写实现。
 
 ## 路径
 
 文档站按根路径运行，不配置 Next.js `basePath`。页面、静态资源、搜索、Markdown 导出、分享图片和 Mermaid 链接直接使用根路径地址。
+
+站点名称与 Git 仓库信息维护在 `lib/site-config.ts`，编辑链接指向 `main` 分支。文档、Markdown 导出与分享图片的路由维护在 `lib/routes.ts`；页面 URL 使用 Fumadocs 的 `createGetUrl` 生成，供页面链接与静态路由参数共用。
 
 NGINX 分别监听业务/API 端口 8080 和文档端口 3000。文档端口的 `/api/entities/…` 转给后端，其余请求原样转给文档站。接口文档 `/api/…` 和搜索 `/api/search` 由文档站处理。Playground 使用 OpenAPI 声明的相对服务地址 `/api`，通过文档端口同源访问后端。
 

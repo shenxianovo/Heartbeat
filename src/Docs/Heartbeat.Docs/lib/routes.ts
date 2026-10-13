@@ -1,16 +1,8 @@
 import { createGetUrl } from 'fumadocs-core/source';
 
-export const appName = 'Heartbeat';
 export const docsRoute = '/';
 export const docsImageRoute = '/og';
 export const docsContentRoute = '/llms.mdx';
-
-export const gitConfig = {
-  user: 'shenxianovo',
-  repo: 'Heartbeat',
-  branch: 'rewrite/observation-model',
-  contentPath: 'src/Docs/Heartbeat.Docs/content/docs',
-};
 
 const getContentUrl = createGetUrl(docsContentRoute);
 
