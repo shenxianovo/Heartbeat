@@ -23,7 +23,7 @@ Core 侧栏按“指南、基础契约、观测模型”分组，页面直接显
 
 ## 页面历史
 
-MDX 页末尾使用 [`fumadocs-page-history@0.3.0`](https://github.com/shenxianovo/fumadocs-page-history) 显示贡献者和可折叠的提交历史。`source.config.ts` 注册 Remark 插件，`repository.url` 复用 `lib/site-config.ts` 的 Git 配置；样式在 `app/global.css` 引入，中文翻译在 `lib/translations.ts` 注册。日期在服务端使用 UTC，浏览器接管后自动使用读者的本地时区。`authorMappings` 将 Git 作者 `shenxianovo` 手动关联到同名 GitHub 账号，提供头像和个人主页链接。OpenAPI 自动生成的接口页不经过 MDX 编译，因此没有这个页尾。
+MDX 页末尾使用 [`fumadocs-page-history@0.3.1`](https://github.com/shenxianovo/fumadocs-page-history) 显示贡献者和可折叠的提交历史。`source.config.ts` 注册 Remark 插件，`repository.url` 复用 `lib/site-config.ts` 的 Git 配置；样式在 `app/global.css` 引入，中文翻译在 `lib/translations.ts` 注册。日期在服务端使用 UTC，浏览器接管后自动使用读者的本地时区。`authorMappings` 将 Git 作者 `shenxianovo` 手动关联到同名 GitHub 账号，提供头像和个人主页链接。OpenAPI 自动生成的接口页不经过 MDX 编译，因此没有这个页尾。
 
 历史在编译时从完整 Git checkout 读取，支持文件更名。未提交的新文件没有历史；已提交文件的未提交修改不产生历史条目。新增提交后重新构建；开发期间仅 Git 记录变化时需要重启文档站。浅克隆需先执行 `git fetch --unshallow`。默认不请求 GitHub API，也不需要 GitHub token。
 
