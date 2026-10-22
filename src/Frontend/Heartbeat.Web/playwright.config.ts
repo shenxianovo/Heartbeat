@@ -1,34 +1,38 @@
-import { defineConfig, devices } from "@playwright/test";
+import { defineConfig, devices, type PlaywrightTestProject } from "@playwright/test";
 
-const port = process.env.HEARTBEAT_PLAYWRIGHT_PORT ?? "3107";
-const baseURL = `http://127.0.0.1:${port}`;
+// Aspire 边缘验证（8081 入口）只在显式 ASPIRE_EDGE=1 时加入，
+// 默认 test:e2e 始终只跑自带 dev server 的用例，不依赖 Aspire 环境。
+const projects: PlaywrightTestProject[] = [
+  {
+    name: "chromium",
+    use: { ...devices["Desktop Chrome"] },
+  },
+];
+
+if (process.env.ASPIRE_EDGE === "1") {
+  projects.push({
+    name: "edge",
+    use: { ...devices["Desktop Chrome"], baseURL: "http://localhost:18081" },
+    testDir: "./tests/aspire",
+    testMatch: /edge\.spec\.ts/,
+  });
+}
 
 export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: true,
-  forbidOnly: Boolean(process.env.CI),
-  retries: process.env.CI ? 1 : 0,
-  workers: process.env.CI ? 2 : undefined,
-  reporter: process.env.HEARTBEAT_PLAYWRIGHT_JSON
-    ? [["list"], ["json", { outputFile: process.env.HEARTBEAT_PLAYWRIGHT_JSON }]]
-    : "list",
-  outputDir: process.env.HEARTBEAT_EVIDENCE_DIR ?? "test-results",
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 2 : 0,
+  reporter: process.env.CI ? "github" : "list",
   use: {
-    baseURL,
-    trace: "retain-on-failure",
-    screenshot: "only-on-failure",
+    baseURL: "http://localhost:5173",
+    trace: "on-first-retry",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects,
   webServer: {
-    command: `npm run dev -- --hostname 127.0.0.1 --port ${port}`,
-    url: `${baseURL}/login`,
-    reuseExistingServer: false,
+    command: "npm run dev",
+    url: "http://localhost:5173",
+    reuseExistingServer: !process.env.CI,
     timeout: 120_000,
-    env: {
-      NEXT_PUBLIC_OIDC_AUTHORITY: "https://identity.heartbeat.test",
-      NEXT_PUBLIC_OIDC_CLIENT_ID: "heartbeat-web-test",
-      NEXT_PUBLIC_OIDC_SCOPE: "openid profile",
-      HEARTBEAT_API_URL: "http://127.0.0.1:1",
-    },
   },
 });

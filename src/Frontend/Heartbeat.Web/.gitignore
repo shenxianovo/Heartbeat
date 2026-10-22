@@ -1,6 +1,13 @@
-.next/
-next-env.d.ts
-node_modules/
-coverage/
-.env.local
-*.tsbuildinfo
+node_modules
+dist
+dist-ssr
+*.local
+test-results
+playwright-report
+.nyc_output
+coverage
+.DS_Store
+.vite
+
+# 本地验证截图（不提交）
+shots/

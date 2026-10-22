@@ -37,6 +37,11 @@ var docs = builder.AddJavaScriptApp("docs", Path.Combine(root, "src/Docs/Heartbe
     .WithEnvironment("HEARTBEAT_TEST_REPORTS_DIR", Path.Combine(root, "TestResults"))
     .WithHttpHealthCheck("/core");
 
+var web = builder.AddJavaScriptApp("web", Path.Combine(root, "src/Frontend/Heartbeat.Web"))
+    .WithNpm(installArgs: ["ci"])
+    .WithHttpEndpoint(env: "PORT", name: "http")
+    .WithHttpHealthCheck("/");
+
 builder.AddContainer("nginx", "nginx", "1.30.5-alpine")
     .WithBindMount(Path.Combine(root, "docker/nginx/default.conf"),
         "/etc/nginx/templates/default.conf.template", isReadOnly: true)
@@ -44,12 +49,18 @@ builder.AddContainer("nginx", "nginx", "1.30.5-alpine")
     .WithEnvironment("API_PORT", api.GetEndpoint("http").Property(EndpointProperty.Port))
     .WithEnvironment("DOCS_HOST", docs.GetEndpoint("http").Property(EndpointProperty.Host))
     .WithEnvironment("DOCS_PORT", docs.GetEndpoint("http").Property(EndpointProperty.Port))
+    .WithEnvironment("WEB_HOST", web.GetEndpoint("http").Property(EndpointProperty.Host))
+    .WithEnvironment("WEB_PORT", web.GetEndpoint("http").Property(EndpointProperty.Port))
     .WithHttpEndpoint(port: builder.Configuration.GetValue<int>("Ports:Api"), targetPort: 80,
         name: "api", isProxied: false)
     .WithHttpEndpoint(port: builder.Configuration.GetValue<int>("Ports:Docs"), targetPort: 3000,
         name: "docs", isProxied: false)
+    .WithHttpEndpoint(port: builder.Configuration.GetValue<int>("Ports:Web"), targetPort: 3100,
+        name: "web", isProxied: false)
     .WithHttpHealthCheck("/core", endpointName: "docs")
     .WithHttpHealthCheck("/api/entities/019a0d3b-1d20-7000-8000-000000000001",
-        statusCode: 404, endpointName: "api");
+        statusCode: 404, endpointName: "api")
+    .WithHttpHealthCheck("/", endpointName: "web")
+    .WaitFor(web);
 
 builder.Build().Run();

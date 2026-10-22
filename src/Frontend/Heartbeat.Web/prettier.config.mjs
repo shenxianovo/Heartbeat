@@ -1,9 +1,8 @@
 /** @type {import("prettier").Config} */
-const config = {
-  printWidth: 100,
+export default {
+  plugins: ["prettier-plugin-tailwindcss"],
   semi: true,
   singleQuote: false,
   trailingComma: "all",
+  printWidth: 120,
 };
-
-export default config;
