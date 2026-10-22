@@ -22,7 +22,7 @@ aspire run
 | 看板 | <https://localhost:18888> |
 | PostgreSQL | `localhost:54329` |
 
-首次运行 `aspire certs trust` 时，按系统提示信任本机 .NET 开发证书。看板启用本地匿名访问。打开 `https://localhost:18888` 无需登录令牌。看板使用 HTTPS，仅监听本机并接受 `localhost` 主机名。看板显示资源状态、实际 HTTP 就绪检查和控制台日志。要查看完整调用链、结构化遥测和指标，需要为应用配置 OpenTelemetry。应用尚未配置 OpenTelemetry。
+首次运行 `aspire certs trust` 时，按系统提示信任本机 .NET 开发证书。看板启用本地匿名访问。打开 `https://localhost:18888` 无需登录令牌。看板使用 HTTPS，仅监听本机并接受 `localhost` 主机名。看板显示资源状态、实际 HTTP 就绪检查和控制台日志。API 已接入 OpenTelemetry；Aspire 自动注入 OTLP 配置，看板的 `api` 提供结构化日志、HTTP 与数据库调用链、HTTP 与 .NET 运行时指标。API 的独立运行与配置规则见 [遥测说明](../../src/Backend/Heartbeat.Api/README.md#遥测)。
 
 数据库使用 PostgreSQL 18.6，初始化统计扩展并保留诊断配置。数据库就绪后，`migrate` 使用本地 EF 工具应用项目迁移并退出。迁移成功后，AppHost 才启动 API。API 进程不自动建表。
 
@@ -61,7 +61,7 @@ docker build -f src/Backend/Heartbeat.Api/Dockerfile -t heartbeat-api:local .
 docker build -f src/Docs/Heartbeat.Docs/Dockerfile -t heartbeat-docs:local .
 ```
 
-API 镜像保留 `/app/efbundle`，供独立迁移进程使用。代理模板和数据库初始化脚本也继续保留。服务器发布流程尚未建设；将来可增加 Aspire 的 Compose 发布集成，从同一 AppHost 生成部署配置。本地 `env`、`--release` 和手写 Compose 已移除。
+API 镜像保留 `/app/efbundle`，供独立迁移进程使用。代理模板和数据库初始化脚本也继续保留。Aspire 仅用于开发。将来部署使用 Docker 镜像和 Docker Compose，不运行 Aspire AppHost；部署配置与生产监控栈尚未建设。本地 `env`、`--release` 和手写 Compose 已移除。
 
 ## 验证
 
@@ -103,3 +103,19 @@ docker volume rm heartbeat-aspire-verification
 ```
 
 构建、测试、质量检查与最终验证使用 [Heartbeat.Dev](../Heartbeat.Dev/README.md)。运行检查只证明本地开发行为。
+
+### API 遥测验证
+
+使用独立环境，保留其他 AppHost 的会话与开发数据库。隔离模式的内部资源服务使用 `127.0.0.1`，验证命令仅为该环境补充这个本机地址：
+
+```sh
+aspire run --isolated --detach -- --Ports:Api=18080 --Ports:Docs=13000 --Ports:Web=18081 --Ports:Database=54339 --DatabaseVolume=heartbeat-otel-verification --AllowedHosts='localhost;127.0.0.1'
+aspire wait nginx --timeout 180
+curl -i http://localhost:18080/api/entities/019a0d3b-1d20-7000-8000-000000000001
+aspire otel logs api
+aspire otel traces api
+```
+
+请求应返回 `404`。从该环境实际输出的看板地址选择 `api`，检查结构化日志、HTTP span 下的 Npgsql span，以及 `http.server.request.duration` 和 `dotnet.*` 指标。指标按导出周期刷新；默认最多需要约一分钟。CLI 日志与追踪可作为证据，指标需在看板或其遥测 API 读取。该验证不写入实体。
+
+停止该验证环境并核对卷名后，可删除 `heartbeat-otel-verification` 验证卷。另在不设置 `OTEL_EXPORTER_OTLP_ENDPOINT` 的独立 API 中发起读取，确认保留控制台日志且未注册遥测导出器。自动回归见 `TelemetryTests`：覆盖未配置和无效地址、结构化字段、HTTP/数据库父子关系、HTTP/运行时指标以及三类实际 OTLP 导出。

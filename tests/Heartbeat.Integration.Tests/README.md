@@ -32,6 +32,8 @@ dotnet test --project tests/Heartbeat.Integration.Tests/Heartbeat.Integration.Te
 
 `BusinessEntityApiTests` 通过真实 HTTP 和独立 PostgreSQL 检查实际列类型、精确 numeric/bigint、数学整数、字段名安全引用、未知资源、Schema 冲突、完整替换、省略与显式 null、递归对象和数组校验，以及 invalid 内容不留下索引或覆盖已有内容。
 
+`TelemetryTests` 验证无有效 OTLP 地址时不注册遥测提供者、API 与控制台日志仍可用；配置后通过独立 OTLP HTTP 接收器及内存导出器检查结构化日志字段、HTTP/Npgsql span 父子关系、HTTP 与 .NET 运行时指标和三类网络导出。测试不写入实体。Aspire 看板仍需实际验证。
+
 ### 前台状态 Observer（macOS）
 
 | 测试类 | 检查内容 | 输入或依赖 |

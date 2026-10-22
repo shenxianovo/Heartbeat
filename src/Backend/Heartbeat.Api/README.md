@@ -17,6 +17,24 @@ dotnet run --project src/Backend/Heartbeat.Api/Heartbeat.Api.csproj
 
 服务启动时检查连接配置。建表由迁移程序完成，API 进程不自动应用迁移。
 
+## 遥测
+
+API 在启动层接入 OpenTelemetry，日志沿用 `ILogger`，保留结构化字段、格式化消息与日志作用域。追踪覆盖入站 HTTP 请求和现有 Npgsql 数据库调用；指标覆盖 HTTP 请求与 .NET 运行时。遥测不读取请求体，不启用 EF Core 敏感数据日志或 Npgsql 参数值日志。数据库 span 包含参数化 SQL 文本，不包含绑定的参数值。
+
+只有 `OTEL_EXPORTER_OTLP_ENDPOINT` 是包含主机名的有效 HTTP/HTTPS 绝对地址时，才注册遥测提供者并导出日志、追踪和指标。未配置、空白或无效地址时，API 继续使用原有控制台日志，不尝试默认的本机 OTLP 地址。独立运行不依赖 Aspire。
+
+Aspire 开发环境会注入接收地址、服务名及所需连接配置；重启 API 后，在看板选择 `api` 查看三类遥测。直接运行时，可自行配置接收器，例如：
+
+```sh
+export OTEL_EXPORTER_OTLP_ENDPOINT='http://localhost:4317'
+export OTEL_EXPORTER_OTLP_PROTOCOL='grpc'
+export OTEL_SERVICE_NAME='heartbeat-api'
+```
+
+上面的地址仅是显式配置示例，应用没有默认接收器。HTTP/protobuf 接收器使用 `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`，基地址会自动附加 `/v1/logs`、`/v1/traces`、`/v1/metrics`。其他标准 OTLP 设置由导出器读取；未指定服务名时使用 `Heartbeat.Api`。参考 [OpenTelemetry OTLP 导出器](https://github.com/open-telemetry/opentelemetry-dotnet/tree/core-1.20.0/src/OpenTelemetry.Exporter.OpenTelemetryProtocol)和 [Npgsql 追踪](https://www.npgsql.org/doc/diagnostics/tracing.html)。
+
+Aspire 只用于开发；将来部署使用 Docker 镜像和 Docker Compose，不运行 AppHost。本次未建设部署配置或生产监控栈。职责见 [ADR 0008](../../Docs/Heartbeat.Docs/content/docs/adr/0008-aspire-local-development.mdx#应用遥测)。
+
 ## 本地入口与代理
 
 | 服务 | 本地入口 |

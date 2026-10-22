@@ -8,16 +8,24 @@ using Microsoft.Extensions.Hosting;
 
 namespace Heartbeat.Integration.Tests;
 
-internal sealed class HeartbeatApiFactory(string connectionString)
+internal sealed class HeartbeatApiFactory(string connectionString,
+    IReadOnlyDictionary<string, string?>? settings = null)
     : WebApplicationFactory<Program>
 {
     protected override IHost CreateHost(IHostBuilder builder)
     {
         builder.ConfigureHostConfiguration(configuration =>
+        {
             configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ConnectionStrings:Heartbeat"] = connectionString,
-            }));
+                ["OTEL_EXPORTER_OTLP_ENDPOINT"] = null,
+            });
+            if (settings is not null)
+            {
+                configuration.AddInMemoryCollection(settings);
+            }
+        });
 
         return base.CreateHost(builder);
     }

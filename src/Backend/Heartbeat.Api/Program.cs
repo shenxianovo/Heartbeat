@@ -6,6 +6,7 @@ using Heartbeat.Infrastructure;
 using Microsoft.AspNetCore.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.AddHeartbeatTelemetry();
 builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 10 * 1024 * 1024);
 
 var connectionString = builder.Configuration.GetConnectionString("Heartbeat");
