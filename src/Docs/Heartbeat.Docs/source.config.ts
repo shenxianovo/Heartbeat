@@ -10,7 +10,8 @@ export default defineConfig({
       [remarkGitChangelog, {
         repository: { url: `https://github.com/${gitConfig.user}/${gitConfig.repo}` },
         authorMappings: [{ gitName: 'shenxianovo', githubUsername: 'shenxianovo' }],
-        display: { locale: 'zh-CN' },
+        display: { locale: 'zh-CN', displayAuthorsInsideCommitLine: true },
+        workspaceChanges: false,
       }],
     ],
   },

@@ -116,75 +116,15 @@ Case 页面在 `content/docs/testing/` 中，每页导出 `caseId` 并传给 `<T
 
 ## 页面历史
 
-MDX 页末尾使用 [`fumadocs-page-history@0.3.1`](https://github.com/shenxianovo/fumadocs-page-history) 显示贡献者和可折叠的提交历史。`source.config.ts` 注册 Remark 插件，`repository.url` 复用 `lib/site-config.ts` 的 Git 配置；样式在 `app/global.css` 引入，中文翻译在 `lib/translations.ts` 注册。日期在服务端使用 UTC，浏览器接管后自动使用读者的本地时区。`authorMappings` 将 Git 作者 `shenxianovo` 手动关联到同名 GitHub 账号，提供头像和个人主页链接。OpenAPI 自动生成的接口页不经过 MDX 编译，因此没有这个页尾。
+MDX 页面末尾用 [`fumadocs-page-history@0.4.0`](https://github.com/shenxianovo/fumadocs-page-history) 显示贡献者和提交历史。插件在 `source.config.ts` 中注册，中文翻译在 `lib/translations.ts` 中注册。
 
-历史在编译时从完整 Git checkout 读取，支持文件更名。未提交的新文件没有历史；已提交文件的未提交修改不产生历史条目。新增提交后重新构建；开发期间仅 Git 记录变化时需要重启文档站。浅克隆需先执行 `git fetch --unshallow`。默认不请求 GitHub API，也不需要 GitHub token。
+- 历史在构建时从 Git 读取，支持文件改名。未提交的文件没有历史。浅克隆需要先运行 `git fetch --unshallow`。
+- 新的提交需要重新构建才会显示。开发期间只有 Git 记录变化时，需要重启文档站。
+- `authorMappings` 把 Git 作者 `shenxianovo` 关联到同名 GitHub 账号，提供头像和主页链接。不请求 GitHub API。
+- 日期在服务端按 UTC 渲染，浏览器加载后按读者的本地时区显示。
+- `workspaceChanges` 当前为 `false`，正文不标记未提交的变化。`app/api/page-changes/route.ts` 是这个功能的读取入口，范围限制在本站文档目录。
+- OpenAPI 生成的接口页没有页面历史。
 
-Docker 构建必须从仓库根目录使用包含 `.git` 的完整 checkout。`Dockerfile.dockerignore` 保留构建所需的 `.git`；构建阶段安装 Git，按仓库相对路径放置文档，并通过 BuildKit 只读挂载 Git 数据。运行镜像只包含 Node 与站点产物。
-
-## OpenAPI
-
-接口使用 OpenAPI First：先确定契约，再编写实现。维护者直接修改 [content/docs/api/openapi.json](content/docs/api/openapi.json)。该文件是 HTTP 契约的权威来源。后端构建不生成或覆盖契约文件。`lib/openapi.ts` 读取规范，`lib/source.ts` 通过 `staticSource({ baseDir: 'api' })` 生成虚拟接口页，并与 MDX 正文合并。API 导航保留概览，自动列出生成的页面。
-
-接口页使用 `components/api-page.tsx` 中的官方默认 `OpenAPIPage` 组件，样式在 `app/global.css` 中引入。页面地址为 `/api/<接口名>`。接口名默认使用 `operationId`。如果未提供 `operationId`，接口名使用接口路径与 HTTP 方法。
-
-接口页的复制与导出提供原始 OpenAPI 规范 JSON，编辑链接指向契约源文件 `content/docs/api/openapi.json`。搜索、页内目录和分享图片使用同一页面源中的标题与内容结构。
-
-## 本地运行
-
-前置条件：安装 Node.js 24 LTS 和 pnpm 12.3.4。
-
-从本目录运行以下命令：
-
-```bash
-pnpm install --frozen-lockfile
-pnpm dev
-```
-
-验证：访问 <http://localhost:3000/core>，确认模型概览页面可以打开。
-
-生产构建使用 `pnpm build`，本地启动使用 `pnpm start`。启动脚本先将 `public` 与 `.next/static` 复制到 standalone 目录，再运行 Next.js 生成的服务器；使用 `PORT` 和 `HOSTNAME` 环境变量指定监听地址。脚本在服务器切换工作目录前确定测试报告路径，默认仍读取仓库根目录的 `TestResults`。类型检查使用 `pnpm types:check`。Case 关联逻辑检查使用 `pnpm test`。开发和构建均读取仓库中的 OpenAPI 文件。
-
-修改接口时，将用户在讨论中确认的结果直接写入 `content/docs/api/openapi.json`。接口页展示确定的契约，不记录实现进度。实现、测试和接口说明文档按契约同步。代码和其他文档不得反向修改契约。提交时审查契约差异。客户端按同一契约手写实现。
-
-## 路径
-
-文档站按根路径运行，不配置 Next.js `basePath`。页面、静态资源、搜索、Markdown 导出、分享图片和 Mermaid 链接直接使用根路径地址。
-
-站点名称与 Git 仓库信息维护在 `lib/site-config.ts`，编辑链接指向 `main` 分支。文档、Markdown 导出与分享图片的路由维护在 `lib/routes.ts`；页面 URL 使用 Fumadocs 的 `createGetUrl` 生成，供页面链接与静态路由参数共用。
-
-NGINX 分别监听业务/API 端口 8080 和文档端口 3000。文档端口的 `/api/entities/…` 转给后端，其余请求原样转给文档站。接口文档 `/api/…` 和搜索 `/api/search` 由文档站处理。Playground 使用 OpenAPI 声明的相对服务地址 `/api`，通过文档端口同源访问后端。
-
-访问文档入口 `/` 时跳转到 `/core`。8080 的根路径暂时返回 `404`，供后续业务前端使用。Aspire 向 [NGINX 模板](../../../docker/nginx/default.conf) 注入本机服务地址。单独运行 `pnpm dev` 时，按根路径访问文档站。Aspire 管理的 NGINX 负责转发实体 API 请求。
-
-Markdown 响应声明 `text/markdown; charset=utf-8`。Core 的“查看 Markdown”地址为 `/llms.mdx/<页面路径>/content.md`，API 的同类入口返回 OpenAPI JSON。搜索入口为 `/api/search`。
-
-模型正文只记录已确认的结构与语义，维护规则见仓库根目录的 [AGENTS.md](../../../AGENTS.md)。
-
-Mermaid 图通过 `components/mermaid.tsx` 统一使用手绘风格。
-
-Core 模型关系统一维护在 `content/docs/core/model/relations.json`。接口和实体节点链接到模型页面，属性和方法节点链接到所属契约的章节。`IEntity` 节点只显示接口名称，`Id` 与 `GetReferences()` 分别使用独立节点。概览使用 `<ModelRelations />` 展示全部关系；模型节点使用 `<ModelRelations node="节点 ID" />` 展示与当前节点直接相连的关系。组件位于 `components/model-relations.tsx`。
-
-Observers 的主图集中维护在 `content/docs/observers/relations.json`，不在概览中展示。具体页面通过 `<ObserverStructure node="节点 ID" />` 引用当前对象，左侧展示实现的接口，右侧展示实体自身增加的字段。接口已定义的成员不重复展示，例如 `IEntity.Id`。字段节点只显示名称，类型和取值在正文中说明。接口名称和链接复用 Core 主图；字段只在 Observers 主图中维护一次。组件位于 `components/observer-structure.tsx`。实体定义页的图展示观测内容。Observation 保存事实时间。草案字段必须在图中标明“草案”。
-
-## 测试 Case 与报告
-
-Testing 侧栏按能力组织独立 Case，首个样板地址为 `/testing/entity-schemas/table-creation-failure`。MDX 声明 `caseId` 并传给 `TestCaseResults`，测试使用 `[Property("caseId", "同一 ID")]` 引用。正文与执行证据分别维护；组件精确匹配最新原生报告的属性，保留所有参数化结果，重新计算此 Case 的展示统计。每条结果提供 `?test=<原生测试 ID>` 链接，在完整报告中打开该结果详情。无报告或没有匹配结果均显示没有执行证据。
-
-
-报告页为 `/testing/reports/integration`，使用 `fumadocs-test-reports@0.1.1` 的中文 TUnit 报告组件。
-
-服务器从 `HEARTBEAT_TEST_REPORTS_DIR` 指定的目录读取报告。未设置时，本地默认读取仓库根目录的 `TestResults`；Docker 默认读取只读挂载的 `/reports`。
-
-每次请求时，服务器选择文件修改时间最大的 `Heartbeat.Integration.Tests-*.tunit-report.json`。`fumadocs-test-reports` 的解析器校验文件。如果文件不存在，页面显示尚未生成；如果格式错误，页面报告错误。
-
-页面不运行测试。先在仓库根目录执行集成测试，再刷新页面。报告在运行时读取，既不提交到文档正文，也不打包进镜像。
-
-## Aspire 与 Docker
-
-完整本地环境由 Aspire 管理，启动、日志和停止见 [AppHost README](../../../tools/Heartbeat.AppHost/README.md)。文档站使用本机 `pnpm dev`。Aspire 的 pnpm 集成按锁文件安装依赖。`node_modules` 与 `.next` 缓存在本机目录。独立运行文档站时可以使用前面的本地命令，但不要同时占用 NGINX 的 3000 端口。
-
-Dockerfile 保留镜像构建能力，使用 BuildKit 缓存 pnpm 依赖安装，构建时读取仓库中的 OpenAPI 文件。构建阶段使用 Node 24 LTS 和 pnpm 12.3.4。运行阶段采用 Next.js standalone，只保留 Node 与运行产物。容器以非 root 用户运行。报告在容器运行时通过只读挂载提供，不打包进镜像。
 ## 布局
 
 - 页面使用 Fumadocs 的 [Spacious 布局](https://www.fumadocs.dev/docs/ui/layouts/spacious)，样式在 `app/global.css` 中引入。
