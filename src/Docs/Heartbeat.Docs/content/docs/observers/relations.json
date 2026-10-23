@@ -2,51 +2,53 @@
   "fields": {
     "NAME": { "label": "Name" },
     "LOCAL_APPLICATION_ID": { "label": "localApplicationId" },
+    "FOREGROUND_OBSERVATION_ID": { "label": "foregroundObservationId" },
     "OBSERVED_NAME": { "label": "name" },
     "IDENTIFIERS": { "label": "identifiers" },
-    "TITLE": { "label": "title<br/>草案" },
-    "KIND": { "label": "kind<br/>草案" },
+    "TITLE": { "label": "title" },
+    "KIND": { "label": "kind" },
+    "KEY": { "label": "key" },
     "STATE": { "label": "state<br/>草案" }
   },
   "nodes": {
     "FOREGROUND_STATE": {
       "label": "前台状态 Observer",
-      "interfaces": ["E"],
+      "interfaces": ["IEntity"],
       "fields": ["NAME"]
     },
     "INPUT_EVENTS": {
       "label": "输入事件 Observer",
-      "interfaces": ["E"],
+      "interfaces": ["IEntity"],
       "fields": ["NAME"]
     },
     "DEVICE_STATE": {
       "label": "设备状态 Observer",
-      "interfaces": ["E"],
+      "interfaces": ["IEntity"],
       "fields": ["NAME"]
     },
     "LOCAL_APPLICATION": {
       "label": "LocalApplication<br/>本机应用",
-      "interfaces": ["E"],
+      "interfaces": ["IEntity"],
       "fields": ["IDENTIFIERS"]
     },
     "APPLICATION_CONTENT": {
       "label": "前台应用时段<br/>观测内容",
-      "interfaces": ["E"],
+      "interfaces": ["IEntity"],
       "fields": ["LOCAL_APPLICATION_ID", "OBSERVED_NAME"]
     },
     "TITLE_CONTENT": {
       "label": "前台窗口标题时段<br/>观测内容",
-      "interfaces": ["E"],
-      "fields": ["TITLE"]
+      "interfaces": ["IEntity"],
+      "fields": ["FOREGROUND_OBSERVATION_ID", "TITLE"]
     },
     "INPUT_CONTENT": {
       "label": "键鼠输入事件<br/>观测内容",
-      "interfaces": ["E"],
-      "fields": ["KIND"]
+      "interfaces": ["IEntity"],
+      "fields": ["KIND", "KEY"]
     },
     "DEVICE_CONTENT": {
       "label": "设备休眠与清醒<br/>观测内容",
-      "interfaces": ["E"],
+      "interfaces": ["IEntity"],
       "fields": ["STATE"]
     }
   }

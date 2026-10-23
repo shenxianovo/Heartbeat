@@ -1,0 +1,9 @@
+{
+  "title": "Input Events",
+  "defaultOpen": false,
+  "collapsible": true,
+  "pagesIndex": "index",
+  "pages": [
+    "input-event"
+  ]
+}

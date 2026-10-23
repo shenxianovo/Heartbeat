@@ -1,0 +1,38 @@
+---
+title: "Time"
+description: "事实时间如何取值，事实何时算进行中"
+---
+
+本页规定 Observation 的事实时间如何取值。边界的表示见 [Observation · 事实时间](../model/observation.mdx#fact-time)，`timeZone` 见 [OBSERVATION-10](../model/observation.mdx#observation-10)，`recordedAt` 见 [OBSERVATION-11](../model/observation.mdx#observation-11)。
+
+## 取值 [#values]
+
+### TIME-1 事实时间未知时保持未知，不得用其他时刻填补 [#time-1]
+
+未知的边界为 `null`，见 [OBSERVATION-5](../model/observation.mdx#observation-5)。其他时刻包括 Observer 形成观测的时刻、后端收到或保存请求的时刻，以及 EntityId 的生成时刻。例如，同步一条三天前的浏览历史时，事实时间是三天前，形成观测和保存的时刻是现在。
+
+[TIME-3](#time-3) 的读取时刻就是事实成立的时刻，不属于填补。
+
+### TIME-2 事实时间取自证据 [#time-2]
+
+历史事件的事实时间取自来源记录的时间。业务在 EntitySchema 的 `description` 中写明事实时间取自哪些来源字段，见 [SCHEMA-3](../model/schema.mdx#schema-3)。
+
+### TIME-3 状态读取可以用读取时刻作为事实时间 [#time-3]
+
+当业务表达的是“这一刻读到的状态”时，读取时刻就是事实成立的时刻。例如，读到某个应用此刻在前台。
+
+## 进行中与结束 [#ongoing]
+
+### TIME-4 事实是否进行中或已结束，只由证据和业务明确的结束条件判断 [#time-4]
+
+边界本身不说明事实是否结束，见 [OBSERVATION-9](../model/observation.mdx#observation-9)。过去某一刻的确认不说明事实现在仍在持续。
+
+业务可以在事实进行中形成 Observation，并随证据补全，见 [HISTORY-1](./history.mdx#history-1)。业务也可以等事实结束后再形成 Observation。
+
+## 来源的原始时间 [#source-time]
+
+### TIME-5 观测内容可以保留来源的原始时间、时区和精度 [#time-5]
+
+来源只有本地日期、不带时区的本地时间或相对计数时，业务在观测内容中保留原值，取得可靠的换算依据后才填写边界。
+
+来源的时间精度高于后端保存的精度时，业务同样在观测内容中保留原值，并说明如何换算为事实时间。后端保存时间的精度见 [Storage · PostgreSQL](../../storage/postgresql.mdx#时间)。

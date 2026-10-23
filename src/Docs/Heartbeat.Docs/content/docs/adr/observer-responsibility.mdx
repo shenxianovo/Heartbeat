@@ -1,0 +1,38 @@
+---
+title: "Observer 的责任与提交"
+description: "Observer 按判断责任划分，业务形成事实，平台 SDK 负责可靠提交"
+---
+
+## 背景 [#context]
+
+一个程序可能同时读取多种来源，也可能只转发其他程序形成的观测。观测出错时，需要知道是谁作出了判断。程序还要在断网和重启时不丢失数据。
+
+## 决定 [#decision]
+
+- Observer 按判断责任划分。
+- 形成观测的 Observer 对判断负责，只传输或组合已有观测的程序不改变原 Observer。
+- Observer 实例的身份持久不变。
+- 业务形成事实，平台 SDK 负责可靠提交。同一运行环境的 Observer 共用该平台的 SDK。
+- SDK 不判断记录是否结束，由业务明确通知。
+
+## 理由 [#rationale]
+
+按判断责任划分 Observer，观测出错时才能追溯到作出判断的一方。
+
+把可靠提交放进 SDK，每个 Observer 就不必各自实现重试和恢复。SDK 不理解业务，所以不能从边界推断记录是否结束，见 [OBSERVATION-9](../core/model/observation.mdx#observation-9)。
+
+放弃的方案：
+
+- **按进程、接口或数据源划分 Observer。** 同一进程里互不相关的判断会混在一个身份下。
+- **每个 Observer 自己实现提交。** 重试、恢复和确认的逻辑会在每个 Observer 中重复，而且各不相同。
+
+## 代价 [#costs]
+
+- 每个运行环境都需要一份 SDK。
+- 一个进程可能运行多个 Observer，每个实例都要持久保存自己的身份。
+- 业务必须显式通知记录结束。
+
+## 规则位置 [#details]
+
+- [Observer](../core/model/observer.mdx)、[Core · 谁决定什么](../core/index.mdx#responsibility)
+- [Observers · 提交机制](../observers/submission/index.mdx)、[.NET SDK](../observers/submission/dotnet.mdx)

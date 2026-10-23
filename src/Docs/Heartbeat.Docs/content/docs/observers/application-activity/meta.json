@@ -1,0 +1,11 @@
+{
+  "title": "Foreground State",
+  "defaultOpen": false,
+  "collapsible": true,
+  "pagesIndex": "index",
+  "pages": [
+    "local-application",
+    "foreground-application-period",
+    "foreground-window-title"
+  ]
+}

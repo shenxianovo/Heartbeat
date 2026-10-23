@@ -1,0 +1,122 @@
+---
+title: "Observation"
+description: "Observer 形成的观测，唯一保存事实时间的类型"
+---
+
+<ModelRelations node="Observation" />
+
+`Observation` 记录一份观测：哪个 [Observer](./observer.mdx) 依据证据作出了判断，判断针对哪个业务实体，以及事实在什么时间成立。被引用的业务实体是这份 Observation 的观测内容。观测内容是业务实体承担的角色，不是一种类型，任何业务实体都可以成为观测内容。
+
+Observation 是唯一保存事实时间的类型。按时间查找事实时，读取方只需要读 Observation，不需要理解每种业务的字段。
+
+| 项目 | 内容 |
+| --- | --- |
+| 实现的契约 | [IEntity](./entity.mdx) |
+| 引用 | `observerId`、`contentId` |
+| 资源名 | `observations` |
+| 相关规则 | [Identity](../rules/identity.mdx)、[Time](../rules/time.mdx)、[History](../rules/history.mdx) |
+| 决策 | [ADR · 实体模型](../../adr/entity-model.mdx)、[ADR · 观测的身份、时间与历史](../../adr/observations.mdx) |
+
+## 成员 [#members]
+
+Observation 的结构由 Core 定义。
+
+| 成员 | 类型 | 含义 |
+| --- | --- | --- |
+| `observerId` | 引用 | 形成这份观测的 Observer |
+| `contentId` | 引用 | 观测内容 |
+| `timeZone` | 字符串或 `null`，必须出现 | 事实所属的 IANA 时区 |
+| `startAt` | 时间或 `null` | 事实的已知开始边界 |
+| `endAt` | 时间或 `null` | 事实的已知结束边界 |
+| `recordedAt` | 时间，由后端赋值 | 后端首次保存这份 Observation 的时刻 |
+
+## 示例 [#example]
+
+一个本机应用从 10:00 起处于前台，Observer 在 10:05 最后一次确认。
+
+```json
+{
+	"references": {
+		"observerId": "019e1bbb-ec00-7000-8000-0000000000a1",
+		"contentId": "019e1bbb-ec00-7000-8000-0000000000c1"
+	},
+	"properties": {
+		"startAt": "2026-10-06T02:00:00Z",
+		"endAt": "2026-10-06T02:05:00Z",
+		"timeZone": "Asia/Shanghai"
+	}
+}
+```
+
+`contentId` 指向一条前台应用时段内容。`endAt` 是最近一次确认的时刻，不表示应用已经离开前台，见 [OBSERVATION-9](#observation-9)。业务规则见 [Foreground Application Period](../../observers/application-activity/foreground-application-period.mdx)。
+
+## 引用 [#references]
+
+### OBSERVATION-1 每份 Observation 必须引用一个 Observer 和一个观测内容 [#observation-1]
+
+两个引用都不得为 `null`。引用的目标可以尚未保存，见 [ENTITY-4](./entity.mdx#entity-4)。
+
+### OBSERVATION-2 观测内容的类型由内容自己所属的 EntitySchema 决定 [#observation-2]
+
+Observation 不另外记录内容的类型。读取方按 `contentId` 指向的实体所属的 EntitySchema 解释内容。
+
+### OBSERVATION-3 同一个观测内容可以被多份 Observation 引用 [#observation-3]
+
+同一个 Observer 可以多次观测同一个内容，不同的 Observer 也可以观测同一个内容。每次独立观测是一份新的 Observation，见 [IDENTITY-3](../rules/identity.mdx#identity-3)。
+
+## 事实时间 [#fact-time]
+
+`startAt` 和 `endAt` 是事实本身的时间，不是观测、传输或保存的时间。本节规定两个边界如何表示，取值规则见 [Time](../rules/time.mdx)。
+
+| `startAt` | `endAt` | 含义 |
+| --- | --- | --- |
+| `null` | `null` | 开始和结束都未知 |
+| `t` | `null` | 开始已知，结束未知 |
+| `null` | `t` | 开始未知，结束已知 |
+| `t` | `t` | 时间点 `t` |
+| `t1` | `t2`，`t1 < t2` | 时段 `[t1, t2)` |
+| `t1` | `t2`，`t1 > t2` | 无效 |
+
+### OBSERVATION-4 只有 Observation 保存事实时间 [#observation-4]
+
+`startAt` 和 `endAt` 是 Observation 的成员，业务的 EntitySchema 不声明事实时间。观测内容不重复保存这一对边界，但可以保留来源的原始时间，见 [TIME-5](../rules/time.mdx#time-5)。业务实体需要事实时间时，由引用它的 Observation 表达。
+
+### OBSERVATION-5 null 表示边界未知 [#observation-5]
+
+`startAt` 为 `null` 表示开始边界未知，`endAt` 为 `null` 表示结束边界未知。`null` 不表示“很早以前”“仍在持续”或“现在”，也不表示暂停、取消或抑制等业务状态。这些状态由观测内容的字段表达。
+
+### OBSERVATION-6 两个边界都已知时，startAt 不得晚于 endAt [#observation-6]
+
+后端拒绝 `startAt` 晚于 `endAt` 的 Observation。任一边界未知时，不检查顺序。
+
+### OBSERVATION-7 startAt 等于 endAt 表示一个时间点 [#observation-7]
+
+事件发生在一个时刻时，`startAt` 和 `endAt` 都是这个时刻。
+
+### OBSERVATION-8 startAt 早于 endAt 表示左闭右开的时段 [#observation-8]
+
+时段 `[startAt, endAt)` 包含 `startAt`，不包含 `endAt`。前后相接的两个时段，前一个的 `endAt` 等于后一个的 `startAt`，两者不重叠。
+
+### OBSERVATION-9 边界的取值不说明事实是否已经结束 [#observation-9]
+
+`endAt` 已知可以只表示最近一次确认的时刻，事实可能仍在持续。`endAt` 为 `null` 也不说明事实仍在持续。判断事实是否进行中的规则见 [TIME-4](../rules/time.mdx#time-4)。
+
+### OBSERVATION-10 timeZone 是事实所属的 IANA 时区，未知时为 null [#observation-10]
+
+`timeZone` 必须出现。`timeZone` 不改变 `startAt` 和 `endAt` 表示的时刻，只说明事实发生地的本地时间如何换算。
+
+## 记录时间 [#recorded-at]
+
+### OBSERVATION-11 后端在首次保存 Observation 时赋值 recordedAt [#observation-11]
+
+`recordedAt` 是后端首次成功保存这份 Observation 的时刻。创建方不得提交 `recordedAt`。已保存的 Observation 必须有 `recordedAt`。
+
+### OBSERVATION-12 重试、重放和补全不改变 recordedAt [#observation-12]
+
+`recordedAt` 不是最近一次更新的时刻。
+
+### OBSERVATION-13 recordedAt 不是事实时间 [#observation-13]
+
+`recordedAt` 描述保存，不描述事实。`recordedAt` 也不能单独说明延迟发生在采集还是上传，见 [TIME-1](../rules/time.mdx#time-1)。
+
+`recordedAt` 在 API 中的表示见 [API · 记录时间](../../api/index.mdx#记录时间)。

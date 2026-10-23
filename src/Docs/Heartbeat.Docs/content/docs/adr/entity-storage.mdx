@@ -1,0 +1,39 @@
+---
+title: "实体存储"
+description: "PostgreSQL 保存实体，统一索引定位内容，每个业务 SchemaId 一张表"
+---
+
+## 背景 [#context]
+
+实体 API 按 ID 读取所有类别的实体，但不同类别、不同业务实体的字段不同。存储既要支持按 ID 定位，又要让业务数据可以直接用 SQL 查询。
+
+## 决定 [#decision]
+
+- PostgreSQL 保存全部实体，每个实体只有一份权威内容。
+- 统一索引记录每个 EntityId 和内容所在的表。
+- Core 类型使用固定表。
+- 每个业务 SchemaId 对应一张业务表，在登记 EntitySchema 的同一事务中创建。
+- 索引和内容在同一事务中写入。引用字段不建外键。
+- 时间转换为 UTC，并在应用层截断到整微秒。
+
+## 理由 [#rationale]
+
+统一索引让按 ID 读取不需要知道类别，也保证同一个 ID 不会出现在两张内容表中。每种业务实体一张表，业务数据可以直接按列查询和建立索引。结构变化使用新的 SchemaId 和新表，已有数据不需要迁移。
+
+时间在应用层截断，是因为数据库驱动按自身的时间纪元截断，会让 2000 年以前的时间向后进位。
+
+放弃的方案：
+
+- **所有业务实体放进一张 `jsonb` 表。** 结构校验和查询都要依赖 JSON 路径，也无法按字段建立普通索引。
+- **为引用建立外键。** 引用的目标可以晚于引用方保存，见 [ENTITY-4](../core/model/entity.mdx#entity-4)。
+
+## 代价 [#costs]
+
+- 表的数量随业务类型和版本增长。
+- 业务表由后端生成，直接修改业务表时必须遵守 Storage 的约定。
+- 时间精度只到微秒，更高的精度由业务内容保留。
+
+## 规则位置 [#details]
+
+- [Storage](../storage/index.mdx)、[Fixed Tables](../storage/fixed-tables.mdx)、[Business Tables](../storage/business-tables.mdx)、[PostgreSQL](../storage/postgresql.mdx)
+- [EntitySchema](../core/model/schema.mdx)

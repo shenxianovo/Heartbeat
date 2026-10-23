@@ -1,0 +1,11 @@
+{
+  "title": "Desktop",
+  "defaultOpen": false,
+  "collapsible": true,
+  "pagesIndex": "index",
+  "pages": [
+    "../application-activity",
+    "../input-events",
+    "../device-state"
+  ]
+}

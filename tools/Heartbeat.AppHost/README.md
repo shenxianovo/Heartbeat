@@ -1,112 +1,132 @@
-# Heartbeat AppHost
+# Heartbeat.AppHost
 
-Aspire 是本地开发环境的唯一编排入口。API 与文档站在本机运行，PostgreSQL 与 NGINX 使用容器。职责见 [ADR 0008](../../src/Docs/Heartbeat.Docs/content/docs/adr/0008-aspire-local-development.mdx)。
+Heartbeat.AppHost 用 Aspire 编排本地开发环境。环境分工见 [ADR · 后端运行与本地环境](../../src/Docs/Heartbeat.Docs/content/docs/adr/backend-runtime.mdx#local-environment)。
 
 ## 启动
 
-需要 Docker、`global.json` 指定的 .NET SDK、Node.js 24 LTS 或项目支持的更新版本，以及 pnpm 12.3.4。首次使用时，从仓库根目录依次安装 Aspire CLI、还原 EF 工具、信任开发证书并启动环境：
+前置条件：
+
+- Docker
+- `global.json` 指定的 .NET SDK
+- Node.js 24 LTS
+- pnpm 12.3.4
+
+首次使用时，在仓库根目录运行：
 
 ```sh
-dotnet tool install --global Aspire.Cli --version 13.6.1
+dotnet tool install --global Aspire.Cli --version 13.6.3
 dotnet tool restore
 aspire certs trust
+```
+
+`aspire certs trust` 会请求信任本机的 .NET 开发证书，按系统提示确认。
+
+启动环境：
+
+```sh
 aspire run
 ```
 
-`aspire.config.json` 指向本项目，并启用 watch。API 使用 Aspire 管理的 .NET watch；文档站通过 pnpm 集成安装锁定依赖后执行 `pnpm dev`，保留 Next.js 热更新。
+`aspire run` 在前台运行，按 Ctrl+C 停止。`aspire.config.json` 指向本项目并启用 watch。
+
+## 资源
+
+| 资源 | 运行方式 | 说明 |
+| --- | --- | --- |
+| `db` | 容器 | PostgreSQL 18.6，数据保存在命名卷 `heartbeat-aspire-postgres-data` |
+| `migrate` | 本机进程 | `db` 就绪后用 EF 工具应用迁移，完成后退出 |
+| `api` | 本机进程 | `migrate` 成功后启动，使用 .NET watch 热更新 |
+| `docs` | 本机进程 | 按锁文件安装依赖后运行 `pnpm dev` |
+| `web` | 本机进程 | 运行 `npm ci` 后启动 Vite |
+| `nginx` | 容器 | 提供对外入口，见[入口](#入口) |
+
+`migrate` 失败时，`api` 不启动。
+
+## 入口
 
 | 入口 | 地址 |
 | --- | --- |
 | API | <http://localhost:8080/api> |
+| Web 控制台 | <http://localhost:8081/> |
 | 文档站 | <http://localhost:3000/core> |
-| 看板 | <https://localhost:18888> |
+| Aspire 看板 | <https://localhost:18888> |
 | PostgreSQL | `localhost:54329` |
 
-首次运行 `aspire certs trust` 时，按系统提示信任本机 .NET 开发证书。看板启用本地匿名访问。打开 `https://localhost:18888` 无需登录令牌。看板使用 HTTPS，仅监听本机并接受 `localhost` 主机名。看板显示资源状态、实际 HTTP 就绪检查和控制台日志。API 已接入 OpenTelemetry；Aspire 自动注入 OTLP 配置，看板的 `api` 提供结构化日志、HTTP 与数据库调用链、HTTP 与 .NET 运行时指标。API 的独立运行与配置规则见 [遥测说明](../../src/Backend/Heartbeat.Api/README.md#遥测)。
+NGINX 的转发规则：
 
-数据库使用 PostgreSQL 18.6，初始化统计扩展并保留诊断配置。数据库就绪后，`migrate` 使用本地 EF 工具应用项目迁移并退出。迁移成功后，AppHost 才启动 API。API 进程不自动建表。
+| 入口 | 转发 |
+| --- | --- |
+| 8080 | `/api/…` 去掉前缀后转给 API，其他路径返回 `404` |
+| 3000 | `/api/entities/…` 转给 API，其他路径转给文档站 |
+| 8081 | `/api/…` 去掉前缀后转给 API，其他路径转给 Vite，支持 HMR WebSocket |
 
-NGINX 使用 AppHost 注入的内部地址访问本机 API 与文档站，保留既有路径、Playground 同源请求和 10 MiB 请求上限。API、文档站的内部端口由 Aspire 分配。看板、遥测和管理接口分别使用 18888、18889、18891；业务入口使用 8080、3000。如果旧环境或独立文档进程占用上述端口，先停止占用端口的进程。
+- 模板是 [docker/nginx/default.conf](../../docker/nginx/default.conf)。AppHost 把 API、文档站和 Web 控制台的内部地址注入为 `API_HOST`、`API_PORT`、`DOCS_HOST`、`DOCS_PORT`、`WEB_HOST`、`WEB_PORT`。
+- NGINX 通过 Docker DNS 解析上游，缓存 30 秒。每个上游保留最多 16 条空闲连接。
+- 连接超时 5 秒，读写超时 60 秒。请求体上限 10 MiB，超过时返回 `413` 和 `application/problem+json`。
+
+看板使用 HTTPS，只监听本机，允许匿名访问。看板、OTLP 接收和资源服务分别使用 18888、18889、18891 端口。端口被其他环境或独立的文档站进程占用时，先停止那个进程。
 
 ## 环境操作
 
-从仓库根目录运行：
+在仓库根目录运行：
 
 ```sh
-aspire start
-aspire describe
+aspire start                       # 后台启动
+aspire describe                    # 查看资源状态
+aspire wait nginx --timeout 180    # 等待 API 和文档站都能通过代理访问
 aspire logs api --follow
 aspire resource api restart
 aspire resource api rebuild
-aspire wait nginx --timeout 180
 aspire stop
 ```
 
-`aspire run` 在前台运行，按 Ctrl+C 停止。`aspire start` 在后台运行。
+停止环境会停止本机进程和容器，保留数据库命名卷。
 
-启动 AppHost 后，运行 `aspire wait nginx` 验证资源就绪。该命令等待 API 查询与文档首页均能通过代理访问。看板也提供资源启动、停止、重启和项目重新构建。
+## 配置
 
-停止 AppHost 会停止其本机进程和会话容器，保留 `heartbeat-aspire-postgres-data` 命名卷。再次启动复用该卷。文档依赖和缓存位于本机 `node_modules` 与 `.next`；文档站从仓库 `TestResults` 读取测试报告。
+`appsettings.json` 提供端口、数据库卷名和开发用的数据库账号。数据库名、用户名和密码都是 `heartbeat`。可以用命令行参数覆盖配置，例如 `--Ports:Api=18080`。覆盖密码时使用 Aspire user secrets。
 
-当前前端目录不具备可运行实现，因此尚未纳入本地编排。前台状态 Observer 继续按其 [README](../../src/Observers/Heartbeat.Observer.ForegroundState/README.md) 单独运行。
+文档站从仓库根目录的 `TestResults` 读取测试报告。
 
-## 配置与镜像
-
-`appsettings.json` 提供开发参数、公开端口和数据库卷名；可用 .NET 配置的命令行参数或环境变量覆盖。开发用户名和密码均为 `heartbeat`。如需覆盖密码，使用 Aspire user secrets。
-
-Dockerfile 保留 API 与文档站镜像构建能力：
+## 镜像
 
 ```sh
 docker build -f src/Backend/Heartbeat.Api/Dockerfile -t heartbeat-api:local .
 docker build -f src/Docs/Heartbeat.Docs/Dockerfile -t heartbeat-docs:local .
 ```
 
-API 镜像保留 `/app/efbundle`，供独立迁移进程使用。代理模板和数据库初始化脚本也继续保留。Aspire 仅用于开发。将来部署使用 Docker 镜像和 Docker Compose，不运行 Aspire AppHost；部署配置与生产监控栈尚未建设。本地 `env`、`--release` 和手写 Compose 已移除。
+Aspire 只用于本地开发。部署配置和生产监控尚未建设。
 
 ## 验证
 
-运行前，停止其他 AppHost，因为以下验证共用看板配置。如果需要并行运行环境，使用 Aspire 的 `--isolated` 模式，并核对实际分配的端口和卷。
-
-从仓库根目录使用独立端口和数据库卷启动验证环境：
+修改编排、代理或热更新配置后，在独立的端口和数据库卷上验证。运行前先停止其他 AppHost，因为验证环境与它们共用看板配置。需要并行时，使用 `--isolated` 并核对实际分配的端口和卷。
 
 ```sh
-aspire run --detach -- --Ports:Api=18080 --Ports:Docs=13000 --Ports:Database=54339 --DatabaseVolume=heartbeat-aspire-verification
+aspire run --detach -- --Ports:Api=18080 --Ports:Docs=13000 --Ports:Web=18081 --Ports:Database=54339 --DatabaseVolume=heartbeat-aspire-verification
 aspire wait nginx --timeout 180
 ```
 
-验证以下行为：
+逐项检查：
 
-1. 通过 API 和文档入口读取实体，检查 Playground 同源代理。
-2. 提交超限请求，检查错误响应。
+1. 通过 API 入口和文档入口读取实体。在文档站的 Playground 中发送请求，确认同源代理可用。
+2. 提交超过 10 MiB 的请求，确认返回 `413`。
 3. 打开文档首页和报告页。
-4. 修改 API 已有处理方法。
-5. 验证：热更新后 HTTP 响应变化。
-6. 恢复 API 修改。
-7. 修改文档正文。
-8. 验证：页面显示修改后的正文。
-9. 恢复文档修改。
-10. 停止并重新启动资源，检查数据库持久性。
-11. 检查迁移失败时 API 不启动。
-12. 检查代理恢复后可以访问 API 和文档站。
+4. 修改 API 的一个已有处理方法，确认热更新后 HTTP 响应变化，然后恢复修改。
+5. 修改一页文档正文，确认页面显示新内容，然后恢复修改。
+6. 打开 Web 控制台，确认 `/api/` 同源代理和 Vite HMR 可用。
+7. 让迁移失败，确认 API 不启动。
+8. 运行 `aspire stop`，再用相同参数启动，确认之前保存的实体仍然存在。
+
+验证结束后，停止环境。确认卷属于本次验证后，删除它：
 
 ```sh
 aspire stop
-docker volume inspect heartbeat-aspire-verification
-```
-
-再次使用相同参数启动环境。读取验证实体，确认停止后数据保留。
-
-验证结束后，停止验证环境。下面的命令会删除验证卷及其数据。确认卷属于本次验证后，运行：
-
-```sh
 docker volume rm heartbeat-aspire-verification
 ```
 
-构建、测试、质量检查与最终验证使用 [Heartbeat.Dev](../Heartbeat.Dev/README.md)。运行检查只证明本地开发行为。
-
 ### API 遥测验证
 
-使用独立环境，保留其他 AppHost 的会话与开发数据库。隔离模式的内部资源服务使用 `127.0.0.1`，验证命令仅为该环境补充这个本机地址：
+在隔离环境中验证，避免影响其他环境的会话和开发数据库。隔离模式的资源服务使用 `127.0.0.1`，所以命令额外允许这个主机名：
 
 ```sh
 aspire run --isolated --detach -- --Ports:Api=18080 --Ports:Docs=13000 --Ports:Web=18081 --Ports:Database=54339 --DatabaseVolume=heartbeat-otel-verification --AllowedHosts='localhost;127.0.0.1'
@@ -116,6 +136,10 @@ aspire otel logs api
 aspire otel traces api
 ```
 
-请求应返回 `404`。从该环境实际输出的看板地址选择 `api`，检查结构化日志、HTTP span 下的 Npgsql span，以及 `http.server.request.duration` 和 `dotnet.*` 指标。指标按导出周期刷新；默认最多需要约一分钟。CLI 日志与追踪可作为证据，指标需在看板或其遥测 API 读取。该验证不写入实体。
+1. 确认请求返回 `404`。
+2. 在环境输出的看板地址中选择 `api`，确认有结构化日志，HTTP span 下有 Npgsql span。
+3. 确认有 `http.server.request.duration` 和 `dotnet.*` 指标。指标按导出周期刷新，最多约一分钟。指标只能在看板或它的遥测 API 中读取。
 
-停止该验证环境并核对卷名后，可删除 `heartbeat-otel-verification` 验证卷。另在不设置 `OTEL_EXPORTER_OTLP_ENDPOINT` 的独立 API 中发起读取，确认保留控制台日志且未注册遥测导出器。自动回归见 `TelemetryTests`：覆盖未配置和无效地址、结构化字段、HTTP/数据库父子关系、HTTP/运行时指标以及三类实际 OTLP 导出。
+验证结束后，停止环境，删除 `heartbeat-otel-verification` 卷。
+
+另外，在不设置 `OTEL_EXPORTER_OTLP_ENDPOINT` 的情况下单独运行 API 并发起读取，确认只有控制台日志。自动测试见 `TelemetryTests`。

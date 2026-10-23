@@ -1,0 +1,73 @@
+---
+title: "Fixed Tables"
+description: "entities、observations、observers、entity_schemas"
+---
+
+四张固定表由 Initial migration 创建，EF Core 直接映射 Core 类型。索引行与内容行在同一事务中写入，规则见[写入一致性](./index.mdx#写入一致性)。
+
+## entities
+
+统一实体索引。C# 类型 `Heartbeat.Infrastructure.Database.EntityIndexRow`。
+
+| 列 | 类型 | 可空 | C# 属性 | 含义 |
+| --- | --- | --- | --- | --- |
+| `id` | `uuid` | 否 | `Id` | 实体标识，保留创建方提交的值 |
+| `table_name` | `text` | 否 | `TableName` | 权威内容所在的表 |
+
+主键 `pk_entities`。业务实体的 `table_name` 指向其 Schema 的业务表；保存已有业务实体时校验所属 Schema，实体不能通过另一资源入口移动。
+
+## observations
+
+保存 [Observation](../core/model/observation.mdx)。入口 `PUT /entities/observations/{id}`。
+
+| 列 | 类型 | 可空 | C# 属性 | 含义 |
+| --- | --- | --- | --- | --- |
+| `id` | `uuid` | 否 | `Id` | 观测标识 |
+| `observer_id` | `uuid` | 否 | `ObserverId` | 形成观测的主体 |
+| `content_id` | `uuid` | 否 | `ContentId` | 观测内容 |
+| `start_at` | `timestamptz` | 是 | `StartAt` | 事实开始时间 |
+| `end_at` | `timestamptz` | 是 | `EndAt` | 事实结束时间 |
+| `time_zone` | `text` | 是 | `TimeZone` | 事实所属的 IANA 时区 |
+| `recorded_at` | `timestamptz` | 否 | `RecordedAt` | 后端首次保存的时刻，之后不再改变 |
+
+主键 `pk_observations`，外键 `fk_observations_entities_id`，检查 `ck_observations_time_order`（`start_at <= end_at`）。两个引用列不建外键。
+
+## observers
+
+保存 [Observer](../core/model/observer.mdx)。入口 `PUT /entities/observers/{id}`。
+
+| 列 | 类型 | 可空 | C# 属性 | 含义 |
+| --- | --- | --- | --- | --- |
+| `id` | `uuid` | 否 | `Id` | 主体标识 |
+| `name` | `text` | 否 | `Name` | 主体名称 |
+
+主键 `pk_observers`，外键 `fk_observers_entities_id`。
+
+## entity_schemas
+
+保存 [EntitySchema](../core/model/schema.mdx)。入口 `PUT /entities/schemas/{id}`。定义的正式业务说明 `description` 随定义保存和读取，不作为建表或校验的可执行规则。
+
+| 列 | 类型 | 可空 | 含义 |
+| --- | --- | --- | --- |
+| `id` | `uuid` | 否 | 定义标识 |
+| `display_name` | `text` | 否 | 显示名称，对应 `displayName` |
+| `description` | `text` | 否 | 业务说明，不允许空字符串 |
+| `resource_name` | `text` | 否 | 绑定的业务资源名，唯一 |
+| `fields` | `jsonb` | 否 | 字段名到字段定义的映射 |
+
+主键 `pk_entity_schemas`，外键 `fk_entity_schemas_entities_id`。
+
+首次保存时，定义、索引、资源绑定与[业务表](./business-tables.mdx)创建作为一次操作，失败时整体回滚。资源名被其他 SchemaId 占用，或修改已登记的资源名、字段定义时返回 `409`。重复提交相同定义不新增任何内容。只调整显示名称或业务说明的措辞、业务含义不变时，沿用原 SchemaId；更新规则见 [EntitySchema · 定义的变化](../core/model/schema.mdx#changes)。
+
+## 程序映射
+
+| DbSet | C# 类型 | 表 |
+| --- | --- | --- |
+| `Entities` | `EntityIndexRow` | `entities` |
+| `Observations` | `Observation` | `observations` |
+| `Observers` | `Observer` | `observers` |
+| `EntitySchemas` | `EntitySchema` | `entity_schemas` |
+
+- 每张表一个 `IEntityTypeConfiguration<T>`，位于 `Database/Configurations/`，由 `HeartbeatDbContext` 显式注册。
+- `EntityIdValueConverter` 在 `EntityId` 与 `Guid` 之间转换；`UtcDateTimeOffsetValueConverter` 处理时间，见 [PostgreSQL · 时间](./postgresql.mdx#时间)。两者由 `ConfigureConventions` 应用于全部对应属性。
+- 业务表在登记 EntitySchema 时创建，不使用 EF 映射。

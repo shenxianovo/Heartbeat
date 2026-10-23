@@ -1,0 +1,64 @@
+---
+title: "Observer"
+description: "依据证据形成观测并对判断负责的实体"
+---
+
+<ModelRelations node="Observer" />
+
+`Observer` 是依据证据形成观测、并对判断负责的实体。每份 [Observation](./observation.mdx) 都通过 `observerId` 指明形成它的 Observer。
+
+| 项目 | 内容 |
+| --- | --- |
+| 实现的契约 | [IEntity](./entity.mdx) |
+| 引用 | 无 |
+| 被引用 | Observation 的 `observerId` |
+| 资源名 | `observers` |
+| 决策 | [ADR · Observer 的责任与提交](../../adr/observer-responsibility.mdx) |
+
+## 成员 [#members]
+
+Observer 的结构由 Core 定义。
+
+| 成员 | 类型 | 含义 |
+| --- | --- | --- |
+| `name` | 非空字符串 | Observer 实例的名称 |
+
+## 划分 [#division]
+
+### OBSERVER-1 Observer 按判断责任划分 [#observer-1]
+
+一个 Observer 对应一组由它负责的判断。接口、数据源、输出类型和进程都不决定 Observer 的划分。
+
+例如，前台状态、输入事件和设备状态分别由三个 Observer 负责。三个 Observer 可以运行在同一个进程中。
+
+### OBSERVER-2 一个 Observer 可以形成多种观测内容 [#observer-2]
+
+一个 Observer 可以使用多份内容 EntitySchema。多个 Observer 也可以使用同一份内容 EntitySchema。字段、约束和事实含义相同的不同平台实现，必须共用同一份 EntitySchema。
+
+## 实例 [#instances]
+
+### OBSERVER-3 同一个 Observer 实例重启或升级后沿用原 EntityId [#observer-3]
+
+SDK 必须持久保存 Observer 实例的 EntityId，不得在每次启动时生成新的 EntityId。
+
+### OBSERVER-4 每个 Observer 实例有自己的 EntityId [#observer-4]
+
+同一个进程可以运行多个 Observer 实例。独立运行的两个实例不得共用 EntityId。
+
+## 判断责任 [#judgement]
+
+### OBSERVER-5 形成观测的 Observer 对判断负责 [#observer-5]
+
+| 情况 | 负责的 Observer |
+| --- | --- |
+| 内部模块只读取或检测证据 | 使用该模块的 Observer |
+| 内部模块独立形成观测 | 该模块自己的 Observer |
+| 程序只传输或组合已有观测 | 原 Observation 的 Observer 不变 |
+| 程序依据已有观测形成新的聚合观测 | 形成聚合观测的 Observer |
+| 另一个 Observer 重新解释证据 | 重新解释证据的 Observer |
+
+聚合观测的内容引用被聚合的实体。
+
+### OBSERVER-6 读取、解析或匹配失败不形成观测 [#observer-6]
+
+这些失败是采集诊断。采集诊断不说明被观测的事实，Observer 不得把采集诊断保存为 Observation。

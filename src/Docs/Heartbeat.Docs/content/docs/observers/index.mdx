@@ -1,55 +1,33 @@
 ---
-title: "概览"
-description: "观测主体、平台客户端与实体定义"
+title: "Overview"
+description: "Observer 的职责边界与目录"
 ---
 
-Observer 是实际形成观测的主体。每个主体实例拥有稳定的 `ObserverId`。API、数据源、输出类型和进程不同，不直接要求拆分主体。通用定义见 [Observer](../core/model/observations/observer.mdx)。
+本页列出各 Observer 的职责。Observer 身份与责任规则见 [Observer](../core/model/observer.mdx) 和 [ADR · Observer 的责任与提交](../adr/observer-responsibility.mdx)。
 
-平台客户端组合并运行 Observer。多个 Observer 可以运行在同一进程中。
+## 接入与提交
 
-如果客户端只传输已有观测，客户端必须保留原 `ObserverId`。如果主体形成新的聚合观测，新观测使用聚合主体的 `ObserverId`。
+接入顺序见[接入指南](./integration.mdx)，提交方式见[提交机制](./submission/index.mdx)。
 
-聚合数据保存具体 Observer 实例的引用。实体定义说明引用字段。如果数据结构、约束、事实含义和时间规则一致，各平台实现可以共用定义。分工决定见 [ADR 0002](../adr/0002-observer-capabilities-and-platform-clients.mdx)。
+## 目录
 
-## 文档结构
+桌面观测统一从 [Desktop](./desktop/index.mdx) 进入，下面展开前台状态、输入事件与设备状态。
 
-侧栏按以下分区组织：
-
-| 分区 | 内容 |
+| Observer | 观测内容 |
 | --- | --- |
-| Observers | 实例身份、使用的实体定义和事实时间 |
-| Entities | 被观测的实体，例如[本机应用](./entities/local-application.mdx) |
-| EntitySchemas | 业务实体定义的含义、数据示例和字段约束 |
+| [Foreground State](./application-activity/index.mdx) | 前台应用时段与窗口标题时段 |
+| [Input Events](./input-events/index.mdx) | 逐条键鼠事件 |
+| [Device State](./device-state/index.mdx) | 设备休眠与清醒时段 |
+| [Browser History](./browser-history/index.mdx) | 网页访问与历史删除 |
+| [Assistant Sessions](./assistant-sessions/index.mdx) | 助手会话、执行与工具调用 |
+| [Screen Capture](./screen-capture/index.mdx) | 屏幕捕获、OCR 与图像检测 |
+| [Health](./health/index.mdx) | 步数与睡眠 |
+| [VRChat](./vrchat/index.mdx) | 实例加入、离开与玩家在场 |
+| [Playback](./playback/index.mdx) | 媒体播放状态与进度 |
+| [Audio](./audio/index.mdx) | 音频材料、片段与说话人 |
 
-## 目标与职责
+前台状态由独立程序 `src/Observers/Heartbeat.Observer.ForegroundState/` 运行。运行方式在该模块 README。
 
-| Observer | 目标观测 | 时间形式 |
-| --- | --- | --- |
-| [前台状态](./foreground-state.mdx) | [前台应用时段](./schemas/foreground-application-interval.mdx) | 时间段 |
-| [前台状态](./foreground-state.mdx) | [前台窗口标题时段](./schemas/foreground-window-title.mdx) | 时间段，独立于应用时间线 |
-| [输入事件](./input-events.mdx) | [键鼠输入事件](./schemas/input-event.mdx) | 事件发生的时间点 |
-| [设备状态](./device-state.mdx) | [设备休眠与清醒](./schemas/device-state.mdx) | 时间段 |
+## 页面结构
 
-三个 Observer 分别拥有实例身份。三个 Observer 可以运行在同一程序中。前台状态实例使用两份 EntitySchema，分别定义应用和标题事实。
-
-“应用使用”表示前台时长。设备清醒、会话未锁定和近期存在输入是三种事实。阅读或观看视频时，用户可能没有键鼠输入。
-
-“用户活跃”的判断规则和锁屏责任归属尚未确定。是否从前台时长排除锁屏或无输入时段，也需确认。
-
-前台应用采集器在本地保存当前时段，连续确认时更新边界。时段结束后才进入 Outbox，不为每次确认创建独立观测。
-
-采集器必须保留历史 Observation 引用的内容，不得覆盖。结束时间未知不证明应用此刻仍在前台。
-
-## 当前实现
-
-| Observer | 已实现范围 | 文档 |
-| --- | --- | --- |
-| 前台状态 | macOS 本机应用身份、事件与定时确认、本地时段和 Outbox | [前台状态](./foreground-state.mdx) |
-
-当前程序位于 `src/Observers/Heartbeat.Observer.ForegroundState/`。身份规则见[本机应用](./entities/local-application.mdx)，时间规则见[前台应用时段](./schemas/foreground-application-interval.mdx)。
-
-窗口标题、Windows、输入事件、锁屏和独立设备状态时间线另行实现。休眠判断只用于断开应用时段。
-
-本机应用实体表示某台设备上的一个应用安装。不同设备上的安装分别保留实体身份，可以关联到同一个跨平台应用实体。规则见 [ADR 0002](../adr/0002-observer-capabilities-and-platform-clients.mdx#应用身份)。
-
-应用观测保存 `localApplicationId` 与当时读到的 `name`。本机应用与应用时段分别使用固定 SchemaId。跨平台关联、标题、输入事件和独立设备状态的字段与规则单独确定。
+文档按“分类 → Observer → 业务实体”组织：分类提供导航；Observer 主页面说明职责、实例身份、采集、事实时间和提交策略；实体子页集中定义记录粒度、身份、引用、时间、Schema 与示例。新接入按 [Integration Guide](./integration.mdx) 设计，按 [Document Template](./template/index.mdx) 编写。

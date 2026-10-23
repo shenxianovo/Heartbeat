@@ -1,0 +1,7 @@
+{
+  "title": "Example Observer",
+  "defaultOpen": false,
+  "collapsible": true,
+  "pagesIndex": "index",
+  "pages": ["example-entity"]
+}

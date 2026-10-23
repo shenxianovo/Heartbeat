@@ -1,0 +1,47 @@
+---
+title: "Identity"
+description: "何时新建 EntityId，何时沿用原 EntityId"
+---
+
+本页规定实体身份何时新建、何时沿用。EntityId 本身的规则见 [ENTITY-1](../model/entity.mdx#entity-1) 和 [ENTITY-2](../model/entity.mdx#entity-2)，Observer 实例的身份见 [OBSERVER-3](../model/observer.mdx#observer-3) 和 [OBSERVER-4](../model/observer.mdx#observer-4)。
+
+| 情况 | EntityId |
+| --- | --- |
+| 业务识别出已有实体 | 沿用 |
+| 重试或重放已保存的输入 | 沿用 |
+| 补全同一个连续事实 | 沿用 |
+| 填写未知的事实时间边界 | 沿用 |
+| 新的独立观测 | 新建 |
+| 观测内容需要保留独立记录 | 新建 |
+
+## 共同规则 [#common]
+
+### IDENTITY-1 业务决定什么算同一个实体 [#identity-1]
+
+业务识别出已有实体时，沿用原 EntityId。业务没有识别出已有实体时，生成新的 EntityId。后端不比较内容来判断两个实体是否相同。
+
+### IDENTITY-2 Observer 的身份不决定业务实体的身份 [#identity-2]
+
+业务实体是更新还是新建，由业务决定。同一个 Observer 可以形成很多业务实体，多个 Observer 也可以观测同一个业务实体。
+
+## Observation [#observation]
+
+### IDENTITY-3 重试或重放已保存的输入时沿用原 EntityId，新的独立观测使用新的 EntityId [#identity-3]
+
+重试和转发保留原 EntityId、引用、属性和事实时间，也保留原 Observer。发送的时机不改变事实时间。
+
+两份观测的内容相同，不说明两份观测是同一次观测，也不说明事实是同一次发生。
+
+### IDENTITY-4 补全同一个连续事实时，沿用原 Observation 的 EntityId [#identity-4]
+
+补全的规则见 [HISTORY-1](./history.mdx#history-1)。时间点或时段的表示方式不决定 Observation 的身份。补全不得把独立的读数合并为同一份 Observation。
+
+## 观测内容 [#content]
+
+### IDENTITY-5 业务决定观测内容的记录粒度和版本划分 [#identity-5]
+
+观测内容没有变化时，多份 Observation 可以引用同一个内容。业务需要保留某一时刻的内容时，为这一时刻保存独立的内容，见 [HISTORY-5](./history.mdx#history-5)。
+
+### IDENTITY-6 来源缺少稳定标识时，业务按已有证据识别实体，不得补造来源身份 [#identity-6]
+
+证据不足以确定的字段保持未知。范围不同的同名来源标识不得合并为同一个实体，例如两台设备上同名的应用。

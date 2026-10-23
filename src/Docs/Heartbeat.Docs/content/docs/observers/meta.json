@@ -1,18 +1,22 @@
 {
   "title": "Observers",
-  "description": "采集能力、平台实现与观测规则",
+  "description": "各观测来源的业务规则",
   "icon": "ScanEye",
   "root": true,
   "pages": [
-    "---指南---",
     "index",
-    "---Observers---",
-    "foreground-state",
-    "input-events",
-    "device-state",
-    "---Entities---",
-    "...entities",
-    "---EntitySchemas---",
-    "...schemas"
+    "integration",
+    "submission",
+    "template",
+    "desktop",
+    "---Digital Content---",
+    "browser-history/index",
+    "assistant-sessions/index",
+    "screen-capture/index",
+    "---Life---",
+    "health/index",
+    "vrchat/index",
+    "playback/index",
+    "audio/index"
   ]
 }

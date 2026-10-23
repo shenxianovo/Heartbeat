@@ -1,41 +1,59 @@
 # Agent 规则
 
-## 重写约束
+## 重写期约束
 
-重写完成前不部署，也不兼容旧数据、旧客户端或旧接口。
+项目正在重写。重写完成前不部署，也不兼容旧数据、旧客户端或旧接口。
 
-- 数据库结构直接修改 Initial migration 和 model snapshot，不加增量迁移。
-- 协议字段及其生产者、消费者直接一起修改，不为重写期行为升级版本。
-- 只保留当前实现；同步更新代码、测试和文档，不加兼容层、迁移路径或版本协商。
-- 用户明确要求前不建设 CI；在本地运行适当检查。
+- 修改数据库结构时，直接改 Initial migration 和模型快照，不加增量迁移。
+- 修改协议字段时，同时修改生产者和消费者，不升级协议版本。
+- 只保留当前实现。代码、测试和文档一起更新，不加兼容层、迁移路径或版本协商。
+- 用户明确要求前不建设 CI，在本地运行检查。
 
-## 文档权威位置
+## 文档
 
-长期文档的唯一权威位置是 `src/Docs/Heartbeat.Docs/content/docs/`。领域工作开始前，读[模型概览](src/Docs/Heartbeat.Docs/content/docs/core/index.mdx)、[术语表](src/Docs/Heartbeat.Docs/content/docs/core/glossary.mdx)和相关模型节点及 ADR。
+长期文档只写在 `src/Docs/Heartbeat.Docs/content/docs/`。开始领域工作前，先读 [Core Overview](src/Docs/Heartbeat.Docs/content/docs/core/index.mdx)、[Glossary](src/Docs/Heartbeat.Docs/content/docs/core/glossary.mdx)，以及相关的类型页、规则页和 ADR。
 
-使用 `grill-with-docs` 或 `domain-modeling` 时，将技能的文档路径映射如下，直接读写站内源文件：
+| 内容 | 位置 |
+| --- | --- |
+| 类型的结构与规则 | `core/model/` |
+| 跨类型的规则 | `core/rules/` |
+| 术语 | `core/glossary.mdx` |
+| 架构决定 | `adr/` |
+| HTTP 契约 | `api/openapi.json` |
+| 单个 Observer 的业务规则和实现决定 | `observers/<observer>/` |
+| 模块的运行和操作说明 | 模块目录的 `README.md` |
 
-- `GLOSSARY.md` 对应 `src/Docs/Heartbeat.Docs/content/docs/core/glossary.mdx`。
-- `docs/adr/` 对应 `src/Docs/Heartbeat.Docs/content/docs/adr/`。
-- 模型正文位于 `src/Docs/Heartbeat.Docs/content/docs/core/model/`。
+使用 `grill-with-docs` 或 `domain-modeling` 时，`GLOSSARY.md` 对应 `core/glossary.mdx`，`docs/adr/` 对应 `adr/`。
 
-模型正文只记录用户已确认的结构与语义。Agent 按已确认内容起草和整理文档；改变模型语义前，逐项得到用户确认。
+Core 的规则带编号，前缀是所在页面的英文名称，例如 `OBSERVATION-11`。代码、测试和 ADR 直接引用编号。重写期间可以重新编号，但要同时更新所有引用；重写完成后编号固定，不再复用。写法见 [Core Overview · 规则的写法](src/Docs/Heartbeat.Docs/content/docs/core/index.mdx#conventions)。ADR 用 slug 命名，没有编号。
 
-## 设计决策
+Core 只记录用户已确认的结构与语义。Agent 可以按已确认的内容起草和整理文档。改变模型语义前，逐项取得用户确认。
 
-实施中的每项决定先在对话中说明并得到用户确认；已确认范围内的工作可以继续。
+## 设计决定
 
-以下决策必须在文档站的 `adr/` 留 ADR：
+实施中的每项决定先在对话中说明，取得用户确认后再做。已确认范围内的工作可以继续。
 
-- 责任归哪个组件；
-- 协议的语义；
+以下三类决定写成 ADR：
+
+- 责任归哪个组件。
+- 协议的语义。
 - 某类数据的权威位置。
 
-较小决定写入对应模型或契约文档；模块自身的操作说明写入模块 README。
+较小的决定写入对应的类型页、规则页或契约。单个 Observer 的实现决定写入该 Observer 的文档。
+
+## 传播层级
+
+更新按以下层级前向传播，禁止反向修改：
+
+T0 模型与决策（ADR、Core、Glossary）→ T1 对外约定（OpenAPI、API、Storage、Observers）→ T2 验证定义（Testing Case）→ T3 实现（代码和测试）。
+
+从受影响的最高层开始修改，并传播到最远的受影响层。下层问题在本层解决不了时，先改最早能解决问题的上层，再重新前向传播。完整规则、各层内部顺序和图见 [ADR · 文档的权威与传播](src/Docs/Heartbeat.Docs/content/docs/adr/documentation-authority.mdx#layers)。
 
 ## 工作约定
 
 - 进行中的规格和 issue 放在 `.scratch/<feature-slug>/`，完成后删除。
-- 应用实现变更使用 [verify-heartbeat](.agents/skills/verify-heartbeat/SKILL.md) 选择验证。
-- 文档站变更在 `src/Docs/Heartbeat.Docs` 运行 `pnpm types:check` 和 `pnpm build`；页面或交互变更还需检查实际页面。
-- 结束任务前检查改动范围内的代码、文档与链接是否一致，并报告验证结果和未验证范围。
+- 修改应用实现时，用 [verify-heartbeat](.agents/skills/verify-heartbeat/SKILL.md) 选择验证。
+- 修改文档站、`README.md`、`AGENTS.md` 或 skill 后，在 `src/Docs/Heartbeat.Docs` 运行 `pnpm docs:check`，修复全部报错再结束任务。
+- 修改文档站时，另外运行 `pnpm test`、`pnpm types:check` 和 `pnpm build`。修改页面或交互时，还要打开实际页面检查。
+- 从模型中删除一个概念时，在 [Glossary · 不再使用的术语](src/Docs/Heartbeat.Docs/content/docs/core/glossary.mdx#deprecated) 加一行。
+- 结束任务前，检查改动范围内的代码、文档和链接是否一致，报告验证结果和未验证的范围。

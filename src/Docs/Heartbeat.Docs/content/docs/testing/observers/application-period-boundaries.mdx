@@ -1,12 +1,13 @@
 ---
-title: "应用时段在切换时结束，在中断后重开"
+title: "Application Period Boundaries"
+description: "时段在切换时结束、在中断后重开"
 ---
 
 export const caseId = 'foreground-application-period-boundaries';
 
 ## 为什么验证
 
-[应用时段](../../observers/schemas/foreground-application-interval.mdx)用于统计前台时长。休眠、读取失败和采集停顿不能被计入应用持续使用时间。
+[应用时段](../../observers/application-activity/foreground-application-period.mdx)记录已确认的前台事实，不判断用户活跃或根据其他维度裁剪时段。读取失败与采集停顿造成的未确认空白不能被计入连续前台时段。
 
 ## 前置条件
 
@@ -21,14 +22,14 @@ export const caseId = 'foreground-application-period-boundaries';
 | 应用不变，名称变化或时区变化 | 新开时段，旧内容保持不变 |
 | 1 秒后读取失败，2 秒恢复 | 原时段结束于 1 秒，恢复时新开一段 |
 | 1 秒后直到 10 秒才恢复采样 | 不记录中间空白 |
-| 包含休眠和不含休眠的计时出现超过 100 毫秒的差异 | 断开时段 |
+| 应用与确认间隔不变，另一维度记录锁屏、休眠或无输入 | 不因其他维度的状态而切开前台时段 |
 | 两次定时确认之间收到 A → B → C 的事件 | 三个时段均保留 |
-| 休眠通知、休眠中定时确认、唤醒通知 | 休眠时结束原时段，休眠中不采集，唤醒后新开时段 |
+| 采集未取得读数，直到超过连续确认阈值才恢复 | 原时段结束于最后一次确认，恢复后新建；不要求判断中断是否由休眠造成 |
 | 系统时间倒退或增量跳变超过 100 毫秒 | 断开时段，不延长原观测 |
 
 ## 测试实现
 
-`ForegroundTimelineTests` 和 `ForegroundOutboxTests` 使用模拟读数与事件验证以上规则。模拟休眠只验证分段规则，不证明真实设备休眠事件的读取。
+`ForegroundTimelineTests` 与 `ForegroundOutboxTests`，使用模拟读数与事件。
 
 ## 执行结果
 

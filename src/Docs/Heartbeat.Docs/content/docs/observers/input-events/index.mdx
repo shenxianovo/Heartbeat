@@ -1,0 +1,53 @@
+---
+title: "Input Events"
+description: "逐条键鼠事件（草案）"
+---
+
+<ObserverStructure node="INPUT_EVENTS" />
+
+输入事件 Observer 记录键盘和鼠标操作。同一实例形成的键盘与鼠标观测共用 `ObserverId`。
+
+## Entity 与 Schema
+
+| Entity 与 Schema | 资源名 | 说明 |
+| --- | --- | --- |
+| [Input Event](./input-event.mdx) | `input-events` | 一次键盘或鼠标事件；实体含义、Schema 元信息与字段在同一页维护 |
+
+各平台遵循同一事件含义、字段和时间规则时共用一份定义；平台读取方式属于采集实现。
+
+## 实例身份
+
+同一实例重启或升级时沿用身份。身份生成与本地保存方式待定。
+
+## 采集
+
+键盘按下与释放分别记录，过滤长按产生的自动重复；组合键中的各个键分别形成事件。具体粒度见 [Input Event](./input-event.mdx#记录粒度)。
+
+输入事件只记录取得的操作事实，不推断用户活跃，也不根据其他 Observer 的前台或设备状态裁剪已取得的事件。各类记录的组合规则见 [Desktop · 记录维度](../desktop/index.mdx#记录维度)。
+
+### 具体按键记录
+
+提供用户可切换的“记录具体按键”设置，默认开启。开启时记录操作了哪个键；关闭时继续记录按下与释放，但不保存具体键值。不记录最终输入文字，详见 [Input Event](./input-event.mdx#具体按键)。
+
+## 事实时间
+
+一次事件是时间点 Observation：`startAt = endAt = t`，`t` 为事件发生时刻。每次事件有自己的身份，相同时间戳的事件分别记录。
+
+## 接入与提交策略
+
+接入时登记 Observer 身份与 [Input Event Schema](./input-event.mdx#schema)，不等待第一条输入事件。业务形成每条事件及对应的 Observation，再交给所用平台的提交 SDK。
+
+提交遵循[共同约定](../submission/index.mdx)。
+
+## 相关文档
+
+- [Input Event](./input-event.mdx)：记录粒度、Schema 与业务实体示例。
+
+## 待定
+
+- 实例身份的生成与本地保存。
+- 原生时间值的纪元（进程、启动或 Unix）及精度转换；缺少绝对时刻时的处理。
+- 鼠标移动与滚动的记录粒度。
+- 隐私抑制、空字符串与读取失败的表示。
+- 设备关联。
+- 提交策略及发送安排。

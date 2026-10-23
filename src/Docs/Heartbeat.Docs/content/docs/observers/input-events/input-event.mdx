@@ -1,0 +1,114 @@
+---
+title: "Input Event"
+description: "一次键盘或鼠标事件（草案）"
+---
+
+<ObserverStructure node="INPUT_CONTENT" />
+
+本定义表达“时刻 t 发生一次键盘或鼠标事件”，由[输入事件 Observer](./index.mdx)形成观测。业务实体的含义与对应 EntitySchema 放在本页，不另建一层 Schema 子页。
+
+## 记录粒度
+
+键盘事件记录人的按键操作。一次按下和一次释放分别形成独立的内容与 Observation，长按期间系统产生的自动重复按下不形成新记录；释放后再次按下视为下一次操作。
+
+例如，按住 A 一秒，按下时记录一条 `keyDown`，释放时记录一条 `keyUp`。按 Shift 与 A 的组合键时，分别记录各个键的按下与释放，不把组合键合并成一条事件。
+
+## 身份
+
+每次按下、释放分别形成独立的事件身份和 Observation。相同时间戳的不同事件分别记录，不按时间戳合并。
+
+## 引用
+
+当前 Schema 没有引用字段，提交结构中的 `references` 为 `{}`。设备关联仍待确定。
+
+## 事实时间
+
+时间点 Observation：`startAt = endAt = t`，遵循 [Observation · 事实时间](../../core/model/observation.mdx#fact-time)。
+
+## Schema
+
+| 项目 | 值 |
+| --- | --- |
+| SchemaId | `019e1bbb-ec00-73ec-bf49-5a26143f9c12` |
+| 显示名称 | 输入事件 |
+| 说明 | 记录人的一次键盘或鼠标操作事件；键盘按下与释放分别记录，过滤长按自动重复，可按用户设置携带具体按键。Observation 表达事件发生的时间点。 |
+| 资源名 | `input-events` |
+
+| 字段 | 类型 | 必填 | 可空 | 含义 |
+| --- | --- | --- | --- | --- |
+| `kind` | `string` | 是 | 否 | 输入事件类别，取值见下表 |
+| `key` | `string` | 否 | 否 | 键盘事件对应的具体按键；关闭具体按键记录时省略，鼠标事件不使用此字段 |
+
+| `kind` | 含义 |
+| --- | --- |
+| `keyDown` | 键盘按下 |
+| `keyUp` | 键盘释放 |
+| `mouseDown` | 鼠标按钮按下 |
+| `mouseUp` | 鼠标按钮释放 |
+| `mouseMove` | 鼠标移动 |
+| `mouseWheel` | 鼠标滚动 |
+
+`kind` 是跨平台类别，不保存系统 API 常量。`key` 表达操作的键，不表达输入结果；具体跨平台编码另行确定。
+
+对应的 [EntitySchema](../../core/model/schema.mdx) 定义如下：
+
+```json
+{
+	"id": "019e1bbb-ec00-73ec-bf49-5a26143f9c12",
+	"displayName": "输入事件",
+	"description": "记录人的一次键盘或鼠标操作事件；键盘按下与释放分别记录，过滤长按自动重复，可按用户设置携带具体按键。Observation 表达事件发生的时间点。",
+	"resourceName": "input-events",
+	"fields": {
+		"kind": {
+			"type": "string",
+			"required": true,
+			"nullable": false
+		},
+		"key": {
+			"type": "string",
+			"required": false,
+			"nullable": false
+		}
+	}
+}
+```
+
+事件类别及键盘、鼠标对应字段的使用条件由业务遵守；Schema 声明字段类型、必填与可空约束。
+
+### 具体按键
+
+键盘事件可携带具体按键，是否记录由 Observer 的用户设置控制，默认开启。开启时，按下与释放事件均保存对应的按键；关闭时，仍保存事件类别和对应的时间点 Observation，但不保存具体键值。开关属于采集设置，不是每条 Input Event 的业务字段。
+
+具体按键表达用户操作了哪个键，不表达最终输入的文字。例如 Shift 与 A 分别记录各自的键，不记录输入结果“大写 A”，也不记录输入法最终生成的文字。
+
+## 示例
+
+开启具体按键记录时，按下事件包含 `key`。下例用占位文字表示 A 键，具体编码待定：
+
+```json
+{
+  "references": {},
+  "properties": { "kind": "keyDown", "key": "<A 键标识>" }
+}
+```
+
+关闭具体按键记录时省略 `key`：
+
+```json
+{
+  "references": {},
+  "properties": { "kind": "keyDown" }
+}
+```
+
+## 相关文档
+
+- [Input Events](./index.mdx)：采集、实例身份与用户设置。
+- [EntitySchema](../../core/model/schema.mdx)：Schema 声明与统一提交结构。
+
+## 待定
+
+- 具体按键的跨平台编码。
+- 鼠标采集哪些类别；是否保留按钮、坐标或滚动量。
+- 使用系统事件时间还是 Observer 收到事件的时刻，以及精度转换。
+- 鼠标移动和滚动的记录粒度。

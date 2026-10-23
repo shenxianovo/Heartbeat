@@ -1,14 +1,12 @@
 {
-  "title": "Heartbeat Storage",
-  "description": "实体索引、内容存储与数据库",
+  "title": "Storage",
+  "description": "实体的数据库存储",
   "icon": "Database",
   "root": true,
   "pages": [
     "index",
-    "entities",
-    "observations",
-    "observers",
-    "entity-schemas",
-    "business-entities"
+    "fixed-tables",
+    "business-tables",
+    "postgresql"
   ]
 }

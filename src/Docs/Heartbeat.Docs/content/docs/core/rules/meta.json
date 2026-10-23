@@ -1,0 +1,9 @@
+{
+  "title": "Rules",
+  "defaultOpen": true,
+  "pages": [
+    "identity",
+    "time",
+    "history"
+  ]
+}

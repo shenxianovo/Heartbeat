@@ -1,0 +1,44 @@
+---
+title: "实体模型"
+description: "所有数据都是实体，EntitySchema 定义业务类型，只有 Observation 保存事实时间"
+---
+
+## 背景 [#context]
+
+Heartbeat 要保存来源各异的数据，例如前台应用、输入事件、浏览历史和健康记录。每种来源的字段不同，但读取方需要用同一种方式定位实体、遍历关系、按时间查找事实。
+
+## 决定 [#decision]
+
+- 所有数据都是实体。每个实体实现 `IEntity`，有一个由创建方生成的 EntityId，并能列出自己引用的实体。
+- Core 只有一份契约 `IEntity`，不提供内容基类和关系基类。
+- Observer、Observation 和 EntitySchema 是 Core 类型，结构由 Core 定义。
+- 每种业务实体类型由一份 EntitySchema 定义，后端只按已声明的 EntitySchema 校验业务实体。
+- 引用只能是顶层的引用字段。
+- 只有 Observation 保存事实时间。
+- 观测内容是业务实体被 Observation 引用时承担的角色，不是一种类型。
+
+## 理由 [#rationale]
+
+实体共用 `IEntity`，读取方就能按 `EntityId` 读取任何实体，并沿引用遍历关系图，不需要理解每种业务的字段。事实时间只保存在 Observation 上，读取方按时间查找事实时只需要查询 Observation。
+
+EntitySchema 无法由另一份 EntitySchema 定义，否则定义会无限递归，所以至少 EntitySchema 必须由 Core 固定定义。Observer 和 Observation 同样由 Core 定义：三种 Core 类型使用同一种方式，业务类型使用另一种方式，两类之间没有例外。
+
+只允许顶层引用，引用就可以用“字段名到 EntityId”的平面映射表达，后端不需要记录引用在嵌套结构中的位置。
+
+放弃的方案：
+
+- **后端从数据推测类型。** 推测出的结构会随数据变化，同一种实体的含义无法固定。
+- **独立的事实时间接口。** 这个接口只会有 Observation 一个实现者，反而让读者误以为业务实体也可以自带事实时间。
+- **内容基类和关系基类。** 会强迫业务加入用不到的字段。例如，本机应用没有时间边界，前台应用时段的时间放在 Observation 上，内容只保存应用引用和当时读到的名称。
+
+## 代价 [#costs]
+
+- 每种业务实体都必须先登记 EntitySchema，才能保存实例。
+- 引用的目标可以尚未保存，后端不能为引用建立外键，引用可能指向不存在的实体。
+- 理解一份观测需要再读一次它引用的内容实体。
+- 关系需要身份、时间或属性时，业务要多定义一种实体类型。
+
+## 规则位置 [#details]
+
+- [IEntity](../core/model/entity.mdx)、[EntitySchema](../core/model/schema.mdx)
+- [Observation](../core/model/observation.mdx)、[Observer](../core/model/observer.mdx)

@@ -1,29 +1,27 @@
 # Heartbeat.Api
 
-Heartbeat.Api 提供实体 HTTP 接口，组合 Application 操作与 Infrastructure 实现。职责见 [ADR 0005](../../Docs/Heartbeat.Docs/content/docs/adr/0005-backend-project-organization.mdx)，请求与响应见 [Heartbeat API](../../Docs/Heartbeat.Docs/content/docs/api/index.mdx)。
+Heartbeat.Api 提供实体的 HTTP 接口。项目分工见 [ADR · 后端运行与本地环境](../../Docs/Heartbeat.Docs/content/docs/adr/backend-runtime.mdx#components)，接口契约见 [API](../../Docs/Heartbeat.Docs/content/docs/api/index.mdx)。
 
 ## 运行
 
-本地开发见[根 README](../../../README.md#启动)和 [AppHost README](../../../tools/Heartbeat.AppHost/README.md)。Aspire 在 PostgreSQL 健康后运行独立迁移资源，迁移成功后启动本机 API。
+本地开发通常通过 Aspire 启动，见 [AppHost README](../../../tools/Heartbeat.AppHost/README.md)。
 
-直接运行的前置条件：安装 .NET 10 SDK，准备已应用项目迁移的 PostgreSQL 数据库。
-
-从仓库根目录依次设置连接配置并运行：
+单独运行 API 时，需要一个已应用迁移的 PostgreSQL 数据库。在仓库根目录运行：
 
 ```sh
 export ConnectionStrings__Heartbeat='Host=localhost;Port=54329;Database=heartbeat;Username=heartbeat;Password=heartbeat'
 dotnet run --project src/Backend/Heartbeat.Api/Heartbeat.Api.csproj
 ```
 
-服务启动时检查连接配置。建表由迁移程序完成，API 进程不自动应用迁移。
+缺少 `ConnectionStrings__Heartbeat` 时，API 启动失败。API 不应用迁移。
 
 ## 遥测
 
-API 在启动层接入 OpenTelemetry，日志沿用 `ILogger`，保留结构化字段、格式化消息与日志作用域。追踪覆盖入站 HTTP 请求和现有 Npgsql 数据库调用；指标覆盖 HTTP 请求与 .NET 运行时。遥测不读取请求体，不启用 EF Core 敏感数据日志或 Npgsql 参数值日志。数据库 span 包含参数化 SQL 文本，不包含绑定的参数值。
+API 只有在 `OTEL_EXPORTER_OTLP_ENDPOINT` 是包含主机名的 HTTP 或 HTTPS 绝对地址时，才导出日志、追踪和指标。没有配置或地址无效时，API 只输出控制台日志。
 
-只有 `OTEL_EXPORTER_OTLP_ENDPOINT` 是包含主机名的有效 HTTP/HTTPS 绝对地址时，才注册遥测提供者并导出日志、追踪和指标。未配置、空白或无效地址时，API 继续使用原有控制台日志，不尝试默认的本机 OTLP 地址。独立运行不依赖 Aspire。
+Aspire 会自动注入 OTLP 配置。在看板中选择 `api` 查看遥测。
 
-Aspire 开发环境会注入接收地址、服务名及所需连接配置；重启 API 后，在看板选择 `api` 查看三类遥测。直接运行时，可自行配置接收器，例如：
+单独运行时，自行配置接收器：
 
 ```sh
 export OTEL_EXPORTER_OTLP_ENDPOINT='http://localhost:4317'
@@ -31,66 +29,64 @@ export OTEL_EXPORTER_OTLP_PROTOCOL='grpc'
 export OTEL_SERVICE_NAME='heartbeat-api'
 ```
 
-上面的地址仅是显式配置示例，应用没有默认接收器。HTTP/protobuf 接收器使用 `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`，基地址会自动附加 `/v1/logs`、`/v1/traces`、`/v1/metrics`。其他标准 OTLP 设置由导出器读取；未指定服务名时使用 `Heartbeat.Api`。参考 [OpenTelemetry OTLP 导出器](https://github.com/open-telemetry/opentelemetry-dotnet/tree/core-1.20.0/src/OpenTelemetry.Exporter.OpenTelemetryProtocol)和 [Npgsql 追踪](https://www.npgsql.org/doc/diagnostics/tracing.html)。
+使用 HTTP/protobuf 接收器时，设置 `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`。导出器会在基地址后附加 `/v1/logs`、`/v1/traces` 和 `/v1/metrics`。没有设置服务名时，服务名是 `Heartbeat.Api`。
 
-Aspire 只用于开发；将来部署使用 Docker 镜像和 Docker Compose，不运行 AppHost。本次未建设部署配置或生产监控栈。职责见 [ADR 0008](../../Docs/Heartbeat.Docs/content/docs/adr/0008-aspire-local-development.mdx#应用遥测)。
-
-## 本地入口与代理
-
-| 服务 | 本地入口 |
+| 信号 | 范围 |
 | --- | --- |
-| API | <http://localhost:8080/api> |
-| PostgreSQL | `127.0.0.1:54329` |
-| 文档站 | <http://localhost:3000/core> |
-| Aspire 看板 | <https://localhost:18888> |
+| 日志 | `ILogger`，保留结构化字段、格式化消息和日志作用域 |
+| 追踪 | 入站 HTTP 请求和 Npgsql 调用。数据库 span 包含参数化 SQL，不包含参数值 |
+| 指标 | HTTP 请求和 .NET 运行时 |
 
-NGINX 提供 8080 和 3000 两个入口。API 和文档站在本机运行。Aspire 分配内部端口，并将端口注入代理模板。8080 的 `/api/` 请求去掉前缀后转给 API，其他路径暂时返回 `404`。3000 的 `/api/entities/` 请求转给 API，其余请求原样转给文档站。模板见 [default.conf](../../../docker/nginx/default.conf)，职责见 [ADR 0006](../../Docs/Heartbeat.Docs/content/docs/adr/0006-unified-http-entry.mdx)。
-
-NGINX 使用 `nginx:1.30.5-alpine`。容器启动时将 AppHost 注入的 `API_HOST`、`API_PORT`、`DOCS_HOST`、`DOCS_PORT` 写入配置，通过 Docker DNS 动态解析上游，缓存 30 秒。每个工作进程为每个上游保留最多 16 条空闲连接。
-
-代理连接超时为 5 秒，读写间隔超时为 60 秒。NGINX 与 API 的请求体上限均为 10 MiB，超限返回 `413` 和 `application/problem+json`。
-
-数据库名、用户名和开发密码均为 `heartbeat`。`migrate` 使用仓库固定的 EF 工具应用迁移，完成后退出。`migrate` 没有 HTTP 入口。停止 AppHost 后，数据库命名卷保留。文档站依赖和 Next.js 缓存在本机目录。
+遥测不读取请求体，不启用 EF Core 敏感数据日志，也不记录 Npgsql 参数值。参考 [OpenTelemetry OTLP 导出器](https://github.com/open-telemetry/opentelemetry-dotnet/tree/core-1.20.0/src/OpenTelemetry.Exporter.OpenTelemetryProtocol)和 [Npgsql 追踪](https://www.npgsql.org/doc/diagnostics/tracing.html)。
 
 ## 代码组织
 
-`Program.cs` 负责依赖注册和路由组装。HTTP 入口使用 ASP.NET Core Minimal APIs，路由代码按业务目录组织。实体入口使用 `MapGroup` 声明 `/entities` 及其下级路径。
+| 位置 | 内容 |
+| --- | --- |
+| `Program.cs` | 依赖注册和路由组装 |
+| `Entities/` | 实体路由，使用 Minimal APIs 和 `MapGroup("/entities")` |
+| `Heartbeat.Application/Entities/IEntityStore.cs` | 保存和读取接口 |
+| `Heartbeat.Application/Entities/EntitySchemaRules.cs` | EntitySchema 声明和字段值的校验 |
+| `Heartbeat.Infrastructure/Entities/EntityStore.cs` | 固定表和业务表的读写 |
+| `Heartbeat.Infrastructure/Entities/BusinessTable.cs` | 业务表的建表和列映射 |
 
-保存请求统一包含 `references` 和 `properties`。后端严格校验系统模型及 EntitySchema 声明，将路径 ID 与请求体组合，再调用 Application 接口。
+API 校验请求，把路径中的 ID 与 `references`、`properties` 组合成实体，再调用 `IEntityStore`。存储规则见 [Storage](../../Docs/Heartbeat.Docs/content/docs/storage/index.mdx)。
 
-HTTP 提供 `PUT /entities/observations/{id}`、`PUT /entities/observers/{id}`、`PUT /entities/schemas/{id}` 三个固定入口、`PUT /entities/{resourceName}/{id}` 业务入口，以及 `GET /entities/{id}` 统一读取入口。读取返回 `category`、`references`、`properties`，ID 只在路径。
+业务表使用动态 SQL：
 
-`Application/Entities/IEntityStore.cs` 提供按已登记资源保存业务实体、保存三个系统模型及统一读取。`EntitySchemaRules` 校验递归声明、字段分组、必填、空值及数值。Infrastructure 的 `EntityStore` 负责固定表与每个 SchemaId 的动态类型化业务表。首次 Schema 登记在同一事务中保存定义、资源绑定、统一索引和建表；结构或资源绑定改变返回 `409`。业务实体完整替换，同 ID 类别或 Schema 冲突保留原内容。没有旧通用保存入口或通用 JSON 内容表。
+- 表名和列名按标识符规则引用，值通过 Npgsql 参数传递。
+- 数值以 JSON 原文写入 `numeric`。整数精确转换为 `bigint`。读取时由 PostgreSQL 生成 JSON，不经过浮点或 `decimal` 转换。
 
-动态 SQL 安全引用表列名，值通过 Npgsql 参数传递。数值以原始 JSON 数字文本写入 `numeric`，整数精确转换为 `bigint`，读取通过 PostgreSQL 生成 JSON，避免浮点或 decimal 精度转换。业务列省略记录在 `__omitted_fields text[]`，读取还原省略与显式空值。所有保存先取得事务级 DDL 协调锁：Schema 登记独占、普通保存共享，再锁实体身份，避免动态建表的外键目标表锁与索引写入死锁。
+## 修改接口
 
-## OpenAPI
+1. 修改 [openapi.json](../../Docs/Heartbeat.Docs/content/docs/api/openapi.json)。
+2. 修改 `Entities/` 中的实现。
+3. 修改集成测试。
 
-维护者直接修改 HTTP 契约 [openapi.json](../../Docs/Heartbeat.Docs/content/docs/api/openapi.json)。接口使用 OpenAPI First：先修改对应接口，再更新 `Entities/` 中的实现。后端构建不生成或覆盖契约。
+后端构建不生成也不覆盖 `openapi.json`。
 
-文档站直接读取同一契约文件，启动和构建只需 Node 环境。实现和测试遵循用户在讨论中确认的接口契约。代码和其他文档不得反向修改契约。接口页只描述确定的结构与行为。客户端按同一契约手写实现。
+## 镜像
 
-## Dockerfile
+```sh
+docker build -f src/Backend/Heartbeat.Api/Dockerfile -t heartbeat-api:local .
+```
 
-Dockerfile 先复制 SDK 配置、共享构建属性和项目文件，再还原依赖。EF 工具按 `.config/dotnet-tools.json` 还原。后续只复制 Core 和 Backend 源码，文档修改不会触发依赖还原。
+Dockerfile 先复制 SDK 配置和项目文件并还原依赖，再复制 Core 和 Backend 源码。修改文档不会触发依赖还原。最终镜像使用 .NET 运行时，以非 root 用户运行，并包含 `/app/efbundle` 供独立的迁移进程使用。
 
-Dockerfile 用于镜像构建。`build` 阶段发布 API 并生成 EF migration bundle；`final` 阶段使用 .NET 运行时，以非 root 用户运行 API，并保留 `/app/efbundle` 供独立迁移进程使用。镜像构建见 AppHost README，本地开发直接运行项目。
+## 已知问题
 
-API 只提供 HTTP 接口，没有 `wwwroot`、Razor 或组件库静态文件，因此项目设置 `StaticWebAssetsEnabled=false`。该设置也避免 SDK 10.0.401 的 `dotnet watch` 在 Linux/macOS 上读取 `staticwebassets.development.json` 时报混合路径分隔符错误。[上游修复](https://github.com/dotnet/sdk/pull/54536)已合并，但 SDK 10.0.401 尚未包含该修复。C# 热更新照常运行。如果 API 需要承载静态资源，应重新启用该功能并验证所用 SDK。
-
-API 和迁移程序共用 `ConnectionStrings__Heartbeat`。PostgreSQL 初始化 SQL 位于 [Database/Docker/initialize.sql](../Heartbeat.Infrastructure/Database/Docker/initialize.sql)，数据库约定见 [Heartbeat Storage](../../Docs/Heartbeat.Docs/content/docs/storage/index.mdx)。
+项目设置了 `StaticWebAssetsEnabled=false`。API 不提供静态文件，而 SDK 10.0.401 的 `dotnet watch` 在 macOS 和 Linux 上读取 `staticwebassets.development.json` 时会报路径分隔符错误。[上游修复](https://github.com/dotnet/sdk/pull/54536)已合并，但 SDK 10.0.401 尚未包含。API 需要提供静态文件时，重新启用这个功能，并验证所用 SDK。
 
 ## 验证
 
-HTTP 契约、实体读写和数据库行为由[集成测试](../../../tests/Heartbeat.Integration.Tests/README.md)验证。
+实体读写和数据库行为由[集成测试](../../../tests/Heartbeat.Integration.Tests/README.md)验证。
 
-修改开发构建或热更新配置后，使用独立 Aspire 环境、端口和数据卷验证 API。
+修改构建或热更新配置后，在独立的 Aspire 环境中验证：
 
-1. 启动独立验证环境。
+1. 启动独立环境，见 [AppHost README · 验证](../../../tools/Heartbeat.AppHost/README.md#验证)。
 2. 检查启动日志中没有 `Failed to read ... staticwebassets.development.json`。
-3. 修改已有处理方法的返回值。
-4. 验证：日志出现 `C# and Razor changes applied`，且 HTTP 响应随返回值变化。
-5. 停止独立验证环境。
-6. 清理该环境的验证卷，不操作日常开发数据库。
+3. 修改一个已有处理方法的返回值。
+4. 检查日志出现 `C# and Razor changes applied`，并且 HTTP 响应随之变化。
+5. 停止独立环境，删除它的验证卷。
 
 新增端点或修改启动注册后，需要完整重启进程。

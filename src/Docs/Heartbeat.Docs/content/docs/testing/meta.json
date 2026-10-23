@@ -1,19 +1,18 @@
 {
-  "title": "Heartbeat Testing",
-  "description": "测试框架、数据库隔离与公共工具",
+  "title": "Testing",
+  "description": "验证用例与测试报告",
   "icon": "FlaskConical",
   "root": true,
   "pages": [
     "index",
     "database",
-    "---实体定义登记---",
+    "---Cases---",
     "entity-schemas/table-creation-failure",
-    "---前台应用采集---",
     "observers/local-application-identity",
     "observers/application-period-boundaries",
     "observers/period-submission",
     "observers/outbox-recovery",
-    "---执行证据---",
+    "---Reports---",
     "reports/integration"
   ]
 }

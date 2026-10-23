@@ -1,17 +1,71 @@
 ---
-title: "术语表"
+title: "Glossary"
+description: "Core 术语的唯一定义"
 ---
 
-| 名称 | 含义 | 正文 |
+本页是 Core 术语的唯一定义。其他页面使用这些术语时，含义与本页一致。类型名称使用英文，不是类型的概念使用中文。
+
+## 契约与类型 [#types]
+
+| 术语 | 定义 | 正文 |
 | --- | --- | --- |
-| EntityId | 实体标识的程序表示 | [EntityId](./model/contracts/entity.mdx#entityid) |
-| IEntity | 提供实体稳定标识与实体引用枚举的接口 | [IEntity](./model/contracts/entity.mdx) |
-| 实体引用 | 一个实体对另一个实体的引用，参与统一枚举与实体关系图 | [实体引用约定](./model/contracts/entity.mdx#约定) |
-| ITimed | 提供已知时间边界的接口 | [ITimed](./model/contracts/timed.mdx) |
-| Observation · 观测 | 引用观测主体、观测内容和实体定义，记录事实时间的实体 | [Observation](./model/observations/observation.mdx) |
-| Observer · 观测主体 | 实际形成观测的主体 | [Observer](./model/observations/observer.mdx) |
-| EntitySchema · 实体定义 | 定义业务实体的字段、引用、约束和业务含义的实体 | [EntitySchema](./model/observations/schema.mdx) |
-| 观测内容 | 由业务定义、通过 `ContentId` 被观测引用的普通实体 | [观测内容](./model/observations/content.mdx) |
-| LocalApplication · 本机应用 | 某台设备上的一个应用安装，具有独立实体身份 | [本机应用](../observers/entities/local-application.mdx) |
-| 跨平台应用 | 多台设备或多个平台上的同一个软件，本机应用实体可以关联到这一身份 | [应用身份](../adr/0002-observer-capabilities-and-platform-clients.mdx#应用身份) |
-| 业务关系 | 由具体业务定义含义的实体间联系 | [实体引用约定](./model/contracts/entity.mdx#约定) |
+| IEntity | 所有实体的共同契约，提供稳定的标识和引用列表 | [IEntity](./model/entity.mdx) |
+| EntityId | 实体的稳定标识，是一个 UUIDv7 | [ENTITY-1](./model/entity.mdx#entity-1) |
+| EntitySchema | 声明一种业务实体类型的字段、约束和业务含义的实体 | [EntitySchema](./model/schema.mdx) |
+| SchemaId | EntitySchema 的 EntityId | [EntitySchema](./model/schema.mdx) |
+| Observer | 依据证据形成观测并对判断负责的实体 | [Observer](./model/observer.mdx) |
+| Observation | Observer 依据证据对一个业务实体形成的观测，是唯一保存事实时间的类型 | [Observation](./model/observation.mdx) |
+
+## 实体与引用 [#entities]
+
+| 术语 | 定义 | 正文 |
+| --- | --- | --- |
+| 实体 | 实现 IEntity 的数据。Heartbeat 保存的所有数据都是实体 | [IEntity](./model/entity.mdx) |
+| 实体类型 | 结构和含义相同的一类实体。业务实体类型由 EntitySchema 定义 | [SCHEMA-1](./model/schema.mdx#schema-1) |
+| Core 类型 | Observer、Observation 和 EntitySchema。结构由 Core 定义，不使用 EntitySchema | [SCHEMA-1](./model/schema.mdx#schema-1) |
+| 业务实体 | 由业务的 EntitySchema 定义的实体，不是 Core 类型 | [EntitySchema](./model/schema.mdx) |
+| 观测内容 | 业务实体被 Observation 的 `contentId` 引用时承担的角色，不是一种类型 | [Observation](./model/observation.mdx) |
+| 实体引用 | EntitySchema 中 `reference` 字段保存的目标 EntityId | [ENTITY-3](./model/entity.mdx#entity-3) |
+| 关系实体 | 表达一种需要身份、时间或属性的关系的业务实体 | [ENTITY-6](./model/entity.mdx#entity-6) |
+| 资源名 | EntitySchema 的 `resourceName`，全局唯一 | [SCHEMA-4](./model/schema.mdx#schema-4) |
+
+## 主体 [#actors]
+
+| 术语 | 定义 | 正文 |
+| --- | --- | --- |
+| 业务 | 定义一种事实如何记录的一方，包括 EntitySchema、Observer 的实现和 Observer 文档 | [Overview · 谁决定什么](./index.mdx#responsibility) |
+| SDK | Observer 使用的提交组件，负责持久保存 Observer 实例身份、可靠保存和发送 | [Overview · 谁决定什么](./index.mdx#responsibility) |
+| 后端 | 校验并保存实体的服务，不判断事实 | [Overview · 谁决定什么](./index.mdx#responsibility) |
+| 用户 | 使用 Heartbeat 并拥有其数据的人 | [HISTORY-7](./rules/history.mdx#history-7) |
+| 采集诊断 | 读取、解析或匹配失败的记录，不是观测 | [OBSERVER-6](./model/observer.mdx#observer-6) |
+
+## 时间 [#time]
+
+| 术语 | 定义 | 正文 |
+| --- | --- | --- |
+| 事实时间 | 事件发生或状态成立的时间，只保存在 Observation 的 `startAt` 和 `endAt` | [Observation · 事实时间](./model/observation.mdx#fact-time) |
+| 记录时间 | 后端首次成功保存一份 Observation 的时刻，即 `recordedAt` | [OBSERVATION-11](./model/observation.mdx#observation-11) |
+| 时间点 | `startAt` 等于 `endAt` 的事实时间 | [OBSERVATION-7](./model/observation.mdx#observation-7) |
+| 时段 | `startAt` 早于 `endAt` 的事实时间，左闭右开 | [OBSERVATION-8](./model/observation.mdx#observation-8) |
+| 进行中 | 有证据说明事实在当时仍在持续 | [TIME-4](./rules/time.mdx#time-4) |
+
+## 变化与历史 [#history]
+
+| 术语 | 定义 | 正文 |
+| --- | --- | --- |
+| 补全 | 随证据积累延续同一份 Observation，只增加证据，不推翻已知的值 | [HISTORY-2](./rules/history.mdx#history-2) |
+| 删除 | 移除选中的实体，不沿引用扩展 | [HISTORY-6](./rules/history.mdx#history-6) |
+| 原始材料 | 来源提供的、未经业务解释的数据 | [HISTORY-5](./rules/history.mdx#history-5) |
+
+## 不再使用的术语 [#deprecated]
+
+下表的术语已经从模型中删除。文档中不得再出现这些术语，`pnpm docs:check` 会检查。删除一个概念时，在这里加一行。
+
+| 术语 | 替代说法 |
+| --- | --- |
+| `ITimed` | Observation 的事实时间，见 [Observation · 事实时间](./model/observation.mdx#fact-time) |
+| `ObservationContent`、`Observation Content` | 观测内容，是业务实体承担的角色，不是一种类型 |
+| `采集程序` | Observer 或 SDK，按所指的职责选择 |
+| `观测时间`、`接收时间` | 形成观测的时刻、后端收到请求的时刻，见 [TIME-1](./rules/time.mdx#time-1) |
+| `ENT-`、`TIM-`、`SCH-`、`OBR-`、`OBS-`、`CNT-`、`IDN-`、`HIST-`、`RESP-` | 完整单词的规则前缀，见 [Overview · 规则的写法](./index.mdx#conventions) |
+| `CONTENT-`、`RESPONSIBILITY-` | 这两个页面已删除，规则并入其他页面 |

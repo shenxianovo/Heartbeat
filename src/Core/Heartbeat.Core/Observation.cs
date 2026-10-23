@@ -1,6 +1,6 @@
 namespace Heartbeat.Core;
 
-public sealed class Observation : IEntity, ITimed
+public sealed class Observation : IEntity
 {
     public required EntityId Id { get; init; }
     public required EntityId ObserverId { get; init; }

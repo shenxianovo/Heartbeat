@@ -1,0 +1,77 @@
+---
+title: "Business Tables"
+description: "EntitySchema 对应的业务表：命名、字段映射与省略"
+---
+
+每个业务 SchemaId 对应一张业务表，在登记 [EntitySchema](../core/model/schema.mdx) 时创建。
+
+## 结构
+
+| 列 | 内容 |
+| --- | --- |
+| `id` | 实体 UUIDv7；主键，外键引用 `entities.id`，`ON DELETE CASCADE` |
+| `__omitted_fields` | `text[] NOT NULL`，本次提交省略的顶层字段原名 |
+| 业务列 | 每个顶层字段一列，普通属性与引用使用同一命名规则 |
+
+## 表命名
+
+EntitySchema 的 `resourceName` 同时用于 API 提交路径和业务表命名。生成表名时，将资源名的连字符替换为下划线，再加 `entity_` 前缀。
+
+| 资源名 | 表名 |
+| --- | --- |
+| `example-records` | `entity_example_records` |
+| `local-applications` | `entity_local_applications` |
+| `foreground-application-periods` | `entity_foreground_application_periods` |
+
+资源名登记后固定，表名也固定；修改 `displayName` 不改变提交路径或表名。新的 SchemaId 使用新的资源名和新表，已有表不变，见 [SCHEMA-4](../core/model/schema.mdx#schema-4)。登记时检查表名长度与重名，失败时整体回滚。
+
+## 列命名
+
+顶层字段名转换为 `snake_case`，普通属性与引用不加前缀。
+
+| 字段 | 列 |
+| --- | --- |
+| `name` | `name` |
+| `localApplicationId` | `local_application_id` |
+| `executablePath` | `executable_path` |
+
+登记时拒绝以下情况，不自动改名：不同字段对应同一列名、占用 `id` 或 `__omitted_fields` 等系统列、列名超过长度限制。
+
+## 字段映射
+
+| 字段类型 | 列类型 |
+| --- | --- |
+| `string` | `text` |
+| `boolean` | `boolean` |
+| `integer` | `bigint` |
+| `number` | `numeric` |
+| `reference` | `uuid` |
+| `object` | `jsonb` |
+| `array` | `jsonb` |
+
+对象与数组整体保存在一个 `jsonb` 列中，读取时还原结构。引用列不建外键。
+
+## 省略与空值
+
+`__omitted_fields` 记录本行省略的顶层字段，与业务值、统一索引在同一事务中保存。
+
+| 提交的属性 | `name` 列 | `__omitted_fields` | 读回 |
+| --- | --- | --- | --- |
+| `{}` | `NULL` | `["name"]` | `{}` |
+| `{"name": null}` | `NULL` | `[]` | `{"name": null}` |
+| `{"name": "示例"}` | `"示例"` | `[]` | `{"name": "示例"}` |
+
+1. 按 EntitySchema 校验：缺少必填字段或违反 `nullable` 时拒绝。
+2. 由本次提交重新生成省略列表；保存已有实体时完整替换，省略字段不保留旧值。
+3. 读取时，省略的字段不出现；其余字段按定义放入 `properties` 或 `references`。
+
+省略列表与业务值必须一致：有值的字段不能列为省略，必填字段不能列为省略。该列是存储元数据，不出现在 HTTP 请求、响应或业务模型中。对象内部成员的省略由 JSON 本身保留。
+
+## 读写
+
+| 操作 | 入口 | 结果 |
+| --- | --- | --- |
+| 保存 | `PUT /entities/{resourceName}/{id}` | 按资源名找到定义，校验后完整替换 |
+| 读取 | `GET /entities/{id}` | 统一索引定位业务表，按定义还原字段 |
+
+未声明字段、类型错误或缺少必填字段返回 `400`；资源名未登记返回 `404`；已有实体属于其他类别或 Schema 返回 `409`。

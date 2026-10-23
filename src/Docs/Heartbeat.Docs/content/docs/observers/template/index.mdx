@@ -1,0 +1,68 @@
+---
+title: "Document Template"
+description: "可展开的分类、Observer 与业务实体文档示例"
+---
+
+本分组本身展示一套完整的文档层级：这一页是分类入口，下面是 [Example Observer](./example-observer/index.mdx)，再下面是 [Example Entity](./example-observer/example-entity.mdx)。复制这套目录后填写业务内容；模板中的编写提示不作为业务定义。
+
+## Observers
+
+| Observer | 记录的事实 |
+| --- | --- |
+| [Example Observer](./example-observer/index.mdx) | 展示 Observer 主页面的章节顺序和内容分工 |
+
+分类页只说明本分类的范围与 Observer 入口。分类不是 Observer，不拥有采集器实例身份。实际分类示例见 [Desktop](../desktop/index.mdx)。
+
+## 接入与提交
+
+各 Observer 按[接入指南](../integration.mdx)确定业务定义，按[提交机制](../submission/index.mdx)选择平台 SDK。分类页链接共用规则，具体采集与提交策略放在 Observer 主页面。
+
+## 目录结构
+
+```text
+Document Template                   分类页
+  Example Observer                  Observer 页
+    Example Entity                  业务实体与 Schema 页
+```
+
+对应文件结构：
+
+```text
+template/
+  meta.json
+  index.mdx
+  example-observer/
+    meta.json
+    index.mdx
+    example-entity.mdx
+```
+
+分类目录的 `meta.json`：
+
+```json
+{
+  "title": "Document Template",
+  "defaultOpen": false,
+  "collapsible": true,
+  "pagesIndex": "index",
+  "pages": ["example-observer"]
+}
+```
+
+已有 Observer 目录也可以由分类通过相对引用汇总，例如 Desktop 使用 `../application-activity`。导航层级不要求移动已有文件。
+
+## 写作约定
+
+- 分类页提供入口；Observer 页集中写实例身份、采集和提交；业务实体页集中写记录粒度、身份、引用、时间、Schema 和示例。
+- 实体与定义它的 Schema 放在同一页，不另外增加一层 Schema 目录。
+- 所有 Observer 主页面采用相同章节顺序，所有实体子页采用相同章节顺序；业务特有内容放在相应章节下作为子标题。
+- 页首图从共享的 `observers/relations.json` 取对应节点，不在每页复制关系数据。
+- 标题使用英文名称，正文使用中文；字段名和资源名保留原文。
+- 正文只写已确认的规则，未确认项集中列入“待定”。未知标识或约束写“待定”，不为凑齐模板自行补定。
+- 共用规则维护一处，其他页面链接引用。Schema 尚未定义的规划实体先在 Observer 的“待定”中列出；共享实体只维护一页。
+
+## 相关文档
+
+- [Desktop](../desktop/index.mdx)：实际分类入口。
+- [Input Events](../input-events/index.mdx) 与 [Input Event](../input-events/input-event.mdx)：实际 Observer 和实体定义。
+- [Integration Guide](../integration.mdx)：接入新业务时需要确定的事项。

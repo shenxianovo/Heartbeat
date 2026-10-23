@@ -1,9 +1,10 @@
 {
-  "title": "模型",
+  "title": "Types",
+  "defaultOpen": true,
   "pages": [
-    "---基础契约---",
-    "...contracts",
-    "---观测模型---",
-    "...observations"
+    "entity",
+    "schema",
+    "observation",
+    "observer"
   ]
 }

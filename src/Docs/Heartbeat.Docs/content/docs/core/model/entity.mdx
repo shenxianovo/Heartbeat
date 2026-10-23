@@ -1,0 +1,63 @@
+---
+title: "IEntity"
+description: "实体的稳定标识与引用"
+---
+
+<ModelRelations node="IEntity" />
+
+`IEntity` 是所有实体的共同契约。实现 `IEntity` 的类型拥有一个稳定的标识，并能列出自己引用的其他实体。实体的其他成员由类型定义：Core 类型由 Core 定义，业务实体类型由各自的 [EntitySchema](./schema.mdx) 定义。
+
+| 项目 | 内容 |
+| --- | --- |
+| 实现者 | EntitySchema、Observer、Observation 和所有业务实体 |
+| 相关规则 | [Identity](../rules/identity.mdx)、[History · 删除](../rules/history.mdx#history-6) |
+| 决策 | [ADR · 实体模型](../../adr/entity-model.mdx) |
+
+## 成员 [#members]
+
+| 成员 | 类型 | 含义 |
+| --- | --- | --- |
+| `Id` | `EntityId` | 实体的稳定标识 |
+| `GetReferences()` | `IEnumerable<EntityId>` | 实体引用的所有目标标识。没有引用时返回空集合 |
+
+```csharp
+public interface IEntity
+{
+	EntityId Id { get; }
+	IEnumerable<EntityId> GetReferences();
+}
+
+public readonly record struct EntityId(Guid Value);
+```
+
+## 规则 [#rules]
+
+### ENTITY-1 每个实体有一个 EntityId，生成后不再改变 [#entity-1]
+
+`EntityId` 在实体首次创建时生成。实体的属性改变时，`EntityId` 不变。什么算同一个实体由业务决定，见 [Identity](../rules/identity.mdx)。
+
+### ENTITY-2 EntityId 必须是 UUIDv7 [#entity-2]
+
+创建实体的一方生成 `EntityId`。EntityId 的时间部分不表示事实时间，见 [TIME-1](../rules/time.mdx#time-1)。
+
+### ENTITY-3 实体引用是引用字段中的 EntityId，GetReferences() 只返回这些值 [#entity-3]
+
+Core 类型的引用字段由 Core 定义，例如 Observation 的 `observerId`。业务实体类型的引用字段由 EntitySchema 声明为 `reference`，见 [SCHEMA-7](./schema.mdx#schema-7)。业务定义引用字段的名称、方向和含义。
+
+实体自身的 `Id` 不是引用。普通属性中的标识字符串也不是引用，即使这个字符串的格式与 `EntityId` 相同。`GetReferences()` 不读取目标实体，也不维护单独的引用列表。
+
+### ENTITY-4 引用的目标可以尚未保存 [#entity-4]
+
+引用不限制目标实体的类型。引用方可以先于目标实体保存。
+
+### ENTITY-5 被引用的实体不记录谁引用了它 [#entity-5]
+
+要找出引用某个实体的所有实体，读取方查询引用方的数据。
+
+### ENTITY-6 关系需要自己的身份、时间或属性时，定义为关系实体 [#entity-6]
+
+引用只表达一个实体指向另一个实体。关系本身需要被观测、需要时间边界或需要属性时，业务为关系定义一种实体类型。Core 不提供通用的关系基类。
+
+### ENTITY-7 Core 不为某一种实体类型增加专有的操作 [#entity-7]
+
+所有实体类型使用同一组操作。删除的范围见 [HISTORY-6](../rules/history.mdx#history-6)。具体操作见 [API](../../api/index.mdx)。

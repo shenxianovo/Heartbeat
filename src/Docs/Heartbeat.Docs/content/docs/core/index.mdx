@@ -1,33 +1,96 @@
 ---
-title: "模型概览"
+title: "Overview"
+description: "Core 定义 Heartbeat 保存的实体、事实时间与观测"
 ---
 
-## 目标
+Heartbeat 忠实保留观测及其必要上下文，为未来提出的问题提供依据。Core 定义这些数据的共同结构：什么是实体，实体记录的事实在什么时间成立，以及一份观测由谁依据什么形成。
 
-用最少的实体记录以下信息：
+## 契约 [#contract]
 
-- 形成观测的主体。
-- 观测引用的内容。
-- 解释观测的实体定义。
-- 被观测事实的时间。
+Core 只有一份契约：[IEntity](./model/entity.mdx)。每个实体拥有稳定的标识，并能列出自己引用的实体。Heartbeat 保存的所有数据都是实体，定义业务实体类型的 EntitySchema 也是实体。
 
-业务定义数据结构、记录粒度和历史保留方式。
+## 观测与业务 [#observations]
 
-`IEntity` 提供统一的[实体引用枚举契约](./model/contracts/entity.mdx#约定)。普通引用参与实体关系图。业务定义关系含义，以及是否需要独立的业务实体。
+[Observation](./model/observation.mdx) 记录一份观测。一份 Observation 说明哪个 [Observer](./model/observer.mdx) 作出了判断，判断针对哪个业务实体，以及事实在什么时间成立。被 Observation 引用的业务实体称为观测内容。观测内容是角色，不是类型。
 
-## 代码位置
+只有 Observation 保存事实时间。Observation 的 `startAt` 和 `endAt` 表达事实从何时开始、到何时结束，边界可以未知，时间点、时段和未知边界都用这一对成员表示，见 [Observation · 事实时间](./model/observation.mdx#fact-time)。按时间查找事实时，读取方只需要读 Observation，不需要理解每种业务的字段。
 
-核心模型位于 `src/Core/Heartbeat.Core/`，命名空间为 `Heartbeat.Core`。Core 定义实体、基础能力接口和模型规则。Core 不依赖 ASP.NET Core、EF Core 或后端项目。
+每种业务实体的结构由业务自己的 [EntitySchema](./model/schema.mdx) 声明。Core 不提供内容基类，也不预设任何业务字段。业务实体不保存事实时间，也可以不被观测而单独保存。
 
-后端项目的职责与依赖见 [ADR 0005](../adr/0005-backend-project-organization.mdx)。
-
-## 模型关系
+## 模型关系 [#relations]
 
 <ModelRelations />
 
-## 阅读顺序
+图中的关系如下：
 
-| 层级 | 节点 | 说明 |
-| --- | --- | --- |
-| 基础契约 | [IEntity](./model/contracts/entity.mdx)、[ITimed](./model/contracts/timed.mdx) | 先理解标识、引用枚举与时间能力 |
-| 观测模型 | [Observation](./model/observations/observation.mdx)、[Observer](./model/observations/observer.mdx)、[EntitySchema](./model/observations/schema.mdx)、[观测内容](./model/observations/content.mdx) | 理解观测怎样连接观测主体、观测内容与实体定义 |
+- EntitySchema、Observer、Observation 和每个业务实体都实现 IEntity。
+- Observation 通过 `observerId` 引用 Observer，通过 `contentId` 引用观测内容。
+- 每种业务实体的类型由 EntitySchema 定义。Observer、Observation 和 EntitySchema 是 Core 类型，由 Core 定义。
+
+## 谁决定什么 [#responsibility]
+
+Core 规定结构和共同语义，不规定某一类事实怎么采集。
+
+| 主体 | 负责 |
+| --- | --- |
+| 业务 | 业务实体的 EntitySchema、实体身份、记录粒度、事实时间的取值、补全与结束条件、历史的保留范围 |
+| Observer | 一份观测的判断，见 [OBSERVER-5](./model/observer.mdx#observer-5) |
+| SDK | Observer 实例身份的持久保存、本地可靠保存、发送、确认和失败恢复 |
+| 后端 | 按 EntitySchema 校验并保存实体，赋值记录时间 |
+
+后端不判断事实：不推测模型，不判断两个实体是否相同，不判断事实是否连续或结束，也不替业务保留历史。各项规则分别写在 [IDENTITY-1](./rules/identity.mdx#identity-1)、[SCHEMA-2](./model/schema.mdx#schema-2)、[TIME-4](./rules/time.mdx#time-4) 和 [HISTORY-4](./rules/history.mdx#history-4)。SDK 与业务的分工见 [ADR · Observer 的责任与提交](../adr/observer-responsibility.mdx)。
+
+## 从哪里开始读 [#reading]
+
+| 目的 | 阅读顺序 |
+| --- | --- |
+| 理解 Core | [IEntity](./model/entity.mdx)、[EntitySchema](./model/schema.mdx)、[Observation](./model/observation.mdx)、[Observer](./model/observer.mdx) |
+| 接入新的来源 | [Observer](./model/observer.mdx)、[Identity](./rules/identity.mdx)、[Time](./rules/time.mdx)、[History](./rules/history.mdx)，然后读 [Observers · Integration Guide](../observers/integration.mdx) |
+| 修改后端的校验或存储 | [EntitySchema](./model/schema.mdx)、[IEntity](./model/entity.mdx)，然后读 [API](../api/index.mdx) 和 [Storage](../storage/index.mdx) |
+| 查找术语 | [Glossary](./glossary.mdx) |
+
+每个页面都有 Markdown 版本，地址是 `/llms.mdx/<页面路径>/content.md`，例如 `/llms.mdx/core/model/observation/content.md`。`/llms-full.txt` 包含全站内容。
+
+## 相关决策 [#decisions]
+
+| ADR | 内容 |
+| --- | --- |
+| [实体模型](../adr/entity-model.mdx) | 所有数据都是实体，EntitySchema 定义业务类型，只有 Observation 保存事实时间 |
+| [观测的身份、时间与历史](../adr/observations.mdx) | 业务决定身份和粒度，后端赋值记录时间，已保存的观测只能补全 |
+| [Observer 的责任与提交](../adr/observer-responsibility.mdx) | Observer 按判断责任划分，业务形成事实，平台 SDK 负责可靠提交 |
+
+## 规则的写法 [#conventions]
+
+Core 的每条规则是一个带编号的标题，例如 [OBSERVATION-10](./model/observation.mdx#observation-10)。标题是规则的一句话摘要，正文给出条件、例外和关联规则。
+
+类型页记录只涉及一种类型的规则。规则页记录跨类型的规则，并在开头列出相关的类型规则。
+
+| 前缀 | 页面 |
+| --- | --- |
+| `ENTITY` | [IEntity](./model/entity.mdx) |
+| `SCHEMA` | [EntitySchema](./model/schema.mdx) |
+| `OBSERVATION` | [Observation](./model/observation.mdx) |
+| `OBSERVER` | [Observer](./model/observer.mdx) |
+| `IDENTITY` | [Identity](./rules/identity.mdx) |
+| `TIME` | [Time](./rules/time.mdx) |
+| `HISTORY` | [History](./rules/history.mdx) |
+
+前缀是页面名称的完整英文单词，一个前缀只对应一个页面。
+
+编号遵循以下约定：
+
+- 规则的措辞改变时，编号不变。
+- 重写期间，可以合并、删除、移动规则并重新编号，同时更新所有引用。重写完成后，编号固定：删除的编号不再复用，规则移到其他页面时保留原编号。
+- 代码、测试、ADR 和讨论直接写编号，例如 `IDENTITY-3`。链接的锚点是小写的编号，例如 `./rules/identity.mdx#identity-3`。
+- 每条规则只写在一个页面。其他页面通过编号链接到这条规则。
+
+规则用以下词表达强度：
+
+| 词 | 含义 |
+| --- | --- |
+| 必须 | 不满足即为错误 |
+| 不得 | 做了即为错误 |
+| 可以 | 允许，但不要求 |
+| 默认……除非…… | 没有明确声明或授权时的做法 |
+
+规则页之外的描述性句子只陈述事实，不构成额外的约束。

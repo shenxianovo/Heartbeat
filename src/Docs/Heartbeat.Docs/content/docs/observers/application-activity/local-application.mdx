@@ -1,0 +1,101 @@
+---
+title: "Local Application"
+description: "某台设备上的一个应用安装"
+---
+
+<ObserverStructure node="LOCAL_APPLICATION" />
+
+本机应用表示某台设备上的一个应用安装，具有独立的 EntityId，可以先于任何 Observation 存在。[前台应用时段](./foreground-application-period.mdx)通过 `localApplicationId` 引用它。
+
+## 记录粒度
+
+一条实体对应某台设备上的一个安装。平台标识线索用于识别安装，不按应用名称或跨设备的软件品牌合并。
+
+## 身份
+
+macOS 采集器按应用包标识和可执行文件路径的原始值识别安装，两者都相同时复用身份。比较区分大小写，不按名称、路径别名或软件品牌合并。
+
+| 变化 | 身份 |
+| --- | --- |
+| 应用名称变化 | 复用；观测内容保存新名称 |
+| 应用退出后重新启动 | 复用 |
+| 采集器重启或升级 | 复用（来自登记文件） |
+| 应用原地升级 | 复用 |
+| 原路径卸载后重装，包标识相同 | 复用 |
+| 应用移动或可执行文件路径变化 | 新建 |
+| 同一路径出现不同包标识 | 新建 |
+| 只有路径，之后读到包标识 | 新建 |
+| 另一台设备上的相同安装 | 新建 |
+
+没有可执行文件路径时，只在采集器本次运行中按进程号、进程启动时间和包标识复用临时身份，进程或采集器重启后新建。进程线索也不可用时，每次读数新建身份。这些进程线索不写入业务实体。
+
+宁可多建身份也不错误合并。名称会随语言和版本变化，两个不同的安装也可能同名。多个身份之后可以由业务关联，错误合并却无法拆开。
+
+### 登记文件
+
+本机应用登记文件是原生线索到 EntityId 映射的权威来源。登记文件与 Observer 身份文件分开，同一设备上的多个采集器实例共用一个登记文件。
+
+- 文件只属于创建它的设备。
+- 文件损坏时，采集器报告错误并保留原文件。
+- 删除文件后，下次采集重新分配身份。
+- 创建与更新使用互斥锁和原子替换。
+
+文件路径与启动参数见 `src/Observers/Heartbeat.Observer.ForegroundState/README.md`。
+
+## 引用
+
+不同设备上的本机应用可以关联到同一个跨平台应用，例如两台 Mac 上的 VS Code。采集器只维护本机身份。当前不建立 Device 实体，也不归并跨平台应用。
+
+## 事实时间
+
+本机应用是被其他业务内容引用的独立对象，不为它添加前台活动的时间边界。前台时段的事实时间由引用本机应用的 Observation 表达。
+
+## Schema
+
+| 项目 | 值 |
+| --- | --- |
+| SchemaId | `019e1bbb-ec00-7000-8000-000000000002` |
+| 显示名称 | 本机应用 |
+| 说明 | 表示某台设备上的一个应用安装，保存用于识别安装的平台标识线索。 |
+| 资源名 | `local-applications` |
+
+| 字段 | 类型 | 必填 | 可空 | 含义 |
+| --- | --- | --- | --- | --- |
+| `identifiers` | `array` | 是 | 否 | 平台标识线索；顺序无含义；没有线索时为 `[]` |
+| `identifiers[].scheme` | `string` | 是 | 否 | 线索种类 |
+| `identifiers[].value` | `string` | 是 | 否 | 原始值 |
+
+| `scheme` | `value` |
+| --- | --- |
+| `macos.bundle-id` | 应用包标识 |
+| `macos.executable-path` | 可执行文件路径 |
+
+本机应用不保存名称；读到的名称由观测内容保存。
+
+## 示例
+
+`PUT /entities/local-applications/{id}`：
+
+```json
+{
+  "references": {},
+  "properties": {
+    "identifiers": [
+      { "scheme": "macos.bundle-id", "value": "com.microsoft.VSCode" },
+      {
+        "scheme": "macos.executable-path",
+        "value": "/Applications/Visual Studio Code.app/Contents/MacOS/Electron"
+      }
+    ]
+  }
+}
+```
+
+## 相关文档
+
+- [Foreground State](./index.mdx)：采集器实例身份与接入。
+- [Foreground Application Period](./foreground-application-period.mdx)：如何引用本机应用。
+
+## 待定
+
+- 跨平台应用关联的维护方、依据和保存方式。

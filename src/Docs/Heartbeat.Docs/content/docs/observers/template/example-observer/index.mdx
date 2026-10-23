@@ -1,0 +1,53 @@
+---
+title: "Example Observer"
+description: "Observer 主页面的结构与填写示例"
+---
+
+<ObserverStructure node="INPUT_EVENTS" />
+
+这一页展示 Observer 主页面的写法。页首复用 Input Events 的共享图作展示，实际业务规则以 [Input Events](../../input-events/index.mdx) 为准。编写新业务时，替换页面名称、职责和共享图节点，说明采集什么事实、基于什么来源、职责范围是什么。
+
+## Entity 与 Schema
+
+| Entity 与 Schema | 资源名 | 说明 |
+| --- | --- | --- |
+| [Example Entity](./example-entity.mdx) | 待填写 | 实体的含义、身份、引用、时间和 Schema 放在同一子页 |
+
+一行对应一种已定义的业务实体，不把实例数据当作导航子页。尚未定义的实体列在“待定”。
+
+## 实例身份
+
+说明 Observer 实例身份如何生成与保存、重启如何沿用，以及哪些情况属于独立实例。业务实体身份写在实体页，设备身份也与采集器身份分开。
+
+## 采集
+
+说明首次读取、事件或采样的触发方式、授权要求，以及读取失败、暂停和恢复的处理。同一 Observer 提供多类内容时，说明共同读取流程与各条业务时间线的更新条件。
+
+用户设置作为本节子标题，写明默认值与开关的作用。例如输入事件的具体按键记录设置见 [Input Events](../../input-events/index.mdx#具体按键记录)。不单独建立 Collection 子页。
+
+## 事实时间
+
+| 内容 | Observation 时间 |
+| --- | --- |
+| Example Entity | 填写时间点或时段，以及来源字段到事实时间边界的映射；详细边界链接到实体页 |
+
+写明事实时间取自哪些来源字段。不要用形成观测、接收或保存的时刻填补事实时间，见 [TIME-1](../../../core/rules/time.mdx#time-1)。独立业务对象不必同时形成 Observation，也不必为了套模板添加时间边界。
+
+## 接入与提交策略
+
+说明接入时登记哪些主体与 Schema，业务选择及时提交还是结束后提交，何时报告更新或结束。存储、重试与幂等规则链接到[提交机制](../../submission/index.mdx)及所用平台 SDK，不在本页重复维护。
+
+尚未确认的策略列入“待定”，不要把共用能力的存在写成业务已经选定某种策略。
+
+## 相关文档
+
+- [Example Entity](./example-entity.mdx)：业务实体页的章节示例。
+- [Input Events](../../input-events/index.mdx)：实际 Observer 示例。
+- [提交机制](../../submission/index.mdx)：跨平台约定与平台 SDK。
+
+平台入口、启动参数说明和测试文档也放在本节；启动操作本身由实现目录的 README 维护。
+
+## 待定
+
+- 逐项列出业务尚未确认的身份、采集、时间或提交规则。
+- 本模板没有实际 Observer 身份或提交入口，复制后填写已确认的业务信息。

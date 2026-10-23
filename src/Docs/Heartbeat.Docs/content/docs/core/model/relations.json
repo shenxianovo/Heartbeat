@@ -1,126 +1,165 @@
 {
   "groups": {
-    "contracts": "基础契约",
-    "observations": "观测模型"
+    "contracts": "契约",
+    "observations": "观测与业务"
   },
   "nodes": {
-    "E": {
+    "IEntity": {
       "label": "IEntity",
       "shape": "hexagon",
       "style": "capability",
       "group": "contracts",
-      "path": "/core/model/contracts/entity"
+      "path": "/core/model/entity"
     },
-    "E_ID": {
+    "IEntity_Id": {
       "label": "Id",
       "shape": "rectangle",
       "style": "member",
       "group": "contracts",
-      "path": "/core/model/contracts/entity#entityid"
+      "path": "/core/model/entity#members"
     },
-    "E_REFERENCES": {
+    "IEntity_GetReferences": {
       "label": "GetReferences()",
       "shape": "rectangle",
       "style": "member",
       "group": "contracts",
-      "path": "/core/model/contracts/entity#定义"
+      "path": "/core/model/entity#members"
     },
-    "T": {
-      "label": "ITimed",
-      "shape": "hexagon",
-      "style": "capability",
-      "group": "contracts",
-      "path": "/core/model/contracts/timed"
-    },
-    "O": {
+    "Observation": {
       "label": "Observation",
       "shape": "rectangle",
       "style": "entity",
       "group": "observations",
-      "path": "/core/model/observations/observation"
+      "path": "/core/model/observation"
     },
-    "R": {
+    "Observation_StartAt": {
+      "label": "StartAt",
+      "shape": "rectangle",
+      "style": "member",
+      "group": "observations",
+      "path": "/core/model/observation#fact-time"
+    },
+    "Observation_EndAt": {
+      "label": "EndAt",
+      "shape": "rectangle",
+      "style": "member",
+      "group": "observations",
+      "path": "/core/model/observation#fact-time"
+    },
+    "Observation_TimeZone": {
+      "label": "TimeZone",
+      "shape": "rectangle",
+      "style": "member",
+      "group": "observations",
+      "path": "/core/model/observation#obs-5"
+    },
+    "Observation_RecordedAt": {
+      "label": "RecordedAt",
+      "shape": "rectangle",
+      "style": "member",
+      "group": "observations",
+      "path": "/core/model/observation#obs-6"
+    },
+    "Observer": {
       "label": "Observer",
       "shape": "rectangle",
       "style": "entity",
       "group": "observations",
-      "path": "/core/model/observations/observer"
+      "path": "/core/model/observer"
     },
-    "S": {
+    "EntitySchema": {
       "label": "EntitySchema",
       "shape": "rectangle",
       "style": "entity",
       "group": "observations",
-      "path": "/core/model/observations/schema"
+      "path": "/core/model/schema"
     },
-    "CONTENT": {
-      "label": "观测内容（业务实体）",
-      "shape": "parallelogram",
-      "style": "domain",
+    "BusinessEntity": {
+      "label": "业务实体（观测内容）",
+      "shape": "rectangle",
+      "style": "entity",
       "group": "observations",
-      "path": "/core/model/observations/content"
+      "path": "/core/glossary#entities"
     }
   },
   "edges": [
     {
-      "from": "E",
-      "to": "E_ID",
+      "from": "Observation",
+      "to": "Observation_StartAt",
       "kind": "member",
       "label": "属性"
     },
     {
-      "from": "E",
-      "to": "E_REFERENCES",
+      "from": "Observation",
+      "to": "Observation_EndAt",
+      "kind": "member",
+      "label": "属性"
+    },
+    {
+      "from": "Observation",
+      "to": "Observation_RecordedAt",
+      "kind": "member",
+      "label": "属性"
+    },
+    {
+      "from": "Observation",
+      "to": "Observation_TimeZone",
+      "kind": "member",
+      "label": "属性"
+    },
+    {
+      "from": "IEntity",
+      "to": "IEntity_Id",
+      "kind": "member",
+      "label": "属性"
+    },
+    {
+      "from": "IEntity",
+      "to": "IEntity_GetReferences",
       "kind": "member",
       "label": "方法"
     },
     {
-      "from": "O",
-      "to": "R",
+      "from": "Observation",
+      "to": "Observer",
       "kind": "reference",
-      "label": "ObserverId 引用"
+      "label": "observerId 引用"
     },
     {
-      "from": "O",
-      "to": "S",
+      "from": "Observation",
+      "to": "BusinessEntity",
       "kind": "reference",
-      "label": "SchemaId 引用"
+      "label": "contentId 引用"
     },
     {
-      "from": "O",
-      "to": "CONTENT",
-      "kind": "reference",
-      "label": "ContentId 引用"
-    },
-    {
-      "from": "O",
-      "to": "E",
+      "from": "Observation",
+      "to": "IEntity",
       "kind": "implementation",
       "label": "实现"
     },
     {
-      "from": "O",
-      "to": "T",
+      "from": "Observer",
+      "to": "IEntity",
       "kind": "implementation",
       "label": "实现"
     },
     {
-      "from": "R",
-      "to": "E",
+      "from": "EntitySchema",
+      "to": "IEntity",
       "kind": "implementation",
       "label": "实现"
     },
     {
-      "from": "S",
-      "to": "E",
+      "from": "BusinessEntity",
+      "to": "IEntity",
       "kind": "implementation",
       "label": "实现"
     },
     {
-      "from": "CONTENT",
-      "to": "E",
-      "kind": "implementation",
-      "label": "实现"
+      "from": "EntitySchema",
+      "to": "BusinessEntity",
+      "kind": "definition",
+      "label": "定义类型"
     }
   ]
 }

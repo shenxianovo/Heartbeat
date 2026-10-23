@@ -1,0 +1,52 @@
+---
+title: "Overview"
+description: "ADR 记录 Heartbeat 的架构决定及其理由"
+---
+
+ADR（Architecture Decision Record）记录一项架构决定、作出决定的原因和带来的影响。规则本身写在 Core、API、Storage 和 Observers 中，ADR 回答“为什么这样规定”。
+
+## 何时写 ADR [#when]
+
+以下三类决定写成 ADR：
+
+- 责任归哪个组件。
+- 协议的语义。
+- 某类数据的权威位置。
+
+较小的决定写入对应的类型页、规则页或契约。单个 Observer 的实现决定，例如识别规则、分段阈值和本地存储，写在该 Observer 的文档中。模块的运行和操作说明写在模块 README 中。
+
+## 结构 [#structure]
+
+| 部分 | 内容 |
+| --- | --- |
+| 背景 | 需要作出决定的问题 |
+| 决定 | 确定的做法，每条一句，只写决定本身 |
+| 理由 | 为什么这样做，放弃了哪些方案 |
+| 代价 | 接受了哪些成本或限制 |
+| 规则位置 | 承载具体规则的文档 |
+
+ADR 不复述规则。条件、例外和细节写在 Core、API、Storage 或 Observers 中，ADR 链接过去。
+
+流程类的决定在 Core 中没有对应的页面。这类 ADR 在“决定”之后增加“规则”一节，直接承载规则，例如 [文档的权威与传播](./documentation-authority.mdx)。
+
+## 命名 [#naming]
+
+每篇 ADR 用主题的英文 slug 命名，例如 `entity-model.mdx`。引用时写 ADR 的标题并链接文件，例如 [ADR · 实体模型](./entity-model.mdx)。代码注释中写 slug，例如 `ADR entity-model`。
+
+ADR 没有编号。阅读顺序由侧边栏决定：按侧边栏依次读，每篇 ADR 只依赖排在它前面的 ADR。
+
+- 重写期间，ADR 直接改成当前的决定，不保留被取代的版本。合并、拆分或改名时，同时更新所有引用。
+- 重写完成后，slug 固定。决定被取代时，新写一篇 ADR，并在旧 ADR 的开头链接新 ADR。
+
+## 目录 [#index]
+
+| 分组 | ADR | 决定 |
+| --- | --- | --- |
+| 基础 | [文档的权威与传播](./documentation-authority.mdx) | 文档是唯一权威，分为四层，更新只能从模型向实现前向传播 |
+| 模型 | [实体模型](./entity-model.mdx) | 所有数据都是实体，EntitySchema 定义业务类型，只有 Observation 保存事实时间 |
+| 模型 | [观测的身份、时间与历史](./observations.mdx) | 业务决定身份和粒度，后端赋值记录时间，已保存的观测只能补全 |
+| 模型 | [Observer 的责任与提交](./observer-responsibility.mdx) | Observer 按判断责任划分，业务形成事实，平台 SDK 负责可靠提交 |
+| 后端 | [实体 API](./entity-api.mdx) | 创建方生成 ID，按资源名保存，按 ID 统一读取 |
+| 后端 | [实体存储](./entity-storage.mdx) | PostgreSQL 保存实体，统一索引定位内容，每个业务 SchemaId 一张表 |
+| 后端 | [后端运行与本地环境](./backend-runtime.mdx) | 四个后端项目组成一个进程，Aspire 编排本地环境，NGINX 提供同源入口 |
+| 验证 | [开发验证与测试证据](./verification.mdx) | Heartbeat.Dev 组织验证并保存证据，原生测试报告是测试结果的权威来源 |

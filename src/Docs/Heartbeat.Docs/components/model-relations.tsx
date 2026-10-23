@@ -25,7 +25,10 @@ export function ModelRelations({ node }: { node?: NodeId }) {
   const visible = new Set(edges.flatMap((edge) => [edge.from, edge.to]));
   if (node) visible.add(node);
   const nodes = Object.entries(model.nodes).filter(([id]) => visible.has(id));
-  const chart = ['flowchart LR'];
+  const chart = [
+    ...(node ? [] : ['---', 'config:', '  layout: dagre', '  flowchart:', '    curve: linear', '---']),
+    'flowchart LR',
+  ];
 
   function declareNode([id, info]: (typeof nodes)[number]) {
     const [open, close] = shapes[info.shape];
@@ -40,6 +43,8 @@ export function ModelRelations({ node }: { node?: NodeId }) {
       chart.push(...nodes.filter(([, info]) => info.group === id).map(declareNode));
       chart.push('end');
     }
+    // This invisible edge aligns the overview groups without adding a model relation.
+    chart.push('observations ~~~ contracts');
   }
 
   for (const edge of edges) {

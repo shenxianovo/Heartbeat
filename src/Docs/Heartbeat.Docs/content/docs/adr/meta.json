@@ -1,20 +1,21 @@
 {
-  "pages": [
-    "0001-documentation-source-of-truth",
-    "0002-observer-capabilities-and-platform-clients",
-    "0003-entity-submission-entry-points",
-    "0004-entity-storage-authority",
-    "0005-backend-project-organization",
-    "0006-unified-http-entry",
-    "0007-developer-cli-and-verification",
-    "0008-aspire-local-development",
-    "0009-entity-reference-enumeration",
-    "0010-observation-content-and-business-entities",
-    "0011-entity-schema-driven-storage",
-    "0012-foreground-application-periods"
-  ],
-  "title": "Heartbeat ADR",
-  "description": "架构决策记录",
+  "title": "ADR",
+  "description": "架构决定及其理由",
   "icon": "ScrollText",
-  "root": true
+  "root": true,
+  "pages": [
+    "index",
+    "---Foundation---",
+    "documentation-authority",
+    "---Model---",
+    "entity-model",
+    "observations",
+    "observer-responsibility",
+    "---Backend---",
+    "entity-api",
+    "entity-storage",
+    "backend-runtime",
+    "---Verification---",
+    "verification"
+  ]
 }

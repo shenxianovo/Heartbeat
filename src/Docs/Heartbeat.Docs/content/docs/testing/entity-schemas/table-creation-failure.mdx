@@ -1,13 +1,13 @@
 ---
-title: "建表失败时，不登记业务资源"
-description: "实体定义登记遇到同名物理表时，完整回滚登记"
+title: "Table Creation Failure"
+description: "建表失败时完整回滚定义登记"
 ---
 
 export const caseId = 'entity-schema-registration-table-conflict';
 
 ## 为什么验证
 
-[实体定义登记](../../storage/entity-schemas.mdx#读写)同时保存定义、统一索引和业务资源绑定，并创建业务表。建表失败时，这些步骤必须一起回滚，避免留下无法使用的业务资源。
+[实体定义登记](../../storage/fixed-tables.mdx#entity_schemas)同时保存定义、统一索引和业务资源绑定，并创建业务表。建表失败时，这些步骤必须一起回滚，避免留下无法使用的业务资源。
 
 ## 前置条件
 
@@ -25,7 +25,8 @@ export const caseId = 'entity-schema-registration-table-conflict';
 {
   "references": {},
   "properties": {
-    "name": "Test",
+    "displayName": "Test",
+    "description": "验证业务表重名时，定义、索引与资源登记整体回滚。",
     "resourceName": "test-records",
     "fields": {
       "title": { "type": "string", "required": false, "nullable": true }
@@ -48,7 +49,7 @@ export const caseId = 'entity-schema-registration-table-conflict';
 
 ## 测试实现
 
-`tests/Heartbeat.Integration.Tests/EntitySchemaApiTests.cs` 中的 `ExistingPhysicalTableMakesRegistrationRollBack` 通过 TUnit 自定义属性 `caseId` 引用此 Case。测试方法改名不改变 Case 身份；参数化测试的多个执行结果可以引用同一个 Case。
+`tests/Heartbeat.Integration.Tests/EntitySchemaApiTests.cs` 中的 `ExistingPhysicalTableMakesRegistrationRollBack`。
 
 ## 执行结果
 

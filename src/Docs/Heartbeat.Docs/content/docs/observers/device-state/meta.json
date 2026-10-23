@@ -1,0 +1,9 @@
+{
+  "title": "Device State",
+  "defaultOpen": false,
+  "collapsible": true,
+  "pagesIndex": "index",
+  "pages": [
+    "sleep-state"
+  ]
+}
