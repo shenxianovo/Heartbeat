@@ -43,7 +43,12 @@ internal static class EntityEndpoints
         switch (value.ValueKind)
         {
             case JsonValueKind.Object:
-                foreach (var p in value.EnumerateObject()) { _ = p.Name; ValidateJsonStrings(p.Value); }
+                var names = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var p in value.EnumerateObject())
+                {
+                    if (!names.Add(p.Name)) throw new InvalidOperationException("Duplicate JSON property name.");
+                    ValidateJsonStrings(p.Value);
+                }
                 break;
             case JsonValueKind.Array:
                 foreach (var item in value.EnumerateArray()) ValidateJsonStrings(item);
@@ -127,7 +132,8 @@ internal static class EntityEndpoints
             Observation observation => new EntityResponse(stored.Category,
                 new { observation.ObserverId, observation.ContentId, observation.SchemaId },
                 new { observation.StartAt, observation.EndAt, observation.TimeZone }),
-            BusinessEntity entity => new EntityResponse(stored.Category, entity.References, entity.Properties),
+            BusinessEntity entity => new EntityResponse(stored.Category, entity.References, entity.Properties,
+                stored.SchemaId ?? throw new InvalidOperationException("Stored business entity has no schema identity.")),
             _ => throw new InvalidOperationException("Unsupported entity content type."),
         };
         return Results.Ok(response);

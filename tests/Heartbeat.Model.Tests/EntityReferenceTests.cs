@@ -1,8 +1,7 @@
 using System.Text.Json;
 using Heartbeat.Core;
-using Heartbeat.Observers.ForegroundState;
 
-namespace Heartbeat.Integration.Tests;
+namespace Heartbeat.Model.Tests;
 
 public sealed class EntityReferenceTests
 {
@@ -41,7 +40,6 @@ public sealed class EntityReferenceTests
                 ResourceName = "reference-tests",
                 Fields = JsonSerializer.SerializeToElement(new { }),
             },
-            new LocalApplication(EntityId.New(), [new ApplicationIdentifier("test", value)]),
         ];
 
         foreach (var entity in entities)

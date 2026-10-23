@@ -3,29 +3,16 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Heartbeat.Core;
 using Heartbeat.Observers.ForegroundState;
-using Heartbeat.Testing;
 
 namespace Heartbeat.Integration.Tests;
 
-public sealed class MacObserverSubmissionTests
+public sealed class MacObserverSubmissionTests : DatabaseTest
 {
-    private TestDatabase? _database;
-
-    [Before(Test)]
-    public async Task CreateDatabaseAsync(CancellationToken cancellationToken) =>
-        _database = await PostgresAssemblyHooks.Instance.CreateDatabaseAsync(cancellationToken);
-
-    [After(Test)]
-    public async Task RemoveDatabaseAsync()
-    {
-        if (_database is not null) await _database.DisposeAsync();
-    }
-
     [Test]
     public async Task CapturedReadingsRetainIndependentContentAndFactTimes()
     {
         var cancellationToken = TestContext.Current!.Execution.CancellationToken;
-        await using var factory = new HeartbeatApiFactory(_database!.ConnectionString);
+        await using var factory = new HeartbeatApiFactory(Database.ConnectionString);
         using var client = factory.CreateClient();
         var observerId = EntityId.New();
         var time = DateTimeOffset.Parse("2026-10-07T09:00:00.1234567+08:00", CultureInfo.InvariantCulture);
@@ -66,7 +53,7 @@ public sealed class MacObserverSubmissionTests
     public async Task SubmissionRegistersItsSchemaAndVerifiesEveryEntity()
     {
         var cancellationToken = TestContext.Current!.Execution.CancellationToken;
-        await using var factory = new HeartbeatApiFactory(_database!.ConnectionString);
+        await using var factory = new HeartbeatApiFactory(Database.ConnectionString);
         using var client = factory.CreateClient();
         var capture = ForegroundCapture.Create(EntityId.New(), new LocalApplication(EntityId.New(), []),
             new ForegroundApplicationReading(null, null, null, DateTimeOffset.UtcNow, null));
@@ -87,7 +74,7 @@ public sealed class MacObserverSubmissionTests
     public async Task CollectorSavesIntervalsAndResumesAfterReadFailureWithoutChangingHistory()
     {
         var cancellationToken = TestContext.Current!.Execution.CancellationToken;
-        await using var factory = new HeartbeatApiFactory(_database!.ConnectionString);
+        await using var factory = new HeartbeatApiFactory(Database.ConnectionString);
         using var client = factory.CreateClient();
         var directory = Directory.CreateTempSubdirectory("heartbeat-period-submission-");
         try

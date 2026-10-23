@@ -1,64 +1,35 @@
 using Heartbeat.Core;
 using Heartbeat.Infrastructure.Database;
-using Heartbeat.Testing;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
 namespace Heartbeat.Integration.Tests;
 
-public sealed class EntityPersistenceTests
+public sealed class EntityPersistenceTests : DatabaseTest
 {
-    private TestDatabase? _database;
-
-    [Before(Test)]
-    public async Task CreateDatabaseAsync(CancellationToken cancellationToken)
-    {
-        _database = await PostgresAssemblyHooks.Instance.CreateDatabaseAsync(cancellationToken);
-    }
-
-    [After(Test)]
-    public async Task DeleteDatabaseAsync()
-    {
-        if (_database is not null)
-        {
-            await _database.DisposeAsync();
-            _database = null;
-        }
-    }
-
     [Test]
-    public async Task SavedObserverCanBeReadFromANewContext()
+    public async Task ObservationContextWriteFloorsHistoricalSubMicroseconds()
     {
         var cancellationToken = TestContext.Current!.Execution.CancellationToken;
         var id = EntityId.New();
-        await using var dataSource = NpgsqlDataSource.Create(_database!.ConnectionString);
-        var options = new DbContextOptionsBuilder<HeartbeatDbContext>()
-            .UseNpgsql(dataSource)
-            .Options;
-
+        await using var dataSource = NpgsqlDataSource.Create(Database.ConnectionString);
+        var options = new DbContextOptionsBuilder<HeartbeatDbContext>().UseNpgsql(dataSource).Options;
+        var instant = DateTimeOffset.Parse("1999-12-31T23:59:59.9999999Z", System.Globalization.CultureInfo.InvariantCulture);
         await using (var writeContext = new HeartbeatDbContext(options))
         {
-            writeContext.Entities.Add(new EntityIndexRow
+            writeContext.Entities.Add(new EntityIndexRow { Id = id, TableName = "observations" });
+            writeContext.Observations.Add(new Observation
             {
-                Id = id,
-                TableName = "observers",
-            });
-            writeContext.Observers.Add(new Observer
-            {
-                Id = id,
-                Name = "Integration test observer",
+                Id = id, ObserverId = EntityId.New(), ContentId = EntityId.New(), SchemaId = EntityId.New(),
+                StartAt = instant, EndAt = instant,
             });
             await writeContext.SaveChangesAsync(cancellationToken);
         }
 
         await using var readContext = new HeartbeatDbContext(options);
-        var observer = await readContext.Observers.AsNoTracking()
-            .SingleAsync(entity => entity.Id == id, cancellationToken);
-        var index = await readContext.Entities.AsNoTracking()
-            .SingleAsync(entity => entity.Id == id, cancellationToken);
-
-        await Assert.That(observer.Id).IsEqualTo(id);
-        await Assert.That(observer.Name).IsEqualTo("Integration test observer");
-        await Assert.That(index.TableName).IsEqualTo("observers");
+        var observation = await readContext.Observations.AsNoTracking().SingleAsync(entity => entity.Id == id, cancellationToken);
+        var expected = instant.AddTicks(-9);
+        await Assert.That(observation.StartAt).IsEqualTo(expected);
+        await Assert.That(observation.EndAt).IsEqualTo(expected);
     }
 }

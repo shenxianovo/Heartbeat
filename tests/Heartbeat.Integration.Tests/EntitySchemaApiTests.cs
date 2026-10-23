@@ -3,25 +3,17 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Heartbeat.Core;
-using Heartbeat.Testing;
 using Npgsql;
 
 namespace Heartbeat.Integration.Tests;
 
-public sealed class EntitySchemaApiTests
+public sealed class EntitySchemaApiTests : DatabaseTest
 {
-    private TestDatabase? _database;
-    [Before(Test)]
-    public async Task CreateDatabaseAsync(CancellationToken cancellationToken) =>
-        _database = await PostgresAssemblyHooks.Instance.CreateDatabaseAsync(cancellationToken);
-    [After(Test)]
-    public async Task DeleteDatabaseAsync() { if (_database is not null) await _database.DisposeAsync(); }
-
     [Test]
     public async Task SchemaRegistrationIsIdempotentAndOnlyDisplayNameCanChange()
     {
         var ct = TestContext.Current!.Execution.CancellationToken;
-        await using var factory = new HeartbeatApiFactory(_database!.ConnectionString);
+        await using var factory = new HeartbeatApiFactory(Database.ConnectionString);
         using var client = factory.CreateClient();
         var id = await EntityTestRequests.RegisterAsync(client, "test-records", ct);
         await EntityTestRequests.RegisterAsync(client, "test-records", ct, schemaId: id);
@@ -52,7 +44,7 @@ public sealed class EntitySchemaApiTests
     public async Task InvalidResourceNameDoesNotRegister(string resourceName)
     {
         var ct = TestContext.Current!.Execution.CancellationToken;
-        await using var factory = new HeartbeatApiFactory(_database!.ConnectionString);
+        await using var factory = new HeartbeatApiFactory(Database.ConnectionString);
         using var client = factory.CreateClient();
         var id = EntityId.New().Value;
         using var rejected = await client.PutAsJsonAsync($"entities/schemas/{id}",
@@ -78,7 +70,7 @@ public sealed class EntitySchemaApiTests
     public async Task InvalidDeclarationsAreRejectedAtomically(string fields)
     {
         var ct = TestContext.Current!.Execution.CancellationToken;
-        await using var factory = new HeartbeatApiFactory(_database!.ConnectionString);
+        await using var factory = new HeartbeatApiFactory(Database.ConnectionString);
         using var client = factory.CreateClient();
         var id = EntityId.New().Value;
         using var rejected = await client.PutAsJsonAsync($"entities/schemas/{id}",
@@ -92,7 +84,7 @@ public sealed class EntitySchemaApiTests
     public async Task ConcurrentRegistrationsDoNotLeaveLosingSchemaIndexesOrTables()
     {
         var ct = TestContext.Current!.Execution.CancellationToken;
-        await using var factory = new HeartbeatApiFactory(_database!.ConnectionString);
+        await using var factory = new HeartbeatApiFactory(Database.ConnectionString);
         using var client = factory.CreateClient();
         var ids = Enumerable.Range(0, 8).Select(_ => EntityId.New().Value).ToArray();
         var responses = await Task.WhenAll(ids.Select(id => client.PutAsJsonAsync($"entities/schemas/{id}",
@@ -114,7 +106,7 @@ public sealed class EntitySchemaApiTests
     public async Task ConcurrentSameIdentityRegistersOnceAndDefinitionKeyOrderIsIgnored()
     {
         var ct = TestContext.Current!.Execution.CancellationToken;
-        await using var factory = new HeartbeatApiFactory(_database!.ConnectionString);
+        await using var factory = new HeartbeatApiFactory(Database.ConnectionString);
         using var client = factory.CreateClient();
         var id = EntityId.New().Value;
         var responses = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => client.PutAsJsonAsync($"entities/schemas/{id}",
@@ -141,7 +133,7 @@ public sealed class EntitySchemaApiTests
     public async Task UnrepresentableSchemaReplacementReturnsBadRequestAndKeepsOriginal()
     {
         var ct = TestContext.Current!.Execution.CancellationToken;
-        await using var factory = new HeartbeatApiFactory(_database!.ConnectionString);
+        await using var factory = new HeartbeatApiFactory(Database.ConnectionString);
         using var client = factory.CreateClient();
         var id = await EntityTestRequests.RegisterAsync(client, "test-records", ct);
         var fields = JsonSerializer.Deserialize<JsonElement>("""
@@ -159,7 +151,7 @@ public sealed class EntitySchemaApiTests
     public async Task PostgreSqlSystemColumnNameIsRejectedWithoutRegisteringSchemaOrResource()
     {
         var ct = TestContext.Current!.Execution.CancellationToken;
-        await using var factory = new HeartbeatApiFactory(_database!.ConnectionString);
+        await using var factory = new HeartbeatApiFactory(Database.ConnectionString);
         using var client = factory.CreateClient();
         var id = EntityId.New().Value;
         var fields = JsonSerializer.Deserialize<JsonElement>("""
@@ -180,12 +172,12 @@ public sealed class EntitySchemaApiTests
     public async Task ExistingPhysicalTableMakesRegistrationRollBack()
     {
         var ct = TestContext.Current!.Execution.CancellationToken;
-        await using var connection = new NpgsqlConnection(_database!.ConnectionString + ";Pooling=false");
+        await using var connection = new NpgsqlConnection(Database.ConnectionString + ";Pooling=false");
         await connection.OpenAsync(ct);
         await using var command = new NpgsqlCommand("CREATE TABLE entity_test_records (original text)", connection);
         await command.ExecuteNonQueryAsync(ct);
         await connection.CloseAsync();
-        await using var factory = new HeartbeatApiFactory(_database.ConnectionString);
+        await using var factory = new HeartbeatApiFactory(Database.ConnectionString);
         using var client = factory.CreateClient();
         var id = EntityId.New().Value;
         using var rejected = await client.PutAsJsonAsync($"entities/schemas/{id}",

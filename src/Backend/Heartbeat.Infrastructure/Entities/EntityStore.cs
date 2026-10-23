@@ -3,6 +3,7 @@ using System.Text.Json;
 using Heartbeat.Application.Entities;
 using Heartbeat.Core;
 using Heartbeat.Infrastructure.Database;
+using Heartbeat.Infrastructure.Database.Converters;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using NpgsqlTypes;
@@ -67,13 +68,16 @@ public sealed class EntityStore(HeartbeatDbContext dbContext) : IEntityStore
         CancellationToken cancellationToken = default) => SaveAsync(observation.Id, "observations", $"""
             INSERT INTO observations (id, observer_id, content_id, schema_id, start_at, end_at, time_zone)
             VALUES ({observation.Id.Value}, {observation.ObserverId.Value}, {observation.ContentId.Value},
-                {observation.SchemaId.Value}, {observation.StartAt?.ToUniversalTime()},
-                {observation.EndAt?.ToUniversalTime()}, {observation.TimeZone})
+                {observation.SchemaId.Value}, {StorageTime(observation.StartAt)},
+                {StorageTime(observation.EndAt)}, {observation.TimeZone})
             ON CONFLICT (id) DO UPDATE SET
                 observer_id = EXCLUDED.observer_id, content_id = EXCLUDED.content_id,
                 schema_id = EXCLUDED.schema_id, start_at = EXCLUDED.start_at,
                 end_at = EXCLUDED.end_at, time_zone = EXCLUDED.time_zone
             """, cancellationToken);
+
+    private static DateTimeOffset? StorageTime(DateTimeOffset? value) =>
+        value is { } known ? UtcDateTimeOffsetValueConverter.ToMicroseconds(known) : null;
 
     public async Task<EntitySaveResult> SaveEntitySchemaAsync(
         EntitySchema schema, CancellationToken cancellationToken = default)
@@ -209,7 +213,7 @@ public sealed class EntityStore(HeartbeatDbContext dbContext) : IEntityStore
             if (!omitted.Contains(column.FieldName))
                 (column.Reference ? references : properties).Add(column.FieldName, row.GetProperty(column.Name).Clone());
         return new StoredEntity(EntityCategories.Entity, new BusinessEntity(
-            JsonSerializer.SerializeToElement(references), JsonSerializer.SerializeToElement(properties)));
+            JsonSerializer.SerializeToElement(references), JsonSerializer.SerializeToElement(properties)), schema.Id);
     }
 
     private Task<int> CoordinateDdlAsync(bool exclusive, CancellationToken cancellationToken) =>

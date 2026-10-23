@@ -1,6 +1,6 @@
 {
-  "title": "Heartbeat API",
-  "description": "实体提交与读取",
+  "title": "API",
+  "description": "实体的 HTTP 接口",
   "root": true,
   "pages": [
     "index",

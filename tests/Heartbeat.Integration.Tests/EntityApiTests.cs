@@ -3,32 +3,12 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Heartbeat.Application.Entities;
 using Heartbeat.Core;
-using Heartbeat.Testing;
 
 namespace Heartbeat.Integration.Tests;
 
-public sealed class EntityApiTests
+public sealed class EntityApiTests : DatabaseTest
 {
-    private TestDatabase? _database;
-
-    [Before(Test)]
-    public async Task CreateDatabaseAsync(CancellationToken cancellationToken)
-    {
-        _database = await PostgresAssemblyHooks.Instance.CreateDatabaseAsync(cancellationToken);
-    }
-
-    [After(Test)]
-    public async Task DeleteDatabaseAsync()
-    {
-        if (_database is not null)
-        {
-            await _database.DisposeAsync();
-            _database = null;
-        }
-    }
-
     [Test]
     public async Task ObservationCanReferenceMissingEntitiesAndNormalizeTime()
     {
@@ -37,7 +17,7 @@ public sealed class EntityApiTests
         var observerId = EntityId.New().Value;
         var contentId = EntityId.New().Value;
         var schemaId = EntityId.New().Value;
-        await using var factory = new HeartbeatApiFactory(_database!.ConnectionString);
+        await using var factory = new HeartbeatApiFactory(Database.ConnectionString);
         using var client = factory.CreateClient();
         var request = new
         {
@@ -88,11 +68,36 @@ public sealed class EntityApiTests
     }
 
     [Test]
+    [Arguments("1999-12-31T23:59:59.9999999Z", "1999-12-31T23:59:59.999999Z")]
+    [Arguments("1970-01-01T08:00:00.0000001+08:00", "1970-01-01T00:00:00Z")]
+    [Arguments("2000-01-01T00:00:00.0000001Z", "2000-01-01T00:00:00Z")]
+    [Arguments("9999-12-31T23:59:59.9999999Z", "9999-12-31T23:59:59.999999Z")]
+    public async Task ObservationFloorsSubMicrosecondsRegardlessOfEpoch(string input, string expected)
+    {
+        var cancellationToken = TestContext.Current!.Execution.CancellationToken;
+        var id = EntityId.New().Value;
+        await using var factory = new HeartbeatApiFactory(Database.ConnectionString);
+        using var client = factory.CreateClient();
+        var request = new
+        {
+            references = new { observerId = EntityId.New().Value, contentId = EntityId.New().Value, schemaId = EntityId.New().Value },
+            properties = new { startAt = input, endAt = input, timeZone = (string?)null },
+        };
+
+        using var saved = await client.PutAsJsonAsync($"/entities/observations/{id}", request, cancellationToken);
+        await Assert.That(saved.StatusCode).IsEqualTo(HttpStatusCode.Created);
+        var body = await client.GetFromJsonAsync<JsonElement>($"/entities/{id}", cancellationToken);
+        var properties = body.GetProperty("properties");
+        await Assert.That(properties.GetProperty("startAt").GetString()).IsEqualTo(expected);
+        await Assert.That(properties.GetProperty("endAt").GetString()).IsEqualTo(expected);
+    }
+
+    [Test]
     public async Task GenericSaveEndpointIsUnavailableAndCannotCreateAnEntity()
     {
         var cancellationToken = TestContext.Current!.Execution.CancellationToken;
         var id = EntityId.New().Value;
-        await using var factory = new HeartbeatApiFactory(_database!.ConnectionString);
+        await using var factory = new HeartbeatApiFactory(Database.ConnectionString);
         using var client = factory.CreateClient();
         using var saved = await client.PutAsJsonAsync($"/entities/{id}", EntityTestRequests.Business(new { name = "Example" }),
             cancellationToken);
@@ -115,7 +120,7 @@ public sealed class EntityApiTests
         var cancellationToken = TestContext.Current!.Execution.CancellationToken;
         var id = EntityId.New().Value;
         var request = NewUnknownTimeObservation();
-        await using var factory = new HeartbeatApiFactory(_database!.ConnectionString);
+        await using var factory = new HeartbeatApiFactory(Database.ConnectionString);
         using var client = factory.CreateClient();
         using var created = await client.PutAsJsonAsync(
             $"/entities/observations/{id}", request, cancellationToken);
@@ -169,7 +174,7 @@ public sealed class EntityApiTests
     {
         var cancellationToken = TestContext.Current!.Execution.CancellationToken;
         var id = EntityId.New().Value;
-        await using var factory = new HeartbeatApiFactory(_database!.ConnectionString);
+        await using var factory = new HeartbeatApiFactory(Database.ConnectionString);
         using var client = factory.CreateClient();
         var observation = NewUnknownTimeObservation();
         var responses = await Task.WhenAll(Enumerable.Range(0, 8).Select(index => index % 2 == 0
@@ -221,7 +226,7 @@ public sealed class EntityApiTests
     {
         var cancellationToken = TestContext.Current!.Execution.CancellationToken;
         var id = EntityId.New().Value;
-        await using var factory = new HeartbeatApiFactory(_database!.ConnectionString);
+        await using var factory = new HeartbeatApiFactory(Database.ConnectionString);
         using var client = factory.CreateClient();
         using var content = new StringContent(json, Encoding.UTF8, "application/json");
         using var saved = await client.PutAsync($"/entities/{route}{id}", content, cancellationToken);
@@ -238,7 +243,7 @@ public sealed class EntityApiTests
     {
         var cancellationToken = TestContext.Current!.Execution.CancellationToken;
         var id = EntityId.New().Value;
-        await using var factory = new HeartbeatApiFactory(_database!.ConnectionString);
+        await using var factory = new HeartbeatApiFactory(Database.ConnectionString);
         factory.UseKestrel(0);
         using var client = factory.CreateClient();
         const int limit = 10 * 1024 * 1024;
@@ -262,6 +267,29 @@ public sealed class EntityApiTests
         }
     }
 
+    // 名称检查在请求解析时递归执行，所有路由共用；规则的各种写法见 Model.Tests 的 JsonAmbiguityTests。
+    [Test]
+    [Arguments("{\"references\":{},\"references\":{},\"properties\":{\"samples\":[{\"value\":\"second\"}]}}")]
+    [Arguments("{\"references\":{},\"properties\":{\"samples\":[{\"value\":\"first\"}]},\"propert\\u0069es\":{\"samples\":[]}}")]
+    [Arguments("{\"references\":{},\"properties\":{\"samples\":[{\"value\":\"first\",\"val\\u0075e\":\"second\"}]}}")]
+    public async Task DuplicateJsonNamesAreRejectedWithoutReplacingContent(string body)
+    {
+        var ct = TestContext.Current!.Execution.CancellationToken;
+        await using var factory = new HeartbeatApiFactory(Database.ConnectionString);
+        using var client = factory.CreateClient();
+        using var fields = JsonDocument.Parse("""{"samples":{"type":"array","required":true,"nullable":false,"items":{"type":"object","nullable":false,"fields":{"value":{"type":"string","required":true,"nullable":false}}}}}""");
+        await EntityTestRequests.RegisterAsync(client, "duplicate-samples", ct, fields.RootElement);
+        var id = EntityId.New().Value;
+        using var saved = await client.PutAsJsonAsync($"entities/duplicate-samples/{id}",
+            EntityTestRequests.Business(new { samples = new[] { new { value = "original" } } }), ct);
+        await Assert.That(saved.StatusCode).IsEqualTo(HttpStatusCode.Created);
+        using var content = new StringContent(body, Encoding.UTF8, "application/json");
+        using var rejected = await client.PutAsync($"entities/duplicate-samples/{id}", content, ct);
+        await AssertProblemAsync(rejected, HttpStatusCode.BadRequest, ct);
+        var read = await client.GetFromJsonAsync<JsonElement>($"entities/{id}", ct);
+        await Assert.That(read.GetProperty("properties").GetProperty("samples")[0].GetProperty("value").GetString()).IsEqualTo("original");
+    }
+
     private static JsonObject NewUnknownTimeObservation() => new()
     {
         ["references"] = new JsonObject
@@ -272,18 +300,4 @@ public sealed class EntityApiTests
         },
         ["properties"] = new JsonObject { ["startAt"] = null, ["endAt"] = null, ["timeZone"] = null },
     };
-
-    private static async Task AssertProblemAsync(
-        HttpResponseMessage response,
-        HttpStatusCode expectedStatus,
-        CancellationToken cancellationToken)
-    {
-        await Assert.That(response.StatusCode).IsEqualTo(expectedStatus);
-        await Assert.That(response.Content.Headers.ContentType?.MediaType)
-            .IsEqualTo("application/problem+json");
-        var problem = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken);
-        await Assert.That(problem.GetProperty("type").GetString()).IsEqualTo("about:blank");
-        await Assert.That(problem.GetProperty("status").GetInt32()).IsEqualTo((int)expectedStatus);
-        await Assert.That(string.IsNullOrWhiteSpace(problem.GetProperty("detail").GetString())).IsFalse();
-    }
 }

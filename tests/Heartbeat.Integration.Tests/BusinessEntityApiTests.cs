@@ -3,20 +3,12 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Heartbeat.Core;
-using Heartbeat.Testing;
 using Npgsql;
 
 namespace Heartbeat.Integration.Tests;
 
-public sealed class BusinessEntityApiTests
+public sealed class BusinessEntityApiTests : DatabaseTest
 {
-    private TestDatabase? _database;
-    [Before(Test)]
-    public async Task CreateDatabaseAsync(CancellationToken cancellationToken) =>
-        _database = await PostgresAssemblyHooks.Instance.CreateDatabaseAsync(cancellationToken);
-    [After(Test)]
-    public async Task DeleteDatabaseAsync() { if (_database is not null) await _database.DisposeAsync(); }
-
     [Test]
     [Arguments("1.0")]
     [Arguments("1e0")]
@@ -25,7 +17,7 @@ public sealed class BusinessEntityApiTests
     public async Task MathematicalIntegersUseExactBigintValues(string number)
     {
         var ct = TestContext.Current!.Execution.CancellationToken;
-        await using var factory = new HeartbeatApiFactory(_database!.ConnectionString);
+        await using var factory = new HeartbeatApiFactory(Database.ConnectionString);
         using var client = factory.CreateClient();
         await EntityTestRequests.RegisterAsync(client, "test-records", ct);
         var id = EntityId.New().Value;
@@ -41,7 +33,7 @@ public sealed class BusinessEntityApiTests
     public async Task QuotedFieldNamesCannotBecomeSqlOrFormatTokens()
     {
         var ct = TestContext.Current!.Execution.CancellationToken;
-        await using var factory = new HeartbeatApiFactory(_database!.ConnectionString);
+        await using var factory = new HeartbeatApiFactory(Database.ConnectionString);
         using var client = factory.CreateClient();
         const string field = "{0}\"; DROP TABLE observers; --";
         var fields = JsonSerializer.SerializeToElement(new Dictionary<string, object>
@@ -61,7 +53,7 @@ public sealed class BusinessEntityApiTests
     public async Task TypedStorageKeepsExactNumbersReferencesAndOmissionAcrossReplacement()
     {
         var ct = TestContext.Current!.Execution.CancellationToken;
-        await using var factory = new HeartbeatApiFactory(_database!.ConnectionString);
+        await using var factory = new HeartbeatApiFactory(Database.ConnectionString);
         using var client = factory.CreateClient();
         await EntityTestRequests.RegisterAsync(client, "test-records", ct);
         var id = EntityId.New().Value;
@@ -86,7 +78,7 @@ public sealed class BusinessEntityApiTests
         read = await client.GetFromJsonAsync<JsonElement>($"entities/{id}", ct);
         await Assert.That(read.GetProperty("references").EnumerateObject().Any()).IsFalse();
         await Assert.That(read.GetProperty("properties").EnumerateObject().Any()).IsFalse();
-        await using var connection = new NpgsqlConnection(_database.ConnectionString + ";Pooling=false");
+        await using var connection = new NpgsqlConnection(Database.ConnectionString + ";Pooling=false");
         await connection.OpenAsync(ct);
         await using var command = new NpgsqlCommand("SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'entity_test_records'", connection);
         await using var reader = await command.ExecuteReaderAsync(ct);
@@ -122,7 +114,7 @@ public sealed class BusinessEntityApiTests
     public async Task InvalidReplacementPreservesOriginalAndInvalidCreateLeavesNoIndex(string json)
     {
         var ct = TestContext.Current!.Execution.CancellationToken;
-        await using var factory = new HeartbeatApiFactory(_database!.ConnectionString);
+        await using var factory = new HeartbeatApiFactory(Database.ConnectionString);
         using var client = factory.CreateClient();
         await EntityTestRequests.RegisterAsync(client, "test-records", ct);
         var id = EntityId.New().Value;
@@ -147,7 +139,7 @@ public sealed class BusinessEntityApiTests
     public async Task NestedObjectAndArrayMembersKeepMissingAndNullSeparate()
     {
         var ct = TestContext.Current!.Execution.CancellationToken;
-        await using var factory = new HeartbeatApiFactory(_database!.ConnectionString);
+        await using var factory = new HeartbeatApiFactory(Database.ConnectionString);
         using var client = factory.CreateClient();
         var fields = JsonSerializer.Deserialize<JsonElement>("""
             {"details":{"type":"object","required":false,"nullable":true,"fields":{"note":{"type":"string","required":false,"nullable":true}}},
@@ -174,7 +166,7 @@ public sealed class BusinessEntityApiTests
     public async Task UnknownResourcesAndCrossSchemaIdsCannotCreateOrReplaceContent()
     {
         var ct = TestContext.Current!.Execution.CancellationToken;
-        await using var factory = new HeartbeatApiFactory(_database!.ConnectionString);
+        await using var factory = new HeartbeatApiFactory(Database.ConnectionString);
         using var client = factory.CreateClient();
         var id = EntityId.New().Value;
         using var missing = await client.PutAsJsonAsync($"entities/test-records/{id}", EntityTestRequests.Business(new { }), ct);
