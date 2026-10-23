@@ -18,12 +18,6 @@ internal interface IProcessRunner
         IReadOnlyList<string> arguments,
         IReadOnlyDictionary<string, string?>? environment,
         CancellationToken cancellationToken);
-
-    Task<int> RunAsync(
-        string fileName,
-        IReadOnlyList<string> arguments,
-        IReadOnlyDictionary<string, string?>? environment,
-        CancellationToken cancellationToken);
 }
 
 internal sealed class ProcessRunner(string workingDirectory) : IProcessRunner
@@ -35,25 +29,6 @@ internal sealed class ProcessRunner(string workingDirectory) : IProcessRunner
         CancellationToken cancellationToken) =>
         CaptureAsync(workingDirectory, fileName, arguments, cancellationToken, environment);
 
-    public async Task<int> RunAsync(
-        string fileName,
-        IReadOnlyList<string> arguments,
-        IReadOnlyDictionary<string, string?>? environment,
-        CancellationToken cancellationToken)
-    {
-        using var process = Start(workingDirectory, fileName, arguments, environment, redirectOutput: false);
-        try
-        {
-            await process.WaitForExitAsync(cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            Kill(process);
-            throw;
-        }
-        return process.ExitCode;
-    }
-
     internal static async Task<ProcessResult> CaptureAsync(
         string workingDirectory,
         string fileName,
@@ -61,7 +36,7 @@ internal sealed class ProcessRunner(string workingDirectory) : IProcessRunner
         CancellationToken cancellationToken,
         IReadOnlyDictionary<string, string?>? environment = null)
     {
-        using var process = Start(workingDirectory, fileName, arguments, environment, redirectOutput: true);
+        using var process = Start(workingDirectory, fileName, arguments, environment);
         var stdout = process.StandardOutput.ReadToEndAsync();
         var stderr = process.StandardError.ReadToEndAsync();
         try
@@ -77,21 +52,19 @@ internal sealed class ProcessRunner(string workingDirectory) : IProcessRunner
         return new ProcessResult(process.ExitCode, await stdout, await stderr);
     }
 
-    internal static Process Start(
+    private static Process Start(
         string workingDirectory,
         string fileName,
         IReadOnlyList<string> arguments,
-        IReadOnlyDictionary<string, string?>? environment,
-        bool redirectOutput, bool redirectInput = false)
+        IReadOnlyDictionary<string, string?>? environment)
     {
         var start = new ProcessStartInfo
         {
             FileName = fileName,
             WorkingDirectory = workingDirectory,
             UseShellExecute = false,
-            RedirectStandardInput = redirectInput,
-            RedirectStandardOutput = redirectOutput,
-            RedirectStandardError = redirectOutput,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
         };
         foreach (var argument in arguments)
         {

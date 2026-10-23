@@ -15,6 +15,7 @@ internal sealed class DeveloperCli(
         {
             new VerificationCommand(repository, runner, output).CreateCommand(),
             new QualityCommand(repository, runner, output).CreateCommand(),
+            new LocCommand(repository, runner, output).CreateCommand(),
             new ArtifactsCommand(repository, output).CreateCommand(),
         };
         root.SetAction(parse => new HelpAction().Invoke(parse));

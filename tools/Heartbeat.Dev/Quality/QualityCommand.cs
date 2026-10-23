@@ -1,6 +1,4 @@
 using System.CommandLine;
-using System.CommandLine.Help;
-using System.CommandLine.Parsing;
 using System.Text.Json;
 
 namespace Heartbeat.Dev;
@@ -22,24 +20,11 @@ internal sealed class QualityCommand(RepositoryContext repository, IProcessRunne
     public Command CreateCommand()
     {
         var command = new Command("quality", "Observe structural quality relative to an explicit Git base");
-        var baseRef = new Option<string?>("--base") { Description = "Git comparison base" };
+        var baseRef = new Option<string>("--base") { Required = true, Description = "Git comparison base" };
         var json = new Option<bool>("--json") { Description = "Print the report as JSON" };
         command.Options.Add(baseRef);
         command.Options.Add(json);
-        var loc = new LocCommand(repository, runner, output).CreateCommand();
-        command.Subcommands.Add(loc);
-        loc.Validators.Add(result =>
-        {
-            if (result.Parent is CommandResult parent
-                && parent.Children.OfType<OptionResult>().Any(option => !option.Implicit && option.Option == baseRef))
-                result.AddError("Use quality loc for current counts; --base belongs to quality comparison.");
-        });
-        command.SetAction((parse, token) =>
-        {
-            if (parse.GetValue(baseRef) is { } value) return RunAsync(new QualityOptions(value, parse.GetValue(json)), token);
-            if (parse.Tokens.Count == 1) return Task.FromResult(new HelpAction().Invoke(parse));
-            throw new CommandUsageException("quality requires an explicit --base REF.");
-        });
+        command.SetAction((parse, token) => RunAsync(new QualityOptions(parse.GetValue(baseRef)!, parse.GetValue(json)), token));
         return command;
     }
 

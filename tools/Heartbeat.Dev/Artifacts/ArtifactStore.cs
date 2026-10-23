@@ -11,7 +11,6 @@ internal sealed record EvidenceManifest(
     DateTimeOffset StartedAt,
     DateTimeOffset CompletedAt,
     int ExitCode,
-    bool IncludesSensitiveEvidence,
     IReadOnlyList<string> Commands,
     IReadOnlyList<string> Artifacts,
     IReadOnlyList<string> Limitations,
@@ -139,6 +138,19 @@ internal sealed class ArtifactStore(RepositoryContext repository)
             Delete(candidate);
         }
         return outcome;
+    }
+
+    public static string FormatBytes(long bytes)
+    {
+        string[] suffixes = ["B", "KiB", "MiB", "GiB", "TiB"];
+        var value = (double)bytes;
+        var suffix = 0;
+        while (value >= 1024 && suffix < suffixes.Length - 1)
+        {
+            value /= 1024;
+            suffix++;
+        }
+        return $"{value:0.##} {suffixes[suffix]}";
     }
 
     public void Delete(ArtifactRun run)

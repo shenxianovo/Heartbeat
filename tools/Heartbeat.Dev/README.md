@@ -1,75 +1,121 @@
-# Heartbeat Developer CLI
+# Heartbeat.Dev
 
-从仓库根目录运行 `dotnet run --project tools/Heartbeat.Dev -- <命令>`。人和 Agent 共用此验证入口。运行前需要安装仓库 `global.json` 指定的 .NET SDK。本机文档检查和质量扫描需要 Node、pnpm，集成测试需要 Docker。
+Heartbeat.Dev 是人和 Agent 共用的验证工具，负责构建、测试、质量扫描和验证证据。为什么由它组织验证，见 [ADR · 开发验证与测试证据](../../src/Docs/Heartbeat.Docs/content/docs/adr/verification.mdx)。
 
-## 开发环境
+本地环境的启动和停止由 Aspire 负责，见 [AppHost README](../Heartbeat.AppHost/README.md)。Heartbeat.Dev 不提供环境命令。
 
-本地服务由 Aspire AppHost 编排，环境启动、停止、资源状态与日志使用 Aspire CLI 和看板。运行说明见 [AppHost README](../Heartbeat.AppHost/README.md)。本工具不提供环境生命周期命令。
+## 准备
 
-## 构建、测试与收口
+需要 `global.json` 指定的 .NET SDK。文档站、前端检查和质量扫描还需要 Node.js、npm 和 pnpm，集成测试需要 Docker。
 
-先安装本机文档依赖与扫描工具：
+首次使用时，在仓库根目录安装文档站、前端和扫描工具的依赖：
 
 ```sh
 pnpm --dir src/Docs/Heartbeat.Docs install --frozen-lockfile
+npm --prefix src/Frontend/Heartbeat.Web ci
 npm --prefix tools/Heartbeat.Dev/jscpd ci --ignore-scripts
 ```
 
+所有命令都在仓库根目录运行，格式是 `dotnet run --project tools/Heartbeat.Dev -- <命令>`。
+
+## 验证
+
 ```sh
 dotnet run --project tools/Heartbeat.Dev -- verify full
-dotnet run --project tools/Heartbeat.Dev -- verify changed --base HEAD --plan
 dotnet run --project tools/Heartbeat.Dev -- verify changed --base HEAD
-dotnet run --project tools/Heartbeat.Dev -- verify closeout --base HEAD --plan
-dotnet run --project tools/Heartbeat.Dev -- verify closeout --base HEAD
+dotnet run --project tools/Heartbeat.Dev -- verify changed --base HEAD --quality
 ```
 
-`full` 构建 .NET 解决方案，运行集成测试和开发工具测试，再检查、构建文档站。集成测试使用独立 PostgreSQL 测试实例，需要 Docker。
+| 命令 | 作用 |
+| --- | --- |
+| `verify full` | 构建 .NET 解决方案，运行模型测试、集成测试和开发工具测试，运行前端的 `npm run verify`，检查并构建文档站 |
+| `verify changed` | 根据相对基点的改动选择检查。无法识别的路径触发全量检查 |
+| `verify changed --quality` | 在同一次运行中执行变更检查，再以同一基点运行质量扫描 |
 
-`changed` 根据相对基点的已跟踪改动和未跟踪文件选择检查。如果路径无法识别，工具执行全量检查。如果存在未提交改动，可以省略基点，默认使用 `HEAD`。如果工作树没有改动，必须指定基点。`--plan` 只显示选择结果。
-
-`closeout` 在同次运行中执行变更验证和质量扫描。如果构建失败、测试失败或扫描未完成，工具返回失败。质量扫描发现的问题不直接使最终验证失败。
-
-如果改动涉及容器运行、页面或交互，分别验证这些行为。构建和自动测试不能代替这些验证。
+- 加 `--plan` 只显示会运行哪些检查，不执行。加 `--json` 以 JSON 输出计划。
+- 有未提交的改动时，可以省略 `--base`，默认使用 `HEAD`。没有改动时，必须指定 `--base`。
+- 构建失败、测试失败或扫描未完成时，命令返回失败。质量扫描的发现不使命令失败，供评审参考。
+- 构建和自动测试不覆盖容器运行、页面和交互。这些改动需要另外验证。
 
 ## 质量与行数
 
 ```sh
 dotnet run --project tools/Heartbeat.Dev -- quality --base HEAD
-dotnet run --project tools/Heartbeat.Dev -- quality --base HEAD --json
-dotnet run --project tools/Heartbeat.Dev -- quality loc
-dotnet run --project tools/Heartbeat.Dev -- quality loc --json
+dotnet run --project tools/Heartbeat.Dev -- loc
 ```
 
-复杂度、重复代码和疑似未使用代码覆盖业务实现、文档站及开发工具。重复代码分别报告生产、测试与工具；复杂度按模块报告，突出复杂度大于 10 的函数及其变化。如果业务行为需要，复杂代码可以保留。是否提取重复代码、疑似未使用代码是否确实无用，需要结合行为判断。
+两个命令都可以加 `--json`。
 
-C# 使用编译器分析器的复杂度、耦合和未使用私有成员诊断；JS/TS 使用 ESLint 复杂度与 Knip 的文件、导出、依赖分析。重复扫描使用 jscpd，最少 8 行、70 个 token。这些扫描不证明全部调用关系或业务价值，也不检查全部 NuGet 依赖是否有用。
+`quality` 扫描业务代码、文档站和开发工具，并与基点比较：
 
-基点必须是包含待比较源码且能够完成分析构建的 Git 提交。基线和当前代码使用同一套扫描配置。如果历史源码无法编译，工具报告比较未完成并返回失败。工具保留已完成的当前扫描结果。工具版本固定在 `jscpd/package-lock.json`；该目录包含三种 JS 扫描工具。Knip 配置注明框架入口，`jscpd` 由 C# 启动，不由 JS 引用。
+| 检查 | 工具 | 报告方式 |
+| --- | --- | --- |
+| 复杂度和耦合 | C# 编译器分析器、ESLint | 按模块报告，突出复杂度大于 10 的函数及其变化 |
+| 重复代码 | jscpd，最少 8 行、70 个 token | 分别报告生产代码、测试和工具 |
+| 未使用代码 | C# 编译器分析器、Knip | 未使用的私有成员、文件、导出和依赖 |
 
-`loc` 统计 Git 跟踪文件与未忽略的新文件，不执行构建或扫描。统计排除空行和纯注释行。结果按模块、语言、生产、测试、工具、构建、文档和生成文件分类。MDX 与 OpenAPI 契约属于文档，锁文件属于生成文件，共用测试工具计入 Backend 测试。复杂字符串和嵌入语言可能造成行数统计误差。
+- 扫描结果需要结合行为判断。业务需要的复杂代码可以保留。扫描不证明完整的调用关系，也不检查所有 NuGet 依赖是否有用。
+- 基点必须能完成分析构建。历史代码无法编译时，命令报告比较未完成并返回失败，但保留当前代码的扫描结果。
+- JS 扫描工具的版本固定在 `jscpd/package-lock.json`。
+
+`loc` 统计已跟踪和未忽略的文件，不构建也不扫描。统计排除空行和纯注释行，按模块、语言和类别分类：
+
+| 类别 | 包括 |
+| --- | --- |
+| 生产 | 业务代码 |
+| 测试 | 测试代码，包括共用的测试工具 |
+| 工具 | 开发工具 |
+| 构建 | 构建和项目配置 |
+| 文档 | MDX 和 OpenAPI 契约 |
+| 生成 | 锁文件等生成文件 |
+
+复杂字符串和嵌入的其他语言可能使行数有误差。
 
 ## 证据
 
-验证证据位于 `.artifacts/verification/<run-id>/`，包括执行清单 `manifest.json`、验证结果 `verification.json`、步骤日志，以及质量或收口报告。成功、失败和取消均记录状态。TUnit 原始报告继续位于 `TestResults/`，由文档站读取。
+每次验证的证据保存在 `.artifacts/verification/<run-id>/`：
+
+| 文件 | 内容 |
+| --- | --- |
+| `manifest.json` | 执行清单 |
+| `verification.json` | 验证结果 |
+| `quality.json` | 质量报告，加 `--quality` 或运行 `quality` 时生成 |
+| 步骤日志 | 每个步骤的输出 |
+
+成功、失败和取消的运行都保存。TUnit 的原始报告在 `TestResults/`，由文档站读取。
 
 ```sh
 dotnet run --project tools/Heartbeat.Dev -- artifacts list
-dotnet run --project tools/Heartbeat.Dev -- artifacts prune
-dotnet run --project tools/Heartbeat.Dev -- artifacts prune --apply
+dotnet run --project tools/Heartbeat.Dev -- artifacts prune           # 只预览
+dotnet run --project tools/Heartbeat.Dev -- artifacts prune --apply   # 删除
 ```
 
-每次验证结束时，工具按清理时刻计算保留范围。满足以下任一条件的运行均保留：
+每次验证结束时自动清理。满足任一条件的运行会保留：
 
 - 最近 10 次运行。
-- 最近 5 次未成功运行，包括失败、取消或缺失清单的运行。
-- 清理时刻之前 2 天内的全部运行。
+- 最近 5 次没有成功的运行，包括失败、取消和缺少清单的运行。
+- 2 天内的全部运行。
 
-手动清理默认只预览结果。可以通过 `--keep`、`--keep-failed`、`--older-than-days` 调整。`artifacts inventory-local` 生成 `.local` 的只读清单。
+`artifacts prune` 使用同样的条件。
 
-质量基线工作树缓存位于 `.artifacts/quality-baselines/<commit>/`，供扫描复用，不属于验证历史清理范围。如果需要回收缓存空间，可以移除待清理缓存的 Git worktree。再次扫描时，工具重新创建缓存。
+质量扫描的基线工作树缓存在 `.artifacts/quality-baselines/<commit>/`，不参与上述清理。需要回收空间时，移除对应的 Git worktree，下次扫描会重新创建。
 
-## 实现组织
+## 退出码
 
-`Verification` 选择并执行检查，`Quality` 分类和扫描源码，`Artifacts` 保存和管理证据，`Infrastructure` 执行进程并定位仓库。各命令通过 System.CommandLine 注册，解析后直接传递类型化选项，不递归调用 CLI。
+| 退出码 | 含义 |
+| --- | --- |
+| 0 | 成功 |
+| 2 | 参数错误 |
+| 130 | 已取消 |
+| 其他非零值 | 执行失败 |
 
-输入错误返回 2，执行失败返回非零，取消返回 130。职责决定见 [ADR 0007](../../src/Docs/Heartbeat.Docs/content/docs/adr/0007-developer-cli-and-verification.mdx)。
+## 代码组织
+
+| 目录 | 内容 |
+| --- | --- |
+| `Verification` | 选择和执行检查 |
+| `Quality` | 分类和扫描源码 |
+| `Artifacts` | 保存和管理证据 |
+| `Infrastructure` | 运行进程，定位仓库 |
+
+命令用 System.CommandLine 注册，解析后把类型化的选项直接传给实现，不递归调用 CLI。

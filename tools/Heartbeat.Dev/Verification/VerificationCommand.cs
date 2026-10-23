@@ -3,44 +3,93 @@ using System.CommandLine.Help;
 
 namespace Heartbeat.Dev;
 
+internal sealed record CombinedResult(int Verification, int? Quality)
+{
+    public int ExitCode => Quality == 130 ? 130 : Verification != 0 ? Verification : Quality ?? 1;
+}
+
 internal sealed class VerificationCommand(
     RepositoryContext repository,
     IProcessRunner runner,
     TextWriter output)
 {
+    private const string Limitation = "Container startup and browser interaction are verified separately.";
+    private const string QualityLimitation = "Quality findings guide review; scans must complete, but findings do not fail the run.";
+
     public Command CreateCommand()
     {
-        var command = new Command("verify", "Verify code and tests; use closeout to include structural quality");
+        var command = new Command("verify", "Verify code and tests");
         command.SetAction(parse => new HelpAction().Invoke(parse));
-        foreach (var mode in new[] { "changed", "full" })
-        {
-            var child = new Command(mode, mode == "changed" ? "Check changed paths; a clean worktree requires --base" : "Run all code and test checks, without structural quality");
-            var baseRef = new Option<string?>("--base") { Description = "Git comparison base" };
-            var plan = new Option<bool>("--plan") { Description = "Print the plan without executing it" };
-            var json = new Option<bool>("--json") { Description = "Print the plan as JSON" };
-            child.Options.Add(baseRef);
-            child.Options.Add(plan);
-            child.Options.Add(json);
-            child.SetAction((parse, token) => RunAsync(new VerificationRequest(
-                mode, parse.GetValue(baseRef), parse.GetValue(plan), parse.GetValue(json)), token));
-            command.Subcommands.Add(child);
-        }
-        command.Subcommands.Add(new CloseoutCommand(repository, runner, output).CreateCommand());
+
+        var changed = new Command("changed", "Check changed paths; a clean worktree requires --base");
+        var baseRef = new Option<string?>("--base") { Description = "Git comparison base" };
+        var quality = new Option<bool>("--quality") { Description = "Also collect structural quality observations against the same base" };
+        var changedPlan = PlanOption();
+        var changedJson = JsonOption();
+        changed.Options.Add(baseRef);
+        changed.Options.Add(quality);
+        changed.Options.Add(changedPlan);
+        changed.Options.Add(changedJson);
+        changed.SetAction((parse, token) => RunAsync(new VerificationRequest("changed", parse.GetValue(baseRef),
+            parse.GetValue(changedPlan), parse.GetValue(changedJson), parse.GetValue(quality)), token));
+
+        var full = new Command("full", "Run all code and test checks");
+        var fullPlan = PlanOption();
+        var fullJson = JsonOption();
+        full.Options.Add(fullPlan);
+        full.Options.Add(fullJson);
+        full.SetAction((parse, token) => RunAsync(new VerificationRequest("full", null,
+            parse.GetValue(fullPlan), parse.GetValue(fullJson)), token));
+
+        command.Subcommands.Add(changed);
+        command.Subcommands.Add(full);
         return command;
     }
+
+    private static Option<bool> PlanOption() => new("--plan") { Description = "Print the plan without executing it" };
+
+    private static Option<bool> JsonOption() => new("--json") { Description = "Print the plan as JSON" };
 
     public async Task<int> RunAsync(VerificationRequest request, CancellationToken cancellationToken)
     {
         request = await request.ResolveAsync(runner, cancellationToken);
         var plan = await VerificationPlanner.CreateAsync(repository, runner, request, cancellationToken);
         await VerificationReporter.WriteAsync(output, plan, request.Json);
+        if (request.Quality && !request.Json) await output.WriteLineAsync($"  quality: structural observations --base {request.Base}");
         if (request.PlanOnly)
         {
             return 0;
         }
-        return await EvidenceSession.ExecuteAsync(repository, "verify", plan.Mode,
-            ["Container startup and browser interaction are verified separately."],
-            evidence => RunPlanAsync(plan, evidence, cancellationToken), notes: output);
+        string[] limitations = request.Quality ? [Limitation, QualityLimitation] : [Limitation];
+        return await EvidenceSession.ExecuteAsync(repository, "verify", plan.Mode, limitations, evidence => request.Quality
+            ? RunWithQualityAsync(plan, request.Base!, evidence, cancellationToken)
+            : RunPlanAsync(plan, evidence, cancellationToken), notes: output);
+    }
+
+    private async Task<int> RunWithQualityAsync(
+        VerificationPlan plan, string commit, EvidenceSession evidence, CancellationToken cancellationToken)
+    {
+        var result = await CombineAsync(
+            () => RunPlanAsync(plan, evidence, cancellationToken),
+            () => new QualityCommand(repository, runner, output).RunChecksAsync(new QualityOptions(commit), evidence, cancellationToken),
+            cancellationToken);
+        await output.WriteLineAsync($"Summary: verification exit {result.Verification}; quality "
+            + (result.Quality is { } code ? $"exit {code}" : "not run") + $"; evidence: {evidence.Run.Directory}");
+        return result.ExitCode;
+    }
+
+    /// 质量扫描在验证之后运行；任一步取消都按取消报告，不能被另一步的结果覆盖。
+    internal static async Task<CombinedResult> CombineAsync(
+        Func<Task<int>> verify, Func<Task<int>> quality, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        int verification;
+        try { verification = await verify(); }
+        catch (OperationCanceledException) { return new CombinedResult(130, null); }
+        if (verification == 130) return new CombinedResult(verification, null);
+        if (cancellationToken.IsCancellationRequested) return new CombinedResult(verification, 130);
+        try { return new CombinedResult(verification, await quality()); }
+        catch (OperationCanceledException) { return new CombinedResult(verification, 130); }
     }
 
     internal async Task<int> RunPlanAsync(VerificationPlan plan, EvidenceSession evidence, CancellationToken cancellationToken)
@@ -55,7 +104,6 @@ internal sealed class VerificationCommand(
             foreach (var step in plan.Steps)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var environment = step.Environment;
                 var arguments = step.Arguments;
                 var command = $"{step.FileName} {string.Join(' ', arguments.Select(Quote))}";
                 commands.Add(command);
@@ -64,7 +112,7 @@ internal sealed class VerificationCommand(
                 ProcessResult result;
                 try
                 {
-                    result = await runner.CaptureAsync(step.FileName, arguments, environment, cancellationToken);
+                    result = await runner.CaptureAsync(step.FileName, arguments, null, cancellationToken);
                 }
                 catch (CapturedProcessCancelledException cancelled)
                 {

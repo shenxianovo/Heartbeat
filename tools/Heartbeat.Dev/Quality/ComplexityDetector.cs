@@ -227,9 +227,6 @@ internal sealed partial class ComplexityDetector(RepositoryContext repository, I
         }
     }
 
-    internal static IReadOnlyList<ComplexityHotspot> ParseCSharp(string root, string output) =>
-        [.. ParseAllCSharp(root, output).Where(IsImplementation)];
-
     /// 保留所有角色的 CA1502 诊断，用数量与路径判断基点是否有效。
     internal static IReadOnlyList<ComplexityHotspot> ParseAllCSharp(string root, string output) =>
         output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)

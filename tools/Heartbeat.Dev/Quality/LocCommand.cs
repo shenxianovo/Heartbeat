@@ -23,6 +23,7 @@ internal sealed record LocReport(
     private static readonly IReadOnlyDictionary<string, string> TestModules =
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
+            ["Heartbeat.Model.Tests"] = "Backend",
             ["Heartbeat.Integration.Tests"] = "Backend",
             ["Heartbeat.Testing"] = "Backend",
             ["Heartbeat.Dev.Tests"] = "Developer CLI",

@@ -31,9 +31,9 @@ public sealed class EvidenceTests
     }
 
     [Test]
-    public async Task CloseoutKeepsCancellationAsCancellation()
+    public async Task QualityCancellationStaysCancellation()
     {
-        var result = await CloseoutCommand.RunChecksAsync(() => Task.FromResult(0),
+        var result = await VerificationCommand.CombineAsync(() => Task.FromResult(0),
             () => Task.FromException<int>(new OperationCanceledException()), CancellationToken.None);
         await Assert.That(result.ExitCode).IsEqualTo(130);
         await Assert.That(result.Verification).IsEqualTo(0);
@@ -73,7 +73,5 @@ public sealed class EvidenceTests
         public Task<ProcessResult> CaptureAsync(string fileName, IReadOnlyList<string> arguments,
             IReadOnlyDictionary<string, string?>? environment, CancellationToken cancellationToken) =>
             Task.FromException<ProcessResult>(new CapturedProcessCancelledException("partial output", "", cancellationToken));
-        public Task<int> RunAsync(string fileName, IReadOnlyList<string> arguments,
-            IReadOnlyDictionary<string, string?>? environment, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 }

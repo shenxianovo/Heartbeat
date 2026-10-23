@@ -11,7 +11,6 @@ internal sealed class EvidenceSession(ArtifactRun run)
         string name,
         IReadOnlyList<string> limitations,
         Func<EvidenceSession, Task<int>> action,
-        bool includesSensitiveEvidence = false,
         TextWriter? notes = null)
     {
         var store = new ArtifactStore(repository);
@@ -46,7 +45,7 @@ internal sealed class EvidenceSession(ArtifactRun run)
                 .ToArray();
             await ArtifactStore.WriteManifestAsync(session.Run, new EvidenceManifest(
                 session.Run.Id, kind, name, session.Run.CreatedAt, DateTimeOffset.UtcNow,
-                exitCode, includesSensitiveEvidence, session.Commands, artifacts, finalLimitations, failure),
+                exitCode, session.Commands, artifacts, finalLimitations, failure),
                 CancellationToken.None);
             await CollectAsync(store, notes);
         }
@@ -56,9 +55,6 @@ internal sealed class EvidenceSession(ArtifactRun run)
     /// 跑完就收一次。手动 `artifacts prune` 的默认值以前基本命中不到，证据目录只会涨；
     /// 保留规则与 `artifacts prune` 完全一致（最近若干次 + 最近若干次失败的），并且把删了什么说出来。
     /// </summary>
-    public static Task CollectAsync(RepositoryContext repository, TextWriter? notes) =>
-        CollectAsync(new ArtifactStore(repository), notes);
-
     private static async Task CollectAsync(ArtifactStore store, TextWriter? notes)
     {
         try
@@ -66,7 +62,7 @@ internal sealed class EvidenceSession(ArtifactRun run)
             var pruned = store.Prune(RetentionPolicy.Default);
             if (pruned.Candidates.Count == 0 || notes is null) return;
             await notes.WriteLineAsync(
-                $"Pruned {pruned.Candidates.Count} stale evidence run(s), {LocalInventory.FormatBytes(pruned.Bytes)} "
+                $"Pruned {pruned.Candidates.Count} stale evidence run(s), {ArtifactStore.FormatBytes(pruned.Bytes)} "
                 + $"(kept the newest {RetentionPolicy.Default.Keep}, the newest {RetentionPolicy.Default.KeepFailed} failed, "
                 + $"and everything from the last {RetentionPolicy.Default.OlderThan.TotalDays:0} day(s)).");
         }

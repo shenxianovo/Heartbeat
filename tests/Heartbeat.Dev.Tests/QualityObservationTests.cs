@@ -5,17 +5,6 @@ namespace Heartbeat.Dev.Tests;
 public sealed class QualityObservationTests
 {
     [Test]
-    public async Task StructuralFindingsRemainObservations()
-    {
-        var production = new CloneScan("production", true, null, null, 4, 2, 30, 20, [], []);
-        var tests = new CloneScan("tests", true, null, null, 3, 1, 20, 10, [], []);
-        var complexity = new ComplexityQualityReport(true, false, "increased", 20, 3, null, RegressionDetails: []);
-        await Assert.That(QualityCommand.Failures(new(production, tests), complexity).Count).IsEqualTo(0);
-        var unused = new DeadCodeReport(true, null, [], [new("IDE0051", "src/example.cs", 1, "Unused")]);
-        await Assert.That(unused.Failures().Any()).IsFalse();
-    }
-
-    [Test]
     public async Task FailedScansCannotBeReportedAsCompleted()
     {
         var scan = new CloneScan("production", false, "scanner unavailable", null, 0, 0, 0, 0, [], []);
