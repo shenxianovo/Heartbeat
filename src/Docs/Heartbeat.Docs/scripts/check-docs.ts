@@ -1,12 +1,13 @@
 // Checks that the project's documents are consistent: links, anchors, Core rule numbers and actors,
 // deprecated terms, ADR sections, JSON examples and sidebar entries. Project documents are the
 // docs site content, every README.md and AGENTS.md, and the agent skills under .agents/.
+// C# sources under src/ and tests/ are checked only for references to Core rules that do not exist.
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { basename, dirname, join, normalize, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  adrStructure, anchorsOf, deprecatedTerms, findTerm, frontmatter, jsonBlocks, lineAt, linksOf,
+  adrStructure, anchorsOf, citesRules, deprecatedTerms, findTerm, frontmatter, jsonBlocks, lineAt, linksOf,
   ruleHeadings, rulePrefixes, ruleReferences, type Finding, type Rule,
 } from '../lib/docs-check.ts';
 
@@ -17,11 +18,12 @@ const docs = 'src/Docs/Heartbeat.Docs/content/docs';
 const isProjectDocument = (file: string) => file.startsWith(`${docs}/`)
   || ['README.md', 'AGENTS.md'].includes(basename(file)) || file.startsWith('.agents/');
 
-const files = execFileSync('git', ['-c', 'core.quotepath=off', 'ls-files', '-co', '--exclude-standard'], {
+const tracked = execFileSync('git', ['-c', 'core.quotepath=off', 'ls-files', '-co', '--exclude-standard'], {
   cwd: root, encoding: 'utf8',
-}).split('\n').filter((file) => /\.mdx?$/.test(file) || file === `${docs}/api/openapi.json`)
-  .filter((file) => isProjectDocument(file) && !file.includes('node_modules/'))
-  .filter((file) => existsSync(join(root, file)));
+}).split('\n').filter((file) => file && !file.includes('node_modules/') && existsSync(join(root, file)));
+const files = tracked.filter((file) => /\.mdx?$/.test(file) || file === `${docs}/api/openapi.json`)
+  .filter(isProjectDocument);
+const sources = tracked.filter(citesRules);
 
 const texts = new Map(files.map((file) => [file, readFileSync(join(root, file), 'utf8')]));
 const read = (file: string) => texts.get(file) ?? readFileSync(join(root, file), 'utf8');
@@ -105,6 +107,15 @@ for (const [file, text] of texts) {
   }
 }
 
+for (const file of sources) {
+  const text = readFileSync(join(root, file), 'utf8');
+  for (const reference of ruleReferences(text, new Set(prefixes.keys()))) {
+    if (!rules.has(reference.id)) {
+      findings.push({ file, line: lineAt(text, reference.index), check: 'rule-reference', message: `${reference.id} does not exist` });
+    }
+  }
+}
+
 // Sidebar: every meta.json entry exists and every page is reachable from some meta.json.
 const metaDirs = new Set<string>();
 const listed = new Set<string>();
@@ -142,5 +153,6 @@ for (const file of docFiles.filter((path) => path.endsWith('.mdx'))) {
 }
 
 for (const finding of findings) console.log(`${finding.file}:${finding.line}: [${finding.check}] ${finding.message}`);
-console.log(findings.length ? `\n${findings.length} problem(s) in ${files.length} files.` : `Checked ${files.length} files.`);
+const checked = `${files.length} documents and ${sources.length} C# sources`;
+console.log(findings.length ? `\n${findings.length} problem(s) in ${checked}.` : `Checked ${checked}.`);
 process.exitCode = findings.length ? 1 : 0;

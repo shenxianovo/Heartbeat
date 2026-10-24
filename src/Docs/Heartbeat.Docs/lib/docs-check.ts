@@ -104,6 +104,11 @@ export function findTerm(text: string, term: string): number[] {
   return [...text.matchAll(new RegExp(before + escaped + after, 'g'))].map((match) => match.index!);
 }
 
+/** C# sources under src/ and tests/ cite Core rules by number, so their references must exist too. */
+export function citesRules(file: string): boolean {
+  return /^(src|tests)\//.test(file) && file.endsWith('.cs');
+}
+
 export function ruleReferences(text: string, prefixes: Set<string>): { id: string; index: number }[] {
   return [...text.matchAll(/(?<![A-Za-z])([A-Z]+)-(\d+)(?![\d])/g)]
     .filter((match) => prefixes.has(match[1]))

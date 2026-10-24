@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  adrStructure, anchorsOf, deprecatedTerms, findTerm, jsonBlocks, linksOf, ruleActorProblem, ruleHeadings, rulePrefixes, ruleReferences,
+  adrStructure, anchorsOf, citesRules, deprecatedTerms, findTerm, jsonBlocks, linksOf, ruleActorProblem, ruleHeadings, rulePrefixes, ruleReferences,
   slugify,
 } from '../lib/docs-check.ts';
 
@@ -46,6 +46,13 @@ test('the first paragraph under a rule names its actors or marks it as a definit
 test('rule references only count known prefixes', () => {
   const found = ruleReferences('见 TIME-4、UTF-8 和 IDENTITY-3。', new Set(['TIME', 'IDENTITY', 'ENTITY']));
   assert.deepEqual(found.map((reference) => reference.id), ['TIME-4', 'IDENTITY-3']);
+});
+
+test('C# sources under src and tests are checked for rule references', () => {
+  assert.equal(citesRules('src/Core/Heartbeat.Core/VersionRules.cs'), true);
+  assert.equal(citesRules('tests/Heartbeat.Model.Tests/VersionTests.cs'), true);
+  assert.equal(citesRules('tools/Heartbeat.Dev/Program.cs'), false);
+  assert.equal(citesRules('src/Docs/Heartbeat.Docs/lib/docs-check.ts'), false);
 });
 
 test('deprecated terms come from the Glossary table and ASCII terms match whole words', () => {

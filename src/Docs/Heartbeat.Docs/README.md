@@ -26,7 +26,7 @@ pnpm dev
 
 ## 文档检查
 
-`pnpm docs:check` 检查项目文档：文档站内容（包括 `openapi.json`）、仓库中每个 `README.md` 和 `AGENTS.md`，以及 `.agents/` 下的 skill。任何一项不通过，命令返回非零。
+`pnpm docs:check` 检查项目文档：文档站内容（包括 `openapi.json`）、仓库中每个 `README.md` 和 `AGENTS.md`，以及 `.agents/` 下的 skill。`src/` 和 `tests/` 下的 C# 代码也会检查，但只检查其中引用的规则编号。任何一项不通过，命令返回非零。
 
 | 检查 | 内容 |
 | --- | --- |
@@ -34,7 +34,7 @@ pnpm dev
 | `anchor` | 锚点对应显式的 `[#id]`，或者标题按 github-slugger 生成的 slug |
 | `rule-heading` | Core 规则标题是 `### 前缀-n 摘要 [#前缀-n]`，前缀属于本页，页内编号唯一且递增。前缀与页面的对应关系取自 Core Conventions 页的前缀表 |
 | `rule-actor` | Core 规则标题下的第一段是 `定义`，或者 `执行方：` 加上 `后端`、`写入方`、`读取方` 中的一个或多个，用 `、` 分隔 |
-| `rule-reference` | 出现的规则编号都存在 |
+| `rule-reference` | 文档和 C# 代码中出现的规则编号都存在 |
 | `rule-link` | `[前缀-n](…)` 链接到这条规则所在的页面和锚点 |
 | `deprecated-term` | 不出现 [Glossary · 不再使用的术语](content/docs/core/glossary.mdx) 中的术语 |
 | `frontmatter` | 文档站页面都有 `title` 和 `description` |
