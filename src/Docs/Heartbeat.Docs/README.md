@@ -118,7 +118,7 @@ Case 页面在 `content/docs/testing/` 中，每页导出 `caseId` 并传给 `<T
 
 ## 页面历史
 
-MDX 页面末尾用 [`fumadocs-page-history@0.4.0`](https://github.com/shenxianovo/fumadocs-page-history) 显示贡献者和提交历史。插件在 `source.config.ts` 中注册，中文翻译在 `lib/translations.ts` 中注册。
+MDX 页面末尾用 [`fumadocs-page-history@0.4.2`](https://github.com/shenxianovo/fumadocs-page-history) 显示贡献者和提交历史。插件在 `source.config.ts` 中注册，中文翻译在 `lib/translations.ts` 中注册。
 
 - 历史在构建时从 Git 读取，支持文件改名。未提交的文件没有历史。浅克隆需要先运行 `git fetch --unshallow`。
 - 新的提交需要重新构建才会显示。开发期间只有 Git 记录变化时，需要重启文档站。
