@@ -1,5 +1,3 @@
-using System.Net;
-using System.Net.Http.Json;
 using System.Text.Json;
 using Heartbeat.Core;
 using Heartbeat.Observers.ForegroundState;
@@ -22,9 +20,9 @@ public sealed class ForegroundOutboxTests
         restarted.FinishActive();
         restarted.FinishActive();
         var pending = restarted.Pending().Single();
-        await Assert.That(pending.ObservationId).IsEqualTo(capture.Observation.Id.Value);
-        await Assert.That(JsonSerializer.Serialize(pending.Entities, JsonSerializerOptions.Web))
-            .IsEqualTo(JsonSerializer.Serialize(capture.Submissions(), JsonSerializerOptions.Web));
+        await Assert.That(pending.ObservationId).IsEqualTo(capture.ObservationId.Value);
+        await Assert.That(JsonSerializer.Serialize(pending.Capture, JsonSerializerOptions.Web))
+            .IsEqualTo(JsonSerializer.Serialize(capture, JsonSerializerOptions.Web));
         await Assert.That(() => new ForegroundStore(local.Path, EntityId.New())).Throws<InvalidDataException>();
         await Assert.That(restarted.Pending().Count).IsEqualTo(1);
     }
@@ -49,7 +47,7 @@ public sealed class ForegroundOutboxTests
         await Assert.That(() => local.Store.Checkpoint(second, first)).Throws<SqliteException>();
         await Assert.That(local.Store.Pending().Count).IsEqualTo(0);
         local.Store.FinishActive();
-        await Assert.That(local.Store.Pending().Single().ObservationId).IsEqualTo(first.Observation.Id.Value);
+        await Assert.That(local.Store.Pending().Single().ObservationId).IsEqualTo(first.ObservationId.Value);
     }
 
     [Test]
@@ -71,61 +69,11 @@ public sealed class ForegroundOutboxTests
         await Assert.That(local.Store.Pending().Count).IsEqualTo(3);
         collector.Stop();
         await Assert.That(local.Store.Pending().Count).IsEqualTo(4);
-        var end = local.Store.Pending()[2].Entities[^1].Body.GetProperty("properties").GetProperty("endAt").GetDateTimeOffset();
+        var end = local.Store.Pending()[2].Capture.EndAt;
         await Assert.That(end).IsEqualTo(ForegroundTimelineTests.Reading(0).ObservedAt.AddMilliseconds(200));
-    }
-
-    [Test]
-    [Property("caseId", "foreground-outbox-recovery")]
-    public async Task OfflineAndLostPutResponseKeepDataUntilLaterMatchingRead()
-    {
-        var observer = EntityId.New();
-        using var local = new ForegroundTestStore(observer);
-        local.Store.Checkpoint(Capture(observer), null);
-        local.Store.FinishActive();
-        using var handler = new UncertainDeliveryHandler();
-        using var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost/") };
-        var sender = new OutboxSender(local.Store, client, TextWriter.Null);
-        await sender.SynchronizeAsync(CancellationToken.None);
-        await Assert.That(local.Store.Pending().Single().LastError).IsNotNull();
-        // Local collection continues while the destination is unreachable.
-        local.Store.Checkpoint(Capture(observer), null);
-        await Assert.That(local.Store.Pending().Count).IsEqualTo(1);
-        handler.Offline = false;
-        await sender.SynchronizeAsync(CancellationToken.None);
-        await Assert.That(local.Store.Pending().Count).IsEqualTo(1);
-        await sender.SynchronizeAsync(CancellationToken.None);
-        await Assert.That(local.Store.Pending().Count).IsEqualTo(1);
-        await sender.SynchronizeAsync(CancellationToken.None);
-        await Assert.That(local.Store.Pending().Count).IsEqualTo(0);
-        await Assert.That(handler.PutCount).IsEqualTo(6);
     }
 
     private static ForegroundCapture Capture(EntityId observer) => ForegroundCapture.Create(observer,
         new LocalApplication(EntityId.New(), []), ForegroundTimelineTests.Reading(0));
 
-    private sealed class UncertainDeliveryHandler : HttpMessageHandler
-    {
-        internal bool Offline { get; set; } = true;
-        internal int PutCount { get; private set; }
-        private readonly Dictionary<string, object> _saved = [];
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            if (Offline) throw new HttpRequestException("offline");
-            var id = request.RequestUri!.Segments[^1];
-            if (request.Method == HttpMethod.Get)
-                return _saved.TryGetValue(id, out var value)
-                    ? new(HttpStatusCode.OK) { Content = JsonContent.Create(value) }
-                    : new(HttpStatusCode.NotFound);
-            var body = await request.Content!.ReadFromJsonAsync<JsonElement>(cancellationToken);
-            var path = request.RequestUri.AbsolutePath;
-            var category = path.Contains("/observers/", StringComparison.Ordinal) ? "observer"
-                : path.Contains("/schemas/", StringComparison.Ordinal) ? "entity_schema"
-                : path.Contains("/observations/", StringComparison.Ordinal) ? "observation" : "entity";
-            _saved[id] = new { category, references = body.GetProperty("references"), properties = body.GetProperty("properties") };
-            PutCount++;
-            if (PutCount == 1) throw new HttpRequestException("response lost after storing");
-            return new(HttpStatusCode.Created);
-        }
-    }
 }

@@ -15,7 +15,7 @@ internal sealed class ForegroundTimeline(EntityId observerId, TimeSpan maximumGa
         {
             var extended = _current.Through(reading.ObservedAt);
             if (_current.Content.LocalApplicationId == application.Id && _current.Content.Name == reading.Name
-                && _current.Observation.TimeZone == reading.TimeZone)
+                && _current.TimeZone == reading.TimeZone)
             {
                 _current = extended;
                 _previous = reading;

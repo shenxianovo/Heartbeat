@@ -31,9 +31,9 @@ internal sealed class ForegroundCollector(
                 observerId = observerId.Value,
                 localApplicationId = active.Application.Id.Value,
                 contentId = active.Content.Id.Value,
-                observationId = active.Observation.Id.Value,
-                startAt = active.Observation.StartAt,
-                endAt = active.Observation.EndAt,
+                observationId = active.ObservationId.Value,
+                startAt = active.StartAt,
+                endAt = active.EndAt,
                 active.Content.Name,
                 storedLocally = true,
             }, JsonSerializerOptions.Web));

@@ -1,7 +1,5 @@
 using System.Text.Json;
 using Heartbeat.Api;
-using Heartbeat.Api.Entities;
-using Heartbeat.Api.Serialization;
 using Heartbeat.Infrastructure;
 using Microsoft.AspNetCore.Diagnostics;
 
@@ -22,8 +20,6 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 {
     options.SerializerOptions.RespectNullableAnnotations = true;
     options.SerializerOptions.PropertyNameCaseInsensitive = false;
-    options.SerializerOptions.Converters.Add(new EntityIdJsonConverter());
-    options.SerializerOptions.Converters.Add(new UtcDateTimeOffsetJsonConverter());
 });
 
 var app = builder.Build();
@@ -49,6 +45,5 @@ app.UseStatusCodePages(async context =>
             .ExecuteAsync(context.HttpContext);
     }
 });
-app.MapEntityEndpoints();
 
 app.Run();

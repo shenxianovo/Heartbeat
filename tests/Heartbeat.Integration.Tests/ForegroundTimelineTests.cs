@@ -17,13 +17,13 @@ public sealed class ForegroundTimelineTests
         var first = timeline.Accept(app, Reading(0)).Single();
         var extended = timeline.Accept(app, Reading(1)).Single();
         var switched = timeline.Accept(new LocalApplication(EntityId.New(), []), Reading(2));
-        await Assert.That(first.Observation.Id).IsEqualTo(extended.Observation.Id);
+        await Assert.That(first.ObservationId).IsEqualTo(extended.ObservationId);
         await Assert.That(first.Content.Id).IsEqualTo(extended.Content.Id);
-        await Assert.That(first.Observation.EndAt).IsEqualTo(Origin);
-        await Assert.That(extended.Observation.EndAt).IsEqualTo(Origin.AddSeconds(1));
+        await Assert.That(first.EndAt).IsEqualTo(Origin);
+        await Assert.That(extended.EndAt).IsEqualTo(Origin.AddSeconds(1));
         await Assert.That(switched.Count).IsEqualTo(2);
-        await Assert.That(switched[0].Observation.Id).IsEqualTo(first.Observation.Id);
-        await Assert.That(switched[0].Observation.EndAt).IsEqualTo(switched[1].Observation.StartAt);
+        await Assert.That(switched[0].ObservationId).IsEqualTo(first.ObservationId);
+        await Assert.That(switched[0].EndAt).IsEqualTo(switched[1].StartAt);
         await Assert.That(switched[1].Content.Id == first.Content.Id).IsFalse();
     }
 
@@ -41,8 +41,8 @@ public sealed class ForegroundTimelineTests
         await Assert.That(renamed[1].Content.Name).IsNull();
         await Assert.That(first.Content.Name).IsEqualTo("App");
         await Assert.That(zoneChanged.Count).IsEqualTo(2);
-        await Assert.That(zoneChanged[0].Observation.TimeZone).IsEqualTo("Asia/Shanghai");
-        await Assert.That(zoneChanged[1].Observation.TimeZone).IsEqualTo("Etc/UTC");
+        await Assert.That(zoneChanged[0].TimeZone).IsEqualTo("Asia/Shanghai");
+        await Assert.That(zoneChanged[1].TimeZone).IsEqualTo("Etc/UTC");
     }
 
     [Test]
@@ -69,10 +69,10 @@ public sealed class ForegroundTimelineTests
         if (interruption == "read-failure") timeline.Interrupt();
         var resumed = timeline.Accept(app, next);
         await Assert.That(resumed.Count).IsEqualTo(interruption == "read-failure" ? 1 : 2);
-        if (resumed.Count == 2) await Assert.That(resumed[0].Observation.EndAt).IsEqualTo(previous.Observation.EndAt);
-        await Assert.That(previous.Observation.EndAt).IsEqualTo(Origin.AddSeconds(1));
-        await Assert.That(resumed[^1].Observation.Id == previous.Observation.Id).IsFalse();
-        await Assert.That(resumed[^1].Observation.StartAt).IsEqualTo(next.ObservedAt);
+        if (resumed.Count == 2) await Assert.That(resumed[0].EndAt).IsEqualTo(previous.EndAt);
+        await Assert.That(previous.EndAt).IsEqualTo(Origin.AddSeconds(1));
+        await Assert.That(resumed[^1].ObservationId == previous.ObservationId).IsFalse();
+        await Assert.That(resumed[^1].StartAt).IsEqualTo(next.ObservedAt);
     }
 
     internal static ForegroundApplicationReading Reading(int second) =>

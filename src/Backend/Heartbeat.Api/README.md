@@ -1,12 +1,12 @@
 # Heartbeat.Api
 
-Heartbeat.Api 提供实体的 HTTP 接口。项目分工见 [ADR · 后端运行与本地环境](../../Docs/Heartbeat.Docs/content/docs/adr/backend-runtime.mdx#components)，接口契约见 [API](../../Docs/Heartbeat.Docs/content/docs/api/index.mdx)。
+Heartbeat.Api 是后端的 HTTP 宿主。目前它只提供启动、请求体上限、错误格式和遥测；实体接口正按版本模型重新设计，契约定下后再实现。项目分工见 [ADR · 后端运行与本地环境](../../Docs/Heartbeat.Docs/content/docs/adr/backend-runtime.mdx#components)，接口契约见 [API](../../Docs/Heartbeat.Docs/content/docs/api/index.mdx)。
 
 ## 运行
 
 本地开发通常通过 Aspire 启动，见 [AppHost README](../../../tools/Heartbeat.AppHost/README.md)。
 
-单独运行 API 时，需要一个已应用迁移的 PostgreSQL 数据库。在仓库根目录运行：
+单独运行 API 时，需要提供数据库连接字符串。目前 API 不读写数据库，但启动时仍注册数据库访问。在仓库根目录运行：
 
 ```sh
 export ConnectionStrings__Heartbeat='Host=localhost;Port=54329;Database=heartbeat;Username=heartbeat;Password=heartbeat'
@@ -43,24 +43,17 @@ export OTEL_SERVICE_NAME='heartbeat-api'
 
 | 位置 | 内容 |
 | --- | --- |
-| `Program.cs` | 依赖注册和路由组装 |
-| `Entities/` | 实体路由，使用 Minimal APIs 和 `MapGroup("/entities")` |
-| `Heartbeat.Application/Entities/IEntityStore.cs` | 保存和读取接口 |
-| `Heartbeat.Application/Entities/EntitySchemaRules.cs` | EntitySchema 声明和字段值的校验 |
-| `Heartbeat.Infrastructure/Entities/EntityStore.cs` | 固定表和业务表的读写 |
-| `Heartbeat.Infrastructure/Entities/BusinessTable.cs` | 业务表的建表和列映射 |
-
-API 校验请求，把路径中的 ID 与 `references`、`properties` 组合成实体，再调用 `IEntityStore`。存储规则见 [Storage](../../Docs/Heartbeat.Docs/content/docs/storage/index.mdx)。
-
-业务表使用动态 SQL：
-
-- 表名和列名按标识符规则引用，值通过 Npgsql 参数传递。
-- 数值以 JSON 原文写入 `numeric`。整数精确转换为 `bigint`。读取时由 PostgreSQL 生成 JSON，不经过浮点或 `decimal` 转换。
+| `Program.cs` | 依赖注册、请求体上限和错误处理 |
+| `Telemetry.cs` | 日志、追踪和指标的注册 |
+| `ApiProblem.cs` | problem+json 错误响应 |
+| `Heartbeat.Core` | 版本、三种 Core 类型的内容、EntitySchema 校验和引用枚举 |
+| `Heartbeat.Application/Entities/EntityService.cs` | 提交、读取和删除版本，执行后端规则 |
+| `Heartbeat.Application/Entities/IEntityStore.cs` | 存储的事务接口，数据库实现随存储设计重建 |
 
 ## 修改接口
 
 1. 修改 [openapi.json](../../Docs/Heartbeat.Docs/content/docs/api/openapi.json)。
-2. 修改 `Entities/` 中的实现。
+2. 修改 API 中的实现。
 3. 修改集成测试。
 
 后端构建不生成也不覆盖 `openapi.json`。
@@ -79,7 +72,7 @@ Dockerfile 先复制 SDK 配置和项目文件并还原依赖，再复制 Core �
 
 ## 验证
 
-实体读写和数据库行为由[集成测试](../../../tests/Heartbeat.Integration.Tests/README.md)验证。
+模型规则由[模型测试](../../../tests/Heartbeat.Model.Tests/README.md)验证，API 的启动和遥测由[集成测试](../../../tests/Heartbeat.Integration.Tests/README.md)验证。
 
 修改构建或热更新配置后，在独立的 Aspire 环境中验证：
 

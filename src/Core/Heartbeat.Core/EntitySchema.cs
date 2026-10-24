@@ -2,12 +2,19 @@ using System.Text.Json;
 
 namespace Heartbeat.Core;
 
-public sealed class EntitySchema : IEntity
+public sealed record EntitySchema : VersionContent
 {
-    public required EntityId Id { get; init; }
-    public required string Name { get; init; }
-    public required string ResourceName { get; init; }
-    public required JsonElement Fields { get; init; }
+    public EntitySchema(string displayName, string description, string resourceName, JsonElement fields)
+    {
+        DisplayName = displayName;
+        Description = description;
+        ResourceName = resourceName;
+        Fields = fields.Clone();
+    }
 
-    public IEnumerable<EntityId> GetReferences() => [];
+    public string DisplayName { get; }
+    public string Description { get; }
+    public string ResourceName { get; }
+    public JsonElement Fields { get; }
+    public override string Category => "entity_schema";
 }

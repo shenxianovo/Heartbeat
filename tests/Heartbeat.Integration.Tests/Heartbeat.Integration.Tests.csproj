@@ -7,9 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore" />
-    <PackageReference Include="Npgsql" />
-    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <PackageReference Include="OpenTelemetry.Exporter.InMemory" />
     <PackageReference Include="TUnit" />
   </ItemGroup>
@@ -17,7 +14,5 @@
     <ProjectReference Include="../../src/Backend/Heartbeat.Api/Heartbeat.Api.csproj" />
     <ProjectReference Include="../../src/Core/Heartbeat.Core/Heartbeat.Core.csproj" />
     <ProjectReference Include="../../src/Observers/Heartbeat.Observer.ForegroundState/Heartbeat.Observer.ForegroundState.csproj" />
-    <ProjectReference Include="../../src/Backend/Heartbeat.Infrastructure/Heartbeat.Infrastructure.csproj" />
-    <ProjectReference Include="../Heartbeat.Testing/Heartbeat.Testing.csproj" />
   </ItemGroup>
 </Project>

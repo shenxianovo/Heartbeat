@@ -1,30 +1,9 @@
-using System.Text.Json;
-using Heartbeat.Core;
-
 namespace Heartbeat.Application.Entities;
 
 public interface IEntityStore
 {
-    Task<EntitySaveResult> SaveEntityAsync(
-        string resourceName,
-        EntityId id,
-        JsonElement references,
-        JsonElement properties,
-        CancellationToken cancellationToken = default);
-
-    Task<EntitySaveResult> SaveObserverAsync(
-        Observer observer,
-        CancellationToken cancellationToken = default);
-
-    Task<EntitySaveResult> SaveObservationAsync(
-        Observation observation,
-        CancellationToken cancellationToken = default);
-
-    Task<EntitySaveResult> SaveEntitySchemaAsync(
-        EntitySchema schema,
-        CancellationToken cancellationToken = default);
-
-    Task<StoredEntity?> ReadAsync(
-        EntityId id,
+    // The store serializes this operation with all other reads/writes, across service instances.
+    // It commits on success and rolls back on an exception or cancellation.
+    Task<T> ExecuteAsync<T>(Func<IEntityTransaction, CancellationToken, Task<T>> operation,
         CancellationToken cancellationToken = default);
 }
