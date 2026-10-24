@@ -1,0 +1,49 @@
+---
+title: "Walkthrough"
+description: "用一天的数据串起 Core 的概念"
+---
+
+用户在 Mac 上写代码。电脑上运行着前台状态 Observer，它记下哪个应用在前台；晚上，推断 Observer 用模型整理当天的数据；第二天，用户查看结果。下面按时间顺序，看这一天的数据怎样形成、使用和删除。
+
+## 1. 准备 [#setup]
+
+前台状态 Observer 第一次启动时生成自己的 EntityId，之后每次启动都沿用它。前台状态 Observer 是一个业务实体，用户本人也是。
+
+它要用到三种业务类型：它自己、本机应用和前台时段，每种由一个 EntitySchema 定义。这些 EntitySchema 先保存，后面的数据才能引用它们。
+
+## 2. 采集 [#collect]
+
+14:00，前台状态 Observer 读到 VS Code 在前台。它先保存一个前台时段作为观测内容，再保存一份 Observation：Observer 是它自己，内容是这个前台时段，事实时间是 14:00 这一刻。它直接读取系统状态，没有用到已保存的数据，所以这份 Observation 没有输入集。
+
+之后每确认一次 VS Code 还在前台，它就为这份 Observation 形成一个新版本，把 `endAt` 往后延，旧版本都保留。16:00 用户切到浏览器，这一段到此结束。
+
+断网时，SDK 把这些版本保存在本地，联网后补发。补发沿用原来的 VersionId，后端认出这是已保存的版本，直接确认。
+
+## 3. 推断 [#infer]
+
+晚上，推断 Observer 把当天的前台时段和键鼠事件交给模型，得到十份推断，其中一份是“14:00 到 16:00 在写代码”。推断 Observer 先保存一个 InputSet，列出这次读到的版本，十份推断都引用它。
+
+InputSet 列的是读取时的那一版。之后前台时段再改，这些推断的依据仍是当时那一版。
+
+## 4. 否定 [#deny]
+
+第二天，用户发现 15:00 到 16:00 其实在开视频会议，VS Code 只是留在了前台。用户保存一份自己的 Observation，内容引用那份推断，写明“在开会”。这份 Observation 的 Observer 是用户本人。模型的推断保持原样，两种说法以谁为准由业务规则决定。
+
+## 5. 追溯 [#trace]
+
+从“在写代码”出发，沿 InputSet 能读到模型当晚用过的前台时段和键鼠事件，读到的正是当晚那一版。要找和 VS Code 有关的全部数据，就把指向 VS Code 各个版本的引用归到 VS Code 这个实体下。
+
+## 6. 删除 [#delete]
+
+用户删掉 16:00 之后的浏览器时段。这一段的 Observation 和前台时段是两个实体，它们连同全部版本一起移除。当晚读过这一段的推断仍然保留，追溯到这里时显示目标不可读取。之后离线的 SDK 补发旧版本，后端会拒绝它们，删除依然有效。
+
+## 涉及的规则 [#rules]
+
+| 步骤 | 规则 |
+| --- | --- |
+| 准备 | [OBSERVER-4](../core/model/observer.mdx#observer-4)、[ENTITY-6](../core/model/entity.mdx#entity-6) |
+| 采集 | [EVIDENCE-1](../core/rules/evidence.mdx#evidence-1)、[TIME-3](../core/rules/time.mdx#time-3)、[IDENTITY-4](../core/rules/identity.mdx#identity-4)、[VERSION-7](../core/model/version.mdx#version-7) |
+| 推断 | [INPUTSET-5](../core/model/input-set.mdx#inputset-5)、[EVIDENCE-3](../core/rules/evidence.mdx#evidence-3)、[ENTITY-4](../core/model/entity.mdx#entity-4) |
+| 否定 | [OBSERVER-7](../core/model/observer.mdx#observer-7)、[IDENTITY-3](../core/rules/identity.mdx#identity-3)、[OBSERVER-6](../core/model/observer.mdx#observer-6) |
+| 追溯 | [EVIDENCE-7](../core/rules/evidence.mdx#evidence-7)、[ENTITY-7](../core/model/entity.mdx#entity-7) |
+| 删除 | [HISTORY-6](../core/rules/history.mdx#history-6)、[HISTORY-8](../core/rules/history.mdx#history-8)、[HISTORY-7](../core/rules/history.mdx#history-7) |

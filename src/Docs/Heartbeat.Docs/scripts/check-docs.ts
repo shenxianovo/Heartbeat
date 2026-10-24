@@ -1,4 +1,4 @@
-// Checks that the project's documents are consistent: links, anchors, Core rule numbers,
+// Checks that the project's documents are consistent: links, anchors, Core rule numbers and actors,
 // deprecated terms, ADR sections, JSON examples and sidebar entries. Project documents are the
 // docs site content, every README.md and AGENTS.md, and the agent skills under .agents/.
 import { execFileSync } from 'node:child_process';
@@ -47,8 +47,8 @@ function resolveLink(from: string, target: string): { file: string; anchor: stri
   return existsSync(join(root, file)) ? { file, anchor } : null;
 }
 
-// Core rules: headings define rules, the overview's prefix table defines which page owns a prefix.
-const prefixes = rulePrefixes(read(`${docs}/core/index.mdx`));
+// Core rules: headings define rules, the Conventions page's prefix table defines which page owns a prefix.
+const prefixes = rulePrefixes(read(`${docs}/core/conventions.mdx`));
 const rules = new Map<string, Rule>();
 for (const [prefix, page] of prefixes) {
   const file = `${docs}/core/${page}`;

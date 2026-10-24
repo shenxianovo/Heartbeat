@@ -1,6 +1,8 @@
 # Heartbeat
 
-Heartbeat 忠实保留观测及其必要上下文，为未来提出的问题提供依据。
+Heartbeat 保存一个人经历了什么：来自不同设备和软件的观测及其必要上下文，为未来提出的问题提供依据。
+
+记录以用户为主体。设备、应用和 Agent 会更替，每种数据的结构和含义随数据一起保存，换掉采集和使用它的软件后仍能读懂。Agent 是这些数据的读取方之一，任务执行和外部资源管理由其他组件负责。定位与边界见 [ADR · 定位与边界](src/Docs/Heartbeat.Docs/content/docs/adr/positioning.mdx)。
 
 项目正在重写。重写完成前不部署，也不兼容旧数据、旧客户端或旧接口。
 
@@ -33,7 +35,7 @@ Aspire 在本机运行 API、文档站和 Web 控制台，在容器中运行 Pos
 | --- | --- |
 | API | <http://localhost:8080/api> |
 | Web 控制台 | <http://localhost:8081/> |
-| 文档站 | <http://localhost:3000/core> |
+| 文档站 | <http://localhost:3000/> |
 | Aspire 看板 | <https://localhost:18888> |
 
 后台运行、日志和资源操作见 [AppHost README](tools/Heartbeat.AppHost/README.md)。
@@ -71,7 +73,7 @@ dotnet run --project tools/Heartbeat.Dev -- verify changed --base HEAD --quality
 
 ## 文档
 
-从 [Core](src/Docs/Heartbeat.Docs/content/docs/core/index.mdx) 开始读。Agent 的工作规则见 [AGENTS.md](AGENTS.md)。
+从 [Introduction](src/Docs/Heartbeat.Docs/content/docs/start/index.mdx) 开始读，它介绍项目、给出文档地图和阅读路径。[Walkthrough](src/Docs/Heartbeat.Docs/content/docs/start/walkthrough.mdx) 用一天的数据串起 Core 的概念。Agent 的工作规则见 [AGENTS.md](AGENTS.md)。
 
 ## 许可
 

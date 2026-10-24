@@ -1,64 +1,83 @@
 ---
 title: "Observer"
-description: "依据证据形成观测并对判断负责的实体"
+description: "对一份观测负责的实体"
 ---
+
+Observer 是对一份 [Observation](./observation.mdx) 负责的业务实体，也就是 `observerVersionId` 引用的实体。程序实例和人都可以是 Observer：前台状态 Observer 对它采集的前台时段负责，用户对自己写下的“在开会”负责。
+
+Observer 是一种角色，就像“作者”。同一个实体可以在一份观测中是 Observer，在另一份中被观测：用户否定一条推断时是 Observer，被记下睡眠时是被观测的对象。
+
+一份观测有没有依据已保存的数据，由它的输入集表达，与 Observer 是人还是程序无关。同一个人可以凭亲身经历陈述，也可以读完日志再推理。
 
 <ModelRelations node="Observer" />
 
-`Observer` 是依据证据形成观测、并对判断负责的实体。每份 [Observation](./observation.mdx) 都通过 `observerId` 指明形成它的 Observer。
+- **承担者**：业务实体
+- **被引用**：Observation 的 `observerVersionId`
+- **决策**：[ADR · Observer 与输入集](../../adr/observers-and-evidence.mdx)、[ADR · 提交与 SDK](../../adr/submission.mdx)
 
-| 项目 | 内容 |
-| --- | --- |
-| 实现的契约 | [IEntity](./entity.mdx) |
-| 引用 | 无 |
-| 被引用 | Observation 的 `observerId` |
-| 资源名 | `observers` |
-| 决策 | [ADR · Observer 的责任与提交](../../adr/observer-responsibility.mdx) |
+## 责任 [#responsibility]
 
-## 成员 [#members]
+### OBSERVER-1 被引用者负责 [#observer-1]
 
-Observer 的结构由 Core 定义。
+定义
 
-| 成员 | 类型 | 含义 |
-| --- | --- | --- |
-| `name` | 非空字符串 | Observer 实例的名称 |
+被 `observerVersionId` 引用的业务实体是这份观测的 Observer，对其中的陈述负责。一个实体是不是 Observer，只取决于它在某份 Observation 中的位置。
 
 ## 划分 [#division]
 
-### OBSERVER-1 Observer 按判断责任划分 [#observer-1]
+### OBSERVER-2 按陈述划分 [#observer-2]
 
-一个 Observer 对应一组由它负责的判断。接口、数据源、输出类型和进程都不决定 Observer 的划分。
+执行方：写入方
 
-例如，前台状态、输入事件和设备状态分别由三个 Observer 负责。三个 Observer 可以运行在同一个进程中。
+Observer 按负责的陈述划分。例如前台状态、输入事件和设备状态由三个 Observer 负责，三者可以运行在同一个进程中。
 
-### OBSERVER-2 一个 Observer 可以形成多种观测内容 [#observer-2]
+### OBSERVER-3 多种内容 [#observer-3]
 
-一个 Observer 可以使用多份内容 EntitySchema。多个 Observer 也可以使用同一份内容 EntitySchema。字段、约束和事实含义相同的不同平台实现，必须共用同一份 EntitySchema。
+执行方：写入方
 
-## 实例 [#instances]
+一个 Observer 可以形成多种观测内容，多个 Observer 也可以使用同一种业务类型。不同平台的实现，只要字段、约束和事实含义相同，就必须共用同一种业务类型。
 
-### OBSERVER-3 同一个 Observer 实例重启或升级后沿用原 EntityId [#observer-3]
+## 程序实例 [#instances]
 
-SDK 必须持久保存 Observer 实例的 EntityId，不得在每次启动时生成新的 EntityId。
+### OBSERVER-4 重启沿用身份 [#observer-4]
 
-### OBSERVER-4 每个 Observer 实例有自己的 EntityId [#observer-4]
+执行方：写入方
 
-同一个进程可以运行多个 Observer 实例。独立运行的两个实例不得共用 EntityId。
+程序实例重启或升级后沿用原来的 EntityId，SDK 必须持久保存它。实例的信息变化时，形成新版本。推断 Observer 更换模型或提示词也属于升级；模型、提示词和参数需要保存时，由业务内容表达。
 
-## 判断责任 [#judgement]
+### OBSERVER-5 一个实例一个身份 [#observer-5]
 
-### OBSERVER-5 形成观测的 Observer 对判断负责 [#observer-5]
+执行方：写入方
+
+每个程序实例有自己的 EntityId。同一个进程可以运行多个程序实例；同时运行的不同推断方法是不同的程序实例。
+
+## 陈述 [#statements]
+
+### OBSERVER-6 谁形成谁负责 [#observer-6]
+
+执行方：写入方
+
+形成观测的 Observer 对陈述负责：
 
 | 情况 | 负责的 Observer |
 | --- | --- |
 | 内部模块只读取或检测证据 | 使用该模块的 Observer |
 | 内部模块独立形成观测 | 该模块自己的 Observer |
-| 程序只传输或组合已有观测 | 原 Observation 的 Observer 不变 |
-| 程序依据已有观测形成新的聚合观测 | 形成聚合观测的 Observer |
+| 程序只传输或组合已有观测 | 原 Observation 的 Observer |
+| 程序依据已有观测形成新的观测 | 形成新观测的 Observer |
 | 另一个 Observer 重新解释证据 | 重新解释证据的 Observer |
+| 用户确认、否定或陈述 | 用户本人 |
 
-聚合观测的内容引用被聚合的实体。
+不同 Observer 的陈述冲突时，以谁为准由业务规则决定。
 
-### OBSERVER-6 读取、解析或匹配失败不形成观测 [#observer-6]
+### OBSERVER-7 确认与否定 [#observer-7]
 
-这些失败是采集诊断。采集诊断不说明被观测的事实，Observer 不得把采集诊断保存为 Observation。
+执行方：写入方
+
+确认或否定的对象写在观测内容中。例如用户否定模型的推断：用户这份观测的内容引用被否定的那一版推断，并写出自己的结论；用户参考过的日志列在输入集中。用户补充亲身信息时，同样形成新的 Observation。
+
+### OBSERVER-8 失败作为诊断 [#observer-8]
+
+执行方：写入方
+
+读取、解析或匹配失败不形成观测，作为采集诊断处理。

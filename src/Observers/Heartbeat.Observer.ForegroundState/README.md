@@ -25,7 +25,7 @@ dotnet run --project src/Observers/Heartbeat.Observer.ForegroundState -- --sampl
 | 参数 | 默认值 | 含义 |
 | --- | --- | --- |
 | `--api` | `http://localhost:8080/api/` | API 的 HTTP 或 HTTPS 地址，包含路径前缀，不允许查询参数或片段 |
-| `--identity-file` | `~/Library/Application Support/Heartbeat/observers/macos-system/identity.json` | Observer 实例的身份文件 |
+| `--identity-file` | `~/Library/Application Support/Heartbeat/observers/macos-system/identity.json` | 程序实例的身份文件 |
 | `--applications-file` | `~/Library/Application Support/Heartbeat/local-applications.json` | 本机应用登记文件 |
 | `--state-file` | 身份文件路径加 `.sqlite` | 进行中的时段和 Outbox |
 | `--interval-ms` | `1000` | 定时确认的间隔，100 到 60000 毫秒 |
@@ -35,8 +35,8 @@ dotnet run --project src/Observers/Heartbeat.Observer.ForegroundState -- --sampl
 
 | 文件 | 规则 |
 | --- | --- |
-| 身份文件 | 一个文件对应一个 Observer 实例。启动另一个实例时使用新的身份文件 |
-| 状态文件 | 绑定一个 Observer 实例，不能交给另一个实例使用 |
+| 身份文件 | 一个文件对应一个程序实例。启动另一个实例时使用新的身份文件 |
+| 状态文件 | 绑定一个程序实例，不能交给另一个实例使用 |
 | 本机应用登记文件 | 同一设备上的实例共用。另一台设备使用自己的文件，不复制已有文件 |
 
 - 同一个身份文件或状态文件只允许一个进程使用。`.lock` 文件由操作系统锁定，进程退出后释放。留下的空锁文件不影响重启。

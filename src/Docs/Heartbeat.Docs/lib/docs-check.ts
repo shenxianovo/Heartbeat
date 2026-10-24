@@ -42,13 +42,26 @@ export function linksOf(text: string): Link[] {
   }));
 }
 
-/** The prefix table on the Core overview maps each rule prefix to its page. */
+/** The prefix table on the Core Conventions page maps each rule prefix to its page. */
 export function rulePrefixes(coreIndex: string): Map<string, string> {
   const prefixes = new Map<string, string>();
   for (const match of coreIndex.matchAll(/^\| `([A-Z]+)` \| \[[^\]]+\]\(\.\/([^)#]+)\) \|$/gm)) {
     prefixes.set(match[1], match[2]);
   }
   return prefixes;
+}
+
+const ruleActors = ['后端', '写入方', '读取方'];
+
+/** The first paragraph under a rule heading is `定义` or `执行方：` followed by actors joined with `、`. */
+export function ruleActorProblem(paragraph: string | undefined): string | null {
+  if (paragraph === '定义') return null;
+  const actors = paragraph?.match(/^执行方：(.+)$/)?.[1].split('、');
+  if (!actors) return 'the first paragraph must be 定义 or 执行方：…';
+  const unknown = actors.filter((actor) => !ruleActors.includes(actor));
+  if (unknown.length) return `unknown actor ${unknown.join('、')}; use ${ruleActors.join('、')}`;
+  if (new Set(actors).size !== actors.length) return 'an actor is listed twice';
+  return null;
 }
 
 export function ruleHeadings(file: string, text: string, prefix: string): { rules: Rule[]; findings: Finding[] } {
@@ -64,6 +77,9 @@ export function ruleHeadings(file: string, text: string, prefix: string): { rule
     const number = Number(match[2]);
     if (number <= previous) report(`${id} must come after ${prefix}-${previous}; numbers are unique and ascending`);
     previous = Math.max(previous, number);
+    const paragraph = text.slice(match.index! + match[0].length).split('\n').map((row) => row.trim()).find(Boolean);
+    const actorProblem = ruleActorProblem(paragraph?.startsWith('#') ? undefined : paragraph);
+    if (actorProblem) findings.push({ file, line, check: 'rule-actor', message: `${id}: ${actorProblem}` });
     rules.push({ id, file, line });
   }
   return { rules, findings };

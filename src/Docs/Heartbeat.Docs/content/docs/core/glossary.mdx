@@ -1,71 +1,94 @@
 ---
 title: "Glossary"
-description: "Core 术语的唯一定义"
+description: "Core 术语的定义"
 ---
 
-本页是 Core 术语的唯一定义。其他页面使用这些术语时，含义与本页一致。类型名称使用英文，不是类型的概念使用中文。
+Core 类型、Observer 和各种 Id 用英文名，其余概念用中文。Observation 的中文名是“观测”。写作时用哪个词，见 [Conventions · 用词](./conventions.mdx#terms)。
 
-## 契约与类型 [#types]
+## 实体与版本 [#entities]
 
-| 术语 | 定义 | 正文 |
+| 术语 | 定义 | 详见 |
 | --- | --- | --- |
-| IEntity | 所有实体的共同契约，提供稳定的标识和引用列表 | [IEntity](./model/entity.mdx) |
-| EntityId | 实体的稳定标识，是一个 UUIDv7 | [ENTITY-1](./model/entity.mdx#entity-1) |
-| EntitySchema | 声明一种业务实体类型的字段、约束和业务含义的实体 | [EntitySchema](./model/schema.mdx) |
-| SchemaId | EntitySchema 的 EntityId | [EntitySchema](./model/schema.mdx) |
-| Observer | 依据证据形成观测并对判断负责的实体 | [Observer](./model/observer.mdx) |
-| Observation | Observer 依据证据对一个业务实体形成的观测，是唯一保存事实时间的类型 | [Observation](./model/observation.mdx) |
+| 实体（Entity） | 有稳定身份的一项数据，例如一个人、一个本机应用或一份推断。所有数据都是实体 | [Entity](./model/entity.mdx) |
+| EntityId | 实体的身份，UUIDv7 | [ENTITY-1](./model/entity.mdx#entity-1) |
+| 版本（Version） | 实体一次保存的完整内容，保存后不可改写 | [Version](./model/version.mdx) |
+| VersionId | 版本的身份，UUIDv7，重试时沿用 | [VERSION-7](./model/version.mdx#version-7) |
+| 版本链 | 一个实体的全部版本，每个版本指向前一版本 | [VERSION-4](./model/version.mdx#version-4) |
+| 当前版本 | 实体最新保存的版本 | [VERSION-5](./model/version.mdx#version-5) |
+| 已保存 | 版本已被后端保存，可以被引用 | [ENTITY-6](./model/entity.mdx#entity-6) |
+| 引用 | 保存目标 VersionId 的位置，由 Core 或 Schema 版本声明 | [ENTITY-4](./model/entity.mdx#entity-4) |
+| 关系实体 | 表达一种关系的业务实体，用于关系需要身份、时间或属性的情况 | [ENTITY-9](./model/entity.mdx#entity-9) |
 
-## 实体与引用 [#entities]
+## 类型 [#types]
 
-| 术语 | 定义 | 正文 |
+| 术语 | 定义 | 详见 |
 | --- | --- | --- |
-| 实体 | 实现 IEntity 的数据。Heartbeat 保存的所有数据都是实体 | [IEntity](./model/entity.mdx) |
-| 实体类型 | 结构和含义相同的一类实体。业务实体类型由 EntitySchema 定义 | [SCHEMA-1](./model/schema.mdx#schema-1) |
-| Core 类型 | Observer、Observation 和 EntitySchema。结构由 Core 定义，不使用 EntitySchema | [SCHEMA-1](./model/schema.mdx#schema-1) |
-| 业务实体 | 由业务的 EntitySchema 定义的实体，不是 Core 类型 | [EntitySchema](./model/schema.mdx) |
-| 观测内容 | 业务实体被 Observation 的 `contentId` 引用时承担的角色，不是一种类型 | [Observation](./model/observation.mdx) |
-| 实体引用 | EntitySchema 中 `reference` 字段保存的目标 EntityId | [ENTITY-3](./model/entity.mdx#entity-3) |
-| 关系实体 | 表达一种需要身份、时间或属性的关系的业务实体 | [ENTITY-6](./model/entity.mdx#entity-6) |
-| 资源名 | EntitySchema 的 `resourceName`，全局唯一 | [SCHEMA-4](./model/schema.mdx#schema-4) |
+| Core 类型 | Observation、EntitySchema 和 InputSet，结构由 Core 定义 | [Core · Overview](./index.mdx#core-types) |
+| 业务实体 | 类型由 EntitySchema 定义的实体 | [EntitySchema](./model/schema.mdx) |
+| 业务版本 | 业务实体的一个版本，引用它所用的 Schema 版本 | [VERSION-3](./model/version.mdx#version-3) |
+| 业务类型 | 一种业务数据，由一个 EntitySchema 定义 | [SCHEMA-1](./model/schema.mdx#schema-1) |
+| EntitySchema | 定义业务类型的 Core 类型；它的每个版本是一版字段、约束和含义 | [EntitySchema](./model/schema.mdx) |
+| SchemaId | EntitySchema 的 EntityId，也就是业务类型的身份 | [SCHEMA-1](./model/schema.mdx#schema-1) |
+| Schema 版本 | EntitySchema 的一个版本，业务版本用 `schemaVersionId` 引用它 | [SCHEMA-2](./model/schema.mdx#schema-2) |
+| 资源名 | EntitySchema 的 `resourceName`，同一业务类型的各 Schema 版本相同 | [SCHEMA-5](./model/schema.mdx#schema-5) |
+| 业务规则 | 一种业务类型怎样记下事实：身份、粒度、事实时间、结束条件、原始材料，以及陈述冲突时以谁为准。写在 Observer 文档和 EntitySchema 的 `description` 中 | [Overview · 谁决定什么](./index.mdx#responsibility) |
+| Observation（观测） | Observer 形成的一份陈述，唯一保存事实时间的类型 | [Observation](./model/observation.mdx) |
+| InputSet（输入集） | 一次处理实际用到的版本集合，可以被多份观测共用 | [InputSet](./model/input-set.mdx) |
 
-## 主体 [#actors]
+## 角色 [#roles]
 
-| 术语 | 定义 | 正文 |
+| 术语 | 定义 | 详见 |
 | --- | --- | --- |
-| 业务 | 定义一种事实如何记录的一方，包括 EntitySchema、Observer 的实现和 Observer 文档 | [Overview · 谁决定什么](./index.mdx#responsibility) |
-| SDK | Observer 使用的提交组件，负责持久保存 Observer 实例身份、可靠保存和发送 | [Overview · 谁决定什么](./index.mdx#responsibility) |
-| 后端 | 校验并保存实体的服务，不判断事实 | [Overview · 谁决定什么](./index.mdx#responsibility) |
-| 用户 | 使用 Heartbeat 并拥有其数据的人 | [HISTORY-7](./rules/history.mdx#history-7) |
-| 采集诊断 | 读取、解析或匹配失败的记录，不是观测 | [OBSERVER-6](./model/observer.mdx#observer-6) |
+| Observer | 对一份观测负责的业务实体，被 `observerVersionId` 引用 | [OBSERVER-1](./model/observer.mdx#observer-1) |
+| 观测内容 | 被 `contentVersionId` 引用的业务实体 | [OBSERVATION-1](./model/observation.mdx#observation-1) |
+| 输入 | InputSet 的成员，一次处理用到的版本 | [InputSet](./model/input-set.mdx) |
+
+## 陈述与处理 [#statements]
+
+| 术语 | 定义 | 详见 |
+| --- | --- | --- |
+| 陈述 | Observation 表达的内容，由观测内容和事实时间组成 | [OBSERVER-1](./model/observer.mdx#observer-1) |
+| 处理 | 读取已保存的版本、形成观测的一次过程，例如一次模型调用。一次处理可以形成多份 Observation | [EVIDENCE-1](./rules/evidence.mdx#evidence-1) |
+| 采集诊断 | 读取、解析或匹配失败的情况，作为诊断信息处理 | [OBSERVER-8](./model/observer.mdx#observer-8) |
+
+## 参与方 [#actors]
+
+| 术语 | 定义 | 详见 |
+| --- | --- | --- |
+| 用户 | 拥有数据的人。在模型中是业务实体，可以作为 Observer | [OBSERVER-6](./model/observer.mdx#observer-6) |
+| 程序实例 | 独立运行、有自己 EntityId 的程序，例如前台状态 Observer 或推断 Observer | [OBSERVER-5](./model/observer.mdx#observer-5) |
+| SDK | 程序实例使用的提交组件，负责持久保存实例身份、本地保存，以及按依赖顺序发送 | [Overview · 谁决定什么](./index.mdx#responsibility) |
+| 写入方 | 向后端提交版本的软件：Observer 的业务代码、SDK 和用户使用的工具 | [Conventions · 规则的格式](./conventions.mdx#rules) |
+| 读取方 | 读取和追溯数据的软件，例如 Agent 和 Web 控制台 | [Conventions · 规则的格式](./conventions.mdx#rules) |
+| 后端 | 校验并保存版本的服务 | [Overview · 谁决定什么](./index.mdx#responsibility) |
 
 ## 时间 [#time]
 
-| 术语 | 定义 | 正文 |
+| 术语 | 定义 | 详见 |
 | --- | --- | --- |
-| 事实时间 | 事件发生或状态成立的时间，只保存在 Observation 的 `startAt` 和 `endAt` | [Observation · 事实时间](./model/observation.mdx#fact-time) |
-| 记录时间 | 后端首次成功保存一份 Observation 的时刻，即 `recordedAt` | [OBSERVATION-11](./model/observation.mdx#observation-11) |
+| 事实时间 | 事件发生或状态成立的时间，保存在 Observation 的 `startAt` 和 `endAt` 中 | [Observation · 事实时间](./model/observation.mdx#fact-time) |
 | 时间点 | `startAt` 等于 `endAt` 的事实时间 | [OBSERVATION-7](./model/observation.mdx#observation-7) |
 | 时段 | `startAt` 早于 `endAt` 的事实时间，左闭右开 | [OBSERVATION-8](./model/observation.mdx#observation-8) |
-| 进行中 | 有证据说明事实在当时仍在持续 | [TIME-4](./rules/time.mdx#time-4) |
+| 进行中 | 证据表明事实仍在持续 | [TIME-4](./rules/time.mdx#time-4) |
+| 保存时间 | 后端首次保存一个版本的时刻，即 `recordedAt` | [VERSION-10](./model/version.mdx#version-10) |
 
 ## 变化与历史 [#history]
 
-| 术语 | 定义 | 正文 |
+| 术语 | 定义 | 详见 |
 | --- | --- | --- |
-| 补全 | 随证据积累延续同一份 Observation，只增加证据，不推翻已知的值 | [HISTORY-2](./rules/history.mdx#history-2) |
-| 删除 | 移除选中的实体，不沿引用扩展 | [HISTORY-6](./rules/history.mdx#history-6) |
-| 原始材料 | 来源提供的、未经业务解释的数据 | [HISTORY-5](./rules/history.mdx#history-5) |
+| 更新 | 形成同一实体的新版本 | [HISTORY-1](./rules/history.mdx#history-1) |
+| 补全 | 随证据积累更新同一事实，例如延长时段 | [HISTORY-2](./rules/history.mdx#history-2) |
+| 纠正 | 用新版本修正错误的值 | [HISTORY-2](./rules/history.mdx#history-2) |
+| 删除 | 移除选中实体的全部版本，之后不再接受它的新版本 | [HISTORY-6](./rules/history.mdx#history-6) |
+| 原始材料 | 来源提供、尚未按业务规则解释的数据 | [HISTORY-4](./rules/history.mdx#history-4) |
 
 ## 不再使用的术语 [#deprecated]
 
-下表的术语已经从模型中删除。文档中不得再出现这些术语，`pnpm docs:check` 会检查。删除一个概念时，在这里加一行。
+实现中用过、已从模型中删除的术语。`pnpm docs:check` 会报告文档中出现的这些词。从模型中删除这样的概念时，在这里加一行。
 
 | 术语 | 替代说法 |
 | --- | --- |
-| `ITimed` | Observation 的事实时间，见 [Observation · 事实时间](./model/observation.mdx#fact-time) |
-| `ObservationContent`、`Observation Content` | 观测内容，是业务实体承担的角色，不是一种类型 |
-| `采集程序` | Observer 或 SDK，按所指的职责选择 |
+| `ITimed` | Observation 的[事实时间](./model/observation.mdx#fact-time) |
+| `IEntity` | [Entity](./model/entity.mdx) 和 [Version](./model/version.mdx)：身份属于实体，内容和引用属于版本 |
+| `ObservationContent`、`Observation Content` | 观测内容，业务实体在 Observation 中承担的角色 |
 | `观测时间`、`接收时间` | 形成观测的时刻、后端收到请求的时刻，见 [TIME-1](./rules/time.mdx#time-1) |
-| `ENT-`、`TIM-`、`SCH-`、`OBR-`、`OBS-`、`CNT-`、`IDN-`、`HIST-`、`RESP-` | 完整单词的规则前缀，见 [Overview · 规则的写法](./index.mdx#conventions) |
-| `CONTENT-`、`RESPONSIBILITY-` | 这两个页面已删除，规则并入其他页面 |

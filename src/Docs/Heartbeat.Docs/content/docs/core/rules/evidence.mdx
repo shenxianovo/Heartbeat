@@ -1,0 +1,64 @@
+---
+title: "Evidence"
+description: "一次处理实际用到的输入，以及怎样追溯"
+---
+
+一份观测依据已保存的数据形成时，用 [InputSet](../model/input-set.mdx) 记下实际用到的输入，之后才能沿着它追溯。一份观测的三个问题分别在三个位置回答：
+
+| 问题 | 回答的位置 |
+| --- | --- |
+| 谁负责 | Observation 的 `observerVersionId` |
+| 陈述了什么，确认或否定了什么 | 观测内容 |
+| 用了哪些已保存的版本 | `inputSetVersionId` 指向的 InputSet |
+
+## 输入 [#inputs]
+
+### EVIDENCE-1 列出输入 [#evidence-1]
+
+执行方：写入方
+
+依据已保存的数据形成观测时，必须用输入集列出实际用到的版本。聚合、推断，以及用户读完日志后的陈述，都需要输入集；直接采集和亲身陈述没有输入，`inputSetVersionId` 为 `null`。Observer 如实声明是否依据了已保存的数据。
+
+### EVIDENCE-2 读了就列 [#evidence-2]
+
+执行方：写入方
+
+值进入了处理的版本，都列为成员。例如 A 引用 B：处理只读了 A，成员只有 A；处理也读了 B，A 和 B 都是成员。Schema 版本的说明进入了处理的上下文时，这个 Schema 版本也是输入。
+
+### EVIDENCE-3 不事后推算 [#evidence-3]
+
+执行方：写入方、后端
+
+输入由 Observer 在处理时确定，不得事后由查询结果、事实时间重叠或 `recordedAt` 推算。理由见 [ADR · Observer 与输入集](../../adr/observers-and-evidence.mdx#rationale)。
+
+### EVIDENCE-4 输入只是输入 [#evidence-4]
+
+执行方：读取方
+
+输入集只表示这些版本提供给了这次处理。观测确认或否定了什么，写在观测内容中，见 [OBSERVER-7](../model/observer.mdx#observer-7)。
+
+### EVIDENCE-5 只列直接输入 [#evidence-5]
+
+执行方：写入方
+
+输入集只列这次处理的直接输入。处理用到了上一层的观测 J，又没有重新读取 J 的输入时，只列出 J 的版本；J 的输入由 J 自己的输入集列出。
+
+### EVIDENCE-6 实际的组合 [#evidence-6]
+
+执行方：写入方
+
+输入集记下实际用到的版本组合。处理过程中在不同时刻读到了同一实体的不同版本时，列出读到的每个版本。需要复现处理时，模型、提示词、参数或发送的文本由业务内容表达。
+
+## 追溯 [#tracing]
+
+### EVIDENCE-7 逐层追溯 [#evidence-7]
+
+执行方：读取方
+
+读取方沿输入集逐层追溯：成员本身也有输入集时，继续向下。引用都指向已保存的版本，所以追溯不会成环。成员被删除时，见 [HISTORY-8](./history.mdx#history-8)。
+
+### EVIDENCE-8 观测不随输入变 [#evidence-8]
+
+执行方：后端
+
+已有的观测始终引用当时的输入。输入形成新版本或被删除后，已有的观测继续引用原来的版本；是否重新处理，由 Observer 或业务规则决定。

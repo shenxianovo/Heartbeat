@@ -1,0 +1,69 @@
+---
+title: "InputSet"
+description: "一次处理实际用到的版本集合，可以被多份观测共用"
+---
+
+InputSet 列出一次处理实际用到的已保存版本，中文叫输入集。例如推断 Observer 把一天的前台时段和键鼠事件放进一次模型调用，得到十份推断；这十份推断引用同一个 InputSet，从它能查到模型当时读到了哪些版本。
+
+列在 InputSet 里的版本是这次处理的输入，任何版本都可以是输入。哪些版本应当列入，见 [Evidence](../rules/evidence.mdx)。
+
+<ModelRelations node="InputSet" />
+
+- **类别**：Core 类型，`category` 为 `input_set`
+- **引用**：`members` 中的每个元素
+- **被引用**：Observation 的 `inputSetVersionId`
+- **决策**：[ADR · Observer 与输入集](../../adr/observers-and-evidence.mdx)
+
+## 成员 [#members]
+
+以下成员位于版本的 `content` 中，版本共有的成员见 [Version](./version.mdx#members)。
+
+| 成员 | 类型 | 含义 |
+| --- | --- | --- |
+| `members` | 非空、不重复的引用数组 | 实际提供给这次处理的版本，无序 |
+
+## 示例 [#example]
+
+一次处理读取了两份前台时段的 Observation 和一份之前的推断。
+
+```json
+{
+	"members": [
+		"019e1bbb-ec00-7000-8000-000000000101",
+		"019e1bbb-ec00-7000-8000-000000000201",
+		"019e1bbb-ec00-7000-8000-000000000301"
+	]
+}
+```
+
+## 规则 [#rules]
+
+### INPUTSET-1 成员是版本 [#inputset-1]
+
+执行方：后端
+
+每个成员是一个确定的版本，可以是 Observation，也可以是处理读取的业务内容。
+
+### INPUTSET-2 非空 [#inputset-2]
+
+执行方：后端
+
+`members` 必须非空。处理没有用到已保存的数据时，不需要 InputSet，Observation 的 `inputSetVersionId` 为 `null`。
+
+### INPUTSET-3 不重复 [#inputset-3]
+
+执行方：后端
+
+`members` 不得重复列出同一个版本。
+
+### INPUTSET-4 无序 [#inputset-4]
+
+定义
+
+`members` 是无序集合。需要保存顺序时，例如提示词中各项的排列，由业务内容表达。
+
+### INPUTSET-5 可共用 [#inputset-5]
+
+执行方：写入方
+
+实际输入相同的多份观测，可以共用同一个 InputSet 版本。

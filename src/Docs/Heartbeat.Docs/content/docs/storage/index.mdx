@@ -1,59 +1,32 @@
 ---
 title: "Overview"
-description: "实体索引、存储表与写入一致性"
+description: "数据库、内容的表示与命名"
 ---
 
-实体保存在 PostgreSQL。每个实体只有一份权威内容，统一索引记录它所在的表。存储职责见 [ADR · 实体存储](../adr/entity-storage.mdx)。
+实体和它的全部版本保存在 PostgreSQL 中。数据库的版本、数据访问和时间的保存方式见 [PostgreSQL](./postgresql.mdx)，数据模型见 [Core](../core/index.mdx)。表结构和索引将按实体与版本模型定义，目前尚未定义。
 
-## 存储表
+## 内容的表示 [#content]
 
-| 表 | 内容 | 模型类别 |
-| --- | --- | --- |
-| [entities](./fixed-tables.mdx#entities) | 统一索引：实体 ID 与内容所在表名 | — |
-| [observations](./fixed-tables.mdx#observations) | Observation | `observation` |
-| [observers](./fixed-tables.mdx#observers) | Observer | `observer` |
-| [entity_schemas](./fixed-tables.mdx#entity_schemas) | EntitySchema | `entity_schema` |
-| [业务表](./business-tables.mdx) | 每个业务 SchemaId 一张，保存符合定义的实体 | `entity` |
+- 文本中有空字符时，API 返回 `400`，事务回滚。
+- 对象和数组以 `jsonb` 保存，空白和键的顺序不保留。数值必须在 `numeric` 的范围内，字符串中不能有 `\u0000` 或无效的代理对。
+- 时间的保存方式见 [PostgreSQL · 时间](./postgresql.mdx#time)。
 
-读取时，后端按 ID 查询 `entities`，从 `table_name` 指向的表读取内容，并按表映射出响应中的 `category`。保存已有实体时，路径声明的类别与映射类别不一致则返回 `409 Conflict`，原内容不变。
+## 命名 [#naming]
 
-## 约束
-
-- 所有表以 `id` 为主键。内容表与业务表的 `id` 外键引用 `entities.id`，`ON DELETE CASCADE`：删除索引行时删除同 ID 的内容。
-- Observation 与业务实体的引用字段不建外键，允许先保存引用方。
-- `observations` 检查 `start_at <= end_at`；任一边界未知时允许保存。
-- 除主键外，`entity_schemas.resource_name` 有唯一索引。新增索引依据 `pg_stat_statements`、慢 SQL 日志与执行计划决定。
-
-## 写入一致性
-
-保存一个实体时，索引与内容在同一事务中写入，同时成功或同时回滚。
-
-所有保存事务先取得同一把事务级 advisory 锁：登记 EntitySchema 用独占锁，其他保存用共享锁，再锁定索引行。这一顺序避免动态建表的外键锁与索引写入互相等待。
-
-1. `INSERT ... ON CONFLICT DO NOTHING` 登记索引。
-2. `SELECT ... FOR UPDATE` 锁定该 ID 的索引行。
-3. 校验模型类别；业务实体还须属于资源绑定的 Schema。冲突时回滚。
-4. 写入或替换内容。
-5. 提交事务。
-
-同一 ID 的并发保存通过索引行锁依次执行。
-
-## 内容表示
-
-- 业务对象、数组与 `entity_schemas.fields` 使用 `jsonb`：不保留空白与键顺序；数值不能超出 `numeric` 范围；不能包含 `\u0000` 或无效代理对。
-- 文本不能包含空字符。违反时 API 返回 `400`，事务回滚。
-- 时间的保存规则见 [PostgreSQL · 时间](./postgresql.mdx#时间)。
-
-## 命名
+同一个名字在三处使用三种写法：
 
 | 位置 | 格式 | 示例 |
 | --- | --- | --- |
-| API 字段 | `camelCase` | `observerId` |
-| C# 属性 | `PascalCase` | `ObserverId` |
-| 表名、列名、约束名 | `snake_case` | `observer_id` |
+| API 字段 | `camelCase` | `observerVersionId` |
+| C# 属性 | `PascalCase` | `ObserverVersionId` |
+| 表名、列名、约束名、索引名 | `snake_case` | `observer_version_id` |
 
-| 约束 | 规则 | 示例 |
+约束和索引按下表命名：
+
+| 约束或索引 | 规则 | 示例 |
 | --- | --- | --- |
-| 主键 | `pk_<表名>` | `pk_entities` |
-| 内容表到索引的外键 | `fk_<表名>_entities_id` | `fk_observations_entities_id` |
-| 时间顺序检查 | `ck_<表名>_time_order` | `ck_observations_time_order` |
+| 主键 | `pk_<表名>` | `pk_example_items` |
+| 外键 | `fk_<表名>_<目标表>_<列名>` | `fk_example_items_entities_entity_id` |
+| 检查 | `ck_<表名>_<内容>` | `ck_example_items_time_order` |
+| 唯一索引 | `ux_<表名>_<列名>` | `ux_example_items_resource_name` |
+| 普通索引 | `ix_<表名>_<列名>` | `ix_example_items_observer_version_id` |

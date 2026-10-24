@@ -5,8 +5,6 @@
   "root": true,
   "pages": [
     "index",
-    "fixed-tables",
-    "business-tables",
     "postgresql"
   ]
 }

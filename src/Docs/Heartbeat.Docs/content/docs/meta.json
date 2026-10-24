@@ -1,11 +1,12 @@
 {
   "title": "Heartbeat 文档",
   "pages": [
+    "start",
     "core",
-    "observers",
+    "adr",
     "api",
     "storage",
-    "testing",
-    "adr"
+    "observers",
+    "testing"
   ]
 }

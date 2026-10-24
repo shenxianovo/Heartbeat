@@ -11,7 +11,7 @@ export function baseOptions(): BaseLayoutProps {
           {appName}
         </>
       ),
-      url: '/core',
+      url: '/start',
     },
     githubUrl: `https://github.com/${gitConfig.user}/${gitConfig.repo}`,
   };

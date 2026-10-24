@@ -4,6 +4,7 @@
   "pages": [
     "identity",
     "time",
-    "history"
+    "history",
+    "evidence"
   ]
 }

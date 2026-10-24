@@ -1,53 +1,46 @@
 ---
 title: "Example Observer"
-description: "Observer 主页面的结构与填写示例"
+description: "Observer 页的章节和每一章写什么"
 ---
+
+开头用一两段话说明这个 Observer 记下什么事实、从哪个来源读取，以及它负责的范围。本页的结构图借用 [Input Events](../../input-events/index.mdx) 的节点，实际写作时换成自己的节点。
 
 <ObserverStructure node="INPUT_EVENTS" />
 
-这一页展示 Observer 主页面的写法。页首复用 Input Events 的共享图作展示，实际业务规则以 [Input Events](../../input-events/index.mdx) 为准。编写新业务时，替换页面名称、职责和共享图节点，说明采集什么事实、基于什么来源、职责范围是什么。
+## 实体 [#entities]
 
-## Entity 与 Schema
-
-| Entity 与 Schema | 资源名 | 说明 |
+| 实体 | 资源名 | 说明 |
 | --- | --- | --- |
-| [Example Entity](./example-entity.mdx) | 待填写 | 实体的含义、身份、引用、时间和 Schema 放在同一子页 |
+| [Example Entity](./example-entity.mdx) | 待定 | 这种业务类型表达什么 |
 
-一行对应一种已定义的业务实体，不把实例数据当作导航子页。尚未定义的实体列在“待定”。
+每行是一种已定义的业务类型，链接到它的实体页。还没定义 EntitySchema 的实体列在“待定”中。
 
-## 实例身份
+## 程序实例 [#instance]
 
-说明 Observer 实例身份如何生成与保存、重启如何沿用，以及哪些情况属于独立实例。业务实体身份写在实体页，设备身份也与采集器身份分开。
+写程序实例的身份怎样生成和保存、重启后怎样沿用、什么情况算独立的实例。设备身份和业务实体的身份写在对应的实体页。
 
-## 采集
+## 采集 [#collection]
 
-说明首次读取、事件或采样的触发方式、授权要求，以及读取失败、暂停和恢复的处理。同一 Observer 提供多类内容时，说明共同读取流程与各条业务时间线的更新条件。
+写读取的触发方式（事件、定时采样或启动时读取）、需要的授权，以及读取失败、暂停和恢复时怎样处理。一个 Observer 形成多种观测内容时，写清它们共用的读取流程，以及各自何时更新。
 
-用户设置作为本节子标题，写明默认值与开关的作用。例如输入事件的具体按键记录设置见 [Input Events](../../input-events/index.mdx#具体按键记录)。不单独建立 Collection 子页。
+用户可以调整的设置作为本章的小节，写明默认值和作用，例如 [Input Events · 具体按键记录](../../input-events/index.mdx#key-recording)。
 
-## 事实时间
+## 事实时间 [#fact-time]
 
-| 内容 | Observation 时间 |
+| 观测内容 | 事实时间 |
 | --- | --- |
-| Example Entity | 填写时间点或时段，以及来源字段到事实时间边界的映射；详细边界链接到实体页 |
+| Example Entity | 时间点还是时段，各边界取自哪个来源字段 |
 
-写明事实时间取自哪些来源字段。不要用形成观测、接收或保存的时刻填补事实时间，见 [TIME-1](../../../core/rules/time.mdx#time-1)。独立业务对象不必同时形成 Observation，也不必为了套模板添加时间边界。
+细节写在实体页。不作为观测内容的业务实体没有事实时间，这里不用列出。
 
-## 接入与提交策略
+## 提交 [#submission]
 
-说明接入时登记哪些主体与 Schema，业务选择及时提交还是结束后提交，何时报告更新或结束。存储、重试与幂等规则链接到[提交机制](../../submission/index.mdx)及所用平台 SDK，不在本页重复维护。
+写接入时登记哪些 EntitySchema，选择及时提交还是结束后提交，以及业务代码何时通知更新和结束。本地保存、重试和幂等的规则链接到 [Submission](../../submission/index.mdx) 和所用平台的 SDK。
 
-尚未确认的策略列入“待定”，不要把共用能力的存在写成业务已经选定某种策略。
+## 实现 [#implementation]
 
-## 相关文档
+写各平台的实现状态、程序所在的目录和对应的测试 Case。启动方式写在程序目录的 README 中。
 
-- [Example Entity](./example-entity.mdx)：业务实体页的章节示例。
-- [Input Events](../../input-events/index.mdx)：实际 Observer 示例。
-- [提交机制](../../submission/index.mdx)：跨平台约定与平台 SDK。
+## 待定 [#open]
 
-平台入口、启动参数说明和测试文档也放在本节；启动操作本身由实现目录的 README 维护。
-
-## 待定
-
-- 逐项列出业务尚未确认的身份、采集、时间或提交规则。
-- 本模板没有实际 Observer 身份或提交入口，复制后填写已确认的业务信息。
+- 逐项列出尚未确认的身份、采集、时间或提交规则。

@@ -3,35 +3,36 @@ title: "PostgreSQL"
 description: "数据库版本、数据访问、时间保存与诊断配置"
 ---
 
-## 版本与启动
+本页说明后端使用的 PostgreSQL：版本、数据访问方式、时间怎样保存，以及排查性能用的统计配置。
 
-- PostgreSQL 镜像 `postgres:18.6-alpine`，服务与测试使用同一版本。
-- 数据库运行在容器中，API 运行在本机。数据库健康后，Aspire 运行 EF Core 迁移，迁移成功后启动 API，见 [ADR · 后端运行与本地环境](../adr/backend-runtime.mdx#local-environment)。
+## 版本与启动 [#runtime]
+
+- 服务和测试都使用 PostgreSQL 镜像 `postgres:18.6-alpine`。
+- 数据库运行在容器中，API 运行在本机。数据库就绪后，Aspire 先运行 EF Core 迁移，迁移成功再启动 API，见 [ADR · 后端运行与本地环境](../adr/backend-runtime.mdx#local-environment)。
 - 测试数据库见 [Database](../testing/database.mdx)。
 
-## 数据访问
+## 数据访问 [#access]
 
 | 项目 | 配置 |
 | --- | --- |
 | .NET SDK | `global.json` 固定 `10.0.401`，允许同功能版本的维护更新 |
 | 运行时、EF Core | `10.0.12`，见后端 Dockerfile 与 `Directory.Packages.props` |
-| 固定表与迁移 | EF Core；Initial migration 与模型快照位于 Infrastructure 的 `Database/Migrations/` |
-| 业务表 | Npgsql 参数化 SQL；表名与列名按标识符规则引用 |
+| 迁移 | EF Core；Initial migration 与模型快照位于 Infrastructure 的 `Database/Migrations/` |
 | 连接字符串 | `ConnectionStrings:Heartbeat`（环境变量 `ConnectionStrings__Heartbeat`）；缺失时 API 启动失败 |
 
-- 重写期间直接修改 Initial migration 与模型快照。EF 工具以 Api 为启动项目，Api 引用 `Microsoft.EntityFrameworkCore.Design`（`PrivateAssets="all"`）。
-- `AddHeartbeatInfrastructure(connectionString)` 注册 Npgsql 与 `HeartbeatDbContext`。上下文为 `Scoped`；`NpgsqlDataSource` 为单例，由服务容器创建和释放，请求共用连接池。
+- 重写期间直接修改 Initial migration 和模型快照。EF 工具以 Api 为启动项目，所以 Api 引用 `Microsoft.EntityFrameworkCore.Design`（`PrivateAssets="all"`）。
+- `AddHeartbeatInfrastructure(connectionString)` 注册 Npgsql 和 `HeartbeatDbContext`。上下文的生命周期是 `Scoped`；`NpgsqlDataSource` 是单例，由服务容器创建和释放，所有请求共用一个连接池。
 
-## 时间
+## 时间 [#time]
 
-已知时间边界先转换为 UTC，再向下截断到整微秒，以 `timestamptz` 保存；未知边界保存为 `NULL`。IANA 时区由 `observations.time_zone` 单独保存。
+已知的时间先转换为 UTC，再向下截断到整微秒，以 `timestamptz` 保存；未知的时间保存为 `NULL`。IANA 时区单独以文本保存。
 
-- EF 实体读写使用 `Database/Converters/UtcDateTimeOffsetValueConverter.cs`，应用于所有 `DateTimeOffset` 与可空属性。
-- 参数化 SQL 写入 Observation 前复用同一投影。
-- 投影不依赖数据库的时间纪元：`1999-12-31T23:59:59.9999999Z` 保存为 `1999-12-31T23:59:59.999999Z`。见 [ADR · 实体存储](../adr/entity-storage.mdx#rationale)。
-- `2026-10-06T09:00:00+08:00` 保存为 `2026-10-06T01:00:00Z`。
+截断在应用层完成。数据库驱动按自己的时间纪元截断，会让 2000 年以前的时间向后进位；应用层的截断与纪元无关，例如 `1999-12-31T23:59:59.9999999Z` 保存为 `1999-12-31T23:59:59.999999Z`，`2026-10-06T09:00:00+08:00` 保存为 `2026-10-06T01:00:00Z`。
 
-## 统计与诊断
+- 经过 EF 的读写使用 `Database/Converters/UtcDateTimeOffsetValueConverter.cs`，它作用于所有 `DateTimeOffset` 属性，包括可空的。
+- 不经过 EF 的参数化 SQL，写入时间前调用同一个转换。
+
+## 统计与诊断 [#diagnostics]
 
 | 项目 | 配置 | 用途 |
 | --- | --- | --- |
@@ -44,7 +45,7 @@ description: "数据库版本、数据访问、时间保存与诊断配置"
 | `pg_stat_statements.track_planning` | 默认 `off` | 规划统计 |
 | `auto_explain` | 关闭 | 需要执行计划时启用 |
 
-`pg_stat_statements` 需要预加载：AppHost 已配置 `shared_preload_libraries`，初始化 SQL 创建扩展。在其他数据库启用：
+`pg_stat_statements` 需要预加载。本地环境中，AppHost 已配置 `shared_preload_libraries`，初始化 SQL 会创建扩展。在其他数据库中启用它：
 
 1. 将 `pg_stat_statements` 加入 `shared_preload_libraries`。
 2. 重启 PostgreSQL（现有连接会中断）。
@@ -61,4 +62,4 @@ description: "数据库版本、数据访问、时间保存与诊断配置"
 | `pg_stat_user_indexes` | 索引使用 |
 | `pg_stat_database` | 事务、缓存命中与临时文件 |
 
-I/O 计时会增加读取时钟的开销；判断 CPU 瓶颈还需结合锁等待与执行计划。`auto_explain` 开启 `log_analyze` 后会影响所有语句。参考：[pg_stat_statements](https://www.postgresql.org/docs/current/pgstatstatements.html)、[统计配置](https://www.postgresql.org/docs/current/runtime-config-statistics.html)、[日志配置](https://www.postgresql.org/docs/current/runtime-config-logging.html)、[锁配置](https://www.postgresql.org/docs/current/runtime-config-locks.html)、[auto_explain](https://www.postgresql.org/docs/current/auto-explain.html)。
+I/O 计时会增加读取时钟的开销；判断 CPU 瓶颈时，还要结合锁等待和执行计划。`auto_explain` 开启 `log_analyze` 后，所有语句都会变慢。参考：[pg_stat_statements](https://www.postgresql.org/docs/current/pgstatstatements.html)、[统计配置](https://www.postgresql.org/docs/current/runtime-config-statistics.html)、[日志配置](https://www.postgresql.org/docs/current/runtime-config-logging.html)、[锁配置](https://www.postgresql.org/docs/current/runtime-config-locks.html)、[auto_explain](https://www.postgresql.org/docs/current/auto-explain.html)。

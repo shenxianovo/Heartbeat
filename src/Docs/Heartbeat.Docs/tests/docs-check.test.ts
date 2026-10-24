@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  adrStructure, anchorsOf, deprecatedTerms, findTerm, jsonBlocks, linksOf, ruleHeadings, rulePrefixes, ruleReferences, slugify,
+  adrStructure, anchorsOf, deprecatedTerms, findTerm, jsonBlocks, linksOf, ruleActorProblem, ruleHeadings, rulePrefixes, ruleReferences,
+  slugify,
 } from '../lib/docs-check.ts';
 
 test('slugs keep CJK text and drop punctuation like github-slugger', () => {
@@ -25,10 +26,21 @@ test('the Core prefix table maps prefixes to pages', () => {
 });
 
 test('rule headings need their page prefix, a matching anchor and ascending numbers', () => {
-  const page = '### TIME-1 a [#time-1]\n### TIME-3 b [#time-3]\n### TIME-2 c [#time-2]\n### TIME-4 d [#time-5]\n### ENTITY-9 e [#entity-9]\n';
+  const page = ['### TIME-1 a [#time-1]', '### TIME-3 b [#time-3]', '### TIME-2 c [#time-2]', '### TIME-4 d [#time-5]', '### ENTITY-9 e [#entity-9]']
+    .map((heading) => `${heading}\n\n定义\n`).join('');
   const { rules, findings } = ruleHeadings('time.mdx', page, 'TIME');
   assert.equal(rules.length, 5);
-  assert.deepEqual(findings.map((finding) => finding.line), [3, 4, 5]);
+  assert.deepEqual(findings.map((finding) => finding.line), [7, 10, 13]);
+});
+
+test('the first paragraph under a rule names its actors or marks it as a definition', () => {
+  assert.equal(ruleActorProblem('定义'), null);
+  assert.equal(ruleActorProblem('执行方：写入方、后端'), null);
+  assert.match(ruleActorProblem('执行方：前端')!, /unknown actor 前端/);
+  assert.match(ruleActorProblem('执行方：后端、后端')!, /twice/);
+  assert.match(ruleActorProblem('正文')!, /first paragraph/);
+  const { findings } = ruleHeadings('time.mdx', '### TIME-1 a [#time-1]\n\n### TIME-2 b [#time-2]\n\n执行方：后端\n', 'TIME');
+  assert.deepEqual(findings.map((finding) => [finding.line, finding.check]), [[1, 'rule-actor']]);
 });
 
 test('rule references only count known prefixes', () => {

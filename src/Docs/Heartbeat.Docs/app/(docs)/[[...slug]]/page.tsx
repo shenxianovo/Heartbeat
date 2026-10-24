@@ -18,7 +18,7 @@ import { gitConfig } from '@/lib/site-config';
 
 export default async function Page(props: PageProps<'/[[...slug]]'>) {
   const params = await props.params;
-  if (!params.slug?.length) redirect('/core');
+  if (!params.slug?.length) redirect('/start');
   const page = source.getPage(params.slug);
   if (!page) notFound();
 
@@ -69,7 +69,7 @@ export async function generateStaticParams() {
 
 export async function generateMetadata(props: PageProps<'/[[...slug]]'>): Promise<Metadata> {
   const params = await props.params;
-  if (!params.slug?.length) redirect('/core');
+  if (!params.slug?.length) redirect('/start');
   const page = source.getPage(params.slug);
   if (!page) notFound();
 

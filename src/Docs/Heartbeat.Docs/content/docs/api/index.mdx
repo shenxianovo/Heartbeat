@@ -1,206 +1,58 @@
 ---
 title: "Overview"
-description: "实体的保存、读取、字段表示与错误"
+description: "HTTP 契约共用的约定：服务地址、字段命名、时间、错误格式与授权"
 ---
 
-Heartbeat API 保存和读取实体，模型见 [Core](../core/index.mdx)，请求与响应结构以各接口页为准。
+Heartbeat API 按 [Core](../core/index.mdx) 的实体与版本模型保存、读取和删除数据。本页写所有接口共用的约定；每个接口的路径、请求和响应以 `openapi.json` 为准。契约中目前还没有定义接口。
 
-- 所有实体使用相同的保存语义。
-- 保存路径声明模型类别，请求体不包含 `category`。
-- 所有实体通过同一个入口按 ID 读取。
+## 服务地址 [#servers]
 
-## 服务地址
+OpenAPI 的 `servers` 声明相对地址 `/api`，所以契约中的 `/example` 对外是 `/api/example`。
 
-OpenAPI `servers` 声明相对地址 `/api`。例如 `GET /entities/{id}` 对外为 `GET /api/entities/{id}`。8080 是业务与 API 入口；3000 是文档入口，并转发 `/api/entities/…`，接口页的 Playground 由此同源调用。见 [ADR · 后端运行与本地环境](../adr/backend-runtime.mdx#http-entry)。
+本地有两个入口：8080 是 API 和 Web 控制台的入口；3000 是文档站的入口，它把 API 路径转发给后端，所以接口页的 Playground 可以同源调用 API。端口的分工见 [ADR · 后端运行与本地环境](../adr/backend-runtime.mdx#http-entry)。
 
-## 统一提交结构
+## 字段命名 [#naming]
 
-所有实体保存请求都将标识放在路径中，将内容分为 `references` 与 `properties` 两个对象。
+API 字段使用 `camelCase`，对应 C# 的 `PascalCase` 和数据库的 `snake_case`，见 [Storage · 命名](../storage/index.mdx#naming)。
 
-| 部分 | 内容 |
+## 时间 [#time]
+
+API 中的时间精确到 1 微秒，UTC 指协调世界时。事实时间的含义见 [Observation · 事实时间](../core/model/observation.mdx#fact-time)。
+
+| 参与方 | 职责 |
 | --- | --- |
-| 路径中的 `id` | 创建方生成的 UUIDv7，不放入请求体 |
-| `references` | 键为引用字段名，非空值为目标实体标识 |
-| `properties` | 其余属性，不重复引用字段，也不包含当前实体的 `id` |
-
-请求体外层只包含这两个对象，两者都必填。没有引用时，`references` 为 `{}`。引用字段能否省略或为 `null` 由字段定义决定。
-
-例如，实体 A 通过 `relatedEntityId` 引用实体 B，并保存自己的名称：
-
-```json
-{
-	"references": {
-		"relatedEntityId": "01a12e31-9050-7000-8000-000000000001"
-	},
-	"properties": {
-		"name": "实体 A"
-	}
-}
-```
-
-读取响应沿用引用与属性的划分，并增加模型类别等元数据，见[读取](#读取)。
-
-## 保存
-
-| 路径 | 提交模型 | 接口参考 |
-| --- | --- | --- |
-| `PUT /entities/observations/{id}` | [Observation](../core/model/observation.mdx) | [保存观测](/api/saveObservation) |
-| `PUT /entities/observers/{id}` | [Observer](../core/model/observer.mdx) | [保存观测主体](/api/saveObserver) |
-| `PUT /entities/schemas/{id}` | [EntitySchema](../core/model/schema.mdx) | [保存实体定义](/api/saveEntitySchema) |
-| `PUT /entities/{resourceName}/{id}` | 资源名绑定的业务实体模型 | [保存业务实体](/api/saveBusinessEntity) |
-
-### 资源登记
-
-保存 EntitySchema 时，`properties.resourceName` 登记业务资源名，例如 `example-records` 对应提交路径 `PUT /entities/example-records/{id}` 和业务表 `entity_example_records`。资源名规则见 [EntitySchema · 资源名与字段名](../core/model/schema.mdx#names)，表名规则见[表命名](../storage/business-tables.mdx#表命名)。
-
-- 首次提交时，定义保存、资源登记与建表作为一次操作，失败时整体回滚。
-- 重复提交相同请求不新增任何内容。
-- 资源名已被其他 SchemaId 占用时返回 `409`。
-- 新的 SchemaId 必须使用新的资源名，例如 `example-records-2`，见 [SCHEMA-4](../core/model/schema.mdx#schema-4)。
-- 业务入口按资源名找到定义并校验请求；资源名未登记时返回 `404`，不写入任何内容。
-
-### 请求
-
-请求体结构与示例见[统一提交结构](#统一提交结构)。EntitySchema 的 `properties.description` 是业务说明，随定义保存与读取。省略、`null` 或空字符串返回 `400`，含义见 [SCHEMA-3](../core/model/schema.mdx#schema-3)。
-
-- 请求体上限 10 MiB（10,485,760 字节），超过时返回 `413`。
-- 字段名与字符串值必须是有效 Unicode；字段名区分大小写。
-- 任何 JSON 对象中都不能有重复字段名（含转义后相同的名称）；数组中的重复值允许。
-- 固定模型与业务实体都拒绝未声明的字段，包括嵌套成员；字段定义拒绝未声明的配置。
-
-| 模型 | `references` | `properties` |
-| --- | --- | --- |
-| Observation | `observerId`、`contentId` | `startAt`、`endAt`、`timeZone`；未知为 `null`。不得包含 `recordedAt` |
-| Observer | `{}` | `name`，非空 |
-| EntitySchema | `{}` | `displayName`（非空）、`description`（必填、非空字符串）、`resourceName`、`fields` |
-
-### 保存行为
-
-后端组合路径 `id`、引用与属性并校验：
-
-| 情况 | 结果 |
-| --- | --- |
-| 实体不存在 | 创建实体并登记统一索引 |
-| 实体存在，类别一致（业务实体还须属于资源绑定的 Schema） | 完整替换内容 |
-| 实体存在，类别或 Schema 不一致 | `409 Conflict`，原内容不变 |
-| 重复提交相同请求 | 结果不变 |
-
-单个实体的索引与内容在同一事务中保存，失败时回滚，见[写入一致性](../storage/index.mdx#写入一致性)。EntitySchema 的 `resourceName` 与 `fields` 登记后固定，修改返回 `409`，见[EntitySchema · 定义的变化](../core/model/schema.mdx#changes)。
-
-### 成功响应
-
-| 条件 | 状态码 | 响应体 |
-| --- | --- | --- |
-| 首次创建实体 | `201 Created` | 无 |
-| 替换已有实体或重复提交 | `204 No Content` | 无 |
-
-### 错误响应
-
-| 条件 | 状态码 |
-| --- | --- |
-| 请求不符合契约，例如标识无效、JSON 无效、缺少必填字段、包含额外根字段或 `references` 与 `properties` 包含同名字段 | `400 Bad Request` |
-| 内容超出 PostgreSQL JSON 或文本表示范围 | `400 Bad Request` |
-| 业务保存入口中的资源名未登记 | `404 Not Found` |
-| 保存路径声明的模型类别与已有实体不一致，或业务实体所属 Schema 与资源绑定不一致 | `409 Conflict` |
-| 登记的资源名已被其他 SchemaId 占用，或尝试修改已登记的资源名、字段定义 | `409 Conflict` |
-| 请求体超过 10 MiB | `413 Content Too Large` |
-| 后端因未预期错误而保存失败 | `500 Internal Server Error` |
-
-错误响应使用[错误格式](#错误格式)。
-
-## 读取
-
-### 请求
-
-[读取实体](/api/getEntity)：`GET /entities/{id}`，`id` 为 UUIDv7。后端通过统一索引定位内容所在的表。
-
-### 成功响应
-
-返回 `200 OK`，所有类别使用同一结构：
-
-| 字段 | 内容 |
-| --- | --- |
-| `category` | 实体的模型类别 |
-| `schemaId` | 仅业务实体返回，指向其 EntitySchema；不属于 `references`，见 [ADR · 实体 API](../adr/entity-api.mdx) |
-| `references` | JSON 对象；键是业务定义的引用名称，非空值是目标实体的 UUIDv7；字段定义允许空值时可以为 `null`；没有引用字段时为 `{}` |
-| `properties` | 其他业务属性，不重复引用字段 |
-
-`category` 使用以下取值：
-
-| 取值 | 模型 |
-| --- | --- |
-| `entity` | 通用领域实体，包含观测内容和具体关系实体 |
-| `observation` | Observation |
-| `observer` | Observer |
-| `entity_schema` | EntitySchema |
-
-`references` 与 `properties` 的划分与保存请求一致。时间以 UTC 返回。
-
-### 错误响应
-
-| 条件 | 状态码 |
-| --- | --- |
-| `id` 不是有效的 UUIDv7 | `400 Bad Request` |
-| 实体不存在 | `404 Not Found` |
-| 后端因未预期错误而读取失败 | `500 Internal Server Error` |
-
-错误响应使用[错误格式](#错误格式)。
-
-## 字段表示
-
-OpenAPI `components/schemas`：
-
-| OpenAPI Schema | 内容 |
-| --- | --- |
-| `Observation` | 观测提交格式，引用与事实时间分开放置 |
-| `Observer` | 观测主体提交格式，包含空引用对象和名称 |
-| `EntitySchema` | 实体定义提交格式，包含显示名称、业务说明、资源名和业务字段定义 |
-| `BusinessEntity` | 按已登记资源提交的业务实体，按对应 EntitySchema 校验 |
-| `EntityResponse` | 模型类别、具名引用和其他业务属性 |
-
-API 字段使用 `camelCase`，对应 C# `PascalCase` 与数据库 `snake_case`，见 [Storage · 命名](../storage/index.mdx#命名)。
-
-业务实体的字段由 [EntitySchema](../core/model/schema.mdx) 定义：`reference` 字段的值放入 `references`，其他字段放入 `properties`。字段类型、必填与可空、对象与数组规则见该页。业务字段的省略与显式 `null` 在读取时保持区别，见[省略与空值](../storage/business-tables.mdx#省略与空值)。
-
-### 引用
-
-所有非空引用（包括 Observation 的两个引用）必须是 UUIDv7。目标可以尚未入库，不限制目标模型。
-
-## 时间
-
-公共时间精度为 1 微秒。
-
-`startAt` 和 `endAt` 的边界含义见 [Observation · 事实时间](../core/model/observation.mdx#fact-time)。UTC 是协调世界时（Coordinated Universal Time）。
-
-| 组件 | 职责 |
-| --- | --- |
-| Observer | 提供事实时间，提交以 `Z` 结尾或带明确 UTC 偏移的字符串 |
-| 后端 | 转换为 UTC，向下截断到整微秒后保存和读取，读取时返回以 `Z` 结尾的字符串；首次保存 Observation 时赋值 `recordedAt` |
+| Observer | 提交事实时间，字符串以 `Z` 结尾或带明确的 UTC 偏移 |
+| 后端 | 转换为 UTC，向下截断到整微秒后保存；读取时返回以 `Z` 结尾的字符串；首次保存每个版本时赋值 `recordedAt` |
 | 前端 | 按浏览器或系统时区显示时间 |
 
+例如：
+
 - 提交 `2026-10-06T09:00:00+08:00`，读回 `2026-10-06T01:00:00Z`。
-- 不足一微秒的尾数舍去：`1999-12-31T23:59:59.9999999Z` 读回 `1999-12-31T23:59:59.999999Z`，见 [ADR · 实体存储](../adr/entity-storage.mdx#rationale)。
-- `timeZone` 非空时必须是可解析的 IANA 时区 ID。
-- 两个边界都已知时，`startAt` 必须不晚于 `endAt`。
-- 校验失败返回 `400`。
+- 不足一微秒的尾数舍去：提交 `1999-12-31T23:59:59.9999999Z`，读回 `1999-12-31T23:59:59.999999Z`。截断的位置见 [PostgreSQL · 时间](../storage/postgresql.mdx#time)。
 
-### 记录时间
+`timeZone` 非空时，必须是可解析的 IANA 时区 ID。时间或时区校验失败时返回 `400`。
 
-读取 Observation 时，`properties.recordedAt` 必定存在且不为 `null`，是后端首次保存这份 Observation 的时刻，以 `Z` 结尾、精确到微秒。保存请求不得包含 `recordedAt`，出现时返回 `400`。重试、重放和补全不改变 `recordedAt`，见 [OBSERVATION-11](../core/model/observation.mdx#observation-11) 和 [OBSERVATION-12](../core/model/observation.mdx#observation-12)。
+### 保存时间 [#recorded-at]
 
-## 错误格式
+读取版本时，`recordedAt` 一定存在。它是后端首次保存这个版本的时刻，以 `Z` 结尾，精确到微秒。写入方不得提交 `recordedAt`；重试一个已保存的版本，`recordedAt` 保持不变。见 [VERSION-10](../core/model/version.mdx#version-10) 和 [VERSION-7](../core/model/version.mdx#version-7)。
 
-错误响应使用 `Content-Type: application/problem+json`，结构遵循 [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457.html)。
+## 错误格式 [#errors]
+
+错误响应的 `Content-Type` 是 `application/problem+json`，结构遵循 [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457.html)。
 
 | 必填字段 | 内容 |
 | --- | --- |
 | `type` | 固定为 `about:blank` |
 | `title` | HTTP 状态的简短名称 |
-| `status` | 实际 HTTP 响应的状态码 |
-| `detail` | 本次错误的具体说明 |
+| `status` | 实际的 HTTP 状态码 |
+| `detail` | 这次错误的具体说明 |
 
-调用方按状态码处理错误；`detail` 供人阅读。
+调用方按状态码处理错误，`detail` 供人阅读。请求体上限是 10 MiB（10,485,760 字节），超过时返回 `413`。
 
-## 契约
+## 认证与授权 [#auth]
 
-`content/docs/api/openapi.json` 是 HTTP 契约的权威来源。后端、客户端、测试与本页按契约同步，见 [ADR · 文档的权威与传播](../adr/documentation-authority.mdx)。接口页 `/api/<operationId>` 由契约生成。路由与存储职责见 [ADR · 实体 API](../adr/entity-api.mdx) 与 [ADR · 实体存储](../adr/entity-storage.mdx)。
+认证与授权尚未决定。目前 API 只通过绑定本机的入口提供，见 [ADR · 定位与边界](../adr/positioning.mdx#costs)。
+
+## 契约 [#contract]
+
+`content/docs/api/openapi.json` 是 HTTP 契约的权威来源，后端、客户端、测试和本节文档都按它同步，见 [ADR · 文档的权威与传播](../adr/documentation-authority.mdx)。文档站按契约为每个接口生成一页，地址是 `/api/<operationId>`。

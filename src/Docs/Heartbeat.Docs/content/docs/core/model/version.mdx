@@ -1,0 +1,144 @@
+---
+title: "Version"
+description: "实体一次保存的完整内容，保存后不可改写"
+---
+
+版本是实体一次保存的完整内容。每次修改都形成一个新版本，旧版本原样保留，所以一个实体的历史就是它的版本链。所有类型的实体共用这一结构。
+
+<ModelRelations node="Version" />
+
+- **身份**：`VersionId`，由写入方生成的 UUIDv7
+- **所属**：一个实体，由 `entityId` 指出
+- **决策**：[ADR · 实体模型](../../adr/entity-model.mdx)、[ADR · 身份、时间与更新](../../adr/identity-and-updates.mdx)
+
+## 成员 [#members]
+
+| 成员 | 类型 | 含义 |
+| --- | --- | --- |
+| `entityId` | `EntityId` | 版本所属的实体 |
+| `versionId` | `VersionId` | 版本的身份 |
+| `previousVersionId` | 引用或 `null` | 同一实体的前一版本，首版为 `null` |
+| `category` | `observation`、`entity_schema`、`input_set` 或 `business` | 内容属于哪一类。前三种是 Core 类型 |
+| `schemaVersionId` | 引用或 `null` | 业务内容所用的 Schema 版本，Core 类型为 `null` |
+| `recordedAt` | 时间，由后端赋值 | 保存时间：后端首次保存这个版本的时刻 |
+| `content` | 由 Core 或 Schema 版本规定 | 这个版本的内容。Core 类型的成员见各类型页，业务字段由 Schema 版本声明 |
+
+## 示例 [#example]
+
+前台时段从十分钟延长到二十分钟，它的 Observation 形成了第二个版本。
+
+```json
+[
+	{
+		"entityId": "019e1bbb-ec00-7000-8000-0000000000e1",
+		"versionId": "019e1bbb-ec00-7000-8000-000000000101",
+		"previousVersionId": null,
+		"category": "observation",
+		"schemaVersionId": null,
+		"recordedAt": "2026-10-06T02:10:01Z",
+		"content": {
+			"observerVersionId": "019e1bbb-ec00-7000-8000-0000000000a1",
+			"contentVersionId": "019e1bbb-ec00-7000-8000-0000000000c1",
+			"inputSetVersionId": null,
+			"startAt": "2026-10-06T02:00:00Z",
+			"endAt": "2026-10-06T02:10:00Z",
+			"timeZone": "Asia/Shanghai"
+		}
+	},
+	{
+		"entityId": "019e1bbb-ec00-7000-8000-0000000000e1",
+		"versionId": "019e1bbb-ec00-7000-8000-000000000102",
+		"previousVersionId": "019e1bbb-ec00-7000-8000-000000000101",
+		"category": "observation",
+		"schemaVersionId": null,
+		"recordedAt": "2026-10-06T02:20:01Z",
+		"content": {
+			"observerVersionId": "019e1bbb-ec00-7000-8000-0000000000a1",
+			"contentVersionId": "019e1bbb-ec00-7000-8000-0000000000c1",
+			"inputSetVersionId": null,
+			"startAt": "2026-10-06T02:00:00Z",
+			"endAt": "2026-10-06T02:20:00Z",
+			"timeZone": "Asia/Shanghai"
+		}
+	}
+]
+```
+
+## 内容 [#content]
+
+### VERSION-1 完整内容 [#version-1]
+
+执行方：写入方
+
+一个版本保存实体在这一次的完整内容，读取它只需要这一个版本。
+
+### VERSION-2 不可改写 [#version-2]
+
+执行方：后端
+
+已保存的版本不得改写，保存时间也包括在内。实体需要新内容时，形成新版本，见 [HISTORY-1](../rules/history.mdx#history-1)。
+
+### VERSION-3 业务版本引用 Schema 版本 [#version-3]
+
+执行方：后端
+
+业务版本必须引用一个 Schema 版本，内容按这一版校验和解释。Core 类型的 `schemaVersionId` 为 `null`，内容由 Core 解释。
+
+## 版本链 [#chain]
+
+### VERSION-4 一条版本链 [#version-4]
+
+执行方：后端
+
+每个实体只有一条线性的版本链。首版的 `previousVersionId` 为 `null`；之后每个版本的 `previousVersionId` 必须是保存时的当前版本。
+
+### VERSION-5 当前版本 [#version-5]
+
+定义
+
+实体最新保存的版本是它的当前版本。
+
+### VERSION-6 冲突 [#version-6]
+
+执行方：后端、写入方
+
+基于旧版本的新版本是冲突。两个写入方都基于同一个版本提交时，先保存的成为下一版，另一个被拒绝；被拒绝的一方基于新的当前版本重新处理。
+
+### VERSION-7 重试 [#version-7]
+
+执行方：后端
+
+重试沿用原来的 VersionId。再次提交一个已保存的 VersionId 时：
+
+| 提交的内容 | 结果 |
+| --- | --- |
+| 与已保存的版本相同 | 视为已保存，保存时间不变 |
+| 与已保存的版本不同 | 冲突，已保存的版本不变 |
+
+重复提交只确认首次保存，版本链和引用的检查结果都以首次保存时为准。实体已被删除时，见 [HISTORY-7](../rules/history.mdx#history-7)。
+
+### VERSION-8 相同内容也是新版本 [#version-8]
+
+执行方：后端
+
+内容相同的两次保存是两个版本。例如内容从 A 改成 B 再改回 A，一共形成三个版本。
+
+### VERSION-9 VersionId 不复用 [#version-9]
+
+执行方：后端
+
+VersionId 不得重新分配，实体删除后也一样。
+
+## 保存时间 [#recorded-at]
+
+### VERSION-10 recordedAt 由后端赋值 [#version-10]
+
+执行方：后端
+
+后端在首次保存一个版本时赋值 `recordedAt`，写入方不得提交它。首版的 `recordedAt` 就是实体首次保存的时刻。
+
+### VERSION-11 recordedAt 的含义 [#version-11]
+
+定义
+
+`recordedAt` 只表示后端保存这个版本的时刻。版本的先后由版本链决定，不同版本的 `recordedAt` 可以相同。

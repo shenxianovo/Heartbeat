@@ -3,27 +3,27 @@ title: "Sleep State"
 description: "设备处于休眠或清醒的时段（草案）"
 ---
 
+休眠状态表达“设备在这一段时间处于休眠或清醒”，由[设备状态 Observer](./index.mdx) 形成观测。这一页还是草案，EntitySchema 尚未分配 SchemaId。
+
 <ObserverStructure node="DEVICE_CONTENT" />
 
-本定义表达“设备处于休眠或清醒状态的时段”，由[设备状态 Observer](./index.mdx)形成观测。草案，尚未分配 SchemaId。
+## 粒度 [#granularity]
 
-## 记录粒度
+一份 Observation 表达设备处于休眠或清醒的一段时间。何时开始、补全或结束，取决于取得的状态边界证据，具体规则尚未确定。
 
-一条观测表达设备处于休眠或清醒状态的一段事实。何时开始、补全或结束同一条记录，取决于取得的状态边界证据；具体判定规则待定。
+## 身份 [#identity]
 
-## 身份
+观测内容的身份和复用规则尚未确定。程序实例的身份见 [Device State · 程序实例](./index.mdx#instance)，设备的身份另行定义。
 
-状态内容的身份与复用规则待定；Observer 实例身份与设备身份分别定义，见 [Device State](./index.mdx#实例身份)。
+## 引用 [#references]
 
-## 引用
+被观测设备的实体和引用字段尚未定义。
 
-被观测设备的实体定义与引用字段待定。
+## 事实时间 [#fact-time]
 
-## 事实时间
+Observation 保存状态的开始和结束边界，两者都已知时是 `[startAt, endAt)`，表示方式见 [Observation · 事实时间](../../core/model/observation.mdx#fact-time)。
 
-Observation 保存状态起止边界，已知时为 `[startAt, endAt)`，遵循 [Observation · 事实时间](../../core/model/observation.mdx#fact-time)。
-
-## Schema
+## EntitySchema [#schema]
 
 | 项目 | 值 |
 | --- | --- |
@@ -34,11 +34,11 @@ Observation 保存状态起止边界，已知时为 `[startAt, endAt)`，遵循 
 
 | 字段 | 类型 | 必填 | 可空 | 含义 |
 | --- | --- | --- | --- | --- |
-| `state` | `string` | 待定 | 待定 | `awake` 设备清醒；`asleep` 设备休眠 |
+| `state` | `string` | 待定 | 待定 | `awake` 表示清醒，`asleep` 表示休眠 |
 
-## 示例
+## 示例 [#example]
 
-业务实体提交结构如下：
+设备引用尚未定义，示例只有状态字段：
 
 ```json
 {
@@ -47,17 +47,10 @@ Observation 保存状态起止边界，已知时为 `[startAt, endAt)`，遵循 
 }
 ```
 
-设备引用尚未定义，示例只展示已列出的状态字段。
+## 待定 [#open]
 
-## 相关文档
-
-- [Device State](./index.mdx)：采集职责、实例身份与待定边界。
-- [EntitySchema](../../core/model/schema.mdx)：Schema 声明规则。
-
-## 待定
-
-- SchemaId、资源名与字段必填、可空约束。
-- 状态内容身份、设备引用与内容复用规则。
-- 用系统休眠或唤醒证据确定边界的规则。
-- 启动时取得状态的方式。
+- SchemaId、资源名，以及字段的必填和可空。
+- 观测内容的身份、设备引用和内容复用规则。
+- 怎样用系统的休眠和唤醒证据确定边界。
+- 启动时怎样取得状态。
 - 停止或崩溃后的采集空白。

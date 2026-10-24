@@ -1,10 +1,15 @@
 {
-  "title": "Types",
+  "title": "Model",
   "defaultOpen": true,
   "pages": [
+    "---Structure---",
     "entity",
+    "version",
+    "---Core Types---",
     "schema",
     "observation",
+    "input-set",
+    "---Roles---",
     "observer"
   ]
 }

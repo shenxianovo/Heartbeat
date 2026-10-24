@@ -1,0 +1,37 @@
+---
+title: "提交与 SDK"
+description: "程序实例的身份持久不变，Observer 的业务代码按业务规则形成事实，平台 SDK 按依赖顺序可靠提交"
+---
+
+## 背景 [#context]
+
+作为 Observer 的程序实例要在断网和重启时不丢数据，重试也不能变成多次修改。本 ADR 讲程序实例怎样把版本交给后端，Observer 的划分见 [ADR · Observer 与输入集](./observers-and-evidence.mdx)。
+
+## 决定 [#decision]
+
+- 程序实例的身份持久不变。
+- Observer 的业务代码按业务规则形成事实，平台 SDK 负责可靠提交。同一运行环境的程序实例共用该平台的 SDK。
+- 一段事实何时结束，由 Observer 的业务代码判断，再通知 SDK。
+- SDK 按依赖顺序提交版本，重试沿用原 VersionId。队列和合并的算法由各平台的 SDK 决定。
+
+## 理由 [#rationale]
+
+可靠提交放进 SDK，重试和恢复只实现一次。结束条件属于业务规则，所以由 Observer 的业务代码判断。
+
+SDK 负责本地保存、恢复发送和按依赖顺序发送。只有尚未提交的本地草稿可以合并或丢弃；已经提交、结果不确定或已被引用的版本按原样发送。
+
+放弃的方案：
+
+- **每个 Observer 自己实现提交。** 重试、恢复和确认的逻辑会在每个 Observer 中重复，而且各不相同。
+
+## 代价 [#costs]
+
+- 每个运行环境都需要一份 SDK。
+- 一个进程中的每个程序实例都要持久保存自己的身份。
+- Observer 的业务代码必须显式通知事实结束。
+- SDK 要记住每个版本的依赖和发送状态。
+
+## 规则位置 [#details]
+
+- [OBSERVER-4](../core/model/observer.mdx#observer-4)、[OBSERVER-5](../core/model/observer.mdx#observer-5)、[Core · 谁决定什么](../core/index.mdx#responsibility)
+- [Observers · Submission](../observers/submission/index.mdx)、[.NET SDK](../observers/submission/dotnet.mdx)

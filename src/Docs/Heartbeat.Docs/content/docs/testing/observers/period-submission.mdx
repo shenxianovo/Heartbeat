@@ -1,40 +1,40 @@
 ---
 title: "Period Submission"
-description: "连续采集保存时段并保留历史内容"
+description: "连续采集的时段经真实 API 保存，历史内容保持不变"
 ---
 
 export const caseId = 'foreground-period-submission';
 
-## 为什么验证
+## 为什么验证 [#why]
 
-采集器必须将本机应用、观测内容和时段通过真实 API 保存。重新采样不能覆盖历史名称，读取失败也不能把恢复后的读数接到旧时段。
+前台状态 Observer 必须把本机应用、观测内容和时段通过真实的 API 保存下来。重新采样时，历史上的应用名称保持原样；读取失败后，恢复的读数开始新的时段。
 
-## 前置条件
+## 前置条件 [#setup]
 
-使用独立 PostgreSQL、真实 API 宿主、SQLite 和临时应用登记文件。系统读数由测试提供。
+使用独立的 PostgreSQL、真实的 API、SQLite 和临时的应用登记文件。系统读数由测试提供。
 
-## 操作
+## 操作 [#steps]
 
-1. 在第 0 秒、第 1 秒读取名称为 App 的同一应用。
-2. 在第 2 秒读取新名称 Renamed。
-3. 在第 3 秒模拟读取失败。
-4. 在第 4 秒、第 5 秒恢复读取 Renamed。
-5. 停止采集，将最后一段放入 Outbox。
+1. 第 0 秒、第 1 秒读到同一个应用，名称为 App。
+2. 第 2 秒读到新名称 Renamed。
+3. 第 3 秒模拟读取失败。
+4. 第 4 秒、第 5 秒恢复，读到 Renamed。
+5. 停止采集，把最后一段放入 Outbox。
 6. 后台查询并提交缺少的实体，下一轮再查询并核对。
-7. 通过统一实体接口读取保存的观测和原内容。
+7. 通过统一的实体接口读取保存的观测和原来的观测内容。
 
-## 预期结果
+## 预期结果 [#expected]
 
-- 两种名称引用同一个本机应用。
-- 共保存三条观测，分别覆盖 0–2 秒、2 秒这个时间点、4–5 秒。
+- 两个名称引用同一个本机应用。
+- 共保存三份观测：0–2 秒、第 2 秒这个时间点、4–5 秒。
 - 读取失败造成的空白不计入时段。
-- 第一条观测的内容仍为 App。
-- 发送完成后记录仍在 Outbox；后续读回六个实体的类别、引用和属性均一致后，移除本地记录。
+- 第一份观测的内容仍是 App。
+- 发送完成后，条目仍在 Outbox 中；之后读回六个实体，类别、引用和属性全部一致，才移除这个条目。
 
-## 测试实现
+## 测试实现 [#implementation]
 
-`MacObserverSubmissionTests.CollectorSavesIntervalsAndResumesAfterReadFailureWithoutChangingHistory` 验证读数、时段、本地保存和真实后端的完整链路。
+`MacObserverSubmissionTests.CollectorSavesIntervalsAndResumesAfterReadFailureWithoutChangingHistory` 验证从读数、时段、本地保存到真实后端的完整链路。
 
-## 执行结果
+## 执行结果 [#results]
 
 <TestCaseResults caseId={caseId} />

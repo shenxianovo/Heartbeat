@@ -1,29 +1,29 @@
 {
   "groups": {
-    "contracts": "契约",
-    "observations": "观测与业务"
+    "contracts": "实体与版本",
+    "observations": "观测与业务类型"
   },
   "nodes": {
-    "IEntity": {
-      "label": "IEntity",
+    "Entity": {
+      "label": "Entity",
       "shape": "hexagon",
       "style": "capability",
       "group": "contracts",
       "path": "/core/model/entity"
     },
-    "IEntity_Id": {
-      "label": "Id",
+    "Version": {
+      "label": "Version",
       "shape": "rectangle",
-      "style": "member",
+      "style": "entity",
       "group": "contracts",
-      "path": "/core/model/entity#members"
+      "path": "/core/model/version"
     },
-    "IEntity_GetReferences": {
-      "label": "GetReferences()",
+    "Version_RecordedAt": {
+      "label": "recordedAt",
       "shape": "rectangle",
       "style": "member",
       "group": "contracts",
-      "path": "/core/model/entity#members"
+      "path": "/core/model/version#recorded-at"
     },
     "Observation": {
       "label": "Observation",
@@ -33,39 +33,32 @@
       "path": "/core/model/observation"
     },
     "Observation_StartAt": {
-      "label": "StartAt",
+      "label": "startAt",
       "shape": "rectangle",
       "style": "member",
       "group": "observations",
       "path": "/core/model/observation#fact-time"
     },
     "Observation_EndAt": {
-      "label": "EndAt",
+      "label": "endAt",
       "shape": "rectangle",
       "style": "member",
       "group": "observations",
       "path": "/core/model/observation#fact-time"
     },
     "Observation_TimeZone": {
-      "label": "TimeZone",
+      "label": "timeZone",
       "shape": "rectangle",
       "style": "member",
       "group": "observations",
-      "path": "/core/model/observation#obs-5"
+      "path": "/core/model/observation#observation-9"
     },
-    "Observation_RecordedAt": {
-      "label": "RecordedAt",
-      "shape": "rectangle",
-      "style": "member",
-      "group": "observations",
-      "path": "/core/model/observation#obs-6"
-    },
-    "Observer": {
-      "label": "Observer",
+    "InputSet": {
+      "label": "InputSet",
       "shape": "rectangle",
       "style": "entity",
       "group": "observations",
-      "path": "/core/model/observer"
+      "path": "/core/model/input-set"
     },
     "EntitySchema": {
       "label": "EntitySchema",
@@ -75,14 +68,77 @@
       "path": "/core/model/schema"
     },
     "BusinessEntity": {
-      "label": "业务实体（观测内容）",
+      "label": "业务实体",
       "shape": "rectangle",
       "style": "entity",
       "group": "observations",
-      "path": "/core/glossary#entities"
+      "path": "/core/glossary#types"
+    },
+    "Observer": {
+      "label": "Observer（角色）",
+      "shape": "parallelogram",
+      "style": "domain",
+      "group": "observations",
+      "path": "/core/model/observer"
+    },
+    "Content": {
+      "label": "观测内容（角色）",
+      "shape": "parallelogram",
+      "style": "domain",
+      "group": "observations",
+      "path": "/core/glossary#roles"
+    },
+    "Input": {
+      "label": "输入（角色）",
+      "shape": "parallelogram",
+      "style": "domain",
+      "group": "observations",
+      "path": "/core/rules/evidence"
     }
   },
   "edges": [
+    {
+      "from": "Version",
+      "to": "Entity",
+      "kind": "reference",
+      "label": "entityId 属于"
+    },
+    {
+      "from": "Version",
+      "to": "Version",
+      "kind": "reference",
+      "label": "previousVersionId 引用"
+    },
+    {
+      "from": "Version",
+      "to": "Version_RecordedAt",
+      "kind": "member",
+      "label": "属性"
+    },
+    {
+      "from": "Observation",
+      "to": "Entity",
+      "kind": "implementation",
+      "label": "是实体"
+    },
+    {
+      "from": "InputSet",
+      "to": "Entity",
+      "kind": "implementation",
+      "label": "是实体"
+    },
+    {
+      "from": "EntitySchema",
+      "to": "Entity",
+      "kind": "implementation",
+      "label": "是实体"
+    },
+    {
+      "from": "BusinessEntity",
+      "to": "Entity",
+      "kind": "implementation",
+      "label": "是实体"
+    },
     {
       "from": "Observation",
       "to": "Observation_StartAt",
@@ -97,69 +153,57 @@
     },
     {
       "from": "Observation",
-      "to": "Observation_RecordedAt",
-      "kind": "member",
-      "label": "属性"
-    },
-    {
-      "from": "Observation",
       "to": "Observation_TimeZone",
       "kind": "member",
       "label": "属性"
     },
     {
-      "from": "IEntity",
-      "to": "IEntity_Id",
-      "kind": "member",
-      "label": "属性"
-    },
-    {
-      "from": "IEntity",
-      "to": "IEntity_GetReferences",
-      "kind": "member",
-      "label": "方法"
-    },
-    {
       "from": "Observation",
       "to": "Observer",
       "kind": "reference",
-      "label": "observerId 引用"
+      "label": "observerVersionId 引用"
     },
     {
       "from": "Observation",
-      "to": "BusinessEntity",
+      "to": "Content",
       "kind": "reference",
-      "label": "contentId 引用"
+      "label": "contentVersionId 引用"
     },
     {
       "from": "Observation",
-      "to": "IEntity",
-      "kind": "implementation",
-      "label": "实现"
+      "to": "InputSet",
+      "kind": "reference",
+      "label": "inputSetVersionId 引用"
     },
     {
-      "from": "Observer",
-      "to": "IEntity",
-      "kind": "implementation",
-      "label": "实现"
-    },
-    {
-      "from": "EntitySchema",
-      "to": "IEntity",
-      "kind": "implementation",
-      "label": "实现"
-    },
-    {
-      "from": "BusinessEntity",
-      "to": "IEntity",
-      "kind": "implementation",
-      "label": "实现"
+      "from": "InputSet",
+      "to": "Input",
+      "kind": "reference",
+      "label": "members 引用"
     },
     {
       "from": "EntitySchema",
       "to": "BusinessEntity",
       "kind": "definition",
       "label": "定义类型"
+    },
+    {
+      "from": "Observer",
+      "to": "BusinessEntity",
+      "kind": "role",
+      "label": "由业务实体承担"
+    },
+    {
+      "from": "Content",
+      "to": "BusinessEntity",
+      "kind": "role",
+      "label": "由业务实体承担"
+    },
+    {
+      "from": "Input",
+      "to": "Version",
+      "kind": "role",
+      "label": "可以是任何版本"
     }
   ]
 }

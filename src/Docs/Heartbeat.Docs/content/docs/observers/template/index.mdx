@@ -1,43 +1,33 @@
 ---
 title: "Document Template"
-description: "可展开的分类、Observer 与业务实体文档示例"
+description: "来源、Observer 和实体三层页面的写法"
 ---
 
-本分组本身展示一套完整的文档层级：这一页是分类入口，下面是 [Example Observer](./example-observer/index.mdx)，再下面是 [Example Entity](./example-observer/example-entity.mdx)。复制这套目录后填写业务内容；模板中的编写提示不作为业务定义。
+一个来源的文档分三层：来源页、Observer 页和实体页。本分组本身就是一套可以复制的样板：这一页是来源页，下面是 [Example Observer](./example-observer/index.mdx)，再下面是 [Example Entity](./example-observer/example-entity.mdx)。复制整个目录，再把内容换成实际的业务即可。实际的例子见 [Desktop](../desktop/index.mdx)、[Input Events](../input-events/index.mdx) 和 [Input Event](../input-events/input-event.mdx)。
 
-## Observers
+## 三层页面 [#layers]
 
-| Observer | 记录的事实 |
+| 页面 | 写什么 |
 | --- | --- |
-| [Example Observer](./example-observer/index.mdx) | 展示 Observer 主页面的章节顺序和内容分工 |
+| 来源页 | 这个来源的范围，以及其中的 Observer 列表。来源本身不是 Observer，没有程序实例的身份 |
+| Observer 页 | 程序实例、采集、事实时间和提交策略 |
+| 实体页 | 一种业务类型的粒度、身份、引用、事实时间、EntitySchema 和示例 |
 
-分类页只说明本分类的范围与 Observer 入口。分类不是 Observer，不拥有采集器实例身份。实际分类示例见 [Desktop](../desktop/index.mdx)。
+一种业务类型和它的 EntitySchema 写在同一个实体页。同一类页面使用相同的章节顺序，业务特有的内容作为对应章节下的小节。
 
-## 接入与提交
-
-各 Observer 按[接入指南](../integration.mdx)确定业务定义，按[提交机制](../submission/index.mdx)选择平台 SDK。分类页链接共用规则，具体采集与提交策略放在 Observer 主页面。
-
-## 目录结构
-
-```text
-Document Template                   分类页
-  Example Observer                  Observer 页
-    Example Entity                  业务实体与 Schema 页
-```
-
-对应文件结构：
+## 目录结构 [#structure]
 
 ```text
 template/
-  meta.json
-  index.mdx
+  meta.json                 来源页的导航
+  index.mdx                 来源页
   example-observer/
-    meta.json
-    index.mdx
-    example-entity.mdx
+    meta.json               Observer 页的导航
+    index.mdx               Observer 页
+    example-entity.mdx      实体页
 ```
 
-分类目录的 `meta.json`：
+来源目录的 `meta.json`：
 
 ```json
 {
@@ -49,20 +39,11 @@ template/
 }
 ```
 
-已有 Observer 目录也可以由分类通过相对引用汇总，例如 Desktop 使用 `../application-activity`。导航层级不要求移动已有文件。
+来源页也可以用相对路径收录已有的 Observer 目录，例如 Desktop 收录 `../application-activity`，文件不用移动。
 
-## 写作约定
+## 写作要点 [#writing]
 
-- 分类页提供入口；Observer 页集中写实例身份、采集和提交；业务实体页集中写记录粒度、身份、引用、时间、Schema 和示例。
-- 实体与定义它的 Schema 放在同一页，不另外增加一层 Schema 目录。
-- 所有 Observer 主页面采用相同章节顺序，所有实体子页采用相同章节顺序；业务特有内容放在相应章节下作为子标题。
-- 页首图从共享的 `observers/relations.json` 取对应节点，不在每页复制关系数据。
-- 标题使用英文名称，正文使用中文；字段名和资源名保留原文。
-- 正文只写已确认的规则，未确认项集中列入“待定”。未知标识或约束写“待定”，不为凑齐模板自行补定。
-- 共用规则维护一处，其他页面链接引用。Schema 尚未定义的规划实体先在 Observer 的“待定”中列出；共享实体只维护一页。
-
-## 相关文档
-
-- [Desktop](../desktop/index.mdx)：实际分类入口。
-- [Input Events](../input-events/index.mdx) 与 [Input Event](../input-events/input-event.mdx)：实际 Observer 和实体定义。
-- [Integration Guide](../integration.mdx)：接入新业务时需要确定的事项。
+- 文字和用词遵循 [Core · Conventions](../../core/conventions.mdx#writing)。
+- 正文只写已确认的业务规则。尚未确认的标识、约束和策略集中列在“待定”中。
+- 页首的结构图从共享的 `observers/relations.json` 取节点，关系数据只维护一份。
+- 多个页面共用的规则写在一处，其他页面链接过去。

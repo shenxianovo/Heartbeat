@@ -13,42 +13,42 @@
   "nodes": {
     "FOREGROUND_STATE": {
       "label": "前台状态 Observer",
-      "interfaces": ["IEntity"],
+      "interfaces": ["Entity"],
       "fields": ["NAME"]
     },
     "INPUT_EVENTS": {
       "label": "输入事件 Observer",
-      "interfaces": ["IEntity"],
+      "interfaces": ["Entity"],
       "fields": ["NAME"]
     },
     "DEVICE_STATE": {
       "label": "设备状态 Observer",
-      "interfaces": ["IEntity"],
+      "interfaces": ["Entity"],
       "fields": ["NAME"]
     },
     "LOCAL_APPLICATION": {
       "label": "LocalApplication<br/>本机应用",
-      "interfaces": ["IEntity"],
+      "interfaces": ["Entity"],
       "fields": ["IDENTIFIERS"]
     },
     "APPLICATION_CONTENT": {
       "label": "前台应用时段<br/>观测内容",
-      "interfaces": ["IEntity"],
+      "interfaces": ["Entity"],
       "fields": ["LOCAL_APPLICATION_ID", "OBSERVED_NAME"]
     },
     "TITLE_CONTENT": {
       "label": "前台窗口标题时段<br/>观测内容",
-      "interfaces": ["IEntity"],
+      "interfaces": ["Entity"],
       "fields": ["FOREGROUND_OBSERVATION_ID", "TITLE"]
     },
     "INPUT_CONTENT": {
       "label": "键鼠输入事件<br/>观测内容",
-      "interfaces": ["IEntity"],
+      "interfaces": ["Entity"],
       "fields": ["KIND", "KEY"]
     },
     "DEVICE_CONTENT": {
       "label": "设备休眠与清醒<br/>观测内容",
-      "interfaces": ["IEntity"],
+      "interfaces": ["Entity"],
       "fields": ["STATE"]
     }
   }

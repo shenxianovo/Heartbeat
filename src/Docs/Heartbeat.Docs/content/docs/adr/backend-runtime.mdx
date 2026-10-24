@@ -11,16 +11,13 @@ description: "四个后端项目组成一个进程，Aspire 编排本地环境�
 
 ### 项目分工 [#components]
 
-| 项目 | 职责 |
-| --- | --- |
-| `Heartbeat.Core` | 实体、契约和模型规则 |
-| `Heartbeat.Application` | 实体操作和应用规则 |
-| `Heartbeat.Infrastructure` | PostgreSQL 映射、事务和迁移 |
-| `Heartbeat.Api` | HTTP 请求校验、响应映射和启动组装 |
-
-- 四个项目组成一个后端进程，不增加只转发调用的层。
+- `Heartbeat.Core` 负责实体、契约和模型规则。
+- `Heartbeat.Application` 负责实体操作和应用规则。
+- `Heartbeat.Infrastructure` 负责 PostgreSQL 映射、事务和迁移。
+- `Heartbeat.Api` 负责 HTTP 请求校验、响应映射和启动组装。
+- 四个项目组成一个后端进程。
 - Core 和 Application 不依赖 HTTP 或数据库。
-- 迁移由独立的步骤执行，API 启动时不应用迁移。
+- 迁移由独立的步骤执行。
 
 ### 本地环境 [#local-environment]
 
@@ -33,15 +30,15 @@ description: "四个后端项目组成一个进程，Aspire 编排本地环境�
 
 ### 遥测 [#telemetry]
 
-- API 默认只输出控制台日志，只有配置了 OTLP 地址时才导出遥测。遥测不采集请求体和数据库参数值。
+- API 默认输出控制台日志，配置 OTLP 地址后导出遥测。遥测不采集请求体和数据库参数值。
 
 ## 理由 [#rationale]
 
-Core 和 Application 不依赖 HTTP 和数据库，模型规则就可以不启动数据库而测试。四个项目放在一个进程中，是因为目前没有需要独立部署的部分。
+Core 和 Application 不依赖 HTTP 和数据库，模型规则不启动数据库就能测试。目前没有需要独立部署的部分，所以四个项目放在一个进程中。
 
-迁移不在 API 启动时执行，多个 API 实例启动或 API 重启时不会重复建表。
+迁移独立执行，多个 API 实例启动或 API 重启时就不会重复建表。
 
-本机运行应用进程可以直接调试和热更新，容器只用于不需要调试的依赖。通过 NGINX 同源访问 API，浏览器端不需要配置跨域。遥测默认关闭，API 可以脱离 Aspire 独立运行。
+应用进程在本机运行，可以直接调试和热更新。通过 NGINX 同源访问 API，浏览器端无需配置跨域。遥测默认关闭，API 可以脱离 Aspire 独立运行。
 
 放弃的方案：
 
@@ -50,7 +47,7 @@ Core 和 Application 不依赖 HTTP 和数据库，模型规则就可以不启�
 
 ## 代价 [#costs]
 
-- 本地验证不证明部署环境的行为。
+- 本地验证只覆盖本地环境。
 - Aspire 不用于部署，部署需要另外的配置。
 
 ## 规则位置 [#details]

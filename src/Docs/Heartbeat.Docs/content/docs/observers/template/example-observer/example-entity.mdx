@@ -1,68 +1,51 @@
 ---
 title: "Example Entity"
-description: "业务实体与 EntitySchema 同页组织的填写示例"
+description: "实体页的章节和每一章写什么"
 ---
+
+开头用一段话说明这种业务实体表达什么、是否作为观测内容，以及由哪个 Observer 形成。本页的结构图借用 [Input Event](../../input-events/input-event.mdx) 的节点，实际写作时换成自己的节点。
 
 <ObserverStructure node="INPUT_CONTENT" />
 
-这一页展示业务实体定义的写法。页首复用 Input Event 的共享图作展示，实际业务规则以 [Input Event](../../input-events/input-event.mdx) 为准。编写时先用一段话说明一条实体表达什么、是否承担观测内容角色、由哪个 Observer 形成。
+## 粒度 [#granularity]
 
-## 记录粒度
+写什么构成一个实体，何时延续同一个实体，何时新建。用一个具体例子说明边界。更新和结束由业务代码判断。
 
-说明什么构成一条记录，何时延续同一条，何时新建。用一个具体例子解释业务边界；更新或结束由业务决定，不交给 SDK 推断。
+## 身份 [#identity]
 
-## 身份
+写怎样判断是同一个实体：依据哪些来源标识，标识在什么范围内有效，重启或重放时怎样处理。业务实体的身份与程序实例的身份分开写。
 
-说明同一实体的判断依据、来源标识的作用范围、重启或重放如何处理。不要将 Observer 身份与业务实体身份混为一谈。
+## 引用 [#references]
 
-## 引用
-
-| 字段 | 目标与含义 |
+| 字段 | 目标 |
 | --- | --- |
-| 待填写 | 填写引用目标及其业务含义，链接到对应定义 |
+| 字段名 | 引用的目标及其业务含义 |
 
-没有引用时直接说明没有引用，提交的 `references` 为 `{}`；尚未确定的引用列入“待定”。
+没有引用时写“没有引用”。
 
-## 事实时间
+## 事实时间 [#fact-time]
 
-说明对应 Observation 是时间点还是时段，时间取自哪里，已知和未知边界如何表达，补全时如何处理。若它只是独立业务对象，说明时间由哪些观测表达即可。
+写对应的 Observation 是时间点还是时段、边界取自哪里、未知的边界怎样表示、补全时怎样更新。不作为观测内容的实体，写它的时间由哪些观测表达。
 
-## Schema
+## EntitySchema [#schema]
 
 | 项目 | 值 |
 | --- | --- |
-| SchemaId | 填写该定义的稳定标识，未确定时写“待定” |
-| 显示名称 | 填写显示名称 |
-| 说明 | 填写业务事实、记录粒度与事实时间的取值规则；正式提交时必填，不允许 `null` 或空字符串 |
-| 资源名 | 填写保存入口的资源名，未确定时写“待定” |
+| SchemaId | 稳定的 UUIDv7，未确定时写“待定” |
+| 显示名称 | `displayName` |
+| 说明 | `description`：业务事实、粒度和事实时间的取值，必须填写 |
+| 资源名 | `resourceName`，未确定时写“待定” |
 
 | 字段 | 类型 | 必填 | 可空 | 含义 |
 | --- | --- | --- | --- | --- |
-| 待填写 | 待填写 | 待定 | 待定 | 填写含义、来源与省略规则 |
+| 字段名 | `string` 等 | 是或否 | 是或否 | 含义、来源和省略的条件 |
 
-引用与普通属性放在同一字段表中，以 `reference` 和其他类型区分。对象成员和数组元素逐项列出。具体声明格式见 [EntitySchema · 字段约束](../../../core/model/schema.mdx#constraints)。
+引用和普通字段写在同一张表中，用类型 `reference` 区分。对象成员和数组元素逐项列出。声明格式见 [EntitySchema · 字段约束](../../../core/model/schema.mdx#constraints)。
 
-## 示例
+## 示例 [#example]
 
-提供符合本页 Schema 的业务实体示例，引用放在 `references`，普通属性放在 `properties`。以下用已有 Input Event 的最小内容展示共用格式；它不是为本模板登记的新 Schema：
+给出一个符合本页 EntitySchema 的业务实体，格式见 [Input Event · 示例](../../input-events/input-event.mdx#example)。
 
-```json
-{
-  "references": {},
-  "properties": {
-    "kind": "keyDown"
-  }
-}
-```
+## 待定 [#open]
 
-具体业务的 Schema 元信息与提交示例见 [Input Event](../../input-events/input-event.mdx#schema)。
-
-## 相关文档
-
-- [Example Observer](./index.mdx)：所属 Observer 页面结构。
-- [Input Event](../../input-events/input-event.mdx)：实际实体与 Schema 示例。
-- [API · 统一提交结构](../../../api/index.mdx#统一提交结构)：实体保存请求的共用格式。
-
-## 待定
-
-- 逐项列出尚未确认的字段、约束、标识或业务规则，不用示例值代替正式决定。
+- 逐项列出尚未确认的字段、约束、标识或业务规则。

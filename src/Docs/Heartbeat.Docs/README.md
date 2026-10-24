@@ -15,7 +15,7 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-打开 <http://localhost:3000/core>，确认 Core 概览页可以打开。通过 Aspire 启动时，NGINX 已占用 3000 端口，不要再单独运行 `pnpm dev`。
+打开 <http://localhost:3000/>，确认跳转到入口页 Introduction。通过 Aspire 启动时，NGINX 已占用 3000 端口，不要再单独运行 `pnpm dev`。
 
 | 命令 | 作用 |
 | --- | --- |
@@ -32,7 +32,8 @@ pnpm dev
 | --- | --- |
 | `link` | 相对链接和站内绝对链接指向的文件存在。`/api/…` 是由契约生成的页面，不检查 |
 | `anchor` | 锚点对应显式的 `[#id]`，或者标题按 github-slugger 生成的 slug |
-| `rule-heading` | Core 规则标题是 `### 前缀-n 摘要 [#前缀-n]`，前缀属于本页，页内编号唯一且递增。前缀与页面的对应关系取自 Core 首页的前缀表 |
+| `rule-heading` | Core 规则标题是 `### 前缀-n 摘要 [#前缀-n]`，前缀属于本页，页内编号唯一且递增。前缀与页面的对应关系取自 Core Conventions 页的前缀表 |
+| `rule-actor` | Core 规则标题下的第一段是 `定义`，或者 `执行方：` 加上 `后端`、`写入方`、`读取方` 中的一个或多个，用 `、` 分隔 |
 | `rule-reference` | 出现的规则编号都存在 |
 | `rule-link` | `[前缀-n](…)` 链接到这条规则所在的页面和锚点 |
 | `deprecated-term` | 不出现 [Glossary · 不再使用的术语](content/docs/core/glossary.mdx) 中的术语 |
@@ -47,6 +48,7 @@ pnpm dev
 
 | 分区 | 源文件 | 地址 |
 | --- | --- | --- |
+| Start | [content/docs/start](content/docs/start) | `/start` |
 | Core | [content/docs/core](content/docs/core) | `/core` |
 | Observers | [content/docs/observers](content/docs/observers) | `/observers` |
 | API | [content/docs/api](content/docs/api) | `/api` |
@@ -56,10 +58,10 @@ pnpm dev
 
 - 每个分区的 `meta.json` 设置 `root: true` 和图标，Fumadocs 据此生成分区切换器。
 - 侧边栏的顺序由 `meta.json` 的 `pages` 决定。`---标题---` 添加分组标题，`...目录` 展开一个目录。
-- 访问 `/` 时跳转到 `/core`。
+- 访问 `/` 时跳转到 `/start`。
 - 文档站按根路径运行，不配置 `basePath`。
 
-写作约定见仓库根目录的 [AGENTS.md](../../../AGENTS.md) 和 [Core Overview · 规则的写法](content/docs/core/index.mdx)。
+写作约定见仓库根目录的 [AGENTS.md](../../../AGENTS.md) 和 [Core · Conventions](content/docs/core/conventions.mdx)。
 
 ## OpenAPI
 
@@ -92,7 +94,7 @@ pnpm dev
 
 `relations.json` 的约定：
 
-- 节点 ID 使用完整的模型名，例如 `IEntity`、`Observation`、`BusinessEntity`。成员节点使用“类型_成员名”，例如 `Observation_StartAt`。
+- 节点 ID 使用完整的模型名，例如 `Entity`、`Observation`、`BusinessEntity`。成员节点使用“类型_成员名”，例如 `Observation_StartAt`。
 - 每个节点的 `path` 指向模型页或规则锚点。修改 Core 页面路径或规则编号时，同步修改 `path`。
 - Observers 的图复用 Core 节点的名称和链接。字段只在 `observers/relations.json` 中维护一次。草案字段在标签中标明“草案”。
 - 概览图使用 Dagre 布局。组件中有一条不可见的连线，只用来对齐两个分组，不表示模型关系。
