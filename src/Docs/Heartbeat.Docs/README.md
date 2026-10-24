@@ -2,6 +2,8 @@
 
 Heartbeat.Docs 是 Heartbeat 的文档站，使用 Fumadocs 和 Next.js。项目的长期文档都写在 [content/docs](content/docs)。
 
+文档站程序使用 [AGPL-3.0-only](../../../LICENSE)，文档内容使用 [CC BY-NC-SA 4.0](../../../LICENSE-DOCS)。范围见[仓库许可](../../../README.md#许可)。
+
 ## 运行
 
 前置条件：Node.js 24 LTS 和 pnpm 12.3.4。

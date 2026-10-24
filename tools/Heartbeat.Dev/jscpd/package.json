@@ -1,6 +1,7 @@
 {
   "name": "heartbeat-quality-tools",
   "private": true,
+  "license": "AGPL-3.0-only",
   "devDependencies": {
     "@typescript-eslint/parser": "8.71.1",
     "eslint": "10.12.0",

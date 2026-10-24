@@ -72,3 +72,23 @@ dotnet run --project tools/Heartbeat.Dev -- verify changed --base HEAD --quality
 ## 文档
 
 从 [Core](src/Docs/Heartbeat.Docs/content/docs/core/index.mdx) 开始读。Agent 的工作规则见 [AGENTS.md](AGENTS.md)。
+
+## 许可
+
+Copyright © 2026 shenxianovo
+
+仓库按内容使用两种许可：
+
+| 内容 | 许可 |
+| --- | --- |
+| 源码、测试、脚本、构建与运行配置、文档站程序 | [AGPL-3.0-only](LICENSE) |
+| OpenAPI 契约，以及由它生成的接口参考 | [AGPL-3.0-only](LICENSE) |
+| 文档中的代码、命令和配置示例 | [AGPL-3.0-only](LICENSE) |
+| 文档正文和原创图解，包括各级 README、`AGENTS.md` 和文档站内容 | [CC BY-NC-SA 4.0](LICENSE-DOCS) |
+| 图解的源文件和数据，例如 Mermaid 图和 `relations.json` | [CC BY-NC-SA 4.0](LICENSE-DOCS) |
+
+表中未列出的文件使用 AGPL-3.0-only。第三方内容保留各自的许可。文档站页面和 Markdown 导出沿用原内容的许可。
+
+代码可以商用。分发软件，或通过网络向用户提供修改版时，须按 AGPL 提供对应源码。文档限非商业使用，这一限制不影响代码的商用，也不限制独立实现文档描述的设计。文档的商业使用请通过 [GitHub](https://github.com/shenxianovo) 联系作者。
+
+权利和义务以许可证全文为准。
