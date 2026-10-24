@@ -7,10 +7,8 @@
     "index",
     "database",
     "---Cases---",
-    "entity-schemas/table-creation-failure",
     "observers/local-application-identity",
     "observers/application-period-boundaries",
-    "observers/period-submission",
     "observers/outbox-recovery",
     "---Reports---",
     "reports/integration"

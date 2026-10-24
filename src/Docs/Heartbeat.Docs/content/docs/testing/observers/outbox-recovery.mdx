@@ -1,17 +1,17 @@
 ---
 title: "Outbox Recovery"
-description: "已结束的时段在确认保存前一直留在本地"
+description: "已结束的时段可靠地进入本地 Outbox"
 ---
 
 export const caseId = 'foreground-outbox-recovery';
 
 ## 为什么验证 [#why]
 
-网络中断或程序退出时，已结束的时段必须留在本地，直到确认已经保存。进行中的时段还会变化，后端已有同一个 ID 并不说明本地的更新已经保存。
+程序退出、崩溃或本地写入失败时，已结束的时段必须完整地留在 Outbox 中，进行中的时段也要能在下次启动时恢复。
 
 ## 前置条件 [#setup]
 
-使用独立的 SQLite 文件。HTTP 测试服务可以模拟断网，以及“已保存但响应丢失”。
+使用独立的 SQLite 文件和模拟的读数。
 
 ## 操作与预期结果 [#steps]
 
@@ -22,13 +22,10 @@ export const caseId = 'foreground-outbox-recovery';
 | 再执行一次恢复 | 不重复入队 |
 | 另一个 Observer 打开同一个状态文件 | 报错，原数据保留 |
 | 切换应用时，在写入新时段前模拟本地失败 | 已结束时段的入队一起回滚，原来的当前时段仍可恢复 |
-| 后端不可达 | Outbox 保留条目和错误原因，本地仍可保存新的读数 |
-| 后端已保存实体，但响应丢失 | 之后读回发现内容一致，这个实体不再提交 |
-| 一个时段的六个实体全部读回一致 | 删除这个时段的 Outbox 条目 |
 
 ## 测试实现 [#implementation]
 
-`ForegroundOutboxTests` 验证本地恢复、事务回滚和不确定的发送结果；`MacObserverReadBackTests` 验证同一 ID 的内容或类别不一致时保留 Outbox 条目。
+`ForegroundOutboxTests` 验证本地恢复和事务回滚。
 
 ## 执行结果 [#results]
 

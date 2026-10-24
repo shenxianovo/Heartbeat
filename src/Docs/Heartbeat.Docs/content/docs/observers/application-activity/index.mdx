@@ -48,32 +48,31 @@ macOS 即将休眠时，当前时段结束；唤醒后重新读取。读取失�
 
 ## 提交 [#submission]
 
-前台状态 Observer 采用[结束后提交](../submission/index.mdx#strategies)：进行中的时段只在本地更新，结束后才上传，所以后端只看到已结束的时段。业务事件对应的本地操作如下：
+前台状态 Observer 采用[结束后提交](../submission/index.mdx#strategies)：进行中的时段只在本地更新，结束后才进入 Outbox 等待上传，所以后端只会看到已结束的时段。业务事件对应的本地操作如下：
 
 | 业务事件 | 本地操作 |
 | --- | --- |
-| 首次确认应用在前台 | 保存本机应用、时段内容和 Observation |
-| 再次确认同一段活动 | 沿用内容和 Observation 的身份，延长 Observation 的结束边界 |
-| 切换应用，或应用名称、时区变化 | 结束当前时段，提交最后的边界；为新状态形成新的内容和 Observation |
-| 读取失败、停止采集或其他中断 | 当前时段结束于最后一次确认；恢复后新建时段 |
+| 首次确认应用在前台 | 识别本机应用，开始新的时段 |
+| 再次确认同一段活动 | 沿用时段的身份，延长结束边界 |
+| 切换应用，或应用名称、时区变化 | 结束当前时段，放入 Outbox；为新状态开始新的时段 |
+| 读取失败、停止采集或其他中断 | 当前时段结束于最后一次确认，放入 Outbox；恢复后开始新的时段 |
 
 程序异常退出后，下次启动时，遗留的时段结束于本地保存的最后一次确认。程序实例的身份不变，停机期间不计入时段，新的读数开始新的时段。
 
-### 本地保存与发送 [#local-store]
+### 本地保存 [#local-store]
 
-macOS 实现用 SQLite 保存进行中的时段和待发送的内容，SQLite 是这两类数据在本机的权威来源。
+macOS 实现用 SQLite 保存进行中的时段和 Outbox，SQLite 是这两类数据在本机的权威来源。
 
-- 结束当前时段、把它写入 Outbox、保存新的时段，三步在同一个本地事务中完成。
-- Outbox 保存一个时段的完整提交内容。发送期间，ID、字段和时间都保持原样。
-- 发送时，先逐个读取时段涉及的实体：实体不存在就提交；存在且内容一致，视为已保存；存在但内容不一致，保留 Outbox 条目并报告错误。一个时段的全部实体都读回一致后，才删除它的 Outbox 条目。
+- 结束当前时段、把它放入 Outbox、保存新的时段，三步在同一个本地事务中完成。
+- Outbox 保存时段的完整内容，ID 和时间在放入后保持不变。
 
-已结束的时段不再变化，所以读回一致就能证明保存成功，也能处理“后端已保存、响应却丢失”的情况。断网和 HTTP 错误只影响发送，采集照常进行。
+Outbox 中的时段目前只保存在本地。后端的实体接口正按版本模型重新设计，上传和确认的方式随新的提交协议确定。
 
 ## 实现 [#implementation]
 
 | 平台 | 应用时段 | 窗口标题 |
 | --- | --- | --- |
-| macOS | 已实现：本机应用身份、连续时段、提交与读回 | 未实现 |
+| macOS | 已实现：本机应用身份、连续时段、本地 Outbox；上传尚未实现 | 未实现 |
 | Windows | 未实现 | 未实现 |
 | Android | 未实现 | 未实现 |
 
@@ -81,9 +80,9 @@ macOS 程序在 `src/Observers/Heartbeat.Observer.ForegroundState/`，通过 App
 
 用到的 macOS 接口：[应用激活通知](https://developer.apple.com/documentation/appkit/nsworkspace/didactivateapplicationnotification)、[焦点窗口变化通知](https://developer.apple.com/documentation/applicationservices/kaxfocusedwindowchangednotification)、[标题变化通知](https://developer.apple.com/documentation/applicationservices/kaxtitlechangednotification)。
 
-测试 Case：[本机应用身份](../../testing/observers/local-application-identity.mdx)、[时段边界](../../testing/observers/application-period-boundaries.mdx)、[时段保存](../../testing/observers/period-submission.mdx)、[Outbox 恢复](../../testing/observers/outbox-recovery.mdx)。
+测试 Case：[本机应用身份](../../testing/observers/local-application-identity.mdx)、[时段边界](../../testing/observers/application-period-boundaries.mdx)、[Outbox 恢复](../../testing/observers/outbox-recovery.mdx)。
 
 ## 待定 [#open]
 
 - Android 上来源身份、重复查询与 Activity 生命周期的对应关系。
-- 本地保存与发送还没有改用 [.NET SDK](../submission/dotnet.mdx)。目前的实现用读回确认保存；SDK 的约定是收到 `201` 或 `204` 即确认。
+- 上传与确认的方式，随新的提交协议确定；届时决定是否改用 [.NET SDK](../submission/dotnet.mdx)。

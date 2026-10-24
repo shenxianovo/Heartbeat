@@ -19,7 +19,7 @@ EntitySchema 定义一种业务类型，例如“本机应用”或“前台时�
 
 | 字段 | 类型 | 含义 |
 | --- | --- | --- |
-| `displayName` | 非空字符串 | 类型名称 |
+| `displayName` | 非空字符串 | 类型名称，见 [SCHEMA-4](#schema-4) |
 | `description` | 非空字符串 | 业务说明，见 [SCHEMA-4](#schema-4) |
 | `resourceName` | 字符串 | 类型的资源名，见 [SCHEMA-5](#schema-5) |
 | `fields` | 字段名到字段定义的映射 | 业务实体的字段，引用也是字段 |
@@ -114,11 +114,11 @@ EntitySchema 定义一种业务类型，例如“本机应用”或“前台时�
 
 后端只按已声明的 EntitySchema 校验业务实体。业务版本引用的 Schema 版本必须已保存。
 
-### SCHEMA-4 description [#schema-4]
+### SCHEMA-4 名称与说明 [#schema-4]
 
-执行方：写入方
+执行方：写入方、后端
 
-`description` 必须说明这种类型记下的业务事实、粒度和事实时间的取值。人和 Agent 都靠它理解数据。
+`displayName` 和 `description` 必须是非空字符串，后端检查这一点。`description` 还必须说明这种类型记下的业务事实、粒度和事实时间的取值，由写入方负责，人和 Agent 都靠它理解数据。
 
 ## 资源名与字段名 [#names]
 
@@ -126,7 +126,7 @@ EntitySchema 定义一种业务类型，例如“本机应用”或“前台时�
 
 执行方：后端
 
-`resourceName` 属于业务类型：同一个 EntitySchema 的各版本使用相同的 `resourceName`，不同的业务类型不得使用相同的 `resourceName`。它用于发现和访问一种类型，用法见 [API](../../api/index.mdx) 和 [Storage](../../storage/index.mdx)。
+`resourceName` 属于业务类型：同一个 EntitySchema 的各版本使用相同的 `resourceName`，不同的业务类型不得使用相同的 `resourceName`。EntitySchema 删除后，它的 `resourceName` 可以由新的业务类型使用。它用于发现和访问一种类型，用法见 [API](../../api/index.mdx) 和 [Storage](../../storage/index.mdx)。
 
 ### SCHEMA-6 resourceName 格式 [#schema-6]
 

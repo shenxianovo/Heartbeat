@@ -45,11 +45,11 @@ VS Code 从 10:00 起在前台，前台状态 Observer 在 10:05 最后一次确
 
 ## 引用 [#references]
 
-### OBSERVATION-1 Observer 与内容 [#observation-1]
+### OBSERVATION-1 引用的目标 [#observation-1]
 
 执行方：后端
 
-每份 Observation 必须引用一个 Observer 和一个观测内容，两者都是业务实体的版本。
+每份 Observation 必须引用一个 Observer 和一个观测内容，两者都是业务实体的版本。`inputSetVersionId` 不为 `null` 时，必须指向一个 InputSet 的版本。这些目标都要已保存且未被删除，见 [ENTITY-6](./entity.mdx#entity-6)。
 
 ### OBSERVATION-2 内容的类型 [#observation-2]
 
