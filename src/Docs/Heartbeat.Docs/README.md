@@ -22,10 +22,7 @@ pnpm dev
 | `pnpm docs:check` | 检查项目文档的一致性，见[文档检查](#文档检查) |
 | `pnpm types:check` | 生成路由类型并做类型检查 |
 | `pnpm build` | 生产构建 |
-| `pnpm start` | 运行生产构建，用 `PORT` 和 `HOSTNAME` 指定监听地址 |
 | `pnpm test` | 运行 `tests/` 中的单元测试：测试 Case 与报告的关联、文档检查的解析逻辑 |
-
-`pnpm start` 先把 `public` 和 `.next/static` 复制到 standalone 目录，再启动 Next.js 服务器。
 
 ## 文档检查
 
