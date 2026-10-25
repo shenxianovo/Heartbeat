@@ -49,3 +49,4 @@ ADR 用英文 slug 命名，例如 `entity-model.mdx`，没有编号。引用时
 | Backend | [实体 API](./entity-api.mdx) | 接口按身份寻址，所有类型共用一组路由，一次提交是一组有序的版本，内容按 JSON 的值比较，错误带规则编号 |
 | Backend | [实体存储](./entity-storage.mdx) | 所有版本以 jsonb 保存在一张表中，查询走以类型开头的索引，删除留下墓碑，所有操作串行执行 |
 | Verification | [开发验证与测试证据](./verification.mdx) | Heartbeat.Dev 组织验证并保存证据，原生测试报告是测试结果的权威来源 |
+| Verification | [开发环境的启动与隔离](./development-environment.mdx) | Heartbeat.Dev 是启动环境的统一入口，每个检出目录运行一套环境，数据卷可选，服务按需启动 |

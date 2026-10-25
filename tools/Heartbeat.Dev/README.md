@@ -1,12 +1,12 @@
 # Heartbeat.Dev
 
-Heartbeat.Dev 是人和 Agent 共用的验证工具，负责构建、测试、质量扫描和验证证据。为什么由它组织验证，见 [ADR · 开发验证与测试证据](../../src/Docs/Heartbeat.Docs/content/docs/adr/verification.mdx)。
+Heartbeat.Dev 是人和 Agent 共用的开发工具，负责启动本地环境、构建、测试、质量扫描、冒烟场景和验证证据。为什么由它组织验证，见 [ADR · 开发验证与测试证据](../../src/Docs/Heartbeat.Docs/content/docs/adr/verification.mdx)；为什么由它启动环境，见 [ADR · 开发环境的启动与隔离](../../src/Docs/Heartbeat.Docs/content/docs/adr/development-environment.mdx)。
 
-本地环境的启动和停止由 Aspire 负责，见 [AppHost README](../Heartbeat.AppHost/README.md)。Heartbeat.Dev 不提供环境命令。
+环境中的资源、依赖关系和端口由 AppHost 定义，见 [AppHost README](../Heartbeat.AppHost/README.md)。
 
 ## 准备
 
-需要 `global.json` 指定的 .NET SDK。文档站、前端检查和质量扫描还需要 Node.js、npm 和 pnpm，集成测试需要 Docker。
+需要 `global.json` 指定的 .NET SDK。启动环境需要 Docker 和 Aspire CLI，安装方式见[仓库 README · 启动本地环境](../../README.md#启动本地环境)。文档站、前端检查和质量扫描还需要 Node.js、npm 和 pnpm，集成测试需要 Docker。
 
 首次使用时，在仓库根目录安装文档站、前端和扫描工具的依赖：
 
@@ -16,14 +16,111 @@ npm --prefix src/Frontend/Heartbeat.Web ci
 npm --prefix tools/Heartbeat.Dev/jscpd ci --ignore-scripts
 ```
 
-所有命令都在仓库根目录运行，格式是 `dotnet run --project tools/Heartbeat.Dev -- <命令>`。
+## 安装
+
+Heartbeat.Dev 是 .NET 全局工具，命令名是 `hb`。在仓库根目录运行：
+
+```sh
+dotnet run --project tools/Heartbeat.Dev -- install
+```
+
+这条命令打包当前检出目录中的 Heartbeat.Dev，然后安装或更新 `hb`。每次打包都生成新的版本号，所以更新后运行的总是刚打包的版本。Heartbeat.Dev 改动后，再运行一次即可。
+
+`hb` 在仓库中的任何目录都可以运行，它通过 Git 找到当前检出目录的根目录。`hb <命令>` 与 `dotnet run --project tools/Heartbeat.Dev -- <命令>` 等价；某个分支修改了 Heartbeat.Dev 时，用后一种形式运行这个分支的版本。
+
+## 环境
+
+```sh
+hb env up                  # 启动全部服务
+hb env up api              # 只启动 API 和它的依赖
+hb env up api --temp       # 使用临时卷
+hb env up --reset          # 重建默认卷
+hb env status --json
+hb env logs api --follow
+hb env otel traces api
+hb env restart api
+hb env down
+```
+
+| 命令 | 作用 |
+| --- | --- |
+| `env up [服务...] [--temp \| --reset]` | 在后台启动环境，等所选服务就绪后返回，并输出状态 |
+| `env down` | 停止环境。使用临时卷时，同时删除临时卷 |
+| `env status [--json]` | 显示已启动的服务及其状态、入口地址、看板地址、数据库连接和数据卷 |
+| `env logs <服务> [--follow]` | 读取服务的控制台日志 |
+| `env otel <logs\|spans\|traces> [服务]` | 读取环境中的遥测 |
+| `env restart <服务>` | 重启一个服务 |
+| `env volumes` | 列出 Heartbeat 的数据卷，以及每个卷所属的检出目录 |
+| `env volumes prune [--apply]` | 预览或删除所属检出目录已不存在的卷 |
+
+命令作用于当前检出目录的环境。`env logs`、`env otel` 和 `env restart` 的服务名可以是任何资源，包括 `db`、`migrate` 和 `nginx`。
+
+### 服务
+
+`env up` 可以选择以下服务，依赖由 AppHost 补齐。不选择时启动全部服务。
+
+| 服务 | 一同启动 |
+| --- | --- |
+| `api` | `db`、`migrate` |
+| `docs` | — |
+| `web` | `api`、`db`、`migrate` |
+
+NGINX 总是启动，提供固定的入口端口。各入口在不同服务组合下的转发见 [AppHost README · 入口](../Heartbeat.AppHost/README.md#入口)。
+
+环境已经运行时，`env up` 报错并显示当前状态。要换一组服务或换一个卷，先运行 `env down`。
+
+### 隔离与数据卷
+
+每个检出目录同时运行一套环境。需要同时运行不同的代码时，创建 Git 工作树，在工作树中运行 `hb env up`。
+
+| 检出目录 | 端口 | 默认卷 |
+| --- | --- | --- |
+| 主检出目录 | 固定端口，见 [AppHost README · 入口](../Heartbeat.AppHost/README.md#入口) | `heartbeat-aspire-postgres-data` |
+| 工作树 | 首次启动时分配，保存在工作树的 `.artifacts/env/environment.json`，之后的启动沿用 | `heartbeat-<目录名>-<路径哈希>` |
+
+- 默认卷在 `env down` 后保留。
+- `--temp` 使用名为 `heartbeat-temp-<时间>` 的临时卷，`env down` 时删除。
+- `--reset` 删除当前检出目录的默认卷，重新创建后启动，卷中的数据全部丢失。表结构与当前迁移不一致时使用，例如 Initial migration 改动之后。`--reset` 与 `--temp` 不能同时使用。
+- 每个卷都带有所属检出目录的标签，`env volumes` 据此列出归属。工作树删除后，用 `env volumes prune --apply` 回收它的卷。
+
+### 状态
+
+`env status --json` 的输出：
+
+```json
+{
+  "checkout": "/Users/me/Code/Heartbeat",
+  "running": true,
+  "services": [
+    { "name": "db", "state": "Running", "health": "Healthy" },
+    { "name": "migrate", "state": "Finished", "exitCode": 0 },
+    { "name": "api", "state": "Running", "health": "Healthy" },
+    { "name": "nginx", "state": "Running", "health": "Healthy" }
+  ],
+  "entries": {
+    "api": "http://localhost:8080/api",
+    "docs": "http://localhost:3000/",
+    "web": "http://localhost:8081/"
+  },
+  "dashboard": "https://localhost:18888",
+  "database": {
+    "connectionString": "Host=localhost;Port=54329;Database=heartbeat;Username=heartbeat;Password=heartbeat",
+    "volume": "heartbeat-aspire-postgres-data",
+    "temporary": false
+  }
+}
+```
+
+`entries` 列出全部入口，未启动服务的入口按 [AppHost README · 入口](../Heartbeat.AppHost/README.md#入口) 的规则响应。环境没有运行时，`running` 是 `false`，其他字段省略。
 
 ## 验证
 
 ```sh
-dotnet run --project tools/Heartbeat.Dev -- verify full
-dotnet run --project tools/Heartbeat.Dev -- verify changed --base HEAD
-dotnet run --project tools/Heartbeat.Dev -- verify changed --base HEAD --quality
+hb verify full
+hb verify changed --base HEAD
+hb verify changed --base HEAD --quality
+hb verify scenarios
+hb verify scenarios api
 ```
 
 | 命令 | 作用 |
@@ -31,17 +128,29 @@ dotnet run --project tools/Heartbeat.Dev -- verify changed --base HEAD --quality
 | `verify full` | 构建 .NET 解决方案，运行模型测试、集成测试和开发工具测试，运行前端的 `npm run verify`，检查并构建文档站 |
 | `verify changed` | 根据相对基点的改动选择检查。无法识别的路径触发全量检查 |
 | `verify changed --quality` | 在同一次运行中执行变更检查，再以同一基点运行质量扫描 |
+| `verify scenarios [场景...]` | 运行冒烟场景。不指定时运行全部场景 |
 
-- 加 `--plan` 只显示会运行哪些检查，不执行。加 `--json` 以 JSON 输出计划。
-- 有未提交的改动时，可以省略 `--base`，默认使用 `HEAD`。没有改动时，必须指定 `--base`。
-- 构建失败、测试失败或扫描未完成时，命令返回失败。质量扫描的发现不使命令失败，供评审参考。
-- 构建和自动测试不覆盖容器运行、页面和交互。这些改动需要另外验证。
+- 加 `--plan` 只显示会运行哪些检查或场景，不执行。加 `--json` 以 JSON 输出计划。
+- 有未提交的改动时，`verify changed` 可以省略 `--base`，默认使用 `HEAD`。没有改动时，必须指定 `--base`。
+- 构建失败、测试失败、场景失败或扫描未完成时，命令返回失败。质量扫描的发现不使命令失败，供评审参考。
+- 构建和自动测试不覆盖容器运行、页面和交互，运行时行为由冒烟场景检查。热更新和页面另外检查。
+
+### 冒烟场景
+
+场景对本检出目录的环境执行，检查运行中的服务。每个场景写明前提；前提不满足时，场景报告为跳过并写明原因，跳过不使命令失败。`--plan` 显示每个场景的前提当前是否满足。
+
+| 场景 | 前提 | 检查 |
+| --- | --- | --- |
+| `environment` | 本检出目录没有运行中的环境 | 用临时卷启动环境：各入口的转发、超过 10 MiB 的请求返回 `413`、只启动部分服务时 `/api` 返回 `503`、迁移失败时 API 不启动、停止后再启动数据仍在。结束时停止环境并删除卷 |
+| `api` | 环境运行中，API 已启动，使用临时卷 | 通过 8080 入口提交版本、读回版本，以及提交被拒绝时的响应 |
+
+写入数据的场景要求临时卷，场景数据不进入默认卷。每个 Observer 有一个场景：对环境运行几轮采样，再通过 API 读回结果。依赖本机能力的场景写明要求，例如 macOS。
 
 ## 质量与行数
 
 ```sh
-dotnet run --project tools/Heartbeat.Dev -- quality --base HEAD
-dotnet run --project tools/Heartbeat.Dev -- loc
+hb quality --base HEAD
+hb loc
 ```
 
 两个命令都可以加 `--json`。
@@ -78,16 +187,16 @@ dotnet run --project tools/Heartbeat.Dev -- loc
 | 文件 | 内容 |
 | --- | --- |
 | `manifest.json` | 执行清单 |
-| `verification.json` | 验证结果 |
+| `verification.json` | 验证结果，包括每个场景的通过、失败或跳过及原因 |
 | `quality.json` | 质量报告，加 `--quality` 或运行 `quality` 时生成 |
-| 步骤日志 | 每个步骤的输出 |
+| 步骤日志 | 每个步骤和场景的输出，场景日志包括它发出的请求和收到的响应 |
 
 成功、失败和取消的运行都保存。TUnit 的原始报告在 `TestResults/`，由文档站读取。
 
 ```sh
-dotnet run --project tools/Heartbeat.Dev -- artifacts list
-dotnet run --project tools/Heartbeat.Dev -- artifacts prune           # 只预览
-dotnet run --project tools/Heartbeat.Dev -- artifacts prune --apply   # 删除
+hb artifacts list
+hb artifacts prune           # 只预览
+hb artifacts prune --apply   # 删除
 ```
 
 每次验证结束时自动清理。满足任一条件的运行会保留：
@@ -113,7 +222,9 @@ dotnet run --project tools/Heartbeat.Dev -- artifacts prune --apply   # 删除
 
 | 目录 | 内容 |
 | --- | --- |
+| `Environment` | 启动、停止和读取环境，分配端口，管理数据卷 |
 | `Verification` | 选择和执行检查 |
+| `Scenarios` | 冒烟场景 |
 | `Quality` | 分类和扫描源码 |
 | `Artifacts` | 保存和管理证据 |
 | `Infrastructure` | 运行进程，定位仓库 |

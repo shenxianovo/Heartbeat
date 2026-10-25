@@ -61,7 +61,7 @@ T0 模型与决策（ADR、Core、Glossary）→ T1 对外约定（OpenAPI、API
 
 ## 工作约定
 
-- 运行或预览应用时，使用 `aspire run` 启动的本地环境，地址见 [AppHost README · 入口](tools/Heartbeat.AppHost/README.md#入口)。
+- 运行或预览应用时，用 `hb env up` 启动本地环境，用 `hb env status --json` 读取入口地址，见 [Heartbeat.Dev README · 环境](tools/Heartbeat.Dev/README.md#环境)。
 - 进行中的规格和 issue 放在 `.scratch/<feature-slug>/`，完成后删除。
 - 实现中用过的概念从模型中删除时，在 [Glossary · 不再使用的术语](src/Docs/Heartbeat.Docs/content/docs/core/glossary.mdx#deprecated) 加一行。
 

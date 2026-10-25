@@ -6,7 +6,7 @@ Heartbeat.Observer.ForegroundState 在 macOS 上持续采集前台应用，通�
 
 ## 运行
 
-前置条件：macOS 和 `global.json` 指定的 .NET SDK。上传需要运行中的 API，例如用 `aspire run` 启动的本地环境。
+前置条件：macOS 和 `global.json` 指定的 .NET SDK。上传需要运行中的 API，例如用 `hb env up api` 启动的本地环境。
 
 在仓库根目录运行：
 
@@ -61,7 +61,7 @@ dotnet run --project src/Observers/Heartbeat.Observer.ForegroundState -- --sampl
 自动测试覆盖本机应用身份、时段边界、采集事件、休眠边界、本地事务恢复，以及经 API 上传和本机应用被删除后的恢复。测试不调用 macOS 原生接口。Case 见文档站的 Testing 分区。
 
 ```sh
-dotnet run --project tools/Heartbeat.Dev -- verify changed --base HEAD --quality
+hb verify changed --base HEAD --quality
 ```
 
 原生读取需要在 macOS 上实际运行。使用临时文件：

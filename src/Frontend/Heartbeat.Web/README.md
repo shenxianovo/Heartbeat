@@ -33,7 +33,7 @@ React 19、TypeScript（strict）、Vite 7、TanStack Router、TanStack Query v5
 
 ## 开发
 
-本地开发通常通过 Aspire 启动，入口是 <http://localhost:8081/>。NGINX 把 `/api/` 转给 API，其他路径转给 Vite。
+本地开发通常用 `hb env up` 启动，入口是 <http://localhost:8081/>。NGINX 把 `/api/` 转给 API，其他路径转给 Vite。
 
 单独运行：
 
@@ -53,7 +53,7 @@ npm run test:e2e    # Playwright，自动启动开发服务器
 
 首次运行 Playwright 前，执行 `npx playwright install chromium`。
 
-验证 Aspire 入口时，先运行 `aspire run` 启动完整环境，再运行：
+验证 Aspire 入口时，先运行 `hb env up web` 启动 Web 控制台和 API，再运行：
 
 ```sh
 npm run test:e2e:edge   # 检查 8081 页面、同源 /api 和 HMR WebSocket

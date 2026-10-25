@@ -15,21 +15,23 @@ Heartbeat 保存一个人经历了什么：来自不同设备和软件的观测�
 - Node.js 24 LTS
 - pnpm 12.3.4
 
-首次使用时，在仓库根目录安装 Aspire CLI、还原 EF 工具并信任开发证书：
+首次使用时，在仓库根目录安装 Aspire CLI、还原 EF 工具、信任开发证书，再安装开发工具 `hb`。`aspire certs trust` 会请求信任本机的 .NET 开发证书，按系统提示确认。
 
 ```sh
 dotnet tool install --global Aspire.Cli --version 13.6.3
 dotnet tool restore
 aspire certs trust
+dotnet run --project tools/Heartbeat.Dev -- install
 ```
 
-启动：
+启动和停止：
 
 ```sh
-aspire run
+hb env up
+hb env down
 ```
 
-Aspire 在本机运行 API、文档站和 Web 控制台，在容器中运行 PostgreSQL 和 NGINX，并在启动 API 前应用数据库迁移。按 Ctrl+C 停止。
+`hb env up` 在后台启动环境：API、文档站和 Web 控制台在本机运行，PostgreSQL 和 NGINX 在容器中运行，API 启动前先应用数据库迁移。
 
 | 服务 | 地址 |
 | --- | --- |
@@ -38,7 +40,7 @@ Aspire 在本机运行 API、文档站和 Web 控制台，在容器中运行 Pos
 | 文档站 | <http://localhost:3000/> |
 | Aspire 看板 | <https://localhost:18888> |
 
-后台运行、日志和资源操作见 [AppHost README](tools/Heartbeat.AppHost/README.md)。
+只启动部分服务、使用临时数据卷、在工作树中运行另一套环境，以及读取日志和遥测，见 [Heartbeat.Dev README · 环境](tools/Heartbeat.Dev/README.md#环境)。资源和入口见 [AppHost README](tools/Heartbeat.AppHost/README.md)。
 
 ## 采集前台应用
 
@@ -53,7 +55,7 @@ dotnet run --project src/Observers/Heartbeat.Observer.ForegroundState
 ## 验证
 
 ```sh
-dotnet run --project tools/Heartbeat.Dev -- verify changed --base HEAD --quality
+hb verify changed --base HEAD --quality
 ```
 
 命令说明见 [Heartbeat.Dev README](tools/Heartbeat.Dev/README.md)。
@@ -69,7 +71,7 @@ dotnet run --project tools/Heartbeat.Dev -- verify changed --base HEAD --quality
 | `src/Docs/Heartbeat.Docs` | 文档站，长期文档的唯一位置 |
 | `tests` | 模型、集成和开发工具测试 |
 | `tools/Heartbeat.AppHost` | Aspire 本地编排 |
-| `tools/Heartbeat.Dev` | 验证、质量扫描和证据管理 |
+| `tools/Heartbeat.Dev` | 开发工具 `hb`：环境、验证、质量扫描和证据管理 |
 
 ## 文档
 

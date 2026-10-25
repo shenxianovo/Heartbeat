@@ -19,6 +19,7 @@
     "entity-api",
     "entity-storage",
     "---Verification---",
-    "verification"
+    "verification",
+    "development-environment"
   ]
 }

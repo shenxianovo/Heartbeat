@@ -53,5 +53,6 @@ Core 和 Application 不依赖 HTTP 和数据库，模型规则不启动数据�
 ## 规则位置 [#details]
 
 - 运行说明：`src/Backend/Heartbeat.Api/README.md`、`tools/Heartbeat.AppHost/README.md`
-- 端口和请求体上限：`docker/nginx/default.conf`、[API](../api/index.mdx)
+- 入口和转发：`docker/nginx/default.conf`；请求体上限和公共代理设置：`docker/nginx/common.conf`；服务的上游：同目录的 `*-enabled.conf` 和 `*-disabled.conf`
+- [API · 服务地址](../api/index.mdx#servers)
 - [Storage · PostgreSQL](../storage/postgresql.mdx)

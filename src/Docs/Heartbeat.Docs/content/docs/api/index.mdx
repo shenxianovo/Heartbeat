@@ -9,7 +9,7 @@ Heartbeat API 按 [Core](../core/index.mdx) 的实体与版本模型保存、读
 
 OpenAPI 的 `servers` 声明相对地址 `/api`，所以契约中的 `/example` 对外是 `/api/example`。
 
-本地有两个入口：8080 是 API 和 Web 控制台的入口；3000 是文档站的入口，它把 API 路径转发给后端，所以接口页的 Playground 可以同源调用 API。端口的分工见 [ADR · 后端运行与本地环境](../adr/backend-runtime.mdx#http-entry)。
+本地环境有三个入口：8080 只提供 API；3000 是文档站，它把 API 路径转发给后端，所以接口页的 Playground 可以同源调用 API；8081 是 Web 控制台，`/api/` 同样转发给后端。这是主检出目录的端口，工作树的端口由 `hb env status` 给出。转发规则见 `tools/Heartbeat.AppHost/README.md`，入口的分工见 [ADR · 后端运行与本地环境](../adr/backend-runtime.mdx#http-entry)。
 
 ## 字段命名 [#naming]
 
