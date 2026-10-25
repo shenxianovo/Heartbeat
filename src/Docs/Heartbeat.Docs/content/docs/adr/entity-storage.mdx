@@ -1,11 +1,11 @@
 ---
 title: "实体存储"
-description: "所有版本以 jsonb 保存在一张表中，查询走以类型开头的索引，删除留下墓碑，所有操作串行执行"
+description: "所有版本以 jsonb 保存在一张表中，查询走以类型开头的索引，引用另存一张推导的反查表，删除留下墓碑，所有操作串行执行"
 ---
 
 ## 背景 [#context]
 
-后端要在 PostgreSQL 中保存所有类型的版本，按身份、类型和事实时间读取它们，并记住已删除的身份。业务类型的数据量相差几个数量级：键鼠事件一天几千条，有些类型一天只有几条。业务类型的字段随 Schema 版本变化，引用可以嵌在对象和数组中。多个 API 实例可能同时处理提交和删除。
+后端要在 PostgreSQL 中保存所有类型的版本，按身份、类型和事实时间读取它们，并记住已删除的身份。业务类型的数据量相差几个数量级：键鼠事件一天几千条，有些类型一天只有几条。业务类型的字段随 Schema 版本变化，引用可以嵌在对象和数组中，读取方还要能按目标实体找到引用方。多个 API 实例可能同时处理提交和删除。
 
 ## 决定 [#decision]
 
@@ -14,7 +14,7 @@ description: "所有版本以 jsonb 保存在一张表中，查询走以类型�
 - 按类型和事实时间的查询，使用以类型开头的索引。
 - 删除实体时移除它的全部版本，只把身份写入墓碑，墓碑永久保留。
 - 所有操作在多个 API 实例之间串行执行。一次提交在一个事务中完成，某个版本被拒绝时，提交它之前已保存的版本。
-- 引用只保存在版本的内容中，目前不建立反查的索引。
+- 引用的权威位置是版本的内容（[ENTITY-8](../core/model/entity.mdx#entity-8)）。`version_references` 由内容推导，每个非空的引用一行，记下引用方版本、位置（JSON Pointer）、目标版本和目标实体，供反查使用；`previousVersionId` 和 `schemaVersionId` 不写入。
 
 ## 理由 [#rationale]
 
@@ -28,13 +28,14 @@ description: "所有版本以 jsonb 保存在一张表中，查询走以类型�
 
 一份观测只需在当前版本变化时更新 `current_observations` 的一行。PostgreSQL 的范围类型按重叠匹配，与 API 的时间查询规则一致，GiST 索引直接支持这种查询。
 
-反查引用目前没有接口使用。等反查接口确定后，再一起设计它的索引。
+哪些位置是引用，由 Core 和每个版本的 Schema 版本决定，同一个字段名在不同类型中可以不是引用。所以保存时按 Schema 版本找出引用，逐个写成行；查询只读 `version_references` 的索引，不用解析 `jsonb`。目标实体在写入时记下，按实体归集（[ENTITY-7](../core/model/entity.mdx#entity-7)）就是一次索引查找。目标版本删除后，墓碑和引用方的内容都还在，这一行也保留，所以 `target_version_id` 不设外键。前一版本和 Schema 版本已经是 `versions` 的列，再写一份只会让行数翻倍。
 
 放弃的方案：
 
 - **每个业务类型一张、按字段建列的表。** 每个 Schema 版本都要改表，嵌套的引用放不进列。
 - **按业务类型分区。** 可以按类型删除数据、统计空间，但后端要在运行时建表，按 VersionId 读取还要先查一张身份表。分区对 API 和 Application 透明，需要时可以再改。
 - **每个版本一个事务。** 导入时提交次数等于版本数。
+- **在 `content` 上建 GIN 索引，查询时匹配 VersionId。** 索引不知道哪些位置是引用，会匹配到恰好等于某个 VersionId 的普通字符串；按实体归集还要先列出目标的全部版本，也算不出引用的位置。
 
 ## 代价 [#costs]
 
@@ -42,10 +43,11 @@ description: "所有版本以 jsonb 保存在一张表中，查询走以类型�
 - 墓碑永久占用空间。
 - 写入串行执行，吞吐受单个事务的速度限制。
 - 保存和删除时，`entities` 和 `current_observations` 要在同一个事务中同步更新。
-- 反查引用的接口出现时，要为已有的版本补建索引。
+- 每保存一个版本，要多写它的每个引用；`version_references` 的行数与引用数相同，导入键鼠和前台时段时约占 1 GB。
+- 反查表的正确性依赖保存时对 Schema 版本的解析，解析规则改变时要从 `versions` 重建。
 
 ## 规则位置 [#details]
 
-- [Storage · Overview](../storage/index.mdx)、[Storage · PostgreSQL](../storage/postgresql.mdx)
+- [Storage · Overview](../storage/index.mdx)、[Storage · 引用的反查](../storage/index.mdx#references)、[Storage · PostgreSQL](../storage/postgresql.mdx)
 - [VERSION-4](../core/model/version.mdx#version-4)、[VERSION-9](../core/model/version.mdx#version-9)、[HISTORY-7](../core/rules/history.mdx#history-7)、[HISTORY-9](../core/rules/history.mdx#history-9)
 - [ADR · 实体 API](./entity-api.mdx)

@@ -32,7 +32,7 @@ internal sealed class ForegroundStore(ObserverClient sdk, EntityId observerId, F
             var application = local.Reference(capture.Application.Id);
             local.Draft(capture.Content.Id, new BusinessContent(JsonSerializer.SerializeToElement(new
             {
-                localApplicationId = application.Value, name = capture.Content.Name,
+                localApplicationVersionId = application.Value, name = capture.Content.Name,
             })), registration.PeriodSchema, SubmissionStrategy.OnCompletion);
         }
         var content = local.Reference(capture.Content.Id);

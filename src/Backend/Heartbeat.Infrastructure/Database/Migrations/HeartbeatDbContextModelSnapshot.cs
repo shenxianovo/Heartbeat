@@ -161,6 +161,33 @@ namespace Heartbeat.Infrastructure.Database.Migrations
                     b.ToTable("versions", (string)null);
                 });
 
+            modelBuilder.Entity("Heartbeat.Infrastructure.Database.StoredVersionReference", b =>
+                {
+                    b.Property<Guid>("VersionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("version_id");
+
+                    b.Property<string>("Path")
+                        .HasColumnType("text")
+                        .HasColumnName("path");
+
+                    b.Property<Guid>("TargetEntityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("target_entity_id");
+
+                    b.Property<Guid>("TargetVersionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("target_version_id");
+
+                    b.HasKey("VersionId", "Path")
+                        .HasName("pk_version_references");
+
+                    b.HasIndex("TargetEntityId", "VersionId")
+                        .HasDatabaseName("ix_version_references_target_entity_id_version_id");
+
+                    b.ToTable("version_references", (string)null);
+                });
+
             modelBuilder.Entity("Heartbeat.Infrastructure.Database.VersionTombstone", b =>
                 {
                     b.Property<Guid>("VersionId")
@@ -218,6 +245,23 @@ namespace Heartbeat.Infrastructure.Database.Migrations
                         .HasForeignKey("SchemaVersionId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_versions_versions_schema_version_id");
+                });
+
+            modelBuilder.Entity("Heartbeat.Infrastructure.Database.StoredVersionReference", b =>
+                {
+                    b.HasOne("Heartbeat.Infrastructure.Database.StoredEntity", null)
+                        .WithMany()
+                        .HasForeignKey("TargetEntityId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_version_references_entities_target_entity_id");
+
+                    b.HasOne("Heartbeat.Infrastructure.Database.StoredVersion", null)
+                        .WithMany()
+                        .HasForeignKey("VersionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_version_references_versions_version_id");
                 });
 
             modelBuilder.Entity("Heartbeat.Infrastructure.Database.VersionTombstone", b =>

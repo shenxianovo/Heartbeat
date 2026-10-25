@@ -40,7 +40,7 @@ public sealed class SchemaBoundaryTests
         await Assert.That(EntitySchemaRules.ValidEntity(fields, content)).IsEqualTo(valid);
     }
 
-    // SCHEMA-10: all combinations of required/nullable, including valid non-null values.
+    // SCHEMA-11: all combinations of required/nullable, including valid non-null values.
     [Test]
     [Arguments(false, false)]
     [Arguments(false, true)]

@@ -1,6 +1,6 @@
 # Heartbeat.Api
 
-Heartbeat.Api 是后端的 HTTP 宿主，提供 [API](../../Docs/Heartbeat.Docs/content/docs/api/index.mdx) 中的七个实体接口。项目分工见 [ADR · 后端运行与本地环境](../../Docs/Heartbeat.Docs/content/docs/adr/backend-runtime.mdx#components)，接口契约见 [openapi.json](../../Docs/Heartbeat.Docs/content/docs/api/openapi.json)。
+Heartbeat.Api 是后端的 HTTP 宿主，提供 [API](../../Docs/Heartbeat.Docs/content/docs/api/index.mdx) 中的实体接口。项目分工见 [ADR · 后端运行与本地环境](../../Docs/Heartbeat.Docs/content/docs/adr/backend-runtime.mdx#components)，接口契约见 [openapi.json](../../Docs/Heartbeat.Docs/content/docs/api/openapi.json)。
 
 ## 运行
 
@@ -45,11 +45,11 @@ export OTEL_SERVICE_NAME='heartbeat-api'
 | --- | --- |
 | `Program.cs` | 依赖注册、请求体上限和错误处理 |
 | `Telemetry.cs` | 日志、追踪和指标的注册 |
-| `EntityEndpoints.cs` | 七个接口的路由、查询参数和分页游标 |
+| `EntityEndpoints.cs` | 各接口的路由、查询参数和分页游标 |
 | `SubmissionContract.cs` | 提交请求体的契约检查，不符合时整次提交都不处理 |
 | `ApiProblem.cs` | problem+json 错误响应，以及规则编号到状态码的映射 |
 | `Heartbeat.Core` | 版本、三种 Core 类型的内容、EntitySchema 校验和引用枚举 |
-| `Heartbeat.Application/Entities/EntityService.cs` | 提交、读取和删除版本，执行后端规则 |
+| `Heartbeat.Application/Entities/EntityService.cs` | 提交、读取、删除版本和列出引用方，执行后端规则；保存版本时整理它的引用，交给存储写入反查表 |
 | `Heartbeat.Application/Entities/IEntityStore.cs` | 存储的事务接口 |
 | `Heartbeat.Infrastructure/Database/` | PostgreSQL 实现、Initial migration 和时间转换，见 [Storage](../../Docs/Heartbeat.Docs/content/docs/storage/index.mdx) |
 
@@ -75,7 +75,7 @@ Dockerfile 先复制 SDK 配置和项目文件并还原依赖，再复制 Core �
 
 ## 验证
 
-模型规则由[模型测试](../../../tests/Heartbeat.Model.Tests/README.md)验证，API 的启动和遥测由[集成测试](../../../tests/Heartbeat.Integration.Tests/README.md)验证。
+模型规则由[模型测试](../../../tests/Heartbeat.Model.Tests/README.md)验证，接口、存储和遥测由[集成测试](../../../tests/Heartbeat.Integration.Tests/README.md)验证。
 
 修改构建或热更新配置后，在独立的 Aspire 环境中验证：
 

@@ -22,10 +22,10 @@ description: "前台应用时段与窗口标题时段"
 flowchart LR
   O[应用时段 Observation] -->|observerVersionId| R[前台状态 Observer]
   O -->|contentVersionId| C[Foreground Application Period]
-  C -->|localApplicationId| A[Local Application]
+  C -->|localApplicationVersionId| A[Local Application]
   T[标题时段 Observation] -->|observerVersionId| R
   T -->|contentVersionId| TC[Foreground Window Title]
-  TC -->|foregroundObservationId| O
+  TC -->|foregroundObservationVersionId| O
 ```
 
 ## 程序实例 [#instance]

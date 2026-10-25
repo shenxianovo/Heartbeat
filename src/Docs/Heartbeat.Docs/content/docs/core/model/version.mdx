@@ -117,7 +117,7 @@ description: "实体一次保存的完整内容，保存后不可改写"
 | 与已保存的版本相同 | 视为已保存，保存时间不变 |
 | 与已保存的版本不同 | 冲突，已保存的版本不变 |
 
-“相同”按值判断：每个成员和字段的值都相同。InputSet 的成员不讲顺序，见 [INPUTSET-4](./input-set.mdx#inputset-4)；省略的字段和值为 `null` 的字段不同，见 [SCHEMA-12](./schema.mdx#schema-12)。
+“相同”按值判断：每个成员和字段的值都相同。InputSet 的成员不讲顺序，见 [INPUTSET-4](./input-set.mdx#inputset-4)；省略的字段和值为 `null` 的字段不同，见 [SCHEMA-13](./schema.mdx#schema-13)。
 
 重复提交只确认首次保存，版本链和引用的检查结果都以首次保存时为准。实体已被删除时，见 [HISTORY-7](../rules/history.mdx#history-7)。
 

@@ -40,7 +40,7 @@ internal sealed class ForegroundDelivery(ObserverClient sdk, LocalApplicationReg
             var schema = rejected.SchemaVersionId is { } id ? local.Find(id)?.Version.EntityId : null;
             if (schema == ForegroundRegistration.ApplicationSchemaId) return local.Find(rejected.VersionId);
             if (schema != ForegroundRegistration.PeriodSchemaId || rejected.Content is not BusinessContent content) return null;
-            return local.Find(new(content.Fields.GetProperty("localApplicationId").GetGuid()));
+            return local.Find(new(content.Fields.GetProperty("localApplicationVersionId").GetGuid()));
         });
         if (application is null) return;
         // A missing reference may be unrelated to an application deletion. Confirm that deletion first.

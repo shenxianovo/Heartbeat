@@ -174,7 +174,7 @@ public sealed class ObserverSdkTests
         var newApplication = registry.Resolve(ForegroundTimelineTests.Reading(2));
         await Assert.That(newApplication.Id == application.Id).IsFalse();
         using var newPeriod = await http.GetAsync($"/entities/{next.Content.Id.Value}");
-        var version = (await EntityApiTests.Json(newPeriod)).GetProperty("content").GetProperty("localApplicationId").GetGuid();
+        var version = (await EntityApiTests.Json(newPeriod)).GetProperty("content").GetProperty("localApplicationVersionId").GetGuid();
         using var target = await http.GetAsync($"/versions/{version}");
         await Assert.That((await EntityApiTests.Json(target)).GetProperty("entityId").GetGuid()).IsEqualTo(newApplication.Id.Value);
     }

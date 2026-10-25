@@ -21,7 +21,7 @@ description: "应用处于前台的一个时段"
 
 | 字段 | 目标 |
 | --- | --- |
-| `localApplicationId` | [Local Application](./local-application.mdx) |
+| `localApplicationVersionId` | [Local Application](./local-application.mdx) |
 
 ## 事实时间 [#fact-time]
 
@@ -54,12 +54,12 @@ description: "应用处于前台的一个时段"
 
 | 字段 | 类型 | 必填 | 可空 | 含义 |
 | --- | --- | --- | --- | --- |
-| `localApplicationId` | `reference` | 是 | 否 | 观测设备上的本机应用 |
+| `localApplicationVersionId` | `reference` | 是 | 否 | 观测设备上的本机应用 |
 | `name` | `string` | 是 | 是 | 当时读到的应用名称，没读到时为 `null` |
 
 ## 示例 [#example]
 
-VS Code 从 10:00 到 10:20 处于前台，时段结束后，`POST /versions` 依次提交观测内容和它的 Observation。`localApplicationId` 是本机应用首版的 VersionId，`observerVersionId` 是程序实例的一个版本：
+VS Code 从 10:00 到 10:20 处于前台，时段结束后，`POST /versions` 依次提交观测内容和它的 Observation。`localApplicationVersionId` 是本机应用首版的 VersionId，`observerVersionId` 是程序实例的一个版本：
 
 ```json title="POST /versions"
 {
@@ -71,7 +71,7 @@ VS Code 从 10:00 到 10:20 处于前台，时段结束后，`POST /versions` �
       "category": "business",
       "schemaVersionId": "019e1bbb-ec00-7000-8000-000000000101",
       "content": {
-        "localApplicationId": "01a12e31-9050-7000-8000-000000000101",
+        "localApplicationVersionId": "01a12e31-9050-7000-8000-000000000101",
         "name": "Visual Studio Code"
       }
     },

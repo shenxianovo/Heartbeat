@@ -7,7 +7,7 @@ using NpgsqlTypes;
 
 namespace Heartbeat.Infrastructure.Database;
 
-internal sealed class PostgresEntityTransaction(NpgsqlConnection connection, NpgsqlTransaction transaction,
+internal sealed partial class PostgresEntityTransaction(NpgsqlConnection connection, NpgsqlTransaction transaction,
     TimeProvider timeProvider) : IEntityTransaction
 {
     private const string Columns = "v.entity_id, v.version_id, v.previous_version_id, v.schema_version_id, v.category, v.recorded_at, v.content";
@@ -22,6 +22,8 @@ internal sealed class PostgresEntityTransaction(NpgsqlConnection connection, Npg
         (await ReadAsync($"SELECT {Columns} FROM entities e JOIN versions v ON v.version_id = e.current_version_id WHERE e.entity_id = $1", cancellationToken, id.Value)).SingleOrDefault();
     public Task<IReadOnlyList<EntityVersion>> ReadVersionsAsync(EntityId id, CancellationToken cancellationToken) =>
         ReadAsync($"SELECT {Columns} FROM versions v WHERE v.entity_id = $1 ORDER BY v.ordinal", cancellationToken, id.Value);
+    public async Task<bool> EntityExistsAsync(EntityId id, CancellationToken cancellationToken) =>
+        (bool)(await ScalarAsync("SELECT EXISTS(SELECT 1 FROM entities WHERE entity_id = $1)", cancellationToken, id.Value))!;
     public async Task<bool> IsEntityDeletedAsync(EntityId id, CancellationToken cancellationToken) =>
         (bool)(await ScalarAsync("SELECT EXISTS(SELECT 1 FROM entities WHERE entity_id = $1 AND deleted_at IS NOT NULL)", cancellationToken, id.Value))!;
     public async Task<bool> IsVersionDeletedAsync(VersionId id, CancellationToken cancellationToken) =>
@@ -68,7 +70,7 @@ internal sealed class PostgresEntityTransaction(NpgsqlConnection connection, Npg
         return ReadAsync($"SELECT {Columns} FROM current_observations o JOIN versions v ON v.version_id = o.version_id WHERE {string.Join(" AND ", filters)} ORDER BY lower(o.fact_range), o.entity_id LIMIT ${values.Count}", cancellationToken, values.ToArray());
     }
 
-    public async Task SaveAsync(EntityVersion version, CancellationToken cancellationToken)
+    public async Task SaveAsync(EntityVersion version, IReadOnlyList<ResolvedReference> references, CancellationToken cancellationToken)
     {
         var schemaId = version.SchemaVersionId is { } schema
             ? await ScalarAsync("SELECT entity_id FROM versions WHERE version_id = $1", cancellationToken, schema.Value) : null;
@@ -87,6 +89,7 @@ internal sealed class PostgresEntityTransaction(NpgsqlConnection connection, Npg
             Typed(NpgsqlDbType.Uuid, version.PreviousVersionId?.Value), Typed(NpgsqlDbType.Uuid, version.SchemaVersionId?.Value),
             version.Category, UtcDateTimeOffsetValueConverter.Normalize(version.RecordedAt),
             Typed(NpgsqlDbType.Jsonb, VersionJson.Content(version.Content).GetRawText()));
+        await SaveReferencesAsync(version.VersionId, references, cancellationToken);
         if (version.Content is not Observation observation) return;
         var contentSchema = await ScalarAsync("SELECT e.schema_id FROM versions v JOIN entities e ON e.entity_id = v.entity_id WHERE v.version_id = $1", cancellationToken, observation.ContentVersionId.Value);
         NpgsqlRange<DateTimeOffset>? range = null;
@@ -120,13 +123,16 @@ internal sealed class PostgresEntityTransaction(NpgsqlConnection connection, Npg
         await using var reader = await command.ExecuteReaderAsync(token);
         var result = new List<EntityVersion>();
         while (await reader.ReadAsync(token))
-        {
-            using var content = JsonDocument.Parse(reader.GetString(6));
-            result.Add(new(new(new(reader.GetGuid(0)), new(reader.GetGuid(1)),
-                reader.IsDBNull(2) ? null : new(reader.GetGuid(2)), reader.IsDBNull(3) ? null : new(reader.GetGuid(3)),
-                VersionJson.ReadContent(reader.GetString(4), content.RootElement)), reader.GetFieldValue<DateTimeOffset>(5)));
-        }
+            result.Add(ReadVersion(reader));
         return result;
+    }
+
+    private static EntityVersion ReadVersion(NpgsqlDataReader reader)
+    {
+        using var content = JsonDocument.Parse(reader.GetString(6));
+        return new(new(new(reader.GetGuid(0)), new(reader.GetGuid(1)),
+            reader.IsDBNull(2) ? null : new(reader.GetGuid(2)), reader.IsDBNull(3) ? null : new(reader.GetGuid(3)),
+            VersionJson.ReadContent(reader.GetString(4), content.RootElement)), reader.GetFieldValue<DateTimeOffset>(5));
     }
 
     private async Task<object?> ScalarAsync(string sql, CancellationToken token, params object[] values)

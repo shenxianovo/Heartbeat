@@ -107,6 +107,36 @@ namespace Heartbeat.Infrastructure.Database.Migrations
                         principalColumn: "version_id");
                 });
 
+            migrationBuilder.CreateTable(
+                name: "version_references",
+                columns: table => new
+                {
+                    version_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    path = table.Column<string>(type: "text", nullable: false),
+                    target_version_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    target_entity_id = table.Column<Guid>(type: "uuid", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("pk_version_references", x => new { x.version_id, x.path });
+                    table.ForeignKey(
+                        name: "fk_version_references_entities_target_entity_id",
+                        column: x => x.target_entity_id,
+                        principalTable: "entities",
+                        principalColumn: "entity_id");
+                    table.ForeignKey(
+                        name: "fk_version_references_versions_version_id",
+                        column: x => x.version_id,
+                        principalTable: "versions",
+                        principalColumn: "version_id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateIndex(
+                name: "ix_version_references_target_entity_id_version_id",
+                table: "version_references",
+                columns: new[] { "target_entity_id", "version_id" });
+
             migrationBuilder.CreateIndex(
                 name: "ix_current_observations_content_schema_id_fact_range",
                 table: "current_observations",
@@ -166,6 +196,9 @@ namespace Heartbeat.Infrastructure.Database.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropTable(
+                name: "version_references");
+
             migrationBuilder.DropTable(
                 name: "current_observations");
 

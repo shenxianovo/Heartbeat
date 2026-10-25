@@ -474,6 +474,101 @@
         }
       }
     },
+    "/entities/{entityId}/referrers": {
+      "get": {
+        "operationId": "listReferrers",
+        "summary": "列出引用方",
+        "description": "列出在 `content` 中引用这个实体的版本，目标按实体匹配，引用它的任何一个版本都算，见 [ENTITY-7](/core/model/entity#entity-7)。只返回直接的引用方，按引用方的 VersionId 升序分页。目标实体已被删除时照常列出，见 [HISTORY-8](/core/rules/history#history-8)。",
+        "parameters": [
+          {
+            "name": "entityId",
+            "in": "path",
+            "required": true,
+            "description": "目标实体的 EntityId。",
+            "schema": {
+              "$ref": "#/components/schemas/EntityId"
+            }
+          },
+          {
+            "name": "versions",
+            "in": "query",
+            "required": false,
+            "description": "`current` 只返回当前版本仍引用目标的实体，每个实体一个版本；`all` 返回每一个引用过目标的版本。",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "current",
+                "all"
+              ],
+              "default": "current"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "一页最多返回的引用方版本数。",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 100
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "description": "上一页响应中的 `next`。省略时从第一页开始。",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "一页引用方。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferrerPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "路径中的 ID 不是 UUID，或者参数无效。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "这个身份从未出现过。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "后端出现意外错误。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/observations": {
       "get": {
         "operationId": "listObservations",
@@ -836,7 +931,7 @@
       },
       "FieldDefinition": {
         "type": "object",
-        "description": "一个字段或数组元素的定义，见 [EntitySchema · 字段定义](/core/model/schema#field-definitions)和 [SCHEMA-9](/core/model/schema#schema-9) 到 [SCHEMA-13](/core/model/schema#schema-13)。",
+        "description": "一个字段或数组元素的定义，见 [EntitySchema · 字段定义](/core/model/schema#field-definitions)和 [SCHEMA-10](/core/model/schema#schema-10) 到 [SCHEMA-14](/core/model/schema#schema-14)。",
         "properties": {
           "type": {
             "type": "string",
@@ -1006,6 +1101,71 @@
             }
           }
         ]
+      },
+      "ReferrerPage": {
+        "type": "object",
+        "required": [
+          "referrers",
+          "next"
+        ],
+        "properties": {
+          "referrers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Referrer"
+            }
+          },
+          "next": {
+            "description": "下一页的游标，作为 `after` 传入。没有下一页时为 `null`。",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "Referrer": {
+        "type": "object",
+        "description": "一个引用了目标实体的版本，以及其中引用目标的位置。",
+        "required": [
+          "version",
+          "references"
+        ],
+        "properties": {
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "references": {
+            "type": "array",
+            "minItems": 1,
+            "description": "这个版本中引用目标实体的每个位置，无序。",
+            "items": {
+              "$ref": "#/components/schemas/ReferenceLocation"
+            }
+          }
+        }
+      },
+      "ReferenceLocation": {
+        "type": "object",
+        "required": [
+          "path",
+          "targetVersionId"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "引用所在的位置，是从版本根部写起的 JSON Pointer（[RFC 6901](https://www.rfc-editor.org/rfc/rfc6901.html)），例如 `/content/contentVersionId`、`/content/members/3`。"
+          },
+          "targetVersionId": {
+            "description": "这个位置的值，是目标实体的一个版本。",
+            "$ref": "#/components/schemas/VersionId"
+          }
+        }
       }
     }
   }

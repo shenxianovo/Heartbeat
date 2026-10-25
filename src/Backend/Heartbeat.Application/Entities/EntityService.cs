@@ -73,6 +73,14 @@ public sealed class EntityService(IEntityStore store, TimeProvider timeProvider)
         return await transaction.ListObservationsAsync(query with { SchemaId = schema }, token);
     }, cancellationToken);
 
+    public Task<IReadOnlyList<Referrer>?> ListReferrersAsync(ReferrerQuery query,
+        CancellationToken cancellationToken = default) => store.ExecuteAsync<IReadOnlyList<Referrer>?>(async (transaction, token) =>
+    {
+        // HISTORY-8: a deleted target still has readable referrers.
+        if (!await transaction.EntityExistsAsync(query.Target, token)) return null;
+        return await transaction.ListReferrersAsync(query, token);
+    }, cancellationToken);
+
     private static async Task<EntityId?> ResolveSchemaAsync(IEntityTransaction transaction, string? resourceName, CancellationToken token) =>
         resourceName is null ? null : await transaction.FindSchemaAsync(resourceName, token) ?? throw new ResourceNotFoundException();
 
@@ -93,9 +101,15 @@ public sealed class EntityService(IEntityStore store, TimeProvider timeProvider)
         var current = await transaction.ReadCurrentAsync(version.EntityId, token);
         await CheckPreviousVersionAsync(transaction, version, current, token);
         await CheckTypeAsync(transaction, version, current, schemaVersion, token);
+        var references = new List<ResolvedReference>();
         foreach (var reference in VersionRules.GetReferences(version, schemaVersion?.Content as EntitySchema))
-            VersionRules.Require(await transaction.ReadVersionAsync(reference.Target, token) is not null,
+        {
+            var target = await transaction.ReadVersionAsync(reference.Target, token);
+            VersionRules.Require(target is not null,
                 "ENTITY-6", $"Reference {reference.Position} does not point to a saved version.");
+            if (reference.Position is not ("/previousVersionId" or "/schemaVersionId"))
+                references.Add(new(reference.Position, reference.Target, target!.EntityId));
+        }
         if (version.Content is EntitySchema schema)
         {
             var owner = await transaction.FindSchemaAsync(schema.ResourceName, token);
@@ -106,7 +120,7 @@ public sealed class EntityService(IEntityStore store, TimeProvider timeProvider)
         if (version.Content is Observation observation)
             await CheckObservationAsync(transaction, observation, current?.Content as Observation, token);
         var saved = new EntityVersion(version, VersionTime.Normalize(timeProvider.GetUtcNow()));
-        await transaction.SaveAsync(saved, token);
+        await transaction.SaveAsync(saved, references, token);
         return saved;
     }
 

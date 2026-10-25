@@ -54,11 +54,15 @@ internal sealed class InMemoryEntityStore : IEntityStore, IDisposable
             throw new NotSupportedException("Query behavior is covered against PostgreSQL.");
         public Task<IReadOnlyList<EntityVersion>> ListObservationsAsync(ObservationQuery query, CancellationToken cancellationToken) =>
             throw new NotSupportedException("Query behavior is covered against PostgreSQL.");
+        public Task<IReadOnlyList<Referrer>> ListReferrersAsync(ReferrerQuery query, CancellationToken cancellationToken) =>
+            throw new NotSupportedException("Query behavior is covered against PostgreSQL.");
 
         public Task<EntityVersion?> ReadVersionAsync(VersionId id, CancellationToken cancellationToken) =>
             Task.FromResult(_versions.Find(version => version.VersionId == id));
         public Task<IReadOnlyList<EntityVersion>> ReadVersionsAsync(EntityId id, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<EntityVersion>>(_versions.Where(version => version.EntityId == id).ToArray());
+        public Task<bool> EntityExistsAsync(EntityId id, CancellationToken cancellationToken) =>
+            Task.FromResult(_deletedEntities.Contains(id) || _versions.Any(version => version.EntityId == id));
         public Task<bool> IsEntityDeletedAsync(EntityId id, CancellationToken cancellationToken) => Task.FromResult(_deletedEntities.Contains(id));
         public Task<bool> IsVersionDeletedAsync(VersionId id, CancellationToken cancellationToken) => Task.FromResult(_deletedVersions.Contains(id));
         public Task<EntityId?> FindSchemaAsync(string resourceName, CancellationToken cancellationToken) =>
@@ -68,7 +72,7 @@ internal sealed class InMemoryEntityStore : IEntityStore, IDisposable
             var schemaVersions = _versions.Where(version => version.EntityId == schemaId).Select(version => version.VersionId).ToHashSet();
             return Task.FromResult(_versions.Any(version => version.SchemaVersionId is { } id && schemaVersions.Contains(id)));
         }
-        public Task SaveAsync(EntityVersion version, CancellationToken cancellationToken)
+        public Task SaveAsync(EntityVersion version, IReadOnlyList<ResolvedReference> references, CancellationToken cancellationToken)
         {
             _versions.Add(version);
             return Task.CompletedTask;

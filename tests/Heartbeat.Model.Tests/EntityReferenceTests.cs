@@ -5,7 +5,7 @@ namespace Heartbeat.Model.Tests;
 
 public sealed class EntityReferenceTests
 {
-    // ENTITY-5, SCHEMA-8, SCHEMA-13, VERSION-12
+    // ENTITY-5, SCHEMA-9, SCHEMA-14, VERSION-12
     [Test]
     public async Task NestedReferencesKeepEveryPositionAndIgnoreOrdinaryStrings()
     {
@@ -32,10 +32,10 @@ public sealed class EntityReferenceTests
             """), "ENTITY-6");
         await Reject(() => f.Business(schema, $$"""
             {"direct":"{{Guid.NewGuid()}}","a/b~c":[],"objects":[]}
-            """), "SCHEMA-8");
+            """), "SCHEMA-9");
     }
 
-    // SCHEMA-8: a declared reference at any depth must hold a VersionId.
+    // SCHEMA-9: a declared reference at any depth must hold a VersionId.
     [Test]
     [Arguments("direct")]
     [Arguments("object")]
@@ -63,7 +63,7 @@ public sealed class EntityReferenceTests
                 "array-object" => "{\"array-object\":[{\"target\":" + value + "}]}",
                 _ => throw new ArgumentOutOfRangeException(nameof(position)),
             };
-            await Reject(() => f.Business(schema, content), "SCHEMA-8");
+            await Reject(() => f.Business(schema, content), "SCHEMA-9");
         }
         await f.Business(schema, "{\"direct\":null}");
     }

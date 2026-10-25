@@ -5,7 +5,7 @@ namespace Heartbeat.Model.Tests;
 
 public sealed class SchemaTests
 {
-    // ENTITY-3, VERSION-3, SCHEMA-1, SCHEMA-2, SCHEMA-3, SCHEMA-10, SCHEMA-11, SCHEMA-16
+    // ENTITY-3, VERSION-3, SCHEMA-1, SCHEMA-2, SCHEMA-3, SCHEMA-11, SCHEMA-12, SCHEMA-17
     [Test]
     public async Task TypeIsStableAndEachBusinessVersionUsesItsOwnSavedSchema()
     {
@@ -15,13 +15,13 @@ public sealed class SchemaTests
         var nextSchema = await f.Save(Next(schema, new EntitySchema("Required title", "Title", "items",
             Json("""{"title":{"type":"string","required":true,"nullable":false}}"""))));
         await f.Business(schema);
-        await Reject(() => f.Business(nextSchema), "SCHEMA-10");
+        await Reject(() => f.Business(nextSchema), "SCHEMA-11");
         var updated = await f.Save(Next(old, new BusinessContent(Json("""{"title":"new"}"""))) with { SchemaVersionId = nextSchema.VersionId });
         var returned = await f.Save(Next(updated, old.Content) with { SchemaVersionId = schema.VersionId });
         await Assert.That(returned.SchemaVersionId).IsEqualTo(schema.VersionId);
         await Assert.That(await f.Service.ReadCurrentAsync(old.EntityId)).IsEqualTo(returned);
-        await Reject(() => f.Save(Next(returned, updated.Content)), "SCHEMA-11");
-        await Reject(() => f.Save(Next(returned) with { SchemaVersionId = nextSchema.VersionId }), "SCHEMA-10");
+        await Reject(() => f.Save(Next(returned, updated.Content)), "SCHEMA-12");
+        await Reject(() => f.Save(Next(returned) with { SchemaVersionId = nextSchema.VersionId }), "SCHEMA-11");
         await Assert.That((await f.Service.ReadVersionsAsync(old.EntityId)).Count).IsEqualTo(3);
         var savedUpdated = (await f.Service.ReadVersionAsync(updated.VersionId))!;
         await Assert.That(savedUpdated.SchemaVersionId).IsEqualTo(nextSchema.VersionId);
@@ -72,17 +72,17 @@ public sealed class SchemaTests
         await f.Schema();
     }
 
-    // SCHEMA-7, SCHEMA-9, SCHEMA-11, SCHEMA-13
+    // SCHEMA-7, SCHEMA-10, SCHEMA-12, SCHEMA-14
     [Test]
     [Arguments("{\"id\":{\"type\":\"string\",\"required\":true,\"nullable\":false}}", "SCHEMA-7")]
-    [Arguments("{\"x\":{\"required\":true,\"nullable\":false}}", "SCHEMA-9")]
-    [Arguments("{\"x\":{\"type\":\"string\",\"nullable\":false}}", "SCHEMA-9")]
-    [Arguments("{\"x\":{\"type\":\"string\",\"required\":true}}", "SCHEMA-9")]
-    [Arguments("{\"x\":{\"type\":\"string\",\"required\":true,\"nullable\":false,\"default\":\"x\"}}", "SCHEMA-11")]
-    [Arguments("{\"x\":{\"type\":\"object\",\"required\":true,\"nullable\":false}}", "SCHEMA-13")]
-    [Arguments("{\"x\":{\"type\":\"array\",\"required\":true,\"nullable\":false}}", "SCHEMA-13")]
-    [Arguments("{\"x\":{\"type\":\"string\",\"required\":true,\"nullable\":false,\"fields\":{}}}", "SCHEMA-13")]
-    [Arguments("{\"x\":{\"type\":\"array\",\"required\":true,\"nullable\":false,\"items\":{\"type\":\"string\",\"required\":false,\"nullable\":false}}}", "SCHEMA-9")]
+    [Arguments("{\"x\":{\"required\":true,\"nullable\":false}}", "SCHEMA-10")]
+    [Arguments("{\"x\":{\"type\":\"string\",\"nullable\":false}}", "SCHEMA-10")]
+    [Arguments("{\"x\":{\"type\":\"string\",\"required\":true}}", "SCHEMA-10")]
+    [Arguments("{\"x\":{\"type\":\"string\",\"required\":true,\"nullable\":false,\"default\":\"x\"}}", "SCHEMA-12")]
+    [Arguments("{\"x\":{\"type\":\"object\",\"required\":true,\"nullable\":false}}", "SCHEMA-14")]
+    [Arguments("{\"x\":{\"type\":\"array\",\"required\":true,\"nullable\":false}}", "SCHEMA-14")]
+    [Arguments("{\"x\":{\"type\":\"string\",\"required\":true,\"nullable\":false,\"fields\":{}}}", "SCHEMA-14")]
+    [Arguments("{\"x\":{\"type\":\"array\",\"required\":true,\"nullable\":false,\"items\":{\"type\":\"string\",\"required\":false,\"nullable\":false}}}", "SCHEMA-10")]
     public async Task MalformedDeclarationsAreRejectedBeforeSaving(string fields, string rule)
     {
         using var f = new ModelFixture();
@@ -91,7 +91,7 @@ public sealed class SchemaTests
     }
 
 
-    // SCHEMA-2, SCHEMA-10, SCHEMA-11, SCHEMA-12, SCHEMA-13
+    // SCHEMA-2, SCHEMA-11, SCHEMA-12, SCHEMA-13, SCHEMA-14
     [Test]
     public async Task OmittedAndNullRemainDistinctAndArrayConstraintsApplyAtEachLevel()
     {
@@ -108,11 +108,11 @@ public sealed class SchemaTests
         await Assert.That(((BusinessContent)withNull.Content).Fields.GetProperty("optional").ValueKind).IsEqualTo(System.Text.Json.JsonValueKind.Null);
         (string Content, string Rule)[] invalid =
         [
-            ("{}", "SCHEMA-10"),
-            ("{\"list\":[null]}", "SCHEMA-10"),
-            ("{\"list\":[{}]}", "SCHEMA-10"),
-            ("{\"list\":[{\"value\":1,\"extra\":true}]}", "SCHEMA-11"),
-            ("{\"list\":[],\"extra\":true}", "SCHEMA-11"),
+            ("{}", "SCHEMA-11"),
+            ("{\"list\":[null]}", "SCHEMA-11"),
+            ("{\"list\":[{}]}", "SCHEMA-11"),
+            ("{\"list\":[{\"value\":1,\"extra\":true}]}", "SCHEMA-12"),
+            ("{\"list\":[],\"extra\":true}", "SCHEMA-12"),
             ("{\"list\":[{\"value\":0.5}]}", "SCHEMA-2"),
             ("{\"list\":{}}", "SCHEMA-2"),
         ];
@@ -120,7 +120,7 @@ public sealed class SchemaTests
             await Reject(() => f.Business(schema, content), rule);
     }
 
-    // VERSION-2, VERSION-7, SCHEMA-12
+    // VERSION-2, VERSION-7, SCHEMA-13
     [Test]
     public async Task JsonContentOwnsItsLifetimeAndRetriesCompareValues()
     {

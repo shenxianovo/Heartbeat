@@ -30,7 +30,7 @@ EntityId 是写入方生成的 UUIDv7。
 
 执行方：后端
 
-实体的类型在创建后不再改变：Core 类型实体的后续版本，`category` 与首版相同；业务实体的后续版本必须引用同一个 EntitySchema 的 Schema 版本，可以是其中任何一版，比前一版更旧的也可以。每个版本都按自己引用的 Schema 版本解释，见 [SCHEMA-16](./schema.mdx#schema-16)。
+实体的类型在创建后不再改变：Core 类型实体的后续版本，`category` 与首版相同；业务实体的后续版本必须引用同一个 EntitySchema 的 Schema 版本，可以是其中任何一版，比前一版更旧的也可以。每个版本都按自己引用的 Schema 版本解释，见 [SCHEMA-17](./schema.mdx#schema-17)。
 
 ## 引用 [#references]
 
@@ -50,7 +50,7 @@ EntityId 是写入方生成的 UUIDv7。
 
 - 版本的 `previousVersionId` 和 `schemaVersionId`；
 - Core 类型声明的引用成员，例如 Observation 的 `observerVersionId`；
-- 业务字段中 `type` 为 `reference` 的值，包括对象成员和数组元素，见 [SCHEMA-8](./schema.mdx#schema-8)。
+- 业务字段中 `type` 为 `reference` 的值，包括对象成员和数组元素，见 [SCHEMA-9](./schema.mdx#schema-9)。
 
 枚举引用时，保留每个引用所在的位置：前一版本、Schema 版本、Observer、观测内容和输入是不同的关系。
 

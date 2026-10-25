@@ -16,7 +16,7 @@ describe("buildGraph", () => {
     const entities = new Map<string, EntityResponse>([
       [root, entity("observation", { observerId, contentId, schemaId })],
       [observerId, entity("observer", {})],
-      [contentId, entity("entity", { localApplicationId: null })],
+      [contentId, entity("entity", { localApplicationVersionId: null })],
     ]);
     const { nodes, edges } = buildGraph(root, entities, new Set());
 

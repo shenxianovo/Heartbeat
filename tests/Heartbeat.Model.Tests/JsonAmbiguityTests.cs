@@ -5,7 +5,7 @@ namespace Heartbeat.Model.Tests;
 
 public sealed class JsonAmbiguityTests
 {
-    // SCHEMA-11
+    // SCHEMA-12
     [Test]
     [Arguments("{\"message\":\"first\",\"message\":\"second\"}")]
     [Arguments("{\"message\":\"first\",\"messa\\u0067e\":\"second\"}")]
@@ -16,7 +16,7 @@ public sealed class JsonAmbiguityTests
         await Assert.That(EntitySchemaRules.ValidEntity(fields.RootElement, content.RootElement)).IsFalse();
     }
 
-    // SCHEMA-9, SCHEMA-11, SCHEMA-13
+    // SCHEMA-10, SCHEMA-12, SCHEMA-14
     [Test]
     [Arguments("{\"message\":{\"type\":\"integer\",\"type\":\"string\",\"required\":true,\"nullable\":false}}")]
     [Arguments("{\"message\":{\"type\":\"string\",\"required\":false,\"required\":true,\"nullable\":false}}")]
@@ -28,7 +28,7 @@ public sealed class JsonAmbiguityTests
         await Assert.That(EntitySchemaRules.ValidFields(fields.RootElement)).IsFalse();
     }
 
-    // SCHEMA-11, SCHEMA-13
+    // SCHEMA-12, SCHEMA-14
     [Test]
     public async Task DuplicateNamesInsideArrayObjectsAreRejected()
     {
@@ -37,7 +37,7 @@ public sealed class JsonAmbiguityTests
         await Assert.That(EntitySchemaRules.ValidEntity(fields.RootElement, content.RootElement)).IsFalse();
     }
 
-    // SCHEMA-11, SCHEMA-13
+    // SCHEMA-12, SCHEMA-14
     [Test]
     public async Task CaseDistinctNamesAndRepeatedArrayValuesRemainValid()
     {

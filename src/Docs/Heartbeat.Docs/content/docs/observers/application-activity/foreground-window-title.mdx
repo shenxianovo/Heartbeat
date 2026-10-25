@@ -3,7 +3,7 @@ title: "Foreground Window Title"
 description: "依附于前台应用时段的窗口标题时段"
 ---
 
-窗口标题时段表达“在这一段前台应用活动中，焦点窗口的标题是 T”，由前台状态 Observer 形成。它通过 `foregroundObservationId` 引用所属的[前台应用时段](./foreground-application-period.mdx) Observation，再沿那份观测的内容找到本机应用，所以它自己不再引用本机应用，窗口也没有单独的身份。
+窗口标题时段表达“在这一段前台应用活动中，焦点窗口的标题是 T”，由前台状态 Observer 形成。它通过 `foregroundObservationVersionId` 引用所属的[前台应用时段](./foreground-application-period.mdx) Observation，再沿那份观测的内容找到本机应用，所以它自己不再引用本机应用，窗口也没有单独的身份。
 
 <ObserverStructure node="TITLE_CONTENT" />
 
@@ -22,13 +22,13 @@ description: "依附于前台应用时段的窗口标题时段"
 
 ## 身份 [#identity]
 
-标题时段通过 `foregroundObservationId` 归属一整段前台应用活动。观测内容的身份，以及标题变化后是否复用内容，尚未确定。
+标题时段通过 `foregroundObservationVersionId` 归属一整段前台应用活动。观测内容的身份，以及标题变化后是否复用内容，尚未确定。
 
 ## 引用 [#references]
 
 | 字段 | 目标 |
 | --- | --- |
-| `foregroundObservationId` | 所属前台应用时段的 Observation，经由它的内容关联到本机应用 |
+| `foregroundObservationVersionId` | 所属前台应用时段的 Observation，经由它的内容关联到本机应用 |
 
 ## 事实时间 [#fact-time]
 
@@ -45,7 +45,7 @@ description: "依附于前台应用时段的窗口标题时段"
 
 | 字段 | 类型 | 必填 | 可空 | 含义 |
 | --- | --- | --- | --- | --- |
-| `foregroundObservationId` | `reference` | 待定 | 待定 | 所属前台应用时段的 Observation |
+| `foregroundObservationVersionId` | `reference` | 待定 | 待定 | 所属前台应用时段的 Observation |
 | `title` | `string` | 待定 | 待定 | 窗口标题的原文；读到空标题时为 `""` |
 
 标题按原文保存。从标题中解析文件、项目或网页，是另一个 Observer 的陈述，由它形成自己的观测。
@@ -54,12 +54,8 @@ description: "依附于前台应用时段的窗口标题时段"
 
 ```json
 {
-  "references": {
-    "foregroundObservationId": "01a151e3-1900-7000-8000-000000000030"
-  },
-  "properties": {
-    "title": "Heartbeat — Codex"
-  }
+  "foregroundObservationVersionId": "01a151e3-1900-7000-8000-000000000130",
+  "title": "Heartbeat — Codex"
 }
 ```
 
@@ -68,4 +64,4 @@ description: "依附于前台应用时段的窗口标题时段"
 - SchemaId、资源名，以及字段的必填和可空。
 - 观测内容的身份，以及标题变化后是否复用。
 - 怎样区分读取失败、采集停顿和空标题。
-- `foregroundObservationId` 引用的是应用时段 Observation 的某一个版本，而应用时段会不断延长出新版本；标题应当引用哪一版。
+- `foregroundObservationVersionId` 引用的是应用时段 Observation 的某一个版本，而应用时段会不断延长出新版本；标题应当引用哪一版。

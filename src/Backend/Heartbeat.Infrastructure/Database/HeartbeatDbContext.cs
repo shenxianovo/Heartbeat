@@ -30,6 +30,12 @@ public sealed partial class HeartbeatDbContext(DbContextOptions<HeartbeatDbConte
         versions.HasOne<StoredEntity>().WithMany().HasForeignKey(row => row.EntityId).OnDelete(DeleteBehavior.NoAction).HasConstraintName("fk_versions_entities_entity_id");
         versions.HasOne<StoredVersion>().WithMany().HasForeignKey(row => row.PreviousVersionId).OnDelete(DeleteBehavior.NoAction).HasConstraintName("fk_versions_versions_previous_version_id");
         versions.HasOne<StoredVersion>().WithMany().HasForeignKey(row => row.SchemaVersionId).OnDelete(DeleteBehavior.NoAction).HasConstraintName("fk_versions_versions_schema_version_id");
+        var references = modelBuilder.Entity<StoredVersionReference>();
+        references.ToTable("version_references");
+        references.HasKey(row => new { row.VersionId, row.Path }).HasName("pk_version_references");
+        references.HasIndex(row => new { row.TargetEntityId, row.VersionId }).HasDatabaseName("ix_version_references_target_entity_id_version_id");
+        references.HasOne<StoredVersion>().WithMany().HasForeignKey(row => row.VersionId).OnDelete(DeleteBehavior.Cascade).HasConstraintName("fk_version_references_versions_version_id");
+        references.HasOne<StoredEntity>().WithMany().HasForeignKey(row => row.TargetEntityId).OnDelete(DeleteBehavior.NoAction).HasConstraintName("fk_version_references_entities_target_entity_id");
         var tombstones = modelBuilder.Entity<VersionTombstone>();
         tombstones.ToTable("version_tombstones");
         tombstones.HasKey(row => row.VersionId).HasName("pk_version_tombstones");

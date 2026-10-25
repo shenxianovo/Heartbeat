@@ -27,7 +27,7 @@ internal sealed record ForegroundRegistration(VersionId ObserverSchema, VersionI
             """)), token);
         var periodSchema = await sdk.RegisterSchemaAsync(PeriodSchemaId, new("前台应用时段",
             "表达某个本机应用连续处于前台的一段活动；内容保存应用引用与当时读到的名称，Observation 保存时段。", "foreground-application-periods", Json("""
-            {"localApplicationId":{"type":"reference","required":true,"nullable":false},
+            {"localApplicationVersionId":{"type":"reference","required":true,"nullable":false},
              "name":{"type":"string","required":true,"nullable":true}}
             """)), token);
         sdk.RegisterInstance(observer, observerSchema, new(JsonSerializer.SerializeToElement(new

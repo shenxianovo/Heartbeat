@@ -1,6 +1,6 @@
 # Heartbeat.Integration.Tests
 
-Heartbeat.Integration.Tests 用 TUnit 运行集成测试，目前覆盖前台状态 Observer 的本地行为，以及 API 的启动和遥测。实体 API 和数据库存储正按版本模型重新设计，相应的测试随它们重建。测试分工见 [Testing](../../src/Docs/Heartbeat.Docs/content/docs/testing/index.mdx)。
+Heartbeat.Integration.Tests 用 TUnit 运行集成测试，覆盖实体 API 与 PostgreSQL 存储、API 遥测、.NET SDK 的提交，以及前台状态 Observer 的本地行为。测试分工见 [Testing](../../src/Docs/Heartbeat.Docs/content/docs/testing/index.mdx)。
 
 ## 运行
 
@@ -18,9 +18,11 @@ dotnet test --project tests/Heartbeat.Integration.Tests/Heartbeat.Integration.Te
 
 | 测试类 | 检查内容 |
 | --- | --- |
+| `EntityApiTests` | 七个基本接口、提交中的部分拒绝、事实时间查询与分页、两个服务实例的首版冲突 |
+| `ReferrerApiTests` | 列出引用方：引用位置、按目标实体归集、当前版本与全部版本、分页，以及删除目标或引用方之后的结果 |
 | `TelemetryTests` | 未配置 OTLP 时不注册导出器。配置后检查结构化日志、HTTP 追踪、HTTP 与 .NET 指标，以及三类数据的网络导出 |
 
-### 前台状态 Observer
+### Observer 与 SDK
 
 | 测试类 | 检查内容 | 依赖 |
 | --- | --- | --- |
@@ -28,6 +30,7 @@ dotnet test --project tests/Heartbeat.Integration.Tests/Heartbeat.Integration.Te
 | `ForegroundTimelineTests` | 时段的延长、切换、中断和时间跳变 | 模拟读数 |
 | `LocalApplicationIdentityTests` | 本机应用身份的复用和新建、并发登记 | 临时登记文件 |
 | `ForegroundOutboxTests` | 进行中时段只在本地、重启恢复、事务回滚、事件和休眠边界 | 独立 SQLite、模拟读数 |
+| `ObserverSdkTests` | SDK 的草稿与恢复、重试与拆批、部分拒绝、Schema 登记，以及前台时段的上传 | 独立 PostgreSQL |
 
 这些测试不调用 macOS 原生接口。原生读取的验证方法见 [Foreground State README](../../src/Observers/Heartbeat.Observer.ForegroundState/README.md#验证)。
 

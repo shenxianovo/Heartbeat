@@ -14,7 +14,7 @@ public static partial class EntitySchemaRules
 
     internal static string? FieldViolation(JsonElement fields, bool topLevel = true)
     {
-        if (!UniqueProperties(fields)) return "SCHEMA-11";
+        if (!UniqueProperties(fields)) return "SCHEMA-12";
         foreach (var field in fields.EnumerateObject())
         {
             if (topLevel && field.Name == "id") return "SCHEMA-7";
@@ -25,20 +25,20 @@ public static partial class EntitySchemaRules
 
     private static string? DefinitionViolation(JsonElement value, bool field)
     {
-        if (!UniqueProperties(value)) return "SCHEMA-11";
+        if (!UniqueProperties(value)) return "SCHEMA-12";
         if (!value.TryGetProperty("type", out var type) || type.ValueKind != JsonValueKind.String
             || !value.TryGetProperty("nullable", out var nullable)
-            || nullable.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) return "SCHEMA-9";
+            || nullable.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) return "SCHEMA-10";
         if (field != value.TryGetProperty("required", out var required)
-            || field && required.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) return "SCHEMA-9";
+            || field && required.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) return "SCHEMA-10";
         var kind = type.GetString();
-        if (kind is not ("string" or "boolean" or "integer" or "number" or "reference" or "object" or "array")) return "SCHEMA-11";
-        if (value.EnumerateObject().Any(p => p.Name is not ("type" or "nullable" or "required" or "fields" or "items"))) return "SCHEMA-11";
+        if (kind is not ("string" or "boolean" or "integer" or "number" or "reference" or "object" or "array")) return "SCHEMA-12";
+        if (value.EnumerateObject().Any(p => p.Name is not ("type" or "nullable" or "required" or "fields" or "items"))) return "SCHEMA-12";
         if ((kind == "object") != value.TryGetProperty("fields", out var fields)
-            || (kind == "array") != value.TryGetProperty("items", out var items)) return "SCHEMA-13";
+            || (kind == "array") != value.TryGetProperty("items", out var items)) return "SCHEMA-14";
         return kind switch
         {
-            "object" => fields.ValueKind == JsonValueKind.Object ? FieldViolation(fields, false) : "SCHEMA-13",
+            "object" => fields.ValueKind == JsonValueKind.Object ? FieldViolation(fields, false) : "SCHEMA-14",
             "array" => DefinitionViolation(items, false),
             _ => null,
         };
@@ -52,7 +52,7 @@ public static partial class EntitySchemaRules
     private static string? ValueViolation(JsonElement definition, JsonElement value)
     {
         if (value.ValueKind == JsonValueKind.Null)
-            return definition.GetProperty("nullable").GetBoolean() ? null : "SCHEMA-10";
+            return definition.GetProperty("nullable").GetBoolean() ? null : "SCHEMA-11";
         var kind = definition.GetProperty("type").GetString();
         if (kind == "object") return ObjectViolation(definition.GetProperty("fields"), value);
         if (kind == "array") return ArrayViolation(definition.GetProperty("items"), value);
@@ -67,7 +67,7 @@ public static partial class EntitySchemaRules
                 && Guid.TryParseExact(value.GetString(), "D", out var id) && VersionRules.IsUuid7(id),
             _ => false,
         };
-        return valid ? null : kind == "reference" ? "SCHEMA-8" : "SCHEMA-2";
+        return valid ? null : kind == "reference" ? "SCHEMA-9" : "SCHEMA-2";
     }
 
     private static string? ArrayViolation(JsonElement items, JsonElement value)
@@ -81,12 +81,12 @@ public static partial class EntitySchemaRules
     private static string? ObjectViolation(JsonElement fields, JsonElement value)
     {
         if (value.ValueKind != JsonValueKind.Object) return "SCHEMA-2";
-        if (!UniqueProperties(value) || value.EnumerateObject().Any(p => !fields.TryGetProperty(p.Name, out _))) return "SCHEMA-11";
+        if (!UniqueProperties(value) || value.EnumerateObject().Any(p => !fields.TryGetProperty(p.Name, out _))) return "SCHEMA-12";
         foreach (var field in fields.EnumerateObject())
         {
             if (!value.TryGetProperty(field.Name, out var member))
             {
-                if (field.Value.GetProperty("required").GetBoolean()) return "SCHEMA-10";
+                if (field.Value.GetProperty("required").GetBoolean()) return "SCHEMA-11";
             }
             else if (ValueViolation(field.Value, member) is { } violation) return violation;
         }

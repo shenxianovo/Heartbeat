@@ -31,6 +31,7 @@ internal static class EntityEndpoints
             .WithName("deleteEntity");
         app.MapGet("/entities", ListEntitiesAsync).WithName("listEntities");
         app.MapGet("/observations", ListObservationsAsync).WithName("listObservations");
+        app.MapGet("/entities/{entityId}/referrers", ListReferrersAsync).WithName("listReferrers");
     }
 
     private static async Task<IResult> SubmitAsync(HttpRequest request, EntityService service, CancellationToken token)
@@ -78,6 +79,27 @@ internal static class EntityEndpoints
         {
             var observation = (Observation)version.Content;
             return Encode("observations", VersionTime.Format((observation.StartAt ?? observation.EndAt)!.Value) + "|" + version.EntityId.Value.ToString("D"));
+        });
+    }
+
+    private static async Task<IResult> ListReferrersAsync(string entityId, HttpRequest request, EntityService service, CancellationToken token)
+    {
+        var target = new EntityId(Id(entityId));
+        var versions = Parameter(request, "versions");
+        if (versions is not (null or "current" or "all")) throw new JsonException("versions must be current or all.");
+        var after = Parameter(request, "after");
+        VersionId? cursor = after is null ? null : new(Id(Decode(after, "referrers")));
+        var limit = Limit(request);
+        var referrers = await service.ListReferrersAsync(new(target, versions == "all", limit, cursor), token);
+        if (referrers is null) return ApiProblem.Create(404, "This EntityId has never been saved.");
+        return Results.Json(new
+        {
+            referrers = referrers.Take(limit).Select(referrer => new
+            {
+                version = VersionJson.Saved(referrer.Version),
+                references = referrer.References.Select(reference => new { path = reference.Position, targetVersionId = reference.Target.Value }),
+            }),
+            next = referrers.Count > limit ? Encode("referrers", referrers[limit - 1].Version.VersionId.Value.ToString("D")) : null,
         });
     }
 

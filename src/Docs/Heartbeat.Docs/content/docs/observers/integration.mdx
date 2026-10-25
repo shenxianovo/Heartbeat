@@ -29,9 +29,9 @@ description: "接入新来源时，依次确定事实、Observer、实体、Enti
 
 ## 4. EntitySchema [#schema]
 
-为每种业务类型写一个 EntitySchema。每个字段写明 `type`、`required` 和 `nullable`；对象声明成员，数组声明元素；引用可以出现在任何层级。外部系统的标识保存为普通属性。完整的规则见 [EntitySchema · 字段约束](../core/model/schema.mdx#constraints)。
+为每种业务类型写一个 EntitySchema。每个字段写明 `type`、`required` 和 `nullable`；对象声明成员，数组声明元素；引用可以出现在任何层级，名字以 `VersionId` 结尾，见 [SCHEMA-8](../core/model/schema.mdx#schema-8)。外部系统的标识保存为普通属性。完整的规则见 [EntitySchema · 字段约束](../core/model/schema.mdx#constraints)。
 
-为业务类型选择稳定的 SchemaId 和唯一的资源名。结构或约束变化时，形成同一 EntitySchema 的新版本；业务含义变化时，新建一个 EntitySchema，见 [SCHEMA-14](../core/model/schema.mdx#schema-14) 和 [SCHEMA-15](../core/model/schema.mdx#schema-15)。
+为业务类型选择稳定的 SchemaId 和唯一的资源名。结构或约束变化时，形成同一 EntitySchema 的新版本；业务含义变化时，新建一个 EntitySchema，见 [SCHEMA-15](../core/model/schema.mdx#schema-15) 和 [SCHEMA-16](../core/model/schema.mdx#schema-16)。
 
 一种业务类型的含义、粒度、身份、时间、EntitySchema 和示例，集中写在同一个实体页。
 
@@ -57,7 +57,7 @@ description: "接入新来源时，依次确定事实、Observer、实体、Enti
 
 当前状态通过同一实体的新版本更新，旧版本自动保留。例如本机应用保持一个身份，不同时段的观测各自引用当时读到的那一版，见 [ENTITY-4](../core/model/entity.mdx#entity-4)。
 
-每个版本保存完整内容：新版本中省略的字段，在这一版中就不存在，见 [VERSION-1](../core/model/version.mdx#version-1) 和 [SCHEMA-12](../core/model/schema.mdx#schema-12)。
+每个版本保存完整内容：新版本中省略的字段，在这一版中就不存在，见 [VERSION-1](../core/model/version.mdx#version-1) 和 [SCHEMA-13](../core/model/schema.mdx#schema-13)。
 
 ## 8. 提交 [#submission]
 
@@ -67,11 +67,9 @@ description: "接入新来源时，依次确定事实、Observer、实体、Enti
 
 ## 9. 读回 [#read-back]
 
-用实体页的示例检查保存和读取是否一致：
+提交实体页的示例，再用 `GET /versions/{versionId}` 逐个读回（[API · 接口](../api/index.mdx#operations)），检查保存和读取是否一致：
 
 - 业务版本的 `schemaVersionId` 指向它所用的 Schema 版本。观测内容的类型由内容版本自己的 `schemaVersionId` 给出。
 - 每个版本都带有后端赋值的 `recordedAt`，提交时不带它。
 - 省略的字段和值为 `null` 的字段，读回后仍能区分。
 - 引用的目标在提交前已保存，见 [ENTITY-6](../core/model/entity.mdx#entity-6)。
-
-读取接口尚未定义，见 [API](../api/index.mdx)。

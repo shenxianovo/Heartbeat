@@ -30,6 +30,14 @@ internal sealed class VersionTombstone
     public Guid EntityId { get; set; }
 }
 
+internal sealed class StoredVersionReference
+{
+    public Guid VersionId { get; set; }
+    public string Path { get; set; } = null!;
+    public Guid TargetVersionId { get; set; }
+    public Guid TargetEntityId { get; set; }
+}
+
 internal sealed class CurrentObservation
 {
     public Guid EntityId { get; set; }

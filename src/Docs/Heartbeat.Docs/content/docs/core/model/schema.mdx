@@ -140,21 +140,27 @@ EntitySchema 定义一种业务类型，例如“本机应用”或“前台时�
 
 顶层字段不得命名为 `id`。实体和版本的身份由[版本的成员](./version.mdx#members)提供。
 
+### SCHEMA-8 引用字段的名字 [#schema-8]
+
+执行方：写入方
+
+`reference` 字段的名字以 `VersionId` 结尾，元素是 `reference` 的数组以 `VersionIds` 结尾，对象成员也一样。名字的前半部分写目标在这里的角色，例如前台应用时段引用本机应用的 `localApplicationVersionId`，与 Observation 的 `observerVersionId` 写法相同。
+
 ## 字段约束 [#constraints]
 
-### SCHEMA-8 reference [#schema-8]
+### SCHEMA-9 reference [#schema-9]
 
 执行方：后端
 
 `reference` 的非空值必须是 VersionId。顶层字段、对象成员和数组元素都可以是 `reference`。
 
-### SCHEMA-9 三项必写 [#schema-9]
+### SCHEMA-10 三项必写 [#schema-10]
 
 执行方：后端
 
 每个字段定义必须写明 `type`、`required` 和 `nullable`，三项都没有默认值。数组元素只写 `type` 和 `nullable`。
 
-### SCHEMA-10 required 与 nullable [#schema-10]
+### SCHEMA-11 required 与 nullable [#schema-11]
 
 执行方：后端
 
@@ -167,19 +173,19 @@ EntitySchema 定义一种业务类型，例如“本机应用”或“前台时�
 | `false` | `false` | 允许 | 不允许 | 允许 |
 | `false` | `true` | 允许 | 允许 | 允许 |
 
-### SCHEMA-11 只收已声明字段 [#schema-11]
+### SCHEMA-12 只收已声明字段 [#schema-12]
 
 执行方：后端
 
 业务实体只接受已声明的字段，对象成员也一样。字段定义只接受[字段定义](#field-definitions)中列出的配置。
 
-### SCHEMA-12 省略与 null [#schema-12]
+### SCHEMA-13 省略与 null [#schema-13]
 
 执行方：后端
 
 “省略”和“值为 `null`”是两种状态：省略的字段读回时不出现，值为 `null` 的字段读回时是 `null`。
 
-### SCHEMA-13 对象与数组 [#schema-13]
+### SCHEMA-14 对象与数组 [#schema-14]
 
 执行方：后端
 
@@ -194,19 +200,19 @@ EntitySchema 定义一种业务类型，例如“本机应用”或“前台时�
 
 ## 类型的演进 [#changes]
 
-### SCHEMA-14 结构变了，出新版本 [#schema-14]
+### SCHEMA-15 结构变了，出新版本 [#schema-15]
 
 执行方：写入方
 
 结构或约束改变时，形成同一个 EntitySchema 的新版本。增删字段、调整约束、改写 `displayName` 或 `description` 的措辞，都属于这种情况；SchemaId 和 `resourceName` 保持不变。
 
-### SCHEMA-15 含义变了，建新类型 [#schema-15]
+### SCHEMA-16 含义变了，建新类型 [#schema-16]
 
 执行方：写入方
 
 业务含义改变时，必须新建一个 EntitySchema，使用新的 SchemaId 和 `resourceName`。字段改名或改写 `description` 不得改变旧数据的含义。
 
-### SCHEMA-16 旧数据按旧版本读 [#schema-16]
+### SCHEMA-17 旧数据按旧版本读 [#schema-17]
 
 执行方：后端
 
