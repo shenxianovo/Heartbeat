@@ -14,6 +14,7 @@ public sealed class DeveloperCliTests
     [Arguments("tools/Heartbeat.Dev/DeveloperCli.cs", "dotnet-build,developer-cli-tests")]
     [Arguments("src/Observers/Heartbeat.Observer.ForegroundState/Program.cs", "dotnet-build,integration-tests")]
     [Arguments("tools/Heartbeat.AppHost/Program.cs", "dotnet-build")]
+    [Arguments("docker/nginx/api-enabled.conf", "dotnet-build")]
     [Arguments("src/Frontend/Heartbeat.Web/src/main.tsx", "frontend-verify")]
     [Arguments("unclassified.config", "dotnet-build,model-tests,integration-tests,developer-cli-tests,frontend-verify,docs-check,docs-test,docs-types,docs-build")]
     public async Task ChangedVerificationSelectsCurrentChecks(string path, string expected)

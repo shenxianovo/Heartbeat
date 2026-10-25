@@ -13,6 +13,13 @@ internal sealed class CapturedProcessCancelledException(string stdout, string st
 
 internal interface IProcessRunner
 {
+    async Task<int> StreamAsync(string fileName, IReadOnlyList<string> arguments, TextWriter output, CancellationToken token)
+    {
+        var result = await CaptureAsync(fileName, arguments, null, token);
+        await output.WriteAsync(result.StdOut + result.StdErr);
+        return result.ExitCode;
+    }
+
     Task<ProcessResult> CaptureAsync(
         string fileName,
         IReadOnlyList<string> arguments,
@@ -22,6 +29,26 @@ internal interface IProcessRunner
 
 internal sealed class ProcessRunner(string workingDirectory) : IProcessRunner
 {
+    public async Task<int> StreamAsync(string fileName, IReadOnlyList<string> arguments, TextWriter output, CancellationToken token)
+    {
+        using var process = Start(workingDirectory, fileName, arguments, null);
+        var writer = TextWriter.Synchronized(output);
+        async Task CopyAsync(StreamReader reader)
+        {
+            while (await reader.ReadLineAsync(CancellationToken.None) is { } line) await writer.WriteLineAsync(line);
+        }
+        var copies = Task.WhenAll(CopyAsync(process.StandardOutput), CopyAsync(process.StandardError));
+        try { await process.WaitForExitAsync(token); }
+        catch (OperationCanceledException)
+        {
+            Kill(process);
+            await process.WaitForExitAsync(CancellationToken.None);
+            throw;
+        }
+        finally { await copies; }
+        return process.ExitCode;
+    }
+
     public Task<ProcessResult> CaptureAsync(
         string fileName,
         IReadOnlyList<string> arguments,

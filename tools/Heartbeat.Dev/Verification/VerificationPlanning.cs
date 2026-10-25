@@ -82,7 +82,7 @@ internal static class VerificationPlanner
         // Observer tests live in the integration test project.
         (["src/Observers/"], CheckSelection.Build | CheckSelection.Backend),
         (["src/Frontend/Heartbeat.Web/"], CheckSelection.Frontend),
-        (["tools/Heartbeat.AppHost/"], CheckSelection.Build),
+        (["tools/Heartbeat.AppHost/", "docker/nginx/"], CheckSelection.Build),
         ([".scratch/"], CheckSelection.None),
     ];
 

@@ -13,6 +13,8 @@ internal sealed class DeveloperCli(
     {
         var root = new RootCommand("Heartbeat development and verification")
         {
+            new InstallCommand(repository, runner, output).CreateCommand(),
+            new EnvironmentCommand(repository, runner, output).CreateCommand(),
             new VerificationCommand(repository, runner, output).CreateCommand(),
             new QualityCommand(repository, runner, output).CreateCommand(),
             new LocCommand(repository, runner, output).CreateCommand(),

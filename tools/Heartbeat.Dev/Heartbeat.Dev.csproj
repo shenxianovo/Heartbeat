@@ -3,8 +3,12 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>Heartbeat.Dev</RootNamespace>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>hb</ToolCommandName>
+    <PackageId>Heartbeat.Dev</PackageId>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../Heartbeat.AppHost/ServiceSelection.cs" Link="Environment/ServiceSelection.cs" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
     <PackageReference Include="System.CommandLine" />
     <InternalsVisibleTo Include="Heartbeat.Dev.Tests" />

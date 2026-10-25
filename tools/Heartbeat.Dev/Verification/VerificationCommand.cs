@@ -43,6 +43,7 @@ internal sealed class VerificationCommand(
 
         command.Subcommands.Add(changed);
         command.Subcommands.Add(full);
+        command.Subcommands.Add(new ScenarioCommand(repository, runner, output).CreateCommand());
         return command;
     }
 
