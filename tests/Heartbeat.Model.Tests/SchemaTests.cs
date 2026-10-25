@@ -68,7 +68,7 @@ public sealed class SchemaTests
             await Reject(() => f.Schema(invalid), "SCHEMA-6");
         foreach (var valid in new[] { "a", "items-2", "schemas", "observers", "observations" }) await f.Schema(valid);
         await f.Save(Next(schema, new EntitySchema("Changed name", "Changed description", "items", Json("{}"))));
-        await f.Service.DeleteAsync([schema.EntityId]);
+        await f.Service.DeleteAsync(schema.EntityId);
         await f.Schema();
     }
 

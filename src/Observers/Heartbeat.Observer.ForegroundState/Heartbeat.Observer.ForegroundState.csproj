@@ -7,7 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="System.CommandLine" />
-    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <ProjectReference Include="../Heartbeat.Observer.Sdk/Heartbeat.Observer.Sdk.csproj" />
     <ProjectReference Include="../../Core/Heartbeat.Core/Heartbeat.Core.csproj" />
     <InternalsVisibleTo Include="Heartbeat.Integration.Tests" />
   </ItemGroup>

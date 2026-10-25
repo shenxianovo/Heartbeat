@@ -9,6 +9,7 @@
     <Project Path="src/Backend/Heartbeat.Infrastructure/Heartbeat.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/src/Observers/">
+    <Project Path="src/Observers/Heartbeat.Observer.Sdk/Heartbeat.Observer.Sdk.csproj" />
     <Project Path="src/Observers/Heartbeat.Observer.ForegroundState/Heartbeat.Observer.ForegroundState.csproj" />
   </Folder>
   <Folder Name="/tests/">

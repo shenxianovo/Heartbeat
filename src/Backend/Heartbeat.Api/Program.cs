@@ -1,5 +1,7 @@
 using System.Text.Json;
 using Heartbeat.Api;
+using Heartbeat.Application.Entities;
+using Heartbeat.Core;
 using Heartbeat.Infrastructure;
 using Microsoft.AspNetCore.Diagnostics;
 
@@ -31,6 +33,9 @@ app.UseExceptionHandler(handler => handler.Run(async context =>
     {
         BadHttpRequestException { StatusCode: StatusCodes.Status413PayloadTooLarge } =>
             ApiProblem.Create(413, "The request body must not exceed 10 MiB."),
+        EntityDeletedException => ApiProblem.Create(410, exception.Message),
+        ResourceNotFoundException => ApiProblem.Create(404, exception.Message),
+        ModelViolationException violation => ApiProblem.Create(ApiProblem.RuleStatus(violation.Rule), violation.Message, violation.Rule),
         BadHttpRequestException or JsonException =>
             ApiProblem.Create(400, "The request body is missing, malformed or does not match the contract."),
         _ => ApiProblem.Create(500, "The server could not complete the entity operation."),
@@ -46,4 +51,5 @@ app.UseStatusCodePages(async context =>
     }
 });
 
+app.MapEntities();
 app.Run();

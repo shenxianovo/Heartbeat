@@ -121,8 +121,7 @@ public sealed class VersionTests
         var first = await f.Schema();
         async Task<string?> Attempt(EntityService service, VersionSubmission draft)
         {
-            try { await service.SubmitAsync([draft]); return null; }
-            catch (ModelViolationException exception) { return exception.Rule; }
+            return (await service.SubmitAsync([draft])).Rejection?.Rule;
         }
         var writes = await Task.WhenAll(Task.Run(() => Attempt(f.Service, Next(first))), Task.Run(() => Attempt(other, Next(first))));
         await Assert.That(writes.Count(rule => rule is null)).IsEqualTo(1);
@@ -146,8 +145,7 @@ public sealed class VersionTests
         async Task<string?> Submit(EntityService service, VersionSubmission draft)
         {
             await start.Task;
-            try { await service.SubmitAsync([draft]); return null; }
-            catch (ModelViolationException exception) { return exception.Rule; }
+            return (await service.SubmitAsync([draft])).Rejection?.Rule;
         }
         var attempts = new[] { Submit(f.Service, first), Submit(other, second) };
         start.SetResult();

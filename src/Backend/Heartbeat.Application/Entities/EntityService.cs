@@ -4,43 +4,77 @@ namespace Heartbeat.Application.Entities;
 
 public sealed class EntityService(IEntityStore store, TimeProvider timeProvider)
 {
-    // VERSION-13: the writer supplies dependency order. A rejected version stops the batch;
-    // earlier transactions remain committed, and later versions are not attempted.
-    public async Task<IReadOnlyList<EntityVersion>> SubmitAsync(IEnumerable<VersionSubmission> versions,
-        CancellationToken cancellationToken = default)
+    // VERSION-13: rejection commits the prefix; an unexpected failure rolls back the whole operation.
+    public Task<SubmissionResult> SubmitAsync(IEnumerable<VersionSubmission> versions,
+        CancellationToken cancellationToken = default) => store.ExecuteAsync(async (transaction, token) =>
     {
-        var result = new List<EntityVersion>();
+        var saved = new List<EntityVersion>();
         foreach (var version in versions)
-            result.Add(await store.ExecuteAsync((transaction, token) => SaveAsync(transaction, version, token), cancellationToken));
-        return result;
-    }
+        {
+            await transaction.CreateSavepointAsync(token);
+            try
+            {
+                saved.Add(await SaveAsync(transaction, VersionTime.Normalize(version), token));
+                await transaction.ReleaseSavepointAsync(token);
+            }
+            catch (ModelViolationException exception)
+            {
+                await transaction.RollbackSavepointAsync(token);
+                return new SubmissionResult(saved, new(saved.Count, version.VersionId, exception.Rule, exception.Message));
+            }
+        }
+        return new SubmissionResult(saved, null);
+    }, cancellationToken);
 
     public Task<EntityVersion?> ReadVersionAsync(VersionId id, CancellationToken cancellationToken = default) =>
-        store.ExecuteAsync((transaction, token) => transaction.ReadVersionAsync(id, token), cancellationToken);
+        store.ExecuteAsync(async (transaction, token) =>
+        {
+            if (await transaction.IsVersionDeletedAsync(id, token)) throw new EntityDeletedException();
+            return await transaction.ReadVersionAsync(id, token);
+        }, cancellationToken);
 
     public Task<IReadOnlyList<EntityVersion>> ReadVersionsAsync(EntityId id, CancellationToken cancellationToken = default) =>
-        store.ExecuteAsync((transaction, token) => transaction.ReadVersionsAsync(id, token), cancellationToken);
+        store.ExecuteAsync(async (transaction, token) =>
+        {
+            if (await transaction.IsEntityDeletedAsync(id, token)) throw new EntityDeletedException();
+            return await transaction.ReadVersionsAsync(id, token);
+        }, cancellationToken);
 
     public Task<EntityVersion?> ReadCurrentAsync(EntityId id, CancellationToken cancellationToken = default) =>
         store.ExecuteAsync(async (transaction, token) =>
         {
-            var versions = await transaction.ReadVersionsAsync(id, token);
-            return versions.Count == 0 ? null : versions[^1];
+            if (await transaction.IsEntityDeletedAsync(id, token)) throw new EntityDeletedException();
+            return await transaction.ReadCurrentAsync(id, token);
         }, cancellationToken);
 
-    public async Task DeleteAsync(IEnumerable<EntityId> ids, CancellationToken cancellationToken = default)
+    public Task<bool> DeleteAsync(EntityId id, CancellationToken cancellationToken = default) =>
+        store.ExecuteAsync(async (transaction, token) =>
+        {
+            if (await transaction.IsEntityDeletedAsync(id, token)) return true;
+            var current = await transaction.ReadCurrentAsync(id, token);
+            if (current is null) return false;
+            if (current.Content is EntitySchema)
+                VersionRules.Require(!await transaction.HasBusinessVersionsAsync(id, token), "HISTORY-9", "Business versions still use this Schema.");
+            await transaction.DeleteAsync(id, token);
+            return true;
+        }, cancellationToken);
+
+    public Task<IReadOnlyList<EntityVersion>> ListEntitiesAsync(EntityQuery query, string? resourceName,
+        CancellationToken cancellationToken = default) => store.ExecuteAsync(async (transaction, token) =>
     {
-        foreach (var id in ids)
-            await store.ExecuteAsync(async (transaction, token) =>
-            {
-                var versions = await transaction.ReadVersionsAsync(id, token);
-                if (versions.Count == 0) return false;
-                if (versions[0].Content is EntitySchema)
-                    VersionRules.Require(!await transaction.HasBusinessVersionsAsync(id, token), "HISTORY-9", "Business versions still use this Schema.");
-                await transaction.DeleteAsync(id, token);
-                return true;
-            }, cancellationToken);
-    }
+        var schema = await ResolveSchemaAsync(transaction, resourceName, token);
+        return await transaction.ListEntitiesAsync(query with { SchemaId = schema }, token);
+    }, cancellationToken);
+
+    public Task<IReadOnlyList<EntityVersion>> ListObservationsAsync(ObservationQuery query, string? resourceName,
+        CancellationToken cancellationToken = default) => store.ExecuteAsync(async (transaction, token) =>
+    {
+        var schema = await ResolveSchemaAsync(transaction, resourceName, token);
+        return await transaction.ListObservationsAsync(query with { SchemaId = schema }, token);
+    }, cancellationToken);
+
+    private static async Task<EntityId?> ResolveSchemaAsync(IEntityTransaction transaction, string? resourceName, CancellationToken token) =>
+        resourceName is null ? null : await transaction.FindSchemaAsync(resourceName, token) ?? throw new ResourceNotFoundException();
 
     private async Task<EntityVersion> SaveAsync(IEntityTransaction transaction, VersionSubmission version, CancellationToken token)
     {
@@ -56,9 +90,8 @@ public sealed class EntityService(IEntityStore store, TimeProvider timeProvider)
         if (version.SchemaVersionId is { } schemaId)
             schemaVersion = await transaction.ReadVersionAsync(schemaId, token);
         VersionRules.Validate(version, schemaVersion?.Content as EntitySchema);
-        var versions = await transaction.ReadVersionsAsync(version.EntityId, token);
-        var current = versions.Count == 0 ? null : versions[^1];
-        CheckPreviousVersion(version, versions);
+        var current = await transaction.ReadCurrentAsync(version.EntityId, token);
+        await CheckPreviousVersionAsync(transaction, version, current, token);
         await CheckTypeAsync(transaction, version, current, schemaVersion, token);
         foreach (var reference in VersionRules.GetReferences(version, schemaVersion?.Content as EntitySchema))
             VersionRules.Require(await transaction.ReadVersionAsync(reference.Target, token) is not null,
@@ -72,17 +105,18 @@ public sealed class EntityService(IEntityStore store, TimeProvider timeProvider)
         }
         if (version.Content is Observation observation)
             await CheckObservationAsync(transaction, observation, current?.Content as Observation, token);
-        var saved = new EntityVersion(version, timeProvider.GetUtcNow());
+        var saved = new EntityVersion(version, VersionTime.Normalize(timeProvider.GetUtcNow()));
         await transaction.SaveAsync(saved, token);
         return saved;
     }
 
-    private static void CheckPreviousVersion(VersionSubmission version, IReadOnlyList<EntityVersion> versions)
+    private static async Task CheckPreviousVersionAsync(IEntityTransaction transaction, VersionSubmission version,
+        EntityVersion? current, CancellationToken token)
     {
-        var current = versions.Count == 0 ? null : versions[^1];
         if (version.PreviousVersionId == current?.VersionId) return;
-        VersionRules.Require(version.PreviousVersionId is not null
-            && !versions.Any(saved => saved.VersionId == version.PreviousVersionId),
+        var owner = version.PreviousVersionId is { } previous
+            ? await transaction.FindVersionEntityAsync(previous, token) : null;
+        VersionRules.Require(current is null || version.PreviousVersionId is not null && owner != version.EntityId,
             "VERSION-6", "The entity already has a version newer than the submitted predecessor.");
         throw new ModelViolationException("VERSION-4", "previousVersionId must be null for a first version or refer to this entity's current version.");
     }
@@ -108,7 +142,7 @@ public sealed class EntityService(IEntityStore store, TimeProvider timeProvider)
             VersionRules.Require((await transaction.ReadVersionAsync(inputs, token))?.Content is InputSet,
                 "OBSERVATION-1", "inputSetVersionId must point to an InputSet.");
         if (previous is null) return;
-        var original = await transaction.ReadVersionAsync(previous.ObserverVersionId, token);
-        VersionRules.Require(original?.EntityId == observer!.EntityId, "OBSERVATION-10", "An Observation cannot change its Observer entity.");
+        var original = await transaction.FindVersionEntityAsync(previous.ObserverVersionId, token);
+        VersionRules.Require(original == observer!.EntityId, "OBSERVATION-10", "An Observation cannot change its Observer entity.");
     }
 }

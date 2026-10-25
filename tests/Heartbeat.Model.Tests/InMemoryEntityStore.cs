@@ -38,6 +38,23 @@ internal sealed class InMemoryEntityStore : IEntityStore, IDisposable
             _deletedVersions.UnionWith(source._deletedVersions);
         }
 
+        private State? _savepoint;
+        public Task CreateSavepointAsync(CancellationToken cancellationToken) { _savepoint = new(this); return Task.CompletedTask; }
+        public Task ReleaseSavepointAsync(CancellationToken cancellationToken) { _savepoint = null; return Task.CompletedTask; }
+        public Task RollbackSavepointAsync(CancellationToken cancellationToken)
+        {
+            _versions.Clear(); _versions.AddRange(_savepoint!._versions);
+            return Task.CompletedTask;
+        }
+        public Task<EntityVersion?> ReadCurrentAsync(EntityId id, CancellationToken cancellationToken) =>
+            Task.FromResult(_versions.LastOrDefault(version => version.EntityId == id));
+        public Task<EntityId?> FindVersionEntityAsync(VersionId id, CancellationToken cancellationToken) =>
+            Task.FromResult(_versions.Find(version => version.VersionId == id)?.EntityId);
+        public Task<IReadOnlyList<EntityVersion>> ListEntitiesAsync(EntityQuery query, CancellationToken cancellationToken) =>
+            throw new NotSupportedException("Query behavior is covered against PostgreSQL.");
+        public Task<IReadOnlyList<EntityVersion>> ListObservationsAsync(ObservationQuery query, CancellationToken cancellationToken) =>
+            throw new NotSupportedException("Query behavior is covered against PostgreSQL.");
+
         public Task<EntityVersion?> ReadVersionAsync(VersionId id, CancellationToken cancellationToken) =>
             Task.FromResult(_versions.Find(version => version.VersionId == id));
         public Task<IReadOnlyList<EntityVersion>> ReadVersionsAsync(EntityId id, CancellationToken cancellationToken) =>

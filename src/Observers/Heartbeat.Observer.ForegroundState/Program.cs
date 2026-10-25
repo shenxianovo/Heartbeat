@@ -1,4 +1,5 @@
 using System.CommandLine;
+using Heartbeat.Observer.Sdk;
 
 namespace Heartbeat.Observers.ForegroundState;
 
@@ -27,7 +28,12 @@ internal static class Program
         };
         var stateFile = new Option<string?>("--state-file")
         {
-            Description = "SQLite active-period checkpoint and Outbox; defaults to the identity path plus .sqlite.",
+            Description = "SDK SQLite state; defaults to the identity path plus .sqlite.",
+        };
+        var backend = new Option<string>("--backend")
+        {
+            Description = "Heartbeat API base address, including /api/.",
+            DefaultValueFactory = _ => "http://localhost:8080/api/",
         };
         var interval = new Option<int>("--interval-ms")
         {
@@ -39,9 +45,9 @@ internal static class Program
             Description = "Stop after this many sampling attempts; 0 runs until stopped.",
             DefaultValueFactory = _ => 0,
         };
-        var command = new RootCommand("Collect macOS foreground periods into a local Outbox")
+        var command = new RootCommand("Collect and upload macOS foreground periods")
         {
-            identityFile, applicationsFile, stateFile, interval, samples,
+            identityFile, applicationsFile, stateFile, backend, interval, samples,
         };
         command.SetAction(async (parsed, cancellationToken) =>
         {
@@ -61,24 +67,32 @@ internal static class Program
             Directory.CreateDirectory(Path.GetDirectoryName(statePath)!);
             using var stateLock = new FileStream(statePath + ".lock", FileMode.OpenOrCreate,
                 FileAccess.ReadWrite, FileShare.None);
-            var store = new ForegroundStore(statePath, observerId);
+            var backendUri = new Uri(parsed.GetValue(backend)!.TrimEnd('/') + "/", UriKind.Absolute);
+            if (backendUri.Scheme is not ("http" or "https")) throw new ArgumentException("--backend must be an HTTP address.");
+            using var http = new HttpClient { BaseAddress = backendUri, Timeout = TimeSpan.FromSeconds(10) };
+            using var sdk = new ObserverClient(statePath, observerId, http);
+            var registration = await ForegroundRegistration.RegisterAsync(sdk, observerId, cancellationToken);
+            var store = new ForegroundStore(sdk, observerId, registration);
+            var applications = new LocalApplicationRegistry(parsed.GetValue(applicationsFile)!);
+            var delivery = new ForegroundDelivery(sdk, applications, registration, Console.Error);
             store.FinishActive();
             var collector = new ForegroundCollector(observerId,
-                new LocalApplicationRegistry(parsed.GetValue(applicationsFile)!), store,
+                applications, store,
                 TimeSpan.FromMilliseconds(parsed.GetValue(interval)), MacOSForegroundApplicationReader.Read,
                 Console.Out, Console.Error);
             using var stopping = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             var eventFailure = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             using var events = new MacOSForegroundEvents(collector, exception => eventFailure.TrySetException(exception));
             var collection = Task.Run(() => collector.RunAsync(parsed.GetValue(samples), stopping.Token), CancellationToken.None);
+            var sending = delivery.RunAsync(stopping.Token);
             try
             {
-                var completed = await Task.WhenAny(collection, eventFailure.Task);
+                var completed = await Task.WhenAny(collection, eventFailure.Task, sending);
                 await completed;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                Console.Error.WriteLine("Collection stopped. Completed periods remain in the local Outbox.");
+                Console.Error.WriteLine("Collection stopped. Unconfirmed versions remain in the SDK SQLite file.");
                 return 130;
             }
             finally
@@ -87,7 +101,10 @@ internal static class Program
                 collector.Stop();
                 try { await collection; }
                 catch (OperationCanceledException) when (stopping.IsCancellationRequested) { }
+                try { await sending; }
+                catch (OperationCanceledException) when (stopping.IsCancellationRequested) { }
             }
+            await delivery.SendAsync(cancellationToken);
             return 0;
         });
         try

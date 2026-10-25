@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Collections.Concurrent;
 using Heartbeat.Core;
 
 namespace Heartbeat.Observers.ForegroundState;
@@ -6,7 +7,7 @@ namespace Heartbeat.Observers.ForegroundState;
 internal sealed class LocalApplicationRegistry(string path)
 {
     private readonly string _path = Path.GetFullPath(path);
-    private readonly Dictionary<(int, DateTimeOffset, string?), LocalApplication> _runningApplications = [];
+    private readonly ConcurrentDictionary<(int, DateTimeOffset, string?), LocalApplication> _runningApplications = [];
 
     internal static string DefaultPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
@@ -41,6 +42,36 @@ internal sealed class LocalApplicationRegistry(string path)
         finally { mutex.ReleaseMutex(); }
     }
 
+    internal LocalApplication ReplaceDeleted(LocalApplication deleted)
+    {
+        using var mutex = new Mutex(false, "Heartbeat.LocalApplicationRegistry");
+        try { mutex.WaitOne(); }
+        catch (AbandonedMutexException) { }
+        try
+        {
+            var entries = Read();
+            var index = entries.FindIndex(entry => entry.Id == deleted.Id.Value);
+            EntityId replacement;
+            if (index >= 0)
+            {
+                replacement = EntityId.New();
+                entries[index] = entries[index] with { Id = replacement.Value };
+                Save(entries);
+            }
+            else
+            {
+                var bundle = deleted.Identifiers.FirstOrDefault(item => item.Scheme == "macos.bundle-id")?.Value;
+                var executable = deleted.Identifiers.FirstOrDefault(item => item.Scheme == "macos.executable-path")?.Value;
+                var existing = entries.Find(entry => entry.ExecutablePath == executable && entry.BundleIdentifier == bundle);
+                replacement = existing is null ? EntityId.New() : new(existing.Id);
+            }
+            foreach (var entry in _runningApplications.Where(entry => entry.Value.Id == deleted.Id).ToArray())
+                _runningApplications[entry.Key] = new(replacement, deleted.Identifiers);
+            return new(replacement, deleted.Identifiers);
+        }
+        finally { mutex.ReleaseMutex(); }
+    }
+
     private LocalApplication ResolveRunningApplication(
         ForegroundApplicationReading reading, IReadOnlyList<ApplicationIdentifier> identifiers)
     {
@@ -50,7 +81,7 @@ internal sealed class LocalApplicationRegistry(string path)
         if (!_runningApplications.TryGetValue(key, out var application))
         {
             application = new(EntityId.New(), identifiers);
-            _runningApplications.Add(key, application);
+            _runningApplications.TryAdd(key, application);
         }
         return application;
     }
