@@ -122,7 +122,7 @@ Case 页面在 `content/docs/testing/` 中，每页导出 `caseId` 并传给 `<T
 - 每条结果链接到 `?test=<测试 ID>`，在完整报告中打开详情。
 - 没有报告或没有匹配结果时，页面显示没有执行证据。
 
-完整报告页是 `/testing/reports/integration`，使用 `fumadocs-test-reports@0.1.1`。
+完整报告页是 `/testing/reports/integration`，使用 `fumadocs-test-reports@0.1.2`。
 
 报告目录由 `HEARTBEAT_TEST_REPORTS_DIR` 指定。没有设置时，本地读取仓库根目录的 `TestResults`，Docker 镜像读取 `/reports`。每次请求时，服务器选择修改时间最新的 `Heartbeat.Integration.Tests-*.tunit-report.json`。文件不存在时，页面显示报告尚未生成。格式错误时，页面显示错误。
 
