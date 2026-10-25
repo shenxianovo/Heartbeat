@@ -28,14 +28,15 @@ internal sealed class ForegroundCollector(
             store.Checkpoint(active, updates.Count == 2 ? updates[0] : null);
             output.WriteLine(JsonSerializer.Serialize(new
             {
+                type = "checkpoint",
                 observerId = observerId.Value,
                 localApplicationId = active.Application.Id.Value,
+                identifiers = active.Application.Identifiers,
                 contentId = active.Content.Id.Value,
                 observationId = active.ObservationId.Value,
                 startAt = active.StartAt,
                 endAt = active.EndAt,
                 active.Content.Name,
-                storedLocally = true,
             }, JsonSerializerOptions.Web));
         }
     }

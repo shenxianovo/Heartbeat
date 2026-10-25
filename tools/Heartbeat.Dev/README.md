@@ -113,6 +113,26 @@ NGINX 总是启动，提供固定的入口端口。各入口在不同服务组�
 
 `entries` 列出全部入口，未启动服务的入口按 [AppHost README · 入口](../Heartbeat.AppHost/README.md#入口) 的规则响应。环境没有运行时，`running` 是 `false`，其他字段省略。
 
+## macOS 客户端
+
+`hb mac` 构建 [macOS 客户端](../../src/Clients/Heartbeat.Mac/README.md)，并让它连接本检出目录的环境。只在 macOS 上可用。
+
+```sh
+hb mac build
+hb mac run --build --window
+hb mac stop
+```
+
+| 命令 | 作用 |
+| --- | --- |
+| `mac build [--debug]` | 用 `xcodebuild` 构建客户端到 `.artifacts/mac`，默认 Release |
+| `mac run [--build] [--window]` | 启动已构建的 Release 客户端，连接本检出目录环境的 API 和 Web 控制台。`--build` 先构建，`--window` 启动时打开窗口 |
+| `mac stop` | 退出从本检出目录启动的客户端。客户端先让 helper 结束当前时段，再退出 |
+
+- `mac run` 要求环境运行中、API 已启动；客户端已在运行时报错，先运行 `mac stop`。
+- 每个数据卷对应一个程序实例：客户端的身份文件、登记文件和 SDK 状态放在 `.artifacts/mac/instances/<卷名>/`。所以本地待发送的版本只会发往它所属的后端。删除卷之后，可以一并删除对应的目录。
+- 日常使用的客户端从 `/Applications` 启动，使用默认的程序实例，与这里的实例互不影响。
+
 ## 验证
 
 ```sh
@@ -125,7 +145,7 @@ hb verify scenarios api
 
 | 命令 | 作用 |
 | --- | --- |
-| `verify full` | 构建 .NET 解决方案，运行模型测试、集成测试和开发工具测试，运行前端的 `npm run verify`，检查并构建文档站 |
+| `verify full` | 构建 .NET 解决方案，运行模型测试、集成测试和开发工具测试，运行前端的 `npm run verify`，检查并构建文档站；在 macOS 上还运行客户端的 `swift test` 并构建客户端 |
 | `verify changed` | 根据相对基点的改动选择检查。无法识别的路径触发全量检查 |
 | `verify changed --quality` | 在同一次运行中执行变更检查，再以同一基点运行质量扫描 |
 | `verify scenarios [场景...]` | 运行冒烟场景。不指定时运行全部场景 |
@@ -223,6 +243,7 @@ hb artifacts prune --apply   # 删除
 | 目录 | 内容 |
 | --- | --- |
 | `Environment` | 启动、停止和读取环境，分配端口，管理数据卷 |
+| `Clients` | 构建、启动和停止 macOS 客户端 |
 | `Verification` | 选择和执行检查 |
 | `Scenarios` | 冒烟场景 |
 | `Quality` | 分类和扫描源码 |

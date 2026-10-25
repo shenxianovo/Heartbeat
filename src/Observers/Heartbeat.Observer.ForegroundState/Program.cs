@@ -74,7 +74,7 @@ internal static class Program
             var registration = await ForegroundRegistration.RegisterAsync(sdk, observerId, cancellationToken);
             var store = new ForegroundStore(sdk, observerId, registration);
             var applications = new LocalApplicationRegistry(parsed.GetValue(applicationsFile)!);
-            var delivery = new ForegroundDelivery(sdk, applications, registration, Console.Error);
+            var delivery = new ForegroundDelivery(sdk, applications, registration, Console.Out);
             store.FinishActive();
             var collector = new ForegroundCollector(observerId,
                 applications, store,

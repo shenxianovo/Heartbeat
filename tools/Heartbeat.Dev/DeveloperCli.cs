@@ -15,6 +15,7 @@ internal sealed class DeveloperCli(
         {
             new InstallCommand(repository, runner, output).CreateCommand(),
             new EnvironmentCommand(repository, runner, output).CreateCommand(),
+            new MacCommand(repository, runner, output).CreateCommand(),
             new VerificationCommand(repository, runner, output).CreateCommand(),
             new QualityCommand(repository, runner, output).CreateCommand(),
             new LocCommand(repository, runner, output).CreateCommand(),

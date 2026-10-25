@@ -53,6 +53,7 @@ internal static class VerificationPlanner
         if (selection.HasFlag(CheckSelection.Backend)) steps.Add(IntegrationTests(repository));
         if (selection.HasFlag(CheckSelection.Cli)) steps.Add(CliTests(repository));
         if (selection.HasFlag(CheckSelection.Frontend)) steps.Add(Frontend(repository));
+        if (selection.HasFlag(CheckSelection.Mac)) steps.AddRange(Mac(repository));
         if (selection.HasFlag(CheckSelection.Docs)) steps.AddRange(Docs(repository));
         else if (selection.HasFlag(CheckSelection.DocsCheck)) steps.Add(DocsCheck(repository));
         return new("changed", request.Base, paths, steps);
@@ -82,6 +83,7 @@ internal static class VerificationPlanner
         // Observer tests live in the integration test project.
         (["src/Observers/"], CheckSelection.Build | CheckSelection.Backend),
         (["src/Clients/Heartbeat.Web/"], CheckSelection.Frontend),
+        (["src/Clients/Heartbeat.Mac/"], CheckSelection.Mac),
         (["tools/Heartbeat.AppHost/", "docker/nginx/"], CheckSelection.Build),
         ([".scratch/"], CheckSelection.None),
     ];
@@ -114,6 +116,14 @@ internal static class VerificationPlanner
     private static VerificationStep Frontend(RepositoryContext repository) =>
         new("frontend-verify", "npm", ["--prefix", repository.Path("src", "Clients", "Heartbeat.Web"), "run", "verify"]);
 
+    private static IReadOnlyList<VerificationStep> Mac(RepositoryContext repository) =>
+    [
+        new("mac-test", "swift", ["test", "--package-path", repository.Path("src", "Clients", "Heartbeat.Mac", "HeartbeatClient")]),
+        new("mac-build", "xcodebuild", ["-project", repository.Path("src", "Clients", "Heartbeat.Mac", "Heartbeat.xcodeproj"),
+            "-scheme", "Heartbeat", "-configuration", "Debug", "-destination", MacCommand.Destination,
+            "-derivedDataPath", repository.Path(".artifacts", "mac"), "-quiet", "build"]),
+    ];
+
     private static VerificationStep DocsCheck(RepositoryContext repository) =>
         new("docs-check", "pnpm", ["--dir", repository.Path("src", "Docs", "Heartbeat.Docs"), "docs:check"]);
 
@@ -128,8 +138,10 @@ internal static class VerificationPlanner
         ];
     }
 
+    // The macOS client builds only on macOS.
     private static IReadOnlyList<VerificationStep> Full(RepositoryContext repository) =>
-        [Build(repository), ModelTests(repository), IntegrationTests(repository), CliTests(repository), Frontend(repository), .. Docs(repository)];
+        [Build(repository), ModelTests(repository), IntegrationTests(repository), CliTests(repository), Frontend(repository), .. Docs(repository),
+            .. OperatingSystem.IsMacOS() ? Mac(repository) : []];
 
     private static async Task<IReadOnlyList<string>> ChangedPathsAsync(
         IProcessRunner runner, string baseRef, CancellationToken cancellationToken)
@@ -146,7 +158,7 @@ internal static class VerificationPlanner
     }
 
     [Flags]
-    private enum CheckSelection { None = 0, Build = 1, Backend = 2, Cli = 4, Docs = 8, Unknown = 16, Model = 32, DocsCheck = 64, Frontend = 128 }
+    private enum CheckSelection { None = 0, Build = 1, Backend = 2, Cli = 4, Docs = 8, Unknown = 16, Model = 32, DocsCheck = 64, Frontend = 128, Mac = 256 }
 }
 
 internal static class VerificationReporter

@@ -554,7 +554,7 @@ public sealed class ObserverSdkTests
         var delivery = new ForegroundDelivery(sdk, registry, registration, progress);
         await delivery.SendAsync(CancellationToken.None);
         await Assert.That(sdk.Status.Rejection!.Version.Rule).IsEqualTo("OBSERVATION-6");
-        await Assert.That(progress.ToString().Contains("Sending paused: OBSERVATION-6", StringComparison.Ordinal)).IsTrue();
+        await Assert.That(progress.ToString().Contains("\"rule\":\"OBSERVATION-6\"", StringComparison.Ordinal)).IsTrue();
         var requests = recording.Posts.Count;
         await delivery.SendAsync(CancellationToken.None);
         await Assert.That(recording.Posts.Count).IsEqualTo(requests);

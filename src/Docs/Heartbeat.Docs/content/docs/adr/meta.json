@@ -18,6 +18,8 @@
     "backend-runtime",
     "entity-api",
     "entity-storage",
+    "---Clients---",
+    "desktop-client",
     "---Verification---",
     "verification",
     "development-environment"

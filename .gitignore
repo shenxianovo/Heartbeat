@@ -26,3 +26,8 @@ test-results/
 
 # Aspire generated deployment output
 aspire-output/
+
+# Swift and Xcode
+.build/
+.swiftpm/
+xcuserdata/

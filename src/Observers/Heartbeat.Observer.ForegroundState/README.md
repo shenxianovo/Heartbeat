@@ -45,9 +45,14 @@ dotnet run --project src/Observers/Heartbeat.Observer.ForegroundState -- --sampl
 
 ## 输出
 
-每次本地确认，标准输出写一行 JSON，包含 `observerId`、`localApplicationId`、`contentId`、`observationId`、`startAt`、`endAt`、`name` 和 `storedLocally: true`。
+标准输出每行一个 JSON 对象，`type` 区分两种事件。[macOS 客户端](../../Clients/Heartbeat.Mac/README.md)读取这些行显示状态。
 
-时段结束时交给 SDK 发送，停止时也一样，结束时间是最后一次本地确认。发送状态和暂停的原因写到标准错误。
+| `type` | 何时写 | 其余字段 |
+| --- | --- | --- |
+| `checkpoint` | 每次本地确认 | `observerId`、`localApplicationId`、`identifiers`（本机应用的标识，同本机应用的内容）、`contentId`、`observationId`、`startAt`、`endAt`、`name` |
+| `delivery` | 发送状态变化时 | `pending`、`drafts`、`saved`；`rejection` 为 `null` 或 `{rule, detail}`；`error` 为 `null` 或原因 |
+
+时段结束时交给 SDK 发送。收到 SIGINT 时，当前时段结束于最后一次本地确认并保存在本地，程序以 130 退出，下次启动后发送。读取失败和退出原因写到标准错误。
 
 | 退出码 | 含义 |
 | --- | --- |

@@ -6,8 +6,10 @@ using Heartbeat.Observer.Sdk;
 namespace Heartbeat.Observers.ForegroundState;
 
 internal sealed class ForegroundDelivery(ObserverClient sdk, LocalApplicationRegistry applications,
-    ForegroundRegistration registration, TextWriter progress)
+    ForegroundRegistration registration, TextWriter output)
 {
+    private string? _reported;
+
     internal async Task SendAsync(CancellationToken token)
     {
         await sdk.SendAsync(token);
@@ -29,7 +31,7 @@ internal sealed class ForegroundDelivery(ObserverClient sdk, LocalApplicationReg
             else if (rejection.Version.Rule is "HISTORY-7" or "ENTITY-6")
                 await ReplaceDeletedApplicationAsync(rejected, token);
         }
-        catch (HttpRequestException exception) { progress.WriteLine($"Rejection handling awaits the backend: {exception.Message}"); }
+        catch (HttpRequestException) { /* The rejection stays in the status; the next round retries. */ }
         Report();
     }
 
@@ -67,10 +69,18 @@ internal sealed class ForegroundDelivery(ObserverClient sdk, LocalApplicationReg
     private void Report()
     {
         var status = sdk.Status;
-        progress.WriteLine($"SDK: {status.Drafts} drafts, {status.Pending} pending, {status.Saved} confirmed.");
-        if (status.Rejection is { } rejection)
-            progress.WriteLine($"Sending paused: {rejection.Version.Rule}: {rejection.Version.Detail}");
-        if (status.Error is { } error) progress.WriteLine($"Sending paused: {error}");
+        var line = JsonSerializer.Serialize(new
+        {
+            type = "delivery",
+            status.Pending,
+            status.Drafts,
+            status.Saved,
+            rejection = status.Rejection is { } rejection ? new { rejection.Version.Rule, rejection.Version.Detail } : null,
+            status.Error,
+        }, JsonSerializerOptions.Web);
+        if (line == _reported) return;
+        _reported = line;
+        output.WriteLine(line);
     }
 
     internal async Task RunAsync(CancellationToken token)

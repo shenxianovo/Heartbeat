@@ -81,7 +81,7 @@ macOS 即将休眠时，当前时段结束；唤醒后重新读取。读取失�
 | Windows | 未实现 | 未实现 |
 | Android | 未实现 | 未实现 |
 
-macOS 程序在 `src/Observers/Heartbeat.Observer.ForegroundState/`，通过 AppKit 读取前台应用，可以持续采集，也可以只采样指定的次数。启动参数见该目录的 README。
+macOS 程序在 `src/Observers/Heartbeat.Observer.ForegroundState/`，通过 AppKit 读取前台应用，可以持续采集，也可以只采样指定的次数。启动参数见该目录的 README。平时由 [macOS 客户端](../desktop/index.mdx#client)作为 helper 运行。
 
 用到的 macOS 接口：[应用激活通知](https://developer.apple.com/documentation/appkit/nsworkspace/didactivateapplicationnotification)、[焦点窗口变化通知](https://developer.apple.com/documentation/applicationservices/kaxfocusedwindowchangednotification)、[标题变化通知](https://developer.apple.com/documentation/applicationservices/kaxtitlechangednotification)。
 
