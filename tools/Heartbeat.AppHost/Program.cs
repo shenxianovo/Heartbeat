@@ -55,7 +55,7 @@ if (services.Contains("docs"))
 
 if (services.Contains("web"))
 {
-    web = builder.AddJavaScriptApp("web", Path.Combine(root, "src/Frontend/Heartbeat.Web"))
+    web = builder.AddJavaScriptApp("web", Path.Combine(root, "src/Clients/Heartbeat.Web"))
         .WithNpm(installCommand: "ci")
         .WithHttpEndpoint(env: "PORT", name: "http")
         .WithHttpHealthCheck("/");

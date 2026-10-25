@@ -12,7 +12,7 @@ Heartbeat.Dev 是人和 Agent 共用的开发工具，负责启动本地环境�
 
 ```sh
 pnpm --dir src/Docs/Heartbeat.Docs install --frozen-lockfile
-npm --prefix src/Frontend/Heartbeat.Web ci
+npm --prefix src/Clients/Heartbeat.Web ci
 npm --prefix tools/Heartbeat.Dev/jscpd ci --ignore-scripts
 ```
 

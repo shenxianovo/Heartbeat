@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+/*
+  中性灰阶，浅色和深色各一套。彩色只用于 Observer 类别的标记，定义在 src/lib/categories.ts。
+  主题由 <html data-theme> 决定：没有这个属性时跟随系统。
+*/
+
+@theme inline {
+  --color-page: var(--page);
+  --color-card: var(--card);
+  --color-panel: var(--panel);
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-fg-3: var(--fg-3);
+  --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-line-3: var(--line-3);
+  --color-danger: var(--danger);
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", "Noto Sans SC", system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, "JetBrains Mono", monospace;
+}
+
+:root {
+  --page: #f6f6f4;
+  --card: #ffffff;
+  --panel: #efefec;
+  --fg: #1c1c1a;
+  --fg-2: #5f5e5a;
+  --fg-3: #9a9993;
+  --line: rgb(0 0 0 / 0.09);
+  --line-2: rgb(0 0 0 / 0.16);
+  --line-3: rgb(0 0 0 / 0.4);
+  --danger: #a32d2d;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #151514;
+    --card: #1d1d1c;
+    --panel: #262624;
+    --fg: #ecebe6;
+    --fg-2: #a8a7a0;
+    --fg-3: #6f6e69;
+    --line: rgb(255 255 255 / 0.08);
+    --line-2: rgb(255 255 255 / 0.15);
+    --line-3: rgb(255 255 255 / 0.45);
+    --danger: #f09595;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --page: #151514;
+  --card: #1d1d1c;
+  --panel: #262624;
+  --fg: #ecebe6;
+  --fg-2: #a8a7a0;
+  --fg-3: #6f6e69;
+  --line: rgb(255 255 255 / 0.08);
+  --line-2: rgb(255 255 255 / 0.15);
+  --line-3: rgb(255 255 255 / 0.45);
+  --danger: #f09595;
+  color-scheme: dark;
+}
+
+@layer base {
+  html,
+  body {
+    background: var(--page);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  svg text {
+    font-family: var(--font-sans);
+  }
+
+  :focus-visible {
+    outline: 1.5px solid var(--line-3);
+    outline-offset: 2px;
+  }
+
+  dialog::backdrop {
+    background: rgb(0 0 0 / 0.35);
+  }
+}

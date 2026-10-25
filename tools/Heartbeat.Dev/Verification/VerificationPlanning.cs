@@ -81,7 +81,7 @@ internal static class VerificationPlanner
             CheckSelection.Build | CheckSelection.Model | CheckSelection.Backend),
         // Observer tests live in the integration test project.
         (["src/Observers/"], CheckSelection.Build | CheckSelection.Backend),
-        (["src/Frontend/Heartbeat.Web/"], CheckSelection.Frontend),
+        (["src/Clients/Heartbeat.Web/"], CheckSelection.Frontend),
         (["tools/Heartbeat.AppHost/", "docker/nginx/"], CheckSelection.Build),
         ([".scratch/"], CheckSelection.None),
     ];
@@ -112,7 +112,7 @@ internal static class VerificationPlanner
             repository.Path("tests", "Heartbeat.Dev.Tests", "Heartbeat.Dev.Tests.csproj")]);
 
     private static VerificationStep Frontend(RepositoryContext repository) =>
-        new("frontend-verify", "npm", ["--prefix", repository.Path("src", "Frontend", "Heartbeat.Web"), "run", "verify"]);
+        new("frontend-verify", "npm", ["--prefix", repository.Path("src", "Clients", "Heartbeat.Web"), "run", "verify"]);
 
     private static VerificationStep DocsCheck(RepositoryContext repository) =>
         new("docs-check", "pnpm", ["--dir", repository.Path("src", "Docs", "Heartbeat.Docs"), "docs:check"]);
