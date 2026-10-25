@@ -1,12 +1,12 @@
 # Heartbeat.Observer.ForegroundState
 
-Heartbeat.Observer.ForegroundState 在 macOS 上持续采集前台应用，把本机应用和前台应用时段保存在本地。上传到后端的功能随新的提交协议重建。业务规则见 [Foreground State](../../Docs/Heartbeat.Docs/content/docs/observers/application-activity/index.mdx)。
+Heartbeat.Observer.ForegroundState 在 macOS 上持续采集前台应用，通过 [.NET SDK](../Heartbeat.Observer.Sdk/README.md) 把本机应用和已结束的前台应用时段上传到后端。业务规则见 [Foreground State](../../Docs/Heartbeat.Docs/content/docs/observers/application-activity/index.mdx)。
 
 程序在主线程运行 AppKit 事件循环，持续读取时才能取得更新后的前台应用。
 
 ## 运行
 
-前置条件：macOS 和 `global.json` 指定的 .NET SDK。
+前置条件：macOS 和 `global.json` 指定的 .NET SDK。上传需要运行中的 API，例如用 `aspire run` 启动的本地环境。
 
 在仓库根目录运行：
 
@@ -26,7 +26,8 @@ dotnet run --project src/Observers/Heartbeat.Observer.ForegroundState -- --sampl
 | --- | --- | --- |
 | `--identity-file` | `~/Library/Application Support/Heartbeat/observers/macos-system/identity.json` | 程序实例的身份文件 |
 | `--applications-file` | `~/Library/Application Support/Heartbeat/local-applications.json` | 本机应用登记文件 |
-| `--state-file` | 身份文件路径加 `.sqlite` | 进行中的时段和 Outbox |
+| `--state-file` | 身份文件路径加 `.sqlite` | SDK 的 SQLite 文件：草稿和待发送的版本 |
+| `--backend` | `http://localhost:8080/api/` | API 的地址 |
 | `--interval-ms` | `1000` | 定时确认的间隔，100 到 60000 毫秒 |
 | `--samples` | `0` | 采样次数。`0` 表示持续运行。读取失败也计一次 |
 
@@ -46,18 +47,18 @@ dotnet run --project src/Observers/Heartbeat.Observer.ForegroundState -- --sampl
 
 每次本地确认，标准输出写一行 JSON，包含 `observerId`、`localApplicationId`、`contentId`、`observationId`、`startAt`、`endAt`、`name` 和 `storedLocally: true`。
 
-时段结束时放入 Outbox，停止时也一样，结束时间是最后一次本地确认。Outbox 中的时段保留在本地。
+时段结束时交给 SDK 发送，停止时也一样，结束时间是最后一次本地确认。发送状态和暂停的原因写到标准错误。
 
 | 退出码 | 含义 |
 | --- | --- |
 | 0 | 指定次数的采样结束，本地状态已保存 |
 | 1 | 本地文件、运行环境或后台任务失败 |
 | 2 | 参数错误 |
-| 130 | 收到停止请求，已结束的时段在 Outbox 中 |
+| 130 | 收到停止请求，尚未确认的版本留在状态文件中 |
 
 ## 验证
 
-自动测试覆盖本机应用身份、时段边界、采集事件、休眠边界和本地事务恢复。测试不调用 macOS 原生接口。Case 见文档站的 Testing 分区。
+自动测试覆盖本机应用身份、时段边界、采集事件、休眠边界、本地事务恢复，以及经 API 上传和本机应用被删除后的恢复。测试不调用 macOS 原生接口。Case 见文档站的 Testing 分区。
 
 ```sh
 dotnet run --project tools/Heartbeat.Dev -- verify changed --base HEAD --quality
@@ -76,7 +77,7 @@ dotnet run --project src/Observers/Heartbeat.Observer.ForegroundState -- \
 
 1. 同一应用的连续确认沿用同一个 Observation ID。
 2. 切换应用后出现新的 Observation。
-3. 状态文件的 Outbox 中出现已结束的时段。
+3. 已结束的时段可以用 `GET /api/entities/{observationId}` 读到。
 4. 再次运行，本机应用的 EntityId 不变，Observation ID 是新的。
 
 真实休眠需要另外验证。自动测试只模拟计时差和采集空白。

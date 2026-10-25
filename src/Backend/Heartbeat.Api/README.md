@@ -1,12 +1,12 @@
 # Heartbeat.Api
 
-Heartbeat.Api 是后端的 HTTP 宿主。目前它只提供启动、请求体上限、错误格式和遥测；实体接口正按版本模型重新设计，契约定下后再实现。项目分工见 [ADR · 后端运行与本地环境](../../Docs/Heartbeat.Docs/content/docs/adr/backend-runtime.mdx#components)，接口契约见 [API](../../Docs/Heartbeat.Docs/content/docs/api/index.mdx)。
+Heartbeat.Api 是后端的 HTTP 宿主，提供 [API](../../Docs/Heartbeat.Docs/content/docs/api/index.mdx) 中的七个实体接口。项目分工见 [ADR · 后端运行与本地环境](../../Docs/Heartbeat.Docs/content/docs/adr/backend-runtime.mdx#components)，接口契约见 [openapi.json](../../Docs/Heartbeat.Docs/content/docs/api/openapi.json)。
 
 ## 运行
 
 本地开发通常通过 Aspire 启动，见 [AppHost README](../../../tools/Heartbeat.AppHost/README.md)。
 
-单独运行 API 时，需要提供数据库连接字符串。目前 API 不读写数据库，但启动时仍注册数据库访问。在仓库根目录运行：
+单独运行 API 时，需要提供已完成迁移的数据库的连接字符串。在仓库根目录运行：
 
 ```sh
 export ConnectionStrings__Heartbeat='Host=localhost;Port=54329;Database=heartbeat;Username=heartbeat;Password=heartbeat'
@@ -45,10 +45,13 @@ export OTEL_SERVICE_NAME='heartbeat-api'
 | --- | --- |
 | `Program.cs` | 依赖注册、请求体上限和错误处理 |
 | `Telemetry.cs` | 日志、追踪和指标的注册 |
-| `ApiProblem.cs` | problem+json 错误响应 |
+| `EntityEndpoints.cs` | 七个接口的路由、查询参数和分页游标 |
+| `SubmissionContract.cs` | 提交请求体的契约检查，不符合时整次提交都不处理 |
+| `ApiProblem.cs` | problem+json 错误响应，以及规则编号到状态码的映射 |
 | `Heartbeat.Core` | 版本、三种 Core 类型的内容、EntitySchema 校验和引用枚举 |
 | `Heartbeat.Application/Entities/EntityService.cs` | 提交、读取和删除版本，执行后端规则 |
-| `Heartbeat.Application/Entities/IEntityStore.cs` | 存储的事务接口，数据库实现随存储设计重建 |
+| `Heartbeat.Application/Entities/IEntityStore.cs` | 存储的事务接口 |
+| `Heartbeat.Infrastructure/Database/` | PostgreSQL 实现、Initial migration 和时间转换，见 [Storage](../../Docs/Heartbeat.Docs/content/docs/storage/index.mdx) |
 
 ## 修改接口
 

@@ -15,7 +15,9 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-打开 <http://localhost:3000/>，确认跳转到入口页 Introduction。通过 Aspire 启动时，NGINX 已占用 3000 端口，不要再单独运行 `pnpm dev`。
+打开 <http://localhost:3000/>，确认跳转到入口页 Introduction。
+
+通过 Aspire 启动本地环境时，文档站已经由 NGINX 在 3000 端口提供，直接打开同一地址。
 
 | 命令 | 作用 |
 | --- | --- |

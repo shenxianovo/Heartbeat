@@ -1,15 +1,134 @@
 ---
 title: "Overview"
-description: "数据库、内容的表示与命名"
+description: "表结构、索引、删除与墓碑、事务、内容的表示与命名"
 ---
 
-实体和它的全部版本保存在 PostgreSQL 中。数据库的版本、数据访问和时间的保存方式见 [PostgreSQL](./postgresql.mdx)，数据模型见 [Core](../core/index.mdx)。表结构和索引将按实体与版本模型定义，目前尚未定义。
+实体和它的全部版本保存在 PostgreSQL 中。本页写表结构、索引、删除和事务；数据库的版本、数据访问和时间的保存方式见 [PostgreSQL](./postgresql.mdx)，数据模型见 [Core](../core/index.mdx)。这样设计的理由见 [ADR · 实体存储](../adr/entity-storage.mdx)。
+
+## 表结构 [#tables]
+
+所有类别、所有业务类型的版本都保存在 `versions` 中，它是版本内容的权威位置。`entities` 和 `current_observations` 由版本推导，供查询使用；`version_tombstones` 记住已删除的版本。
+
+例如前台状态 Observer 保存了一份 VS Code 的前台时段：时段和它的 Observation 各是 `versions` 中的一行，各有一行 `entities`；这份 Observation 在 `current_observations` 中有一行，记着当前版本的时间范围和观测内容的类型。
+
+### entities [#entities]
+
+每个实体一行，包括已删除的实体。
+
+| 列 | 类型 | 含义 |
+| --- | --- | --- |
+| `entity_id` | `uuid` | 实体的 EntityId |
+| `category` | `text`，可空 | 实体的类别，删除后为 `NULL` |
+| `schema_id` | `uuid`，可空 | 业务实体的 SchemaId；其他类别和删除后为 `NULL` |
+| `resource_name` | `text`，可空 | EntitySchema 当前版本的 `resourceName`；其他类别和删除后为 `NULL` |
+| `current_version_id` | `uuid`，可空 | 当前版本，删除后为 `NULL` |
+| `deleted_at` | `timestamptz`，可空 | 删除的时刻，未删除时为 `NULL` |
+
+### versions [#versions]
+
+每个未删除的版本一行。
+
+| 列 | 类型 | 含义 |
+| --- | --- | --- |
+| `version_id` | `uuid` | 版本的 VersionId |
+| `entity_id` | `uuid` | 所属的实体 |
+| `ordinal` | `integer` | 在版本链中的序号，首版为 1，之后每版加 1 |
+| `previous_version_id` | `uuid`，可空 | 同一实体的前一版本，首版为 `NULL` |
+| `schema_version_id` | `uuid`，可空 | 业务内容所用的 Schema 版本，Core 类型为 `NULL` |
+| `category` | `text` | 内容的类别 |
+| `recorded_at` | `timestamptz` | 保存时间 |
+| `content` | `jsonb` | 版本的内容，与 API 中的 `content` 相同 |
+
+### version_tombstones [#version-tombstones]
+
+每个已删除的版本一行。
+
+| 列 | 类型 | 含义 |
+| --- | --- | --- |
+| `version_id` | `uuid` | 已删除版本的 VersionId |
+| `entity_id` | `uuid` | 它所属的实体 |
+
+### current_observations [#current-observations]
+
+每份未删除的 Observation 一行，对应它的当前版本。
+
+| 列 | 类型 | 含义 |
+| --- | --- | --- |
+| `entity_id` | `uuid` | Observation 的 EntityId |
+| `version_id` | `uuid` | 它的当前版本 |
+| `content_schema_id` | `uuid` | 观测内容的 SchemaId，保存这个版本时从内容实体读取 |
+| `fact_range` | `tstzrange`，可空 | 当前版本的事实时间，见[事实时间](#fact-time) |
+
+## 约束与索引 [#indexes]
+
+| 名称 | 内容 | 用途 |
+| --- | --- | --- |
+| `pk_entities`、`pk_versions`、`pk_version_tombstones`、`pk_current_observations` | 各表第一列 | 按身份读取 |
+| `ux_versions_entity_id_ordinal` | `versions (entity_id, ordinal)` | 每个实体只有一条线性的版本链，见 [VERSION-4](../core/model/version.mdx#version-4)；按链的顺序读取 |
+| `ux_entities_resource_name` | `entities (resource_name)`，只含非空值 | 资源名不重复，见 [SCHEMA-5](../core/model/schema.mdx#schema-5) |
+| `ix_entities_schema_id_entity_id` | `entities (schema_id, entity_id)` | 按业务类型列出实体；删除 EntitySchema 前检查 [HISTORY-9](../core/rules/history.mdx#history-9) |
+| `ix_entities_category_entity_id` | `entities (category, entity_id)` | 按类别列出实体 |
+| `ix_current_observations_content_schema_id_fact_range` | GiST `(content_schema_id, fact_range)` | 按观测内容的类型和事实时间查询 |
+| `ix_current_observations_fact_range` | GiST `(fact_range)` | 不限类型的事实时间查询 |
+
+- `versions` 的 `entity_id`、`previous_version_id`、`schema_version_id` 都有外键：版本属于已有的实体，前一版本和 Schema 版本仍然存在。
+- `version_tombstones.entity_id` 和 `current_observations` 的两个身份列有外键，分别指向 `entities` 和 `versions`。
+- `entities` 用检查约束保证：`deleted_at` 为 `NULL` 时，`category` 和 `current_version_id` 不为 `NULL`；删除后，除 `entity_id` 和 `deleted_at` 外的列都为 `NULL`。
+- 多列 GiST 索引需要 `btree_gist` 扩展，由 Initial migration 创建。
+
+按类型的查询都从以类型开头的索引进入，只读取目标类型的行，所以数据量大的类型不影响其他类型的查询。
+
+## 事实时间 [#fact-time]
+
+`current_observations.fact_range` 由当前版本的 `startAt` 和 `endAt` 换算：
+
+| `startAt` | `endAt` | `fact_range` |
+| --- | --- | --- |
+| `t1` | `t2`，`t1 < t2` | `[t1, t2)` |
+| `t` | `t` | `[t, t]` |
+| `t` | `null` | `[t, t]` |
+| `null` | `t` | `[t, t]` |
+| `null` | `null` | `NULL` |
+
+按事实时间查询 `[from, to)` 时，条件是 `fact_range && tstzrange(from, to, '[)')`，结果与 [API · 列出与查询](../api/index.mdx#lists) 的匹配规则一致。结果按 `lower(fact_range)` 和 `entity_id` 排序，分页游标记录这两个值。
+
+## 删除与墓碑 [#tombstones]
+
+删除一个实体时，在一个事务中：
+
+1. 把它每个版本的 `version_id` 和 `entity_id` 写入 `version_tombstones`。
+2. 删除它在 `current_observations` 和 `versions` 中的行。
+3. 把 `entities` 中这一行除 `entity_id` 外的列置为 `NULL`，`deleted_at` 设为删除的时刻。
+
+墓碑只保存身份和删除时刻，永久保留，每个已删除的版本约占 60 字节。读取时，身份在墓碑中就返回 `410`，都不存在就返回 `404`。其他版本对被删版本的引用留在它们的 `content` 中，见 [HISTORY-8](../core/rules/history.mdx#history-8)。
+
+## 事务 [#transactions]
+
+- 每个操作在一个事务中完成，事务开始时取得一个固定键的事务级 advisory lock（`pg_advisory_xact_lock`）。所以多个 API 实例之间，所有读写都串行执行。
+- 一次提交在一个事务中完成，每个版本在自己的保存点中保存。某个版本被拒绝时，回滚到它的保存点，提交此前已保存的版本，再返回错误，见 [VERSION-13](../core/model/version.mdx#version-13)。出现异常或请求取消时，整个事务回滚。
+- 保存一个版本时，`versions` 的新行、`entities` 的当前版本，以及 Observation 的 `current_observations`，在同一个保存点中写入。当前版本从 `entities.current_version_id` 读取。
+- 按实体读取全部版本时，按 `ordinal` 从首版到当前版返回。
 
 ## 内容的表示 [#content]
 
-- 文本中有空字符时，API 返回 `400`，事务回滚。
-- 对象和数组以 `jsonb` 保存，空白和键的顺序不保留。数值必须在 `numeric` 的范围内，字符串中不能有 `\u0000` 或无效的代理对。
-- 时间的保存方式见 [PostgreSQL · 时间](./postgresql.mdx#time)。
+- 版本的 `content` 以 `jsonb` 保存，空白和键的顺序不保留。字符串中不能有 `\u0000` 或无效的代理对，否则 API 返回 `400`。
+- 数值以 `jsonb` 的 `numeric` 保存，`integer` 没有 64 位的上限。数值必须在 `numeric` 的范围内（小数点前最多 131,072 位，小数点后最多 16,383 位），超出时 API 返回 `400`。
+- Observation 的时间在 `content` 中保存为以 `Z` 结尾、精确到微秒的字符串，与 API 读回的写法相同。列中的时间见 [PostgreSQL · 时间](./postgresql.mdx#time)。
+
+## 数据量 [#volume]
+
+导入约 230 万条键鼠事件和 25 万条前台时段时，按每条一个观测内容加一份 Observation 估算：
+
+| 项目 | 估算 |
+| --- | --- |
+| 版本 | 约 510 万行 |
+| 实体 | 约 510 万行 |
+| `current_observations` | 约 255 万行 |
+| 连同索引的空间 | 约 4 GB |
+
+单个 Observation 版本的 `content` 约 260 字节，主要是三个以字符串保存的 VersionId 和两个时间。
+
+2026-10-25 在本机实测：API 为 Debug 构建并开启遥测，每次提交 1,000 个键鼠事件规模的版本，保存速度约 275 个版本/秒；10 万个版本连同索引约 79 MiB。按这个速度，导入上表的数据约需 5 小时，空间按同样的比例估算。
 
 ## 命名 [#naming]
 
@@ -25,8 +144,8 @@ description: "数据库、内容的表示与命名"
 
 | 约束或索引 | 规则 | 示例 |
 | --- | --- | --- |
-| 主键 | `pk_<表名>` | `pk_example_items` |
-| 外键 | `fk_<表名>_<目标表>_<列名>` | `fk_example_items_entities_entity_id` |
-| 检查 | `ck_<表名>_<内容>` | `ck_example_items_time_order` |
-| 唯一索引 | `ux_<表名>_<列名>` | `ux_example_items_resource_name` |
-| 普通索引 | `ix_<表名>_<列名>` | `ix_example_items_observer_version_id` |
+| 主键 | `pk_<表名>` | `pk_versions` |
+| 外键 | `fk_<表名>_<目标表>_<列名>` | `fk_versions_entities_entity_id` |
+| 检查 | `ck_<表名>_<内容>` | `ck_entities_deleted_state` |
+| 唯一索引 | `ux_<表名>_<列名>` | `ux_entities_resource_name` |
+| 普通索引 | `ix_<表名>_<列名>` | `ix_entities_schema_id_entity_id` |

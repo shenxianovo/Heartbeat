@@ -1,0 +1,51 @@
+---
+title: "实体存储"
+description: "所有版本以 jsonb 保存在一张表中，查询走以类型开头的索引，删除留下墓碑，所有操作串行执行"
+---
+
+## 背景 [#context]
+
+后端要在 PostgreSQL 中保存所有类型的版本，按身份、类型和事实时间读取它们，并记住已删除的身份。业务类型的数据量相差几个数量级：键鼠事件一天几千条，有些类型一天只有几条。业务类型的字段随 Schema 版本变化，引用可以嵌在对象和数组中。多个 API 实例可能同时处理提交和删除。
+
+## 决定 [#decision]
+
+- 所有类别、所有业务类型的版本保存在同一张 `versions` 表中，内容以 `jsonb` 保存。`versions` 是版本内容的权威位置。
+- `entities` 保存每个实体的类型、当前版本和删除状态；`current_observations` 保存每份 Observation 当前版本的事实时间范围和观测内容的类型。两张表由版本推导，供查询使用。
+- 按类型和事实时间的查询，使用以类型开头的索引。
+- 删除实体时移除它的全部版本，只把身份写入墓碑，墓碑永久保留。
+- 所有操作在多个 API 实例之间串行执行。一次提交在一个事务中完成，某个版本被拒绝时，提交它之前已保存的版本。
+- 引用只保存在版本的内容中，目前不建立反查的索引。
+
+## 理由 [#rationale]
+
+字段随 Schema 版本变化。按字段建列，每出一个 Schema 版本就要改表，嵌在对象和数组中的引用也放不进列。以 `jsonb` 保存，每个版本按提交时的结构原样保存，按它引用的 Schema 版本解释。
+
+查询的代价取决于索引读到的行，与表的总行数关系不大。以类型开头的索引让每个查询只读到目标类型的行，所以键鼠事件再多，也不会拖慢一天只有几条的类型。版本不可改写（[VERSION-2](../core/model/version.mdx#version-2)），`versions` 几乎只追加，大表中常见的更新膨胀很少出现。
+
+已删除的身份不能再分配（[VERSION-9](../core/model/version.mdx#version-9)），实体也不能复活（[HISTORY-7](../core/rules/history.mdx#history-7)），所以后端要记住这些身份。墓碑只保存身份，内容不留副本，见 [ADR · 删除](./deletion.mdx)。
+
+个人数据的写入量不高。所有操作串行执行，检查和写入之间就不会插进别的操作，删除也不会和引用它的新版本交错。一次提交一个事务，提交次数从版本数降到请求数，导入大量数据时差距最大。
+
+一份观测只需在当前版本变化时更新 `current_observations` 的一行。PostgreSQL 的范围类型按重叠匹配，与 API 的时间查询规则一致，GiST 索引直接支持这种查询。
+
+反查引用目前没有接口使用。等反查接口确定后，再一起设计它的索引。
+
+放弃的方案：
+
+- **每个业务类型一张、按字段建列的表。** 每个 Schema 版本都要改表，嵌套的引用放不进列。
+- **按业务类型分区。** 可以按类型删除数据、统计空间，但后端要在运行时建表，按 VersionId 读取还要先查一张身份表。分区对 API 和 Application 透明，需要时可以再改。
+- **每个版本一个事务。** 导入时提交次数等于版本数。
+
+## 代价 [#costs]
+
+- 所有类型共用一张表的统计信息和清理。按业务字段过滤时，索引要建成带类型条件的部分索引。
+- 墓碑永久占用空间。
+- 写入串行执行，吞吐受单个事务的速度限制。
+- 保存和删除时，`entities` 和 `current_observations` 要在同一个事务中同步更新。
+- 反查引用的接口出现时，要为已有的版本补建索引。
+
+## 规则位置 [#details]
+
+- [Storage · Overview](../storage/index.mdx)、[Storage · PostgreSQL](../storage/postgresql.mdx)
+- [VERSION-4](../core/model/version.mdx#version-4)、[VERSION-9](../core/model/version.mdx#version-9)、[HISTORY-7](../core/rules/history.mdx#history-7)、[HISTORY-9](../core/rules/history.mdx#history-9)
+- [ADR · 实体 API](./entity-api.mdx)

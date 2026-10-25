@@ -1,6 +1,9 @@
 {
   "fields": {
     "NAME": { "label": "Name" },
+    "PLATFORM": { "label": "platform" },
+    "HOST_NAME": { "label": "hostName" },
+    "PROGRAM_VERSION": { "label": "programVersion" },
     "LOCAL_APPLICATION_ID": { "label": "localApplicationId" },
     "FOREGROUND_OBSERVATION_ID": { "label": "foregroundObservationId" },
     "OBSERVED_NAME": { "label": "name" },
@@ -14,7 +17,7 @@
     "FOREGROUND_STATE": {
       "label": "前台状态 Observer",
       "interfaces": ["Entity"],
-      "fields": ["NAME"]
+      "fields": ["PLATFORM", "HOST_NAME", "PROGRAM_VERSION"]
     },
     "INPUT_EVENTS": {
       "label": "输入事件 Observer",

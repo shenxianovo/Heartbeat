@@ -1,31 +1,28 @@
 ---
 title: ".NET"
-description: ".NET SDK 用 SQLite Outbox 可靠提交"
+description: ".NET SDK 用 SQLite 保存草稿和待发送的版本"
 ---
 
-.NET 运行环境中的 Observer 共用 .NET SDK。SDK 用 SQLite Outbox 保存待发送的内容，发送、确认和重试遵循 [Submission](./index.mdx) 的约定。
+.NET 运行环境中的 Observer 共用 .NET SDK。SDK 是一个类库，代码在 `src/Observers/Heartbeat.Observer.Sdk/`；它用 SQLite 保存草稿和待发送的版本，版本的状态、发送和确认遵循 [Submission](./index.mdx) 的约定。
 
-## SQLite Outbox [#outbox]
+## 本地保存 [#store]
 
-1. 业务代码交来的数据和更新先写入 SQLite，按所选的提交策略决定何时可以发送。
-2. 后台任务读取待发送项并上传。失败或响应不确定时，保留原内容，之后继续重试。
-3. 后端保存成功、返回 `201` 或 `204` 后，移除对应的待发送项。
-4. 程序重启后，继续处理 SQLite 中尚未确认的待发送项。
+每个程序实例使用自己的 SQLite 文件，路径由业务代码提供。
 
-重试时，实体的身份、引用、属性和事实时间保持原样。确认一个待发送项时，发送期间产生的新补全仍然保留；同一份数据尚未发送的连续补全可以合并，不同的数据分别保留。幂等的规则见 [Submission · 幂等重试](./index.mdx#idempotency)。
+1. 业务代码交来的版本先写入 SQLite。形成草稿、合并、冻结和通知结束，可以在同一个本地事务中完成，例如结束当前时段并开始新的时段。
+2. SQLite 还保存每个实体在本地最新的 VersionId。版本确认后移出发送队列，这个 VersionId 仍然保留，供之后的版本作为 `previousVersionId` 或引用。
+3. 后台任务按冻结的顺序读取待发送的版本，分批提交，并按 [Submission · 确认](./index.mdx#confirmation) 处理响应。
+4. 程序重启后，SDK 从 SQLite 恢复草稿、待发送的版本和待处理的被拒绝版本。
 
 ## 运行 [#runtime]
 
-SDK 启动时恢复 SQLite 中的待发送项，退出前把已接收的内容保存到本地。网络中断时采集照常进行，下次运行或网络恢复后继续发送。
-
-SDK 统一处理后端地址、请求和响应，并向业务代码报告待发送的数量、已确认的数据和失败原因，见 [Submission · 连接后端](./index.mdx#connection) 和 [发送状态](./index.mdx#status)。
+网络中断时采集照常进行，下次运行或网络恢复后继续发送。SDK 统一处理后端地址、请求和响应，并向业务代码报告待发送的数量、已确认的数据和被拒绝的原因，见 [Submission · 连接后端](./index.mdx#connection) 和 [发送状态](./index.mdx#status)。
 
 ## 业务代码的职责 [#business]
 
-- 接入时提供程序实例的身份和所需的 EntitySchema，由 SDK 先登记。
+- 启动时提供程序实例和所需的 EntitySchema，由 SDK 先登记。
 - 按业务类型选择及时提交或结束后提交。
 - 把新形成或补全的实体和观测交给 SDK，并明确通知何时结束。
+- 处理 SDK 交来的被拒绝版本，见 [Submission · 被拒绝的版本](./index.mdx#rejections)。
 
-读取来源、判断应用是否切换、确定事实时间、识别内容身份和保留历史，都由业务代码完成；网络重试由 SDK 完成。
-
-前台状态 Observer 目前只在本地保存，尚未接入 .NET SDK，见 [Foreground State · 待定](../application-activity/index.mdx#open)。
+读取来源、判断应用是否切换、确定事实时间、识别内容身份和保留历史，都由业务代码完成；发送和重试由 SDK 完成。前台状态 Observer 使用 .NET SDK，见 [Foreground State · 提交](../application-activity/index.mdx#submission)。

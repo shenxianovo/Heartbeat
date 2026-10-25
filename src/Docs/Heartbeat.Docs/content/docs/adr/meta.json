@@ -16,6 +16,8 @@
     "deletion",
     "---Backend---",
     "backend-runtime",
+    "entity-api",
+    "entity-storage",
     "---Verification---",
     "verification"
   ]

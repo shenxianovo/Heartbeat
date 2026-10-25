@@ -26,6 +26,7 @@ description: "某台设备上的一个应用安装"
 | 同一路径出现不同的包标识 | 新建 |
 | 先只读到路径，之后读到包标识 | 新建 |
 | 另一台设备上的相同安装 | 新建 |
+| 用户删除了这个本机应用 | 新建，更新登记文件 |
 
 读不到可执行文件路径时，只在前台状态 Observer 本次运行期间，按进程号、进程启动时间和包标识复用一个临时身份；进程或前台状态 Observer 重启后新建。连进程线索也读不到时，每次读数都新建身份。这些进程线索只用于识别，不写入业务实体。
 
@@ -74,20 +75,28 @@ description: "某台设备上的一个应用安装"
 
 ## 示例 [#example]
 
-`PUT /entities/local-applications/{id}`：
+首次读到 VS Code 时，`POST /versions` 中的本机应用首版。`schemaVersionId` 是本机应用 EntitySchema 的一个 Schema 版本：
 
 ```json
 {
-  "references": {},
-  "properties": {
-    "identifiers": [
-      { "scheme": "macos.bundle-id", "value": "com.microsoft.VSCode" },
-      {
-        "scheme": "macos.executable-path",
-        "value": "/Applications/Visual Studio Code.app/Contents/MacOS/Electron"
+  "versions": [
+    {
+      "entityId": "01a12e31-9050-7000-8000-000000000001",
+      "versionId": "01a12e31-9050-7000-8000-000000000101",
+      "previousVersionId": null,
+      "category": "business",
+      "schemaVersionId": "019e1bbb-ec00-7000-8000-000000000102",
+      "content": {
+        "identifiers": [
+          { "scheme": "macos.bundle-id", "value": "com.microsoft.VSCode" },
+          {
+            "scheme": "macos.executable-path",
+            "value": "/Applications/Visual Studio Code.app/Contents/MacOS/Electron"
+          }
+        ]
       }
-    ]
-  }
+    }
+  ]
 }
 ```
 

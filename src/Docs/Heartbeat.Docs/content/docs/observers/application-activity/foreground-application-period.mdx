@@ -59,15 +59,37 @@ description: "应用处于前台的一个时段"
 
 ## 示例 [#example]
 
-`PUT /entities/foreground-application-periods/{id}`：
+VS Code 从 10:00 到 10:20 处于前台，时段结束后，`POST /versions` 依次提交观测内容和它的 Observation。`localApplicationId` 是本机应用首版的 VersionId，`observerVersionId` 是程序实例的一个版本：
 
 ```json
 {
-  "references": {
-    "localApplicationId": "01a12e31-9050-7000-8000-000000000001"
-  },
-  "properties": {
-    "name": "Visual Studio Code"
-  }
+  "versions": [
+    {
+      "entityId": "01a12e31-9050-7000-8000-000000000020",
+      "versionId": "01a12e31-9050-7000-8000-000000000120",
+      "previousVersionId": null,
+      "category": "business",
+      "schemaVersionId": "019e1bbb-ec00-7000-8000-000000000101",
+      "content": {
+        "localApplicationId": "01a12e31-9050-7000-8000-000000000101",
+        "name": "Visual Studio Code"
+      }
+    },
+    {
+      "entityId": "01a12e31-9050-7000-8000-000000000030",
+      "versionId": "01a12e31-9050-7000-8000-000000000130",
+      "previousVersionId": null,
+      "category": "observation",
+      "schemaVersionId": null,
+      "content": {
+        "observerVersionId": "01a12e31-9050-7000-8000-0000000000a1",
+        "contentVersionId": "01a12e31-9050-7000-8000-000000000120",
+        "inputSetVersionId": null,
+        "startAt": "2026-10-06T02:00:00Z",
+        "endAt": "2026-10-06T02:20:00Z",
+        "timeZone": "Asia/Shanghai"
+      }
+    }
+  ]
 }
 ```
