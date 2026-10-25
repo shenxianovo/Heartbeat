@@ -24,13 +24,27 @@ Heartbeat 保存一个人经历了什么。
 
 遇到不熟的词，查 [Glossary](../core/glossary.mdx)。想知道某个决定的理由，读 [ADR](../adr/index.mdx)。
 
+[Graph](./graph.mdx) 展示 Core、ADR 和 Observers 页面之间的引用关系，可以沿节点打开相关文档。
+
 有具体任务时，从这里进入：
 
-| 任务 | 阅读 |
-| --- | --- |
-| 接入新的来源 | [Observer](../core/model/observer.mdx)、[Identity](../core/rules/identity.mdx)、[Time](../core/rules/time.mdx)、[History](../core/rules/history.mdx)、[Observers · Integration Guide](../observers/integration.mdx) |
-| 修改后端 | [Version](../core/model/version.mdx)、[Entity](../core/model/entity.mdx)、[EntitySchema](../core/model/schema.mdx)、[API](../api/index.mdx)、[Storage](../storage/index.mdx) |
-| 编写文档 | [Core · Conventions](../core/conventions.mdx)、[ADR · 文档的权威与传播](../adr/documentation-authority.mdx) |
+<Cards className="md:grid-cols-3">
+<Card title="接入新的来源">
+
+[Observer](../core/model/observer.mdx)、[Identity](../core/rules/identity.mdx)、[Time](../core/rules/time.mdx)、[History](../core/rules/history.mdx)、[Observers · Integration Guide](../observers/integration.mdx)
+
+</Card>
+<Card title="修改后端">
+
+[Version](../core/model/version.mdx)、[Entity](../core/model/entity.mdx)、[EntitySchema](../core/model/schema.mdx)、[API](../api/index.mdx)、[Storage](../storage/index.mdx)
+
+</Card>
+<Card title="编写文档">
+
+[Core · Conventions](../core/conventions.mdx)、[ADR · 文档的权威与传播](../adr/documentation-authority.mdx)
+
+</Card>
+</Cards>
 
 ## 文档地图 [#map]
 
@@ -45,8 +59,12 @@ Heartbeat 保存一个人经历了什么。
 
 ## 重写状态 [#rewrite]
 
+<Callout type="warn">
+
 项目正在重写。Core 和 ADR 是当前的设计；其他分区和代码有一部分仍按旧模型编写，例如代码中的字段名 `observerId`。两者冲突时，以 Core 为准。
+
+</Callout>
 
 ## 给 Agent [#agents]
 
-每个页面都有 Markdown 版本，地址是 `/llms.mdx/<页面路径>/content.md`；全站内容在 `/llms-full.txt`。在仓库中，直接读 `src/Docs/Heartbeat.Docs/content/docs/`。工作规则见根目录的 `AGENTS.md`。
+每个页面都有 Markdown 版本，地址是页面路径加 `.md`，例如 `/core/model/version.md`，其中的链接也指向 Markdown 版本；全站内容在 `/llms-full.txt`。在仓库中，直接读 `src/Docs/Heartbeat.Docs/content/docs/`。工作规则见根目录的 `AGENTS.md`。

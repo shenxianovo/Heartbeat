@@ -1,4 +1,5 @@
-import { docsLlms, source } from '@/lib/source';
+import { docsLlms } from '@/lib/llms';
+import { source } from '@/lib/source';
 import { getPageMarkdownUrl } from '@/lib/routes';
 import { notFound } from 'next/navigation';
 

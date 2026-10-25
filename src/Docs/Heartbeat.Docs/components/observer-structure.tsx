@@ -1,3 +1,4 @@
+import { asMarkdown } from 'fumadocs-core/server';
 import contracts from '@/content/docs/core/model/relations.json';
 import model from '@/content/docs/observers/relations.json';
 import { Mermaid } from './mermaid';
@@ -8,6 +9,22 @@ type ContractId = keyof typeof contracts.nodes;
 
 export function ObserverStructure({ node }: { node: NodeId }) {
   const current = model.nodes[node];
+
+  if (asMarkdown()) {
+    const interfaces = current.interfaces.map((id) => {
+      const contract = contracts.nodes[id as ContractId];
+      return `[${contract.label}](${contract.path})`;
+    });
+    const fields = current.fields.map((id) => {
+      const [name, note] = model.fields[id as FieldId].label.split('<br/>');
+      return note ? `\`${name}\`（${note}）` : `\`${name}\``;
+    });
+    return [
+      interfaces.length > 0 && `- 实现：${interfaces.join('、')}`,
+      fields.length > 0 && `- 字段：${fields.join('、')}`,
+    ].filter(Boolean).join('\n') + '\n\n';
+  }
+
   const chart = [
     'flowchart LR',
     `SELF["${current.label}"]:::entity`,

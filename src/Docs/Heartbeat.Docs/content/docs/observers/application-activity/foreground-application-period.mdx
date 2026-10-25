@@ -61,7 +61,7 @@ description: "应用处于前台的一个时段"
 
 VS Code 从 10:00 到 10:20 处于前台，时段结束后，`POST /versions` 依次提交观测内容和它的 Observation。`localApplicationId` 是本机应用首版的 VersionId，`observerVersionId` 是程序实例的一个版本：
 
-```json
+```json title="POST /versions"
 {
   "versions": [
     {

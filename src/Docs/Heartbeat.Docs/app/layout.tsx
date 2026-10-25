@@ -4,11 +4,16 @@ import { Inter } from 'next/font/google';
 import { i18nProvider } from 'fumadocs-ui/i18n';
 import { translations } from '@/lib/translations';
 import { appName } from '@/lib/site-config';
+import { getSections } from '@/lib/source';
+import { SectionSearchDialog } from '@/components/search-dialog';
 import type { Metadata } from 'next';
 
 const inter = Inter({
   subsets: ['latin'],
 });
+
+// One search filter per section of the sidebar. The value is the first URL segment, the `tag` of the search index.
+const searchTags = getSections().map((section) => ({ name: section.name, value: section.slug }));
 
 export const metadata: Metadata = {
   title: { default: appName, template: `%s | ${appName}` },
@@ -20,6 +25,7 @@ export default function Layout({ children }: LayoutProps<'/'>) {
       <body className="flex flex-col min-h-screen">
         <RootProvider
           i18n={i18nProvider(translations)}
+          search={{ SearchDialog: SectionSearchDialog, options: { tags: searchTags } }}
         >
           {children}
         </RootProvider>

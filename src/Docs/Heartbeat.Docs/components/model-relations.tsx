@@ -1,3 +1,4 @@
+import { asMarkdown } from 'fumadocs-core/server';
 import model from '@/content/docs/core/model/relations.json';
 import { Mermaid } from './mermaid';
 
@@ -25,6 +26,15 @@ export function ModelRelations({ node }: { node?: NodeId }) {
   const visible = new Set(edges.flatMap((edge) => [edge.from, edge.to]));
   if (node) visible.add(node);
   const nodes = Object.entries(model.nodes).filter(([id]) => visible.has(id));
+
+  if (asMarkdown()) {
+    const link = (id: string) => {
+      const info = model.nodes[id as NodeId];
+      return `[${info.label}](${info.path})`;
+    };
+    return `${edges.map((edge) => `- ${link(edge.from)} —${edge.label}→ ${link(edge.to)}`).join('\n')}\n\n`;
+  }
+
   const chart = [
     ...(node ? [] : ['---', 'config:', '  layout: dagre', '  flowchart:', '    curve: linear', '---']),
     'flowchart LR',

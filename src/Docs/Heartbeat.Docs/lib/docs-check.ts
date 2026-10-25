@@ -132,7 +132,7 @@ export function frontmatter(text: string): Record<string, string> | null {
 
 export function jsonBlocks(file: string, text: string): Finding[] {
   const findings: Finding[] = [];
-  for (const match of text.matchAll(/^```json[ \t]*\n([\s\S]*?)^```[ \t]*$/gm)) {
+  for (const match of text.matchAll(/^```json(?:[ \t][^\n]*)?\n([\s\S]*?)^```[ \t]*$/gm)) {
     try {
       JSON.parse(match[1]);
     } catch (error) {

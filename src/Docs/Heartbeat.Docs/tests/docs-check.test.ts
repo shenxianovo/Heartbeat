@@ -71,4 +71,5 @@ test('ADRs need the template sections in order', () => {
 
 test('JSON examples must parse', () => {
   assert.equal(jsonBlocks('a.md', '```json\n{"a": 1}\n```\n```json\n{"a": }\n```\n').length, 1);
+  assert.equal(jsonBlocks('a.md', '```json title="meta.json" {2}\n{"a": }\n```\n').length, 1);
 });

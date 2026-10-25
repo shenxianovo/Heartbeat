@@ -1,16 +1,19 @@
-import { llms, loader } from 'fumadocs-core/source';
+import { loader } from 'fumadocs-core/source';
 import { lucideIconsPlugin } from 'fumadocs-core/source/lucide-icons';
 import { docsRoute } from './routes';
 import { defineDocs } from 'fumadocs-mdx/macro';
 import { metaSchema, pageSchema } from 'fumadocs-core/source/schema';
-import { openapi, openapiSchema } from './openapi';
+import { openapi } from './openapi';
+import { buildGraph, graphSections, type Section } from './build-graph';
+import { posix } from 'node:path';
 
 const docs = defineDocs({
   dir: 'content/docs',
   docs: {
     schema: pageSchema,
     postprocess: {
-      includeProcessedMarkdown: true,
+      includeProcessedMarkdown: { output: 'function' },
+      extractLinkReferences: true,
     },
   },
   meta: {
@@ -29,14 +32,30 @@ export const source = loader(
   },
 );
 
-export const docsLlms = llms(source, {
-  renderPage: async (page) => {
-    if (page.type === 'openapi') {
-      return JSON.stringify(openapiSchema, null, 2);
-    }
+type TreeNode = ReturnType<typeof source.getPageTree>['children'][number];
 
-    return `# ${page.data.title} (${page.url})
+function firstUrl(node: TreeNode): string | undefined {
+  if (node.type === 'page') return node.url;
+  if (node.type === 'folder') return node.index?.url ?? node.children.map(firstUrl).find(Boolean);
+}
 
-${await page.data.getText('processed')}`;
-  },
-});
+/** The sections of the sidebar in order: the root folders, named by their `meta.json` titles. */
+export function getSections(): Section[] {
+  return source.getPageTree().children.flatMap((node) => {
+    const url = node.type === 'folder' && node.root ? firstUrl(node) : undefined;
+    return url ? [{ slug: url.split('/')[1], name: String(node.name) }] : [];
+  });
+}
+
+export function getDocumentationGraph() {
+  const sections = getSections();
+  return buildGraph(
+    source.getPages().filter((page) => page.type === 'docs'),
+    graphSections.map((slug) => {
+      const section = sections.find((item) => item.slug === slug);
+      if (!section) throw new Error(`Graph section "${slug}" is not a section of the sidebar`);
+      return section;
+    }),
+    (href, page) => source.getPageByHref(href, { dir: posix.dirname(page.path) })?.page.url,
+  );
+}

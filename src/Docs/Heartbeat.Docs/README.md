@@ -41,7 +41,7 @@ pnpm dev
 | `deprecated-term` | 不出现 [Glossary · 不再使用的术语](content/docs/core/glossary.mdx) 中的术语 |
 | `frontmatter` | 文档站页面都有 `title` 和 `description` |
 | `adr-structure` | ADR 依次包含背景、决定、理由、代价、规则位置；流程类 ADR 可以在决定之后加“规则” |
-| `json` | ` ```json ` 代码块可以解析 |
+| `json` | ` ```json ` 代码块可以解析，带标题或行高亮的代码块也检查 |
 | `sidebar` | `meta.json` 中的条目存在，每个页面都被某个 `meta.json` 收录 |
 
 检查逻辑在 `lib/docs-check.ts`，读取文件和输出在 `scripts/check-docs.ts`。
@@ -85,7 +85,18 @@ pnpm dev
 | `/llms.txt` | 页面索引 |
 | `/llms-full.txt` | 全站内容 |
 
-请求头 `Accept` 优先 Markdown 时，页面地址也返回 Markdown。接口页的 Markdown 地址返回 OpenAPI JSON。路由定义在 `lib/routes.ts`。
+请求头 `Accept` 优先 Markdown 时，页面地址也返回 Markdown。接口页的 Markdown 地址返回 OpenAPI JSON。路由定义在 `lib/routes.ts`，导出内容由 `lib/llms.ts` 生成。
+
+- 指向文档页面的链接改写为页面的 Markdown 地址，例如 `../../adr/entity-model.mdx#context` 导出为 `/adr/entity-model.md#context`。页内锚点和外部链接保持原样。改写逻辑在 `lib/markdown-links.ts`。
+- 正文按 Fumadocs 的 `output: 'function'` 生成：Markdown 原样保留，组件由 `components/markdown.tsx` 中的组件渲染。组件在 `asMarkdown()` 为真时返回 Markdown。
+- `Callout` 导出为引用块，`Cards` 导出为链接列表。`ModelRelations` 导出关系列表，`ObserverStructure` 导出实现的接口和字段，`DocumentationGraph` 导出页面和引用清单。
+- 测试报告组件不在 `components/markdown.tsx` 中，导出保留 MDX 标签。新增的组件需要 Markdown 形式时，在组件中处理 `asMarkdown()`，并加入 `getMarkdownComponents()`。
+
+## 搜索
+
+搜索使用 Fumadocs 内置的搜索服务，接口是 `app/api/search/route.ts`。每个页面的索引带有所在分区的标签，取页面路径的第一段，例如 `core`、`adr`。
+
+搜索框底部按侧栏分区筛选结果，再点一次取消筛选。分区列表在 `app/layout.tsx` 中从页面树生成，搜索框在 `components/search-dialog.tsx`。Fumadocs 默认的搜索框把底栏渲染在弹窗之外，筛选按钮会被遮罩挡住，所以这里把底栏放在弹窗内容中。
 
 ## 模型关系图
 
@@ -133,6 +144,24 @@ MDX 页面末尾用 [`fumadocs-page-history@0.4.2`](https://github.com/shenxiano
 - 页面使用 Fumadocs 的 [Spacious 布局](https://www.fumadocs.dev/docs/ui/layouts/spacious)，样式在 `app/global.css` 中引入。
 - 右侧页内目录使用 `clerk` 样式，配置在 `app/(docs)/[[...slug]]/page.tsx`。
 - 站点名称和 Git 仓库信息在 `lib/site-config.ts`。编辑链接指向 `main` 分支。
+
+### 正文组件
+
+- Introduction 用 `Cards` 和 `Card` 按任务组织阅读链接，用 `Callout` 提示重写状态。这些组件来自默认 MDX 组件。
+- Walkthrough 和 Integration Guide 的编号标题由 `source.config.ts` 中的 `remarkSteps` 渲染为 Steps。标题继续使用 `## 1. 名称 [#anchor]`，原有锚点和导出中的编号保持不变。
+- Steps 在 Markdown 导出中保留编号标题。Cards 和 Callout 的导出形式见 [Markdown 导出](#markdown-导出)。
+- 代码块可以在语言后写标题和行高亮，例如 ` ```json title="POST /versions" {3,5} `。行号从代码块的第一行算起。行高亮由 `source.config.ts` 中的 `transformerMetaHighlight` 处理，JSON 示例不需要写注释，仍能通过 `json` 检查。
+
+### Graph
+
+Start 分区的 `/start/graph` 展示 Core、ADR 和 Observers 的页面引用。节点按分区着色，箭头指向被引用的页面。点击节点打开文档；下方的页面列表提供普通链接。
+
+- `lib/source.ts` 开启 `extractLinkReferences`，使用 Fumadocs 的链接解析按来源页面的目录处理相对路径。图只包含选定分区的页面，章节引用归到所在页面，重复的同向引用合并，页内引用忽略。
+- 收录哪些分区由 `lib/build-graph.ts` 的 `graphSections` 决定，按侧栏分区路径的第一段填写，顺序就是图例的顺序。分区名称取侧栏标题，颜色按顺序从同一文件的色板分配，图例、节点颜色、悬停说明和页面列表都由此生成。写错的分区名会在构建时报错。
+- `graphExcludedPages` 列出不进图的页面，按 URL 前缀匹配，当前排除 Document Template 的示例页。
+- `lib/build-graph.ts` 整理节点、引用和 Markdown 清单。`components/documentation-graph.tsx` 在服务端生成图数据和页面列表。
+- `components/graph-view.tsx` 改编自 [Fumadocs Graph View](https://github.com/fuma-nama/fumadocs/blob/main/apps/docs/components/graph-view.tsx)，保留其 MIT 许可。图形库在浏览器中加载，画布跟随容器尺寸变化，支持拖动、缩放和适应画布。节点按被引用的页面数决定大小：被引用最多的页面取最大半径，没有被引用的页面取最小半径，其余按引用数的平方根插值，面积大致与引用数成正比。最大和最小半径是 `components/graph-view.tsx` 中的 `maxRadius` 和 `minRadius`，页面增多时视觉比例不变。悬停时显示被引用和引用的页面数。
+- Graph 页的 Markdown 导出包含每个页面的链接及其引用清单，由 `DocumentationGraph` 在导出时输出。单页和全站导出使用同一份图数据。
 
 ## 镜像
 

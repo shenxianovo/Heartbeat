@@ -22,9 +22,9 @@ Observation 是一份陈述，中文叫观测。它说明四件事：哪个 [Obs
 | `observerVersionId` | 引用 | 负责的 Observer |
 | `contentVersionId` | 引用 | 观测内容 |
 | `inputSetVersionId` | 引用或 `null`，必须出现 | 这次处理实际用到的 [InputSet](./input-set.mdx)。没有用到已保存的数据时为 `null`，见 [EVIDENCE-1](../rules/evidence.mdx#evidence-1) |
-| `timeZone` | 字符串或 `null`，必须出现 | 事实所属的 IANA 时区 |
-| `startAt` | 时间或 `null`，必须出现 | 事实的已知开始边界 |
-| `endAt` | 时间或 `null`，必须出现 | 事实的已知结束边界 |
+| `timeZone` | 字符串或 `null`，必须出现 | 事实所属的 IANA 时区，未知时为 `null` |
+| `startAt` | 时间或 `null`，必须出现 | 事实的已知开始边界，未知时为 `null` |
+| `endAt` | 时间或 `null`，必须出现 | 事实的已知结束边界，未知时为 `null` |
 
 ## 示例 [#example]
 
