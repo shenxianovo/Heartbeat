@@ -18,7 +18,7 @@ dotnet test --project tests/Heartbeat.Integration.Tests/Heartbeat.Integration.Te
 
 | 测试类 | 检查内容 |
 | --- | --- |
-| `EntityApiTests` | 七个基本接口、提交中的部分拒绝、事实时间查询与分页、两个服务实例的首版冲突 |
+| `EntityApiTests` | 提交、读取、列出与查询、删除和错误格式，以及两个服务实例的首版冲突 |
 | `ReferrerApiTests` | 列出引用方：引用位置、按目标实体归集、当前版本与全部版本、分页，以及删除目标或引用方之后的结果 |
 | `TelemetryTests` | 未配置 OTLP 时不注册导出器。配置后检查结构化日志、HTTP 追踪、HTTP 与 .NET 指标，以及三类数据的网络导出 |
 
@@ -29,9 +29,9 @@ dotnet test --project tests/Heartbeat.Integration.Tests/Heartbeat.Integration.Te
 | `MacObserverIdentityTests` | 首次创建、重复启动、独立实例、并发首次启动、损坏文件保留 | 临时身份文件 |
 | `ForegroundTimelineTests` | 时段的延长、切换、中断和时间跳变 | 模拟读数 |
 | `LocalApplicationIdentityTests` | 本机应用身份的复用和新建、并发登记 | 临时登记文件 |
-| `ForegroundOutboxTests` | 进行中时段只在本地、重启恢复、事务回滚、事件和休眠边界 | 独立 SQLite、模拟读数 |
-| `ObserverSdkTests` | SDK 的草稿与恢复、重试与拆批、部分拒绝、Schema 登记，以及前台时段的上传 | 独立 PostgreSQL |
+| `ForegroundSubmissionTests` | 进行中时段只在本地、重启恢复、事务回滚、事件和休眠边界 | 独立 SQLite、模拟读数 |
+| `ObserverSdkTests` | SDK 的登记、草稿与策略、确认与重试、拒绝处理，以及前台时段的上传和拒绝处理 | 独立 SQLite；部分用例需要独立 PostgreSQL |
 
 这些测试不调用 macOS 原生接口。原生读取的验证方法见 [Foreground State README](../../src/Observers/Heartbeat.Observer.ForegroundState/README.md#验证)。
 
-对应的 Case：[本机应用身份](../../src/Docs/Heartbeat.Docs/content/docs/testing/observers/local-application-identity.mdx)、[时段边界](../../src/Docs/Heartbeat.Docs/content/docs/testing/observers/application-period-boundaries.mdx)、[Outbox 恢复](../../src/Docs/Heartbeat.Docs/content/docs/testing/observers/outbox-recovery.mdx)。
+对应的 Case 见 [Testing · 集成测试](../../src/Docs/Heartbeat.Docs/content/docs/testing/index.mdx#integration)。

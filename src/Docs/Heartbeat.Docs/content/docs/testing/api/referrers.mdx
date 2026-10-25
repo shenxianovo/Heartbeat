@@ -1,0 +1,36 @@
+---
+title: "Referrers"
+description: "列出引用一个实体的版本，以及每个引用的位置"
+---
+
+export const caseId = 'api-referrers';
+
+## 为什么验证 [#why]
+
+追溯和删除都要知道谁引用了一个实体。例如找和 VS Code 有关的数据，要列出引用 VS Code 任何一个版本的前台时段，并知道引用在版本中的位置。约定见 [API · 引用方](../../api/index.mdx#referrers) 和 [Storage · 引用的反查](../../storage/index.mdx#references)。
+
+## 前置条件 [#setup]
+
+通过 `WebApplicationFactory` 启动 API，连接一个独立的测试数据库，见 [Database](../database.mdx)。目标是一个有两个版本的业务实体。
+
+## 操作与预期结果 [#steps]
+
+| 操作 | 预期结果 |
+| --- | --- |
+| 一个业务版本在嵌套对象和数组中声明了 `reference`，还有一个值为 VersionId 的普通字符串 | 每个引用列为一个从版本根部写起的 JSON Pointer，例如 `/content/links/0/targetVersionIds/2`；普通字符串不算引用 |
+| Observation 和 InputSet 引用目标 | 位置分别是 Observation 的引用成员和 `/content/members/<下标>` |
+| 引用方分别引用目标的首版和第二版 | 都列为这个实体的引用方，`targetVersionId` 给出引用的是哪一版，见 [ENTITY-7](../../core/model/entity.mdx#entity-7) |
+| 列出 EntitySchema 的引用方，它被 `schemaVersionId` 和另一个 Schema 版本的 `previousVersionId` 指向 | 结果为空 |
+| 一份 Observation 延长过一次，一个 InputSet 后来改为引用别的实体 | `versions=current` 只返回延长后的 Observation；`versions=all` 返回 Observation 的两个版本和 InputSet 的旧版本 |
+| 用 `limit=1` 翻页，其中一个版本有两个引用位置 | 每页一个版本，这个版本的两个位置在同一项中 |
+| 删除目标实体 | 照常列出引用方，见 [HISTORY-8](../../core/rules/history.mdx#history-8) |
+| 删除引用方 | 它不再出现在结果中 |
+| 列出从未出现过的 EntityId 的引用方 | `404` |
+
+## 测试实现 [#implementation]
+
+`ReferrerApiTests`。
+
+## 执行结果 [#results]
+
+<TestCaseResults caseId={caseId} />

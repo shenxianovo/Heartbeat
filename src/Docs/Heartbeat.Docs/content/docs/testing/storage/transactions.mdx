@@ -1,0 +1,29 @@
+---
+title: "Transactions"
+description: "部分拒绝只留下已保存版本的数据，并发写入不形成分叉"
+---
+
+export const caseId = 'storage-transactions';
+
+## 为什么验证 [#why]
+
+一次提交中途被拒绝时，被拒绝的版本不能在派生的表中留下引用，否则引用方的结果会多出没有保存的版本。多个 API 实例同时写入同一个实体时，版本链也只能有一条。约定见 [Storage · 事务](../../storage/index.mdx#transactions)。
+
+## 前置条件 [#setup]
+
+使用一个独立的测试数据库，见 [Database](../database.mdx)。第一行通过 `WebApplicationFactory` 启动 API；第二行在同一个数据库上创建两个独立的服务实例。
+
+## 操作与预期结果 [#steps]
+
+| 操作 | 预期结果 |
+| --- | --- |
+| 一次提交依次是 EntitySchema、目标、引用目标的 InputSet A、被拒绝的版本、引用目标的 InputSet B；随后原样重发前三个版本 | 目标的引用方只有 A；重发返回 `200`，引用方仍只有 A |
+| 两个服务实例同时提交同一个实体的首版，VersionId 不同 | 只有一个保存，另一个被拒绝，`rule` 为 `VERSION-6` |
+
+## 测试实现 [#implementation]
+
+`ReferrerApiTests` 中的部分提交测试，以及 `EntityApiTests` 中的并发首版测试。
+
+## 执行结果 [#results]
+
+<TestCaseResults caseId={caseId} />

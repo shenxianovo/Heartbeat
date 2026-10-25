@@ -1,0 +1,32 @@
+---
+title: "Foreground Submission"
+description: "前台时段结束后才上传，异常退出后从最后一次确认恢复"
+---
+
+export const caseId = 'foreground-submission';
+
+## 为什么验证 [#why]
+
+前台状态 Observer 采用结束后提交，后端只应看到已结束的时段。程序异常退出时，进行中的时段要在下次启动时结束于最后一次确认，停机期间不计入时段。约定见 [Foreground State · 提交](../../observers/application-activity/index.mdx#submission)。
+
+## 前置条件 [#setup]
+
+SDK 使用独立的 SQLite 文件，读数是模拟的。需要后端的行通过 `WebApplicationFactory` 启动 API，连接一个独立的测试数据库，见 [Database](../database.mdx)。
+
+## 操作与预期结果 [#steps]
+
+| 操作 | 预期结果 |
+| --- | --- |
+| 确认应用在前台并延长当前时段，然后发送 | 后端读取这份 Observation 返回 `404` |
+| 结束当前时段，然后发送 | 后端能读到观测内容和 Observation |
+| 延长到第 1 秒后重新打开 SQLite 文件，恢复两次 | 遗留的时段结束于第 1 秒，开始时间不变，只结束一次 |
+| 另一个程序实例打开同一个 SQLite 文件 | 报错，原有的待发送版本保留 |
+| 切换应用时，写入新时段前本地写入失败 | 旧时段的结束和新时段一起回滚；之后结束的仍是原来的时段 |
+
+## 测试实现 [#implementation]
+
+`ForegroundSubmissionTests` 验证本地恢复和事务回滚，`ObserverSdkTests` 中的前台上传测试验证上传。
+
+## 执行结果 [#results]
+
+<TestCaseResults caseId={caseId} />

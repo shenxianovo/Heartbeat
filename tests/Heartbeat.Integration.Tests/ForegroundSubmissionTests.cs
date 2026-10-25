@@ -5,10 +5,10 @@ using Microsoft.Data.Sqlite;
 
 namespace Heartbeat.Integration.Tests;
 
-public sealed class ForegroundOutboxTests
+public sealed class ForegroundSubmissionTests
 {
     [Test]
-    [Property("caseId", "foreground-outbox-recovery")]
+    [Property("caseId", "foreground-submission")]
     public async Task ActivePeriodStaysLocalAndRestartClosesLastCheckpointExactlyOnce()
     {
         var observer = EntityId.New();
@@ -31,7 +31,7 @@ public sealed class ForegroundOutboxTests
     }
 
     [Test]
-    [Property("caseId", "foreground-outbox-recovery")]
+    [Property("caseId", "foreground-submission")]
     public async Task FailedTransitionRollsBackBothOldPeriodAndNewCheckpoint()
     {
         var observer = EntityId.New();

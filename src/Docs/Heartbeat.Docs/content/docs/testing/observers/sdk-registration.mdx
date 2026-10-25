@@ -1,0 +1,31 @@
+---
+title: "SDK Registration"
+description: "SDK 先登记程序实例和 EntitySchema，并复用内容相同的 Schema 版本"
+---
+
+export const caseId = 'sdk-registration';
+
+## 为什么验证 [#why]
+
+其他版本都引用程序实例和 Schema 版本，所以登记必须最先提交。新旧两个版本的 Observer 同时运行时，各自引用自己那一版 Schema，Schema 不会被来回改写。约定见 [Submission · 登记](../../observers/submission/index.mdx#registration)。
+
+## 前置条件 [#setup]
+
+通过 `WebApplicationFactory` 启动 API，连接一个独立的测试数据库，见 [Database](../database.mdx)。SDK 使用独立的 SQLite 文件；离线时使用总是网络失败的 HTTP 处理器。
+
+## 操作与预期结果 [#steps]
+
+| 操作 | 预期结果 |
+| --- | --- |
+| 离线时登记程序实例和 EntitySchema，再交来一个业务版本；联网后发送 | 程序实例和 EntitySchema 先于业务版本提交，全部保存 |
+| 后端的 EntitySchema 有两个版本，业务代码给出的内容与首版相同 | 业务版本引用首版，版本链仍是两个版本 |
+| 业务代码给出的内容与链中每个版本都不同 | SDK 在当前版本之后形成新的 Schema 版本，业务版本引用它 |
+| 重启后，程序实例的信息变化，例如程序版本升级 | 形成同一个实体的新版本，之后的版本引用新版本，见 [OBSERVER-4](../../core/model/observer.mdx#observer-4) |
+
+## 测试实现 [#implementation]
+
+`ObserverSdkTests` 中的登记测试。
+
+## 执行结果 [#results]
+
+<TestCaseResults caseId={caseId} />

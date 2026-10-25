@@ -1,0 +1,34 @@
+---
+title: "Reading"
+description: "按 VersionId 和 EntityId 读取版本、当前版本和版本链"
+---
+
+export const caseId = 'api-reading';
+
+## 为什么验证 [#why]
+
+读取方按身份读取数据，读之前不需要知道类型。读回的版本要有完整的成员和后端赋值的 `recordedAt`，时间要统一为 UTC 写法，版本链要按顺序排列。约定见 [API · 接口](../../api/index.mdx#operations)、[版本的表示](../../api/index.mdx#versions) 和 [时间](../../api/index.mdx#time)。
+
+## 前置条件 [#setup]
+
+通过 `WebApplicationFactory` 启动 API，连接一个独立的测试数据库，见 [Database](../database.mdx)。先提交一个 EntitySchema、一个有三个版本的业务实体和一份 Observation。
+
+## 操作与预期结果 [#steps]
+
+| 操作 | 预期结果 |
+| --- | --- |
+| `GET /versions/{versionId}` 读取业务实体的首版 | 返回 [Version · 成员](../../core/model/version.mdx#members) 中的七个成员，`recordedAt` 以 `Z` 结尾 |
+| `GET /entities/{entityId}` | 返回第三版 |
+| `GET /entities/{entityId}/versions` | 依次返回首版、第二版和第三版 |
+| 提交 Observation 时，`startAt` 写为 `2026-10-06T09:00:00+08:00`，`endAt` 带 7 位小数 | 读回 `2026-10-06T01:00:00Z`；`endAt` 以 `Z` 结尾，截断到整微秒 |
+| 读取从未出现过的 VersionId 和 EntityId | `404` |
+
+已删除实体的读取见 [Deletion](./deletion.mdx)。
+
+## 测试实现 [#implementation]
+
+`EntityApiTests` 中的读取测试。
+
+## 执行结果 [#results]
+
+<TestCaseResults caseId={caseId} />

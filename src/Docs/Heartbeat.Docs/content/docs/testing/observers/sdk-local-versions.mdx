@@ -1,0 +1,33 @@
+---
+title: "SDK Local Versions"
+description: "草稿的合并与冻结，以及两种提交策略"
+---
+
+export const caseId = 'sdk-local-versions';
+
+## 为什么验证 [#why]
+
+草稿决定后端会收到几个版本，冻结决定版本何时不再改写、按什么顺序发送。两种提交策略的区别只在草稿何时冻结。约定见 [Submission · 版本的状态](../../observers/submission/index.mdx#states) 和 [提交策略](../../observers/submission/index.mdx#strategies)。
+
+## 前置条件 [#setup]
+
+SDK 使用独立的 SQLite 文件，后端是记录每次请求、按需返回响应的 HTTP 处理器。
+
+## 操作与预期结果 [#steps]
+
+| 操作 | 预期结果 |
+| --- | --- |
+| 形成一份 Observation 的草稿，再补全一次 | VersionId 和 `previousVersionId` 不变 |
+| 业务代码引用一个实体，之后再补全它 | 被引用的版本已冻结，补全形成新版本，`previousVersionId` 指向被引用的版本 |
+| Observation 引用一个仍是草稿的观测内容，然后冻结 Observation | 观测内容先冻结；发送时观测内容排在 Observation 之前 |
+| 结束后提交：通知结束前发送一次，通知结束后再发送 | 第一次没有发送这份 Observation；第二次只发送一个版本，内容是最终结果 |
+| 及时提交：形成草稿后发送，再补全并发送 | 后端依次收到两个版本，第二个的 `previousVersionId` 指向第一个 |
+| 结束后提交：重启 SDK，再通知结束并发送 | 发送的是重启前那份草稿的 VersionId |
+
+## 测试实现 [#implementation]
+
+`ObserverSdkTests` 中的草稿与策略测试。
+
+## 执行结果 [#results]
+
+<TestCaseResults caseId={caseId} />
