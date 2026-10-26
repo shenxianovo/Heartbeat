@@ -51,4 +51,4 @@ dotnet test --project tests/Orisumi.Model.Tests/Orisumi.Model.Tests.csproj
 
 ## 报告 [#reports]
 
-[Integration Report](./reports/integration.mdx) 读取 `TestResults` 中最新的 TUnit 集成测试 JSON，每次刷新页面都重新读取。JSON 是测试结果的权威来源；查看报告不会运行测试。报告由 `fumadocs-test-reports` 展示，可以搜索、筛选，查看详情、输出和时间线。
+[Integration Report](./reports/integration.mdx) 显示 TUnit 集成测试的 JSON 报告。本地文档站每次刷新都重新读取 `TestResults` 中最新的报告；公开站显示发布时运行集成测试得到的报告，见 [ADR · 文档站的发布](../adr/documentation-publishing.mdx)。JSON 是测试结果的权威来源；查看报告不会运行测试。报告由 `fumadocs-test-reports` 展示，可以搜索、筛选，查看详情、输出和时间线。

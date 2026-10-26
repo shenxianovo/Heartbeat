@@ -4,7 +4,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 const output = resolve('out');
 const markdown = join(output, 'llms.mdx');
 
-// GitHub Pages cannot rewrite /page.md to the longer Markdown export route.
+// GitHub Pages cannot rewrite /page.md to the longer Markdown export route; the dev server does it in next.config.mjs.
 for (const entry of await readdir(markdown, { recursive: true, withFileTypes: true })) {
   if (!entry.isFile() || entry.name !== 'content.md') continue;
   const source = join(entry.parentPath, entry.name);

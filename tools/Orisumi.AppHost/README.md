@@ -76,7 +76,7 @@ docker build -f src/Backend/Orisumi.Api/Dockerfile -t orisumi-api:local .
 docker build -f src/Docs/Orisumi.Docs/Dockerfile -t orisumi-docs:local .
 ```
 
-Aspire 只用于本地开发。部署配置和生产监控尚未建设。
+Aspire 只用于本地开发。文档站的发布见[文档站 README · 发布](../../src/Docs/Orisumi.Docs/README.md#发布)；后端的部署配置和生产监控尚未建设。
 
 ## 验证
 
