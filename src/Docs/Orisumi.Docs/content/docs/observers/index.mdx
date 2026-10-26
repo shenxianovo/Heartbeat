@@ -1,0 +1,27 @@
+---
+title: "Overview"
+description: "各来源的 Observer 目录，以及接入新来源从哪里开始"
+---
+
+Observer 把来源中发生的事变成观测。本分区按来源组织：每个来源说明有哪些 Observer、它们形成哪些业务实体，以及事实时间怎样取值。Observer 的身份和责任规则见 [Observer](../core/model/observer.mdx)。
+
+## 目录 [#catalog]
+
+| 来源 | 观测内容 | 状态 |
+| --- | --- | --- |
+| [Foreground State](./application-activity/index.mdx) | 前台应用时段与窗口标题时段 | 应用时段已在 macOS 实现 |
+| [Input Events](./input-events/index.mdx) | 逐条键鼠事件 | 草案 |
+| [Device State](./device-state/index.mdx) | 设备休眠与清醒时段 | 草案 |
+| [Browser History](./browser-history/index.mdx) | 网页访问与历史删除 | 草案 |
+| [Assistant Sessions](./assistant-sessions/index.mdx) | 助手会话、执行与工具调用 | 草案 |
+| [Screen Capture](./screen-capture/index.mdx) | 屏幕捕获、OCR 与图像检测 | 草案 |
+| [Health](./health/index.mdx) | 步数与睡眠 | 草案 |
+| [VRChat](./vrchat/index.mdx) | 实例加入、离开与玩家在场 | 草案 |
+| [Playback](./playback/index.mdx) | 媒体播放状态与进度 | 草案 |
+| [Audio](./audio/index.mdx) | 音频材料、片段与说话人 | 草案 |
+
+前三个来源都在桌面端，从 [Desktop](./desktop/index.mdx) 进入。前台状态 Observer 的程序在 `src/Observers/Orisumi.Observer.ForegroundState/`，运行方式见该目录的 README。
+
+## 接入新的来源 [#integration]
+
+先按 [Integration Guide](./integration.mdx) 设计业务实体、身份和时间，再按 [Document Template](./template/index.mdx) 写文档。程序实例怎样把数据交给后端，见 [Submission](./submission/index.mdx)。

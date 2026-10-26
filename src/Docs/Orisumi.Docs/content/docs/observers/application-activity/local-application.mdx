@@ -1,0 +1,105 @@
+---
+title: "Local Application"
+description: "某台设备上的一个应用安装"
+---
+
+本机应用表示某台设备上的一个应用安装，例如这台 Mac 上的 VS Code。它有自己的 EntityId，可以在任何观测之前就存在。[前台应用时段](./foreground-application-period.mdx)通过 `localApplicationVersionId` 引用它。
+
+<ObserverStructure node="LOCAL_APPLICATION" />
+
+## 粒度 [#granularity]
+
+一个实体对应某台设备上的一个安装。识别安装靠平台提供的标识线索；同名的应用、不同设备上的同一款软件，都是不同的实体。
+
+## 身份 [#identity]
+
+在 macOS 上，前台状态 Observer 按应用包标识和可执行文件路径的原始值识别安装：两者都相同，就复用原来的身份。比较区分大小写，名称、路径别名和软件品牌都不参与判断。
+
+| 变化 | 身份 |
+| --- | --- |
+| 应用名称变化 | 复用；新名称保存在观测内容中 |
+| 应用退出后重新启动 | 复用 |
+| 前台状态 Observer 重启或升级 | 复用，身份来自登记文件 |
+| 应用原地升级 | 复用 |
+| 在原路径卸载后重装，包标识相同 | 复用 |
+| 应用移动，或可执行文件路径变化 | 新建 |
+| 同一路径出现不同的包标识 | 新建 |
+| 先只读到路径，之后读到包标识 | 新建 |
+| 另一台设备上的相同安装 | 新建 |
+| 用户删除了这个本机应用 | 新建，更新登记文件 |
+
+读不到可执行文件路径时，只在前台状态 Observer 本次运行期间，按进程号、进程启动时间和包标识复用一个临时身份；进程或前台状态 Observer 重启后新建。连进程线索也读不到时，每次读数都新建身份。这些进程线索只用于识别，不写入业务实体。
+
+识别时宁可多建身份。名称会随语言和版本变化，两个不同的安装也可能同名；多出来的身份之后可以由业务关联，错误合并的身份却无法拆开。
+
+### 登记文件 [#registry]
+
+本机应用的登记文件保存原生线索到 EntityId 的映射，是这一映射的权威来源。它与程序实例的身份文件分开，同一设备上的多个程序实例共用一个登记文件。
+
+- 登记文件只属于创建它的设备。
+- 文件损坏时，前台状态 Observer 报告错误并保留原文件。
+- 删除文件后，下次采集重新分配身份。
+- 创建和更新文件时使用互斥锁和原子替换。
+
+文件路径和启动参数见 `src/Observers/Orisumi.Observer.ForegroundState/README.md`。
+
+## 引用 [#references]
+
+本机应用没有引用。不同设备上的本机应用可以关联到同一个跨平台应用，例如两台 Mac 上的 VS Code；目前前台状态 Observer 只维护本机的身份，Device 实体和跨平台应用的归并都还没有定义。
+
+## 事实时间 [#fact-time]
+
+本机应用是被观测内容引用的对象，本身不作为观测内容，没有事实时间。应用在前台的时间由引用它的前台时段 Observation 表达。
+
+## EntitySchema [#schema]
+
+| 项目 | 值 |
+| --- | --- |
+| SchemaId | `019e1bbb-ec00-7000-8000-000000000002` |
+| 显示名称 | 本机应用 |
+| 说明 | 表示某台设备上的一个应用安装，保存用于识别安装的平台标识线索。 |
+| 资源名 | `local-applications` |
+
+| 字段 | 类型 | 必填 | 可空 | 含义 |
+| --- | --- | --- | --- | --- |
+| `identifiers` | `array` | 是 | 否 | 平台标识线索，顺序无意义；没有线索时为 `[]` |
+| `identifiers[].scheme` | `string` | 是 | 否 | 线索的种类 |
+| `identifiers[].value` | `string` | 是 | 否 | 线索的原始值 |
+
+| `scheme` | `value` |
+| --- | --- |
+| `macos.bundle-id` | 应用包标识 |
+| `macos.executable-path` | 可执行文件路径 |
+
+应用名称保存在观测内容中，本机应用只保存标识线索。
+
+## 示例 [#example]
+
+首次读到 VS Code 时，`POST /versions` 中的本机应用首版。`schemaVersionId` 是本机应用 EntitySchema 的一个 Schema 版本：
+
+```json title="POST /versions"
+{
+  "versions": [
+    {
+      "entityId": "01a12e31-9050-7000-8000-000000000001",
+      "versionId": "01a12e31-9050-7000-8000-000000000101",
+      "previousVersionId": null,
+      "category": "business",
+      "schemaVersionId": "019e1bbb-ec00-7000-8000-000000000102",
+      "content": {
+        "identifiers": [
+          { "scheme": "macos.bundle-id", "value": "com.microsoft.VSCode" },
+          {
+            "scheme": "macos.executable-path",
+            "value": "/Applications/Visual Studio Code.app/Contents/MacOS/Electron"
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
+## 待定 [#open]
+
+- 跨平台应用的关联由谁维护、依据什么、保存在哪里。

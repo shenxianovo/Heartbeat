@@ -1,6 +1,6 @@
 {
   "appHost": {
-    "path": "tools/Heartbeat.AppHost/Heartbeat.AppHost.csproj"
+    "path": "tools/Orisumi.AppHost/Orisumi.AppHost.csproj"
   },
   "features": {
     "defaultWatchEnabled": true

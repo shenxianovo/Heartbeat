@@ -1,0 +1,67 @@
+---
+title: "Foreground Window Title"
+description: "依附于前台应用时段的窗口标题时段"
+---
+
+窗口标题时段表达“在这一段前台应用活动中，焦点窗口的标题是 T”，由前台状态 Observer 形成。它通过 `foregroundObservationVersionId` 引用所属的[前台应用时段](./foreground-application-period.mdx) Observation，再沿那份观测的内容找到本机应用，所以它自己不再引用本机应用，窗口也没有单独的身份。
+
+<ObserverStructure node="TITLE_CONTENT" />
+
+## 粒度 [#granularity]
+
+应用时段和标题时段各自形成 Observation。一次读取同时取得应用、焦点窗口和标题，再分别判断两条时间线怎样更新：
+
+| 情况 | 应用时段 | 标题时段 |
+| --- | --- | --- |
+| 在 Chrome 中从“邮箱”窗口切到“文档”窗口 | 延续 | 结束旧的，开始新的；两者属于同一个应用时段 |
+| 同一个窗口的标题改变 | 延续 | 结束旧的，开始新的 |
+| 同一个应用内切换窗口，标题相同 | 延续 | 可以延续 |
+| 应用时段结束或新建 | 结束，或开始新的 | 随所属的应用时段结束；新应用时段中的标题形成新的观测，文字相同也一样 |
+
+切换窗口只是重新读取标题的时机，标题时段记下的是标题本身。
+
+## 身份 [#identity]
+
+标题时段通过 `foregroundObservationVersionId` 归属一整段前台应用活动。观测内容的身份，以及标题变化后是否复用内容，尚未确定。
+
+## 引用 [#references]
+
+| 字段 | 目标 |
+| --- | --- |
+| `foregroundObservationVersionId` | 所属前台应用时段的 Observation，经由它的内容关联到本机应用 |
+
+## 事实时间 [#fact-time]
+
+标题时段是时段型的 Observation，表示方式见 [Observation · 事实时间](../../core/model/observation.mdx#fact-time)。它有自己的时间线，范围落在所属的应用时段之内。在同一个应用时段中连续确认到相同的标题时，保留原来的开始边界，结束边界延长到最近一次确认。
+
+## EntitySchema [#schema]
+
+| 项目 | 值 |
+| --- | --- |
+| SchemaId | 待定 |
+| 显示名称 | 前台窗口标题时段 |
+| 说明 | 表达一段前台应用活动中焦点窗口的标题；内容引用所属的前台应用时段 Observation，Observation 保存标题时段。 |
+| 资源名 | 待定 |
+
+| 字段 | 类型 | 必填 | 可空 | 含义 |
+| --- | --- | --- | --- | --- |
+| `foregroundObservationVersionId` | `reference` | 待定 | 待定 | 所属前台应用时段的 Observation |
+| `title` | `string` | 待定 | 待定 | 窗口标题的原文；读到空标题时为 `""` |
+
+标题按原文保存。从标题中解析文件、项目或网页，是另一个 Observer 的陈述，由它形成自己的观测。
+
+## 示例 [#example]
+
+```json
+{
+  "foregroundObservationVersionId": "01a151e3-1900-7000-8000-000000000130",
+  "title": "Orisumi — Codex"
+}
+```
+
+## 待定 [#open]
+
+- SchemaId、资源名，以及字段的必填和可空。
+- 观测内容的身份，以及标题变化后是否复用。
+- 怎样区分读取失败、采集停顿和空标题。
+- `foregroundObservationVersionId` 引用的是应用时段 Observation 的某一个版本，而应用时段会不断延长出新版本；标题应当引用哪一版。

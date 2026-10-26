@@ -1,0 +1,25 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/Core/">
+    <Project Path="src/Core/Orisumi.Core/Orisumi.Core.csproj" />
+  </Folder>
+  <Folder Name="/src/Backend/">
+    <Project Path="src/Backend/Orisumi.Api/Orisumi.Api.csproj" />
+    <Project Path="src/Backend/Orisumi.Application/Orisumi.Application.csproj" />
+    <Project Path="src/Backend/Orisumi.Infrastructure/Orisumi.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Observers/">
+    <Project Path="src/Observers/Orisumi.Observer.Sdk/Orisumi.Observer.Sdk.csproj" />
+    <Project Path="src/Observers/Orisumi.Observer.ForegroundState/Orisumi.Observer.ForegroundState.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Orisumi.Model.Tests/Orisumi.Model.Tests.csproj" />
+    <Project Path="tests/Orisumi.Dev.Tests/Orisumi.Dev.Tests.csproj" />
+    <Project Path="tests/Orisumi.Integration.Tests/Orisumi.Integration.Tests.csproj" />
+    <Project Path="tests/Orisumi.Testing/Orisumi.Testing.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Orisumi.AppHost/Orisumi.AppHost.csproj" />
+    <Project Path="tools/Orisumi.Dev/Orisumi.Dev.csproj" />
+  </Folder>
+</Solution>

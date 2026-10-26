@@ -1,0 +1,1172 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "Orisumi API",
+    "description": "Orisumi HTTP 接口契约。维护者直接修改此文件。文档站读取此文件展示接口，后端按契约实现。\n\n接口按 Core 的实体与版本模型定义。共用的约定见 API Overview。",
+    "version": "draft"
+  },
+  "servers": [
+    {
+      "url": "/api"
+    }
+  ],
+  "paths": {
+    "/versions": {
+      "post": {
+        "operationId": "submitVersions",
+        "summary": "提交版本",
+        "description": "按数组顺序逐个保存版本，见 [VERSION-13](/core/model/version#version-13)。已保存的 VersionId 再次提交时，内容相同就视为已保存，见 [VERSION-7](/core/model/version#version-7)。某个版本被拒绝时，后面的版本不再处理，前面已保存的版本保留；错误响应的 `index` 和 `versionId` 指出被拒绝的版本。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmissionRequest"
+              },
+              "example": {
+                "versions": [
+                  {
+                    "entityId": "019e1bbb-ec00-7000-8000-00000000e001",
+                    "versionId": "019e1bbb-ec00-7000-8000-00000000f001",
+                    "previousVersionId": null,
+                    "category": "entity_schema",
+                    "schemaVersionId": null,
+                    "content": {
+                      "displayName": "示例条目",
+                      "description": "Playground 的示例类型，每条记下一个标题。",
+                      "resourceName": "example-items",
+                      "fields": {
+                        "title": {
+                          "type": "string",
+                          "required": true,
+                          "nullable": true
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "entityId": "019e1bbb-ec00-7000-8000-00000000e002",
+                    "versionId": "019e1bbb-ec00-7000-8000-00000000f002",
+                    "previousVersionId": null,
+                    "category": "business",
+                    "schemaVersionId": "019e1bbb-ec00-7000-8000-00000000f001",
+                    "content": {
+                      "title": "第一条"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "全部版本都已保存。结果的顺序与提交相同。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmissionResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求体不符合契约时，整次提交都不处理，响应中没有 `rule` 和 `index`。某个版本违反 Core 规则时，`rule` 是规则编号，`index` 和 `versionId` 指出这个版本。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmissionProblem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "某个版本与已保存的数据冲突：基于旧版本（[VERSION-6](/core/model/version#version-6)）、重试的内容不同（[VERSION-7](/core/model/version#version-7)）、资源名已被占用（[SCHEMA-5](/core/model/schema#schema-5)）、实体已被删除（[HISTORY-7](/core/rules/history#history-7)）或 VersionId 属于已删除的实体（[VERSION-9](/core/model/version#version-9)）。`rule`、`index` 和 `versionId` 指出原因和版本。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmissionProblem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "请求体超过 10 MiB。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "后端出现意外错误。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/versions/{versionId}": {
+      "get": {
+        "operationId": "getVersion",
+        "summary": "读取版本",
+        "description": "按 VersionId 读取一个版本，所有类型的版本都用这个接口。",
+        "parameters": [
+          {
+            "name": "versionId",
+            "in": "path",
+            "required": true,
+            "description": "版本的 VersionId。",
+            "schema": {
+              "$ref": "#/components/schemas/VersionId"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "读取成功。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Version"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "路径中的 ID 不是 UUID，或者参数无效。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "这个身份从未出现过。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "实体或版本已被删除，见 [HISTORY-8](/core/rules/history#history-8)。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "后端出现意外错误。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/entities": {
+      "get": {
+        "operationId": "listEntities",
+        "summary": "列出实体",
+        "description": "列出实体的当前版本，按 EntityId 升序分页。`category` 和 `resourceName` 都省略时列出全部实体；给出 `resourceName` 时只返回这种业务类型的实体。列出全部 EntitySchema 用 `category=entity_schema`。",
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "description": "只返回这一类内容的实体。",
+            "schema": {
+              "$ref": "#/components/schemas/Category"
+            }
+          },
+          {
+            "name": "resourceName",
+            "in": "query",
+            "required": false,
+            "description": "业务类型的资源名。只返回这种业务类型的实体。",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "一页最多返回的版本数。",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 100
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "description": "上一页响应中的 `next`。省略时从第一页开始。",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "一页实体的当前版本。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "路径中的 ID 不是 UUID，或者参数无效。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "没有 EntitySchema 使用这个 `resourceName`。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "后端出现意外错误。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/entities/{entityId}": {
+      "get": {
+        "operationId": "getEntity",
+        "summary": "读取当前版本",
+        "description": "读取实体的当前版本，见 [VERSION-5](/core/model/version#version-5)。",
+        "parameters": [
+          {
+            "name": "entityId",
+            "in": "path",
+            "required": true,
+            "description": "实体的 EntityId。",
+            "schema": {
+              "$ref": "#/components/schemas/EntityId"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "实体的当前版本。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Version"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "路径中的 ID 不是 UUID，或者参数无效。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "这个身份从未出现过。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "实体或版本已被删除，见 [HISTORY-8](/core/rules/history#history-8)。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "后端出现意外错误。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteEntity",
+        "summary": "删除实体",
+        "description": "删除实体的全部版本，见 [HISTORY-6](/core/rules/history#history-6)。删除后实体不再接受新版本，见 [HISTORY-7](/core/rules/history#history-7)。删除已删除的实体也返回 `204`。",
+        "parameters": [
+          {
+            "name": "entityId",
+            "in": "path",
+            "required": true,
+            "description": "实体的 EntityId。",
+            "schema": {
+              "$ref": "#/components/schemas/EntityId"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "实体已删除，或者之前已经删除。无响应体。"
+          },
+          "400": {
+            "description": "路径中的 ID 不是 UUID，或者参数无效。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "这个身份从未出现过。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "还有业务版本使用这个 EntitySchema，见 [HISTORY-9](/core/rules/history#history-9)。`rule` 为 `HISTORY-9`。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "后端出现意外错误。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/entities/{entityId}/versions": {
+      "get": {
+        "operationId": "listEntityVersions",
+        "summary": "读取版本链",
+        "description": "读取实体的全部版本，按版本链从首版到当前版排列，不分页。",
+        "parameters": [
+          {
+            "name": "entityId",
+            "in": "path",
+            "required": true,
+            "description": "实体的 EntityId。",
+            "schema": {
+              "$ref": "#/components/schemas/EntityId"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "实体的全部版本。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "路径中的 ID 不是 UUID，或者参数无效。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "这个身份从未出现过。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "实体或版本已被删除，见 [HISTORY-8](/core/rules/history#history-8)。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "后端出现意外错误。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/entities/{entityId}/referrers": {
+      "get": {
+        "operationId": "listReferrers",
+        "summary": "列出引用方",
+        "description": "列出在 `content` 中引用这个实体的版本，目标按实体匹配，引用它的任何一个版本都算，见 [ENTITY-7](/core/model/entity#entity-7)。只返回直接的引用方，按引用方的 VersionId 升序分页。目标实体已被删除时照常列出，见 [HISTORY-8](/core/rules/history#history-8)。",
+        "parameters": [
+          {
+            "name": "entityId",
+            "in": "path",
+            "required": true,
+            "description": "目标实体的 EntityId。",
+            "schema": {
+              "$ref": "#/components/schemas/EntityId"
+            }
+          },
+          {
+            "name": "versions",
+            "in": "query",
+            "required": false,
+            "description": "`current` 只返回当前版本仍引用目标的实体，每个实体一个版本；`all` 返回每一个引用过目标的版本。",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "current",
+                "all"
+              ],
+              "default": "current"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "一页最多返回的引用方版本数。",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 100
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "description": "上一页响应中的 `next`。省略时从第一页开始。",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "一页引用方。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferrerPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "路径中的 ID 不是 UUID，或者参数无效。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "这个身份从未出现过。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "后端出现意外错误。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/observations": {
+      "get": {
+        "operationId": "listObservations",
+        "summary": "按事实时间查询观测",
+        "description": "列出事实时间落在 `[from, to)` 中的 Observation 的当前版本。匹配只看已知的边界：时段与范围有重叠即返回；只知道一个边界时，按这一刻的时间点匹配；两个边界都未知的 Observation 不返回。结果按已知的开始边界升序分页，开始未知时用结束边界，相同时按 EntityId 升序。",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "description": "范围的开始，包含在内。",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "description": "范围的结束，不包含在内，必须晚于 `from`。",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "resourceName",
+            "in": "query",
+            "required": false,
+            "description": "观测内容的资源名。只返回观测内容属于这种业务类型的 Observation。",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "一页最多返回的版本数。",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 100
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "description": "上一页响应中的 `next`。省略时从第一页开始。",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "一页 Observation 的当前版本。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "路径中的 ID 不是 UUID，或者参数无效。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "没有 EntitySchema 使用这个 `resourceName`。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "后端出现意外错误。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "EntityId": {
+        "type": "string",
+        "format": "uuid",
+        "description": "写入方生成的 UUIDv7，见 [ENTITY-2](/core/model/entity#entity-2)。"
+      },
+      "VersionId": {
+        "type": "string",
+        "format": "uuid",
+        "description": "写入方生成的 UUIDv7，见 [VERSION-12](/core/model/version#version-12)。"
+      },
+      "Category": {
+        "type": "string",
+        "enum": [
+          "observation",
+          "entity_schema",
+          "input_set",
+          "business"
+        ],
+        "description": "版本内容属于哪一类。前三种是 Core 类型。"
+      },
+      "VersionSubmission": {
+        "type": "object",
+        "description": "提交的一个版本。成员的含义见 [Version](/core/model/version#members)。`recordedAt` 由后端赋值，提交时不得出现，见 [VERSION-10](/core/model/version#version-10)。",
+        "required": [
+          "entityId",
+          "versionId",
+          "previousVersionId",
+          "category",
+          "schemaVersionId",
+          "content"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "entityId": {
+            "$ref": "#/components/schemas/EntityId"
+          },
+          "versionId": {
+            "$ref": "#/components/schemas/VersionId"
+          },
+          "previousVersionId": {
+            "description": "同一实体的前一版本，首版为 `null`。",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VersionId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "category": {
+            "$ref": "#/components/schemas/Category"
+          },
+          "schemaVersionId": {
+            "description": "业务内容所用的 Schema 版本，Core 类型为 `null`。",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VersionId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "content": {
+            "$ref": "#/components/schemas/Content"
+          }
+        }
+      },
+      "Version": {
+        "type": "object",
+        "description": "一个已保存的版本。成员的含义见 [Version](/core/model/version#members)。",
+        "required": [
+          "entityId",
+          "versionId",
+          "previousVersionId",
+          "category",
+          "schemaVersionId",
+          "recordedAt",
+          "content"
+        ],
+        "properties": {
+          "entityId": {
+            "$ref": "#/components/schemas/EntityId"
+          },
+          "versionId": {
+            "$ref": "#/components/schemas/VersionId"
+          },
+          "previousVersionId": {
+            "description": "同一实体的前一版本，首版为 `null`。",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VersionId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "category": {
+            "$ref": "#/components/schemas/Category"
+          },
+          "schemaVersionId": {
+            "description": "业务内容所用的 Schema 版本，Core 类型为 `null`。",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VersionId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recordedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "后端首次保存这个版本的时刻，以 `Z` 结尾，见 [VERSION-10](/core/model/version#version-10)。"
+          },
+          "content": {
+            "$ref": "#/components/schemas/Content"
+          }
+        }
+      },
+      "Content": {
+        "description": "版本的内容，按 `category` 解释：Core 类型的成员见各类型页，业务内容按 `schemaVersionId` 指向的 Schema 版本校验。",
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/Observation"
+          },
+          {
+            "$ref": "#/components/schemas/InputSet"
+          },
+          {
+            "$ref": "#/components/schemas/EntitySchema"
+          },
+          {
+            "$ref": "#/components/schemas/BusinessContent"
+          }
+        ]
+      },
+      "Observation": {
+        "type": "object",
+        "description": "Observation 的成员，见 [Observation](/core/model/observation#members)。",
+        "required": [
+          "observerVersionId",
+          "contentVersionId",
+          "inputSetVersionId",
+          "startAt",
+          "endAt",
+          "timeZone"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "observerVersionId": {
+            "$ref": "#/components/schemas/VersionId"
+          },
+          "contentVersionId": {
+            "$ref": "#/components/schemas/VersionId"
+          },
+          "inputSetVersionId": {
+            "description": "这次处理用到的 InputSet，没有用到已保存的数据时为 `null`。",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VersionId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "startAt": {
+            "description": "事实的已知开始边界，未知时为 `null`。",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "endAt": {
+            "description": "事实的已知结束边界，未知时为 `null`。",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timeZone": {
+            "description": "事实所属的 IANA 时区，未知时为 `null`。",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "InputSet": {
+        "type": "object",
+        "description": "InputSet 的成员，见 [InputSet](/core/model/input-set#members)。",
+        "required": [
+          "members"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VersionId"
+            },
+            "description": "这次处理用到的版本，非空、不重复、无序，见 [INPUTSET-2](/core/model/input-set#inputset-2)、[INPUTSET-3](/core/model/input-set#inputset-3)、[INPUTSET-4](/core/model/input-set#inputset-4)。"
+          }
+        }
+      },
+      "EntitySchema": {
+        "type": "object",
+        "description": "一个 Schema 版本，见 [EntitySchema](/core/model/schema)。",
+        "required": [
+          "displayName",
+          "description",
+          "resourceName",
+          "fields"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "displayName": {
+            "type": "string",
+            "description": "类型名称，见 [SCHEMA-4](/core/model/schema#schema-4)。"
+          },
+          "description": {
+            "type": "string",
+            "description": "业务说明，见 [SCHEMA-4](/core/model/schema#schema-4)。"
+          },
+          "resourceName": {
+            "type": "string",
+            "description": "类型的资源名，见 [SCHEMA-5](/core/model/schema#schema-5)、[SCHEMA-6](/core/model/schema#schema-6)。"
+          },
+          "fields": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/FieldDefinition"
+            },
+            "description": "字段名到字段定义的映射。"
+          }
+        }
+      },
+      "FieldDefinition": {
+        "type": "object",
+        "description": "一个字段或数组元素的定义，见 [EntitySchema · 字段定义](/core/model/schema#field-definitions)和 [SCHEMA-10](/core/model/schema#schema-10) 到 [SCHEMA-14](/core/model/schema#schema-14)。",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "string",
+              "boolean",
+              "integer",
+              "number",
+              "reference",
+              "object",
+              "array"
+            ]
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "nullable": {
+            "type": "boolean"
+          },
+          "fields": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/FieldDefinition"
+            }
+          },
+          "items": {
+            "$ref": "#/components/schemas/FieldDefinition"
+          }
+        }
+      },
+      "BusinessContent": {
+        "type": "object",
+        "description": "业务字段，按 `schemaVersionId` 指向的 Schema 版本校验，见 [SCHEMA-2](/core/model/schema#schema-2)。"
+      },
+      "SubmissionRequest": {
+        "type": "object",
+        "required": [
+          "versions"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "versions": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/VersionSubmission"
+            },
+            "description": "按依赖顺序排列的版本。"
+          }
+        }
+      },
+      "SubmissionResult": {
+        "type": "object",
+        "required": [
+          "versions"
+        ],
+        "properties": {
+          "versions": {
+            "type": "array",
+            "description": "每个版本的结果，顺序与提交相同。",
+            "items": {
+              "type": "object",
+              "required": [
+                "versionId",
+                "recordedAt"
+              ],
+              "properties": {
+                "versionId": {
+                  "$ref": "#/components/schemas/VersionId"
+                },
+                "recordedAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "首次保存这个版本的时刻。重试的版本返回首次保存时的值。"
+                }
+              }
+            }
+          }
+        }
+      },
+      "VersionList": {
+        "type": "object",
+        "required": [
+          "versions"
+        ],
+        "properties": {
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Version"
+            }
+          }
+        }
+      },
+      "VersionPage": {
+        "type": "object",
+        "required": [
+          "versions",
+          "next"
+        ],
+        "properties": {
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Version"
+            }
+          },
+          "next": {
+            "description": "下一页的游标，作为 `after` 传入。没有下一页时为 `null`。",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "ProblemDetails": {
+        "required": [
+          "type",
+          "title",
+          "status",
+          "detail"
+        ],
+        "type": "object",
+        "properties": {
+          "type": {
+            "const": "about:blank",
+            "type": "string",
+            "format": "uri-reference"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "rule": {
+            "type": "string",
+            "description": "拒绝请求的 Core 规则编号，例如 `VERSION-6`。只在请求被某条 Core 规则拒绝时出现。"
+          }
+        }
+      },
+      "SubmissionProblem": {
+        "description": "提交失败时的错误。某个版本被拒绝时带 `index` 和 `versionId`：位置在它之前的版本都已保存，之后的版本没有处理。",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ProblemDetails"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "index": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "被拒绝的版本在 `versions` 中的位置，从 0 开始。"
+              },
+              "versionId": {
+                "$ref": "#/components/schemas/VersionId"
+              }
+            }
+          }
+        ]
+      },
+      "ReferrerPage": {
+        "type": "object",
+        "required": [
+          "referrers",
+          "next"
+        ],
+        "properties": {
+          "referrers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Referrer"
+            }
+          },
+          "next": {
+            "description": "下一页的游标，作为 `after` 传入。没有下一页时为 `null`。",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "Referrer": {
+        "type": "object",
+        "description": "一个引用了目标实体的版本，以及其中引用目标的位置。",
+        "required": [
+          "version",
+          "references"
+        ],
+        "properties": {
+          "version": {
+            "$ref": "#/components/schemas/Version"
+          },
+          "references": {
+            "type": "array",
+            "minItems": 1,
+            "description": "这个版本中引用目标实体的每个位置，无序。",
+            "items": {
+              "$ref": "#/components/schemas/ReferenceLocation"
+            }
+          }
+        }
+      },
+      "ReferenceLocation": {
+        "type": "object",
+        "required": [
+          "path",
+          "targetVersionId"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "引用所在的位置，是从版本根部写起的 JSON Pointer（[RFC 6901](https://www.rfc-editor.org/rfc/rfc6901.html)），例如 `/content/contentVersionId`、`/content/members/3`。"
+          },
+          "targetVersionId": {
+            "description": "这个位置的值，是目标实体的一个版本。",
+            "$ref": "#/components/schemas/VersionId"
+          }
+        }
+      }
+    }
+  }
+}

@@ -12,7 +12,7 @@
 
 ## 文档
 
-长期文档只写在 `src/Docs/Heartbeat.Docs/content/docs/`。开始工作前，先读 [Introduction](src/Docs/Heartbeat.Docs/content/docs/start/index.mdx) 和 [Walkthrough](src/Docs/Heartbeat.Docs/content/docs/start/walkthrough.mdx)。开始领域工作前，再读 [Core Overview](src/Docs/Heartbeat.Docs/content/docs/core/index.mdx)、[Glossary](src/Docs/Heartbeat.Docs/content/docs/core/glossary.mdx)，以及相关的类型页、规则页和 ADR。
+长期文档只写在 `src/Docs/Orisumi.Docs/content/docs/`。开始工作前，先读 [Introduction](src/Docs/Orisumi.Docs/content/docs/start/index.mdx) 和 [Walkthrough](src/Docs/Orisumi.Docs/content/docs/start/walkthrough.mdx)。开始领域工作前，再读 [Core Overview](src/Docs/Orisumi.Docs/content/docs/core/index.mdx)、[Glossary](src/Docs/Orisumi.Docs/content/docs/core/glossary.mdx)，以及相关的类型页、规则页和 ADR。
 
 | 内容 | 位置 |
 | --- | --- |
@@ -27,7 +27,7 @@
 
 使用 `grill-with-docs` 或 `domain-modeling` 时，`GLOSSARY.md` 对应 `core/glossary.mdx`，`docs/adr/` 对应 `adr/`。
 
-代码、测试和 ADR 用编号引用 Core 规则，例如 `OBSERVATION-9`，写法见 [Core · Conventions](src/Docs/Heartbeat.Docs/content/docs/core/conventions.mdx)。重写期间可以重新编号，同时更新所有引用。重写完成后编号固定。ADR 用 slug 命名。
+代码、测试和 ADR 用编号引用 Core 规则，例如 `OBSERVATION-9`，写法见 [Core · Conventions](src/Docs/Orisumi.Docs/content/docs/core/conventions.mdx)。重写期间可以重新编号，同时更新所有引用。重写完成后编号固定。ADR 用 slug 命名。
 
 ## 设计决定
 
@@ -49,7 +49,7 @@ Core 只记录用户已确认的结构与语义。改变模型语义前，逐项
 
 T0 模型与决策（ADR、Core、Glossary）→ T1 对外约定（OpenAPI、API、Storage、Observers）→ T2 验证定义（Testing Case）→ T3 实现（代码和测试）。
 
-从受影响的最高层开始修改，并传播到最远的受影响层。下层问题在本层解决不了时，先改最早能解决问题的上层，再重新向下传播。完整规则、各层内部顺序和图见 [ADR · 文档的权威与传播](src/Docs/Heartbeat.Docs/content/docs/adr/documentation-authority.mdx#layers)。
+从受影响的最高层开始修改，并传播到最远的受影响层。下层问题在本层解决不了时，先改最早能解决问题的上层，再重新向下传播。完整规则、各层内部顺序和图见 [ADR · 文档的权威与传播](src/Docs/Orisumi.Docs/content/docs/adr/documentation-authority.mdx#layers)。
 
 ## 文档与实现分工
 
@@ -57,20 +57,20 @@ T0 模型与决策（ADR、Core、Glossary）→ T1 对外约定（OpenAPI、API
 
 - 实现任务只改代码和测试。文档站、各级 `README.md`、`AGENTS.md` 和 skill 都由文档任务修改。
 - 实现任务发现文档需要修改时，仍按传播层级找到最早能解决问题的一层，把改动写成需求，放进 `.scratch/<feature-slug>/doc-requests.md`，并告诉用户。每条需求写明位置（页面和规则编号）、问题，以及希望表达的意思。
-- 文档任务按 [Core · Conventions](src/Docs/Heartbeat.Docs/content/docs/core/conventions.mdx#writing) 的文字和用词把需求写进文档，用自己的语言重新组织，需求原文只作参考。
+- 文档任务按 [Core · Conventions](src/Docs/Orisumi.Docs/content/docs/core/conventions.mdx#writing) 的文字和用词把需求写进文档，用自己的语言重新组织，需求原文只作参考。
 
 ## 工作约定
 
-- 运行或预览应用时，用 `hb env up` 启动本地环境，用 `hb env status --json` 读取入口地址，见 [Heartbeat.Dev README · 环境](tools/Heartbeat.Dev/README.md#环境)。
+- 运行或预览应用时，用 `orisumi env up` 启动本地环境，用 `orisumi env status --json` 读取入口地址，见 [Orisumi.Dev README · 环境](tools/Orisumi.Dev/README.md#环境)。
 - 进行中的规格和 issue 放在 `.scratch/<feature-slug>/`，完成后删除。
-- 实现中用过的概念从模型中删除时，在 [Glossary · 不再使用的术语](src/Docs/Heartbeat.Docs/content/docs/core/glossary.mdx#deprecated) 加一行。
+- 实现中用过的概念从模型中删除时，在 [Glossary · 不再使用的术语](src/Docs/Orisumi.Docs/content/docs/core/glossary.mdx#deprecated) 加一行。
 
 ## 完成标准
 
 结束任务前，按改动的类型完成对应的检查：
 
-- 应用实现：用 [verify-heartbeat](.agents/skills/verify-heartbeat/SKILL.md) 选择并运行验证。
-- 文档站、`README.md`、`AGENTS.md` 或 skill：在 `src/Docs/Heartbeat.Docs` 运行 `pnpm docs:check`，修复全部报错。
+- 应用实现：用 [verify-orisumi](.agents/skills/verify-orisumi/SKILL.md) 选择并运行验证。
+- 文档站、`README.md`、`AGENTS.md` 或 skill：在 `src/Docs/Orisumi.Docs` 运行 `pnpm docs:check`，修复全部报错。
 - 文档站：另外运行 `pnpm test`、`pnpm types:check` 和 `pnpm build`。
 - 页面或交互：在本地环境中打开实际页面检查。
 

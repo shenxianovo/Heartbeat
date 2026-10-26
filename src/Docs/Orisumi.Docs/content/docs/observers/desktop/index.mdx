@@ -1,0 +1,32 @@
+---
+title: "Desktop"
+description: "桌面端的前台状态、输入事件与设备状态"
+---
+
+桌面端有三个 Observer：前台状态、输入事件和设备状态。它们各有自己的程序实例身份，可以运行在同一个程序中。
+
+| Observer | 记下的事实 |
+| --- | --- |
+| [Foreground State](../application-activity/index.mdx) | 哪个应用、哪个窗口标题在前台，以及各自持续了多久 |
+| [Input Events](../input-events/index.mdx) | 每一次键盘或鼠标操作 |
+| [Device State](../device-state/index.mdx) | 有证据的设备休眠、清醒和会话锁定 |
+
+## 各自的时间线 [#timelines]
+
+三个 Observer 各有一条时间线，每条只依据自己的证据形成和补全。所以锁屏时，前台应用的时段照样延续，和锁屏的时段在时间上重叠。
+
+这三条时间线记下的都是系统确认的状态。“用户是否活跃”是读取时的推断：例如要算“没锁屏时 VS Code 在前台多久”，读取方把前台时段和锁屏时段叠在一起计算。活跃的定义和无输入的阈值尚未确定。
+
+读取失败、采集停止，或两次读数的间隔超过业务允许的范围时，各 Observer 按自己的规则在最后一次确认处结束当前的时段。没有读数的空白保持空白。
+
+## 客户端 [#client]
+
+每个桌面平台有一个常驻菜单栏的客户端，由它运行本机的桌面 Observer。客户端负责启动、停止和暂停采集，显示待发送的数量和被拒绝的原因，管理设置和登录时启动，并引导用户授予系统权限。
+
+客户端还展示它托管的 Observer 当天的数据。例如前台状态 Observer：客户端用 `GET /observations` 读取今天的前台应用时段，只保留 Observer 是本机程序实例的，再补上本地还没发送的时段和进行中的时段，画成时间线、按应用汇总，并按时间列出。其他日期的数据和追溯在 Web 控制台中查看，客户端提供入口。这样分工的理由见 [ADR · 桌面客户端](../../adr/desktop-client.mdx)。
+
+Observer 作为 helper 进程运行在客户端中，各自的程序实例身份不变。客户端只托管它们，所以 Observation 的 Observer 仍是各个程序实例，记录中不出现客户端。暂停时客户端停止 helper，各 Observer 按停止采集的规则结束当前的时段，暂停期间是空白。
+
+| 平台 | 客户端 | 托管的 Observer |
+| --- | --- | --- |
+| macOS | `src/Clients/Orisumi.Mac/`，SwiftUI | [Foreground State](../application-activity/index.mdx) 的应用时段 |

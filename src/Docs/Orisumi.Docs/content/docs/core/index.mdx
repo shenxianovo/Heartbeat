@@ -1,0 +1,47 @@
+---
+title: "Overview"
+description: "Core 的全貌：实体、版本、三种 Core 类型，以及谁决定什么"
+---
+
+Core 定义 Orisumi 中所有数据共用的结构：数据怎样标识、怎样更新、怎样互相引用，以及一份观测由哪几部分组成。各类型的细节在类型页，跨类型的规则在规则页。
+
+## 实体与版本 [#entities]
+
+Orisumi 中的每一项数据都是一个[实体](./model/entity.mdx)，例如用户本人、VS Code 这个本机应用、14:00 开始的那段前台时段。实体的内容保存在[版本](./model/version.mdx)中：每次修改形成一个新版本，旧版本原样保留。
+
+引用指向某个确定的版本。所以一份观测引用的内容，事后不会改变。
+
+| 概念 | 回答的问题 | 身份 |
+| --- | --- | --- |
+| 实体 | 是哪一项数据 | `EntityId` |
+| 版本 | 是这项数据的哪一次内容 | `VersionId` |
+| 业务类型 | 是哪一种业务数据 | SchemaId，也就是 EntitySchema 的 `EntityId` |
+
+## Core 类型 [#core-types]
+
+Core 自己定义三种类型，其余实体都是业务实体，由 EntitySchema 定义类型。
+
+| 类型 | 内容 |
+| --- | --- |
+| [Observation](./model/observation.mdx) | 一份陈述：谁负责、说了什么、依据什么、事实在什么时间成立。只有它保存事实时间 |
+| [InputSet](./model/input-set.mdx) | 一次处理实际用到的版本 |
+| [EntitySchema](./model/schema.mdx) | 一种业务类型；它的每个版本是一版字段、约束和含义 |
+
+[Observer](./model/observer.mdx) 和观测内容都由业务实体承担，承担哪个角色取决于 Observation 怎样引用它。程序实例和人都可以是 Observer。
+
+## 模型关系 [#relations]
+
+<ModelRelations />
+
+Observation 引用 Observer、观测内容和 InputSet。InputSet 引用它的输入，输入可以是任何版本。业务版本引用自己所用的 Schema 版本。每个版本还引用同一实体的前一版本。
+
+## 谁决定什么 [#responsibility]
+
+| 由谁决定 | 决定什么 |
+| --- | --- |
+| 业务规则 | EntitySchema、实体身份、粒度、何时形成新版本、事实时间的取值、结束条件、原始材料的保留、陈述冲突时以谁为准 |
+| Observer | 观测的陈述，以及它实际用到的输入 |
+| SDK | 程序实例身份的持久保存、本地保存、按依赖顺序发送和重试 |
+| 后端 | 按 Schema 版本和 Core 的规则校验并保存版本、赋值保存时间、执行删除 |
+
+后端只检查结构，事实层面的判断由业务规则和 Observer 负责。SDK 与 Observer 的分工见 [ADR · 提交与 SDK](../adr/submission.mdx)。

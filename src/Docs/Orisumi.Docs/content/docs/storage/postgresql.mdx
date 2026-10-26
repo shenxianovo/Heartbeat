@@ -1,0 +1,65 @@
+---
+title: "PostgreSQL"
+description: "数据库版本、数据访问、时间保存与诊断配置"
+---
+
+本页说明后端使用的 PostgreSQL：版本、数据访问方式、时间怎样保存，以及排查性能用的统计配置。
+
+## 版本与启动 [#runtime]
+
+- 服务和测试都使用 PostgreSQL 镜像 `postgres:18.6-alpine`。
+- 数据库运行在容器中，API 运行在本机。数据库就绪后，Aspire 先运行 EF Core 迁移，迁移成功再启动 API，见 [ADR · 后端运行与本地环境](../adr/backend-runtime.mdx#local-environment)。
+- 测试数据库见 [Database](../testing/database.mdx)。
+
+## 数据访问 [#access]
+
+| 项目 | 配置 |
+| --- | --- |
+| .NET SDK | `global.json` 固定 `10.0.401`，允许同功能版本的维护更新 |
+| 运行时、EF Core | `10.0.12`，见后端 Dockerfile 与 `Directory.Packages.props` |
+| 迁移 | EF Core；Initial migration 与模型快照位于 Infrastructure 的 `Database/Migrations/` |
+| 连接字符串 | `ConnectionStrings:Orisumi`（环境变量 `ConnectionStrings__Orisumi`）；缺失时 API 启动失败 |
+
+- 重写期间直接修改 Initial migration 和模型快照。EF 工具以 Api 为启动项目，所以 Api 引用 `Microsoft.EntityFrameworkCore.Design`（`PrivateAssets="all"`）。
+- `AddOrisumiInfrastructure(connectionString)` 注册 Npgsql 和 `OrisumiDbContext`。上下文的生命周期是 `Scoped`；`NpgsqlDataSource` 是单例，由服务容器创建和释放，所有请求共用一个连接池。
+
+## 时间 [#time]
+
+已知的时间先转换为 UTC，再向下截断到整微秒。列中的时间以 `timestamptz` 保存，例如 `recorded_at`、`deleted_at` 和 `fact_range` 的边界；Observation 的 `content` 中的时间保存为同一时刻以 `Z` 结尾的字符串，见 [Overview · 内容的表示](./index.mdx#content)。
+
+截断在应用层完成。数据库驱动按自己的时间纪元截断，会让 2000 年以前的时间向后进位；应用层的截断与纪元无关，例如 `1999-12-31T23:59:59.9999999Z` 保存为 `1999-12-31T23:59:59.999999Z`，`2026-10-06T09:00:00+08:00` 保存为 `2026-10-06T01:00:00Z`。
+
+- 经过 EF 的读写使用 `Database/Converters/UtcDateTimeOffsetValueConverter.cs`，它作用于所有 `DateTimeOffset` 属性，包括可空的。
+- 不经过 EF 的参数化 SQL，写入时间前调用同一个转换。
+
+## 统计与诊断 [#diagnostics]
+
+| 项目 | 配置 | 用途 |
+| --- | --- | --- |
+| `pg_stat_statements` | 启用，`track=top` | 按查询结构汇总调用次数、耗时与块读写 |
+| `track_io_timing` | `on` | 数据文件 I/O 等待耗时 |
+| `track_wal_io_timing` | `on` | WAL I/O 等待耗时 |
+| `track_activities`、`track_counts` | 默认 `on` | 会话活动与累计统计 |
+| `log_min_duration_statement` | `500ms` | 慢 SQL 日志 |
+| `log_lock_waits` | `on` | 超过 `deadlock_timeout`（默认 `1s`）的锁等待 |
+| `pg_stat_statements.track_planning` | 默认 `off` | 规划统计 |
+| `auto_explain` | 关闭 | 需要执行计划时启用 |
+
+`pg_stat_statements` 需要预加载。本地环境中，AppHost 已配置 `shared_preload_libraries`，初始化 SQL 会创建扩展。在其他数据库中启用它：
+
+1. 将 `pg_stat_statements` 加入 `shared_preload_libraries`。
+2. 重启 PostgreSQL（现有连接会中断）。
+3. 执行 `CREATE EXTENSION pg_stat_statements;`。
+4. 确认 `pg_extension` 中存在 `extname = 'pg_stat_statements'`。
+
+常用视图：
+
+| 视图 | 用途 |
+| --- | --- |
+| `pg_stat_activity` | 当前 SQL、会话状态与等待事件 |
+| `pg_stat_io` | 实例 I/O |
+| `pg_stat_user_tables` | 表扫描、行更新、死元组与 vacuum |
+| `pg_stat_user_indexes` | 索引使用 |
+| `pg_stat_database` | 事务、缓存命中与临时文件 |
+
+I/O 计时会增加读取时钟的开销；判断 CPU 瓶颈时，还要结合锁等待和执行计划。`auto_explain` 开启 `log_analyze` 后，所有语句都会变慢。参考：[pg_stat_statements](https://www.postgresql.org/docs/current/pgstatstatements.html)、[统计配置](https://www.postgresql.org/docs/current/runtime-config-statistics.html)、[日志配置](https://www.postgresql.org/docs/current/runtime-config-logging.html)、[锁配置](https://www.postgresql.org/docs/current/runtime-config-locks.html)、[auto_explain](https://www.postgresql.org/docs/current/auto-explain.html)。
