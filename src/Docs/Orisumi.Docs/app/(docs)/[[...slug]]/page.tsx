@@ -16,6 +16,8 @@ import { createRelativeLink } from 'fumadocs-ui/mdx';
 import { getPageImageUrl, getPageMarkdownUrl } from '@/lib/routes';
 import { gitConfig } from '@/lib/site-config';
 
+export const dynamicParams = false;
+
 export default async function Page(props: PageProps<'/[[...slug]]'>) {
   const params = await props.params;
   if (!params.slug?.length) redirect('/start');
@@ -64,7 +66,7 @@ export default async function Page(props: PageProps<'/[[...slug]]'>) {
 }
 
 export async function generateStaticParams() {
-  return source.generateParams();
+  return [{ slug: [] }, ...source.generateParams()];
 }
 
 export async function generateMetadata(props: PageProps<'/[[...slug]]'>): Promise<Metadata> {

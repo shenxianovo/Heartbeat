@@ -1,6 +1,6 @@
 'use client';
 import { useDocsSearch } from 'fumadocs-core/search/client';
-import { fetchClient } from 'fumadocs-core/search/client/fetch';
+import { staticClient } from 'fumadocs-core/search/client/orama-static';
 import {
   SearchDialog,
   SearchDialogClose,
@@ -28,7 +28,7 @@ export interface SearchTag {
  */
 export function SectionSearchDialog({ tags = [], ...props }: SharedProps & { tags?: SearchTag[] }) {
   const [tag, setTag] = useState<string>();
-  const search = useDocsSearch({ client: fetchClient({ tag }) });
+  const search = useDocsSearch({ client: staticClient({ tag }) });
 
   return (
     <SearchDialog {...search} {...props}>

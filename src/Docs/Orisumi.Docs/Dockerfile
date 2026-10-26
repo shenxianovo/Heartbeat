@@ -17,12 +17,9 @@ COPY --exclude=*.md --exclude=Dockerfile src/Docs/Orisumi.Docs/ .
 RUN --mount=type=bind,source=.git,target=/repo/.git \
     pnpm build
 
-FROM node:24.21.0-bookworm-slim AS final
-WORKDIR /app
-ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0 ORISUMI_TEST_REPORTS_DIR=/reports
-COPY --from=build --chown=node:node /repo/src/Docs/Orisumi.Docs/.next/standalone/ .
-COPY --from=build --chown=node:node /repo/src/Docs/Orisumi.Docs/.next/static/ .next/static/
-COPY --from=build --chown=node:node /repo/src/Docs/Orisumi.Docs/public/ public/
+FROM nginx:1.30.5-alpine AS final
+COPY src/Docs/Orisumi.Docs/nginx.conf /etc/nginx/nginx.conf
+COPY --from=build /repo/src/Docs/Orisumi.Docs/out/ /usr/share/nginx/html/
 EXPOSE 3000
-USER node
-CMD ["node", "server.js"]
+USER nginx
+ENTRYPOINT ["nginx", "-g", "daemon off;"]

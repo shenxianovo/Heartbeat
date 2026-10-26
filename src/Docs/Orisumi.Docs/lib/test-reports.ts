@@ -20,7 +20,8 @@ export async function readLatestIntegrationReport() {
     files.sort((a, b) => b.modifiedAt - a.modifiedAt || a.path.localeCompare(b.path));
     if (!files.length) return null;
 
-    return parseTUnitReport(JSON.parse(await readFile(/* turbopackIgnore: true */ files[0].path, 'utf8')));
+    const report = parseTUnitReport(JSON.parse(await readFile(/* turbopackIgnore: true */ files[0].path, 'utf8')));
+    return { ...report, commitSha: report.commitSha ?? process.env.GITHUB_SHA };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw error;

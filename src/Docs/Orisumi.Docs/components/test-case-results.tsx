@@ -1,10 +1,8 @@
-import { connection } from 'next/server';
 import { TUnitReport } from 'fumadocs-test-reports/tunit/ui';
 import { readLatestIntegrationReport } from '@/lib/test-reports';
 import { selectCaseResults } from '@/lib/test-cases';
 
 export async function TestCaseResults({ caseId }: { caseId: string }) {
-  await connection();
   const report = await readLatestIntegrationReport();
   const results = selectCaseResults(report, caseId);
   return <>

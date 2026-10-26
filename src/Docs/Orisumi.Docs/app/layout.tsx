@@ -16,6 +16,7 @@ const inter = Inter({
 const searchTags = getSections().map((section) => ({ name: section.name, value: section.slug }));
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://docs.orisumi.dev'),
   title: { default: appName, template: `%s | ${appName}` },
   description: 'A lasting record of your experiences.',
 };
