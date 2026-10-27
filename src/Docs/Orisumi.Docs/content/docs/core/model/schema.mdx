@@ -29,6 +29,7 @@ EntitySchema 定义一种业务类型，例如“本机应用”或“前台时�
 | 配置 | 适用的字段 | 含义 |
 | --- | --- | --- |
 | `type` | 所有字段 | 值的类型 |
+| `description` | 所有字段 | 非空字符串，说明字段或数组元素的业务含义 |
 | `required` | 所有字段，数组元素除外 | 字段是否必须出现 |
 | `nullable` | 所有字段 | 字段出现时，值能否为 `null` |
 | `fields` | `object` | 对象的成员，结构与顶层 `fields` 相同 |
@@ -56,34 +57,41 @@ EntitySchema 定义一种业务类型，例如“本机应用”或“前台时�
 	"fields": {
 		"title": {
 			"type": "string",
+			"description": "条目的标题；未取得标题时为 null。",
 			"required": true,
 			"nullable": true
 		},
 		"relatedVersionId": {
 			"type": "reference",
+			"description": "与这个条目相关的版本，目标可以是任何类型。",
 			"required": true,
 			"nullable": false
 		},
 		"identifiers": {
 			"type": "array",
+			"description": "来源提供的平台标识线索；没有线索时为空数组。",
 			"required": true,
 			"nullable": false,
 			"items": {
 				"type": "object",
+				"description": "一项平台标识线索，以及提供它的来源版本。",
 				"nullable": false,
 				"fields": {
 					"scheme": {
 						"type": "string",
+						"description": "标识线索的种类，决定 value 的解释方式。",
 						"required": true,
 						"nullable": false
 					},
 					"value": {
 						"type": "string",
+						"description": "来源提供的标识原值，保留原文。",
 						"required": true,
 						"nullable": false
 					},
 					"sourceVersionId": {
 						"type": "reference",
+						"description": "提供这项线索的版本；来源没有保存为版本时省略。",
 						"required": false,
 						"nullable": false
 					}
@@ -154,11 +162,15 @@ EntitySchema 定义一种业务类型，例如“本机应用”或“前台时�
 
 `reference` 的非空值必须是 VersionId。顶层字段、对象成员和数组元素都可以是 `reference`。
 
-### SCHEMA-10 三项必写 [#schema-10]
+### SCHEMA-10 字段定义必写项 [#schema-10]
 
-执行方：后端
+执行方：写入方、后端
 
-每个字段定义必须写明 `type`、`required` 和 `nullable`，三项都没有默认值。数组元素只写 `type` 和 `nullable`。
+每个字段定义必须写明 `type`、`description`、`required` 和 `nullable`，这些配置没有默认值。数组元素写 `type`、`description` 和 `nullable`，不写 `required`。对象的每个成员也遵守这条规则。
+
+`description` 必须是非空且不全为空白的字符串，由后端检查；它描述字段或数组元素本身，业务值允许为 `null` 不影响说明的必填要求。
+
+写入方用 `description` 说明字段或数组元素的业务含义，以及适用的单位、取值解释、来源、引用目标与角色、省略和 `null` 的含义。读者应能结合所属类型的说明理解数据，不依赖原来的采集程序。后端不判断这些业务说明是否充分，也不从说明文字生成校验条件。
 
 ### SCHEMA-11 required 与 nullable [#schema-11]
 

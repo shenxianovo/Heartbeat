@@ -5,7 +5,7 @@
     "HOST_NAME": { "label": "hostName" },
     "PROGRAM_VERSION": { "label": "programVersion" },
     "LOCAL_APPLICATION_VERSION_ID": { "label": "localApplicationVersionId" },
-    "FOREGROUND_OBSERVATION_VERSION_ID": { "label": "foregroundObservationVersionId" },
+    "FOREGROUND_APPLICATION_PERIOD_VERSION_ID": { "label": "foregroundApplicationPeriodVersionId" },
     "OBSERVED_NAME": { "label": "name" },
     "IDENTIFIERS": { "label": "identifiers" },
     "TITLE": { "label": "title" },
@@ -42,7 +42,7 @@
     "TITLE_CONTENT": {
       "label": "前台窗口标题时段<br/>观测内容",
       "interfaces": ["Entity"],
-      "fields": ["FOREGROUND_OBSERVATION_VERSION_ID", "TITLE"]
+      "fields": ["FOREGROUND_APPLICATION_PERIOD_VERSION_ID", "TITLE"]
     },
     "INPUT_CONTENT": {
       "label": "键鼠输入事件<br/>观测内容",

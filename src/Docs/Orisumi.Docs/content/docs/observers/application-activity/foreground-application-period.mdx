@@ -9,13 +9,15 @@ description: "应用处于前台的一个时段"
 
 ## 粒度 [#granularity]
 
-一个应用连续处于前台的一段活动，对应一份 Observation。每次确认都在补全这一份 Observation；窗口标题变化时，应用时段照样延续。
+一个应用连续处于前台的一段活动，对应一个观测内容和一份 Observation。每次确认都在补全这一份 Observation；窗口标题变化时，应用时段照样延续。
+
+观测内容只属于这一段活动，应用和名称相同的另一段活动也有自己的观测内容。所以[窗口标题](./foreground-window-title.mdx)引用观测内容，就能找到它所属的那一段活动。
 
 前台时段只表达系统确认的前台应用。锁屏、休眠和无输入属于其他时间线，读取方需要时再组合，见 [Desktop · 各自的时间线](../desktop/index.mdx#timelines)。
 
 ## 身份 [#identity]
 
-本机应用、应用名称或时区变化时，前台状态 Observer 结束当前时段，新建观测内容和 Observation，原来的内容保持不变。
+每个时段新建观测内容和 Observation。本机应用、应用名称或时区变化时，前台状态 Observer 结束当前时段，为新的时段新建两者，原来的内容保持不变。
 
 ## 引用 [#references]
 
@@ -49,19 +51,19 @@ description: "应用处于前台的一个时段"
 | --- | --- |
 | SchemaId | `019e1bbb-ec00-7000-8000-000000000001` |
 | 显示名称 | 前台应用时段 |
-| 说明 | 表达某个本机应用连续处于前台的一段活动；内容保存应用引用与当时读到的名称，Observation 保存时段。 |
+| 说明 | 表达某个本机应用连续处于前台的一段活动，每段活动一个实体；内容保存应用引用与当时读到的名称，Observation 保存时段。 |
 | 资源名 | `foreground-application-periods` |
 
-| 字段 | 类型 | 必填 | 可空 | 含义 |
+| 字段 | 类型 | 必填 | 可空 | description |
 | --- | --- | --- | --- | --- |
 | `localApplicationVersionId` | `reference` | 是 | 否 | 观测设备上的本机应用 |
 | `name` | `string` | 是 | 是 | 当时读到的应用名称，没读到时为 `null` |
 
 ## 示例 [#example]
 
-VS Code 从 10:00 到 10:20 处于前台，时段结束后，`POST /versions` 依次提交观测内容和它的 Observation。`localApplicationVersionId` 是本机应用首版的 VersionId，`observerVersionId` 是程序实例的一个版本：
+VS Code 从 10:00 到 10:20 处于前台。10:00 首次确认时，`POST /versions` 提交观测内容。`localApplicationVersionId` 是本机应用首版的 VersionId：
 
-```json title="POST /versions"
+```json title="10:00 · POST /versions"
 {
   "versions": [
     {
@@ -74,7 +76,16 @@ VS Code 从 10:00 到 10:20 处于前台，时段结束后，`POST /versions` �
         "localApplicationVersionId": "01a12e31-9050-7000-8000-000000000101",
         "name": "Visual Studio Code"
       }
-    },
+    }
+  ]
+}
+```
+
+10:00 到 10:20 之间，Observation 作为观测草稿写入后端，见 [API · 观测草稿](../../api/index.mdx#drafts)。10:20 时段结束，再提交 Observation。`observerVersionId` 是程序实例的一个版本：
+
+```json title="10:20 · POST /versions"
+{
+  "versions": [
     {
       "entityId": "01a12e31-9050-7000-8000-000000000030",
       "versionId": "01a12e31-9050-7000-8000-000000000130",

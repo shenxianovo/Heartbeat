@@ -29,7 +29,7 @@ description: "接入新来源时，依次确定事实、Observer、实体、Enti
 
 ## 4. EntitySchema [#schema]
 
-为每种业务类型写一个 EntitySchema。每个字段写明 `type`、`required` 和 `nullable`；对象声明成员，数组声明元素；引用可以出现在任何层级，名字以 `VersionId` 结尾，见 [SCHEMA-8](../core/model/schema.mdx#schema-8)。外部系统的标识保存为普通属性。完整的规则见 [EntitySchema · 字段约束](../core/model/schema.mdx#constraints)。
+为每种业务类型写一个 EntitySchema。每个字段写明 `type`、`description`、`required` 和 `nullable`；对象声明成员，数组声明元素。对象成员和数组元素也写 `description`，数组元素不写 `required`。说明保存业务含义，以及适用的单位、取值、来源和引用角色，见 [SCHEMA-10](../core/model/schema.mdx#schema-10)。引用可以出现在任何层级，名字按 [SCHEMA-8](../core/model/schema.mdx#schema-8) 区分单个引用和引用数组。外部系统的标识保存为普通属性。完整的规则见 [EntitySchema · 字段约束](../core/model/schema.mdx#constraints)。
 
 为业务类型选择稳定的 SchemaId 和唯一的资源名。结构或约束变化时，形成同一 EntitySchema 的新版本；业务含义变化时，新建一个 EntitySchema，见 [SCHEMA-15](../core/model/schema.mdx#schema-15) 和 [SCHEMA-16](../core/model/schema.mdx#schema-16)。
 
@@ -61,7 +61,7 @@ description: "接入新来源时，依次确定事实、Observer、实体、Enti
 
 ## 8. 提交 [#submission]
 
-接入时，把程序实例的身份和所需的 EntitySchema 交给所在运行环境的 SDK，第一份观测形成前就提交。按业务类型选择及时提交或结束后提交，并说明业务代码何时通知更新、何时通知结束。
+接入时，把程序实例的身份和所需的 EntitySchema 交给所在运行环境的 SDK，第一份观测形成前就提交。按业务类型选择及时提交或结束后提交，决定是否写入观测草稿，并说明业务代码何时通知更新、何时通知结束。进行中的事实需要实时可见时，写入观测草稿，见 [Submission · 观测草稿](./submission/index.mdx#drafts)。
 
 在 Observer 页写明用的是哪个 SDK、哪种策略，并链接 [Submission](./submission/index.mdx)。SDK 负责本地保存、发送、确认和恢复；事实判断、身份和历史保留由 Observer 的业务代码负责。
 

@@ -5,6 +5,8 @@ description: "表结构、索引、引用的反查、删除与墓碑、事务、
 
 实体和它的全部版本保存在 PostgreSQL 中。本页写表结构、索引、引用的反查、删除和事务；数据库的版本、数据访问和时间的保存方式见 [PostgreSQL](./postgresql.mdx)，数据模型见 [Core](../core/index.mdx)。这样设计的理由见 [ADR · 实体存储](../adr/entity-storage.mdx)。
 
+观测草稿只暂存在后端进程的内存中，不写入 PostgreSQL，见 [API · 观测草稿](../api/index.mdx#drafts)。
+
 ## 表结构 [#tables]
 
 所有类别、所有业务类型的版本都保存在 `versions` 中，它是版本内容的权威位置。`entities`、`current_observations` 和 `version_references` 由版本推导，供查询使用；`version_tombstones` 记住已删除的版本。

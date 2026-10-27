@@ -44,6 +44,7 @@ ADR 用英文 slug 命名，例如 `entity-model.mdx`，没有编号。引用时
 | Model | [Observer 与输入集](./observers-and-evidence.mdx) | Observer 是对观测负责的实体，按负责的陈述划分；一次处理实际使用的版本由可共享的 InputSet 列出 |
 | Model | [身份、时间与更新](./identity-and-updates.mdx) | 业务规则决定身份和粒度，每个版本有自己的保存时间，更新形成新版本，独立的陈述形成新观测 |
 | Model | [提交与 SDK](./submission.mdx) | 程序实例的身份持久不变，Observer 的业务代码按业务规则形成事实，平台 SDK 按依赖顺序可靠提交 |
+| Model | [观测草稿](./observation-drafts.mdx) | 进行中的 Observation 以草稿实时可读：Observer 在本地保存草稿并决定何时结束，后端在内存中暂存最新的一份，结束后才保存为版本 |
 | Model | [删除](./deletion.mdx) | 删除以实体为单位，只移除选中实体的全部版本，删除后不可复活 |
 | Backend | [后端运行与本地环境](./backend-runtime.mdx) | 四个后端项目组成一个进程，Aspire 编排本地环境，NGINX 提供同源入口 |
 | Backend | [实体 API](./entity-api.mdx) | 接口按身份寻址，所有类型共用一组路由，一次提交是一组有序的版本，内容按 JSON 的值比较，错误带规则编号 |

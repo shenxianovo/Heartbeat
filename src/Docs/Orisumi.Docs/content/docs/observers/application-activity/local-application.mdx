@@ -60,10 +60,11 @@ description: "某台设备上的一个应用安装"
 | 说明 | 表示某台设备上的一个应用安装，保存用于识别安装的平台标识线索。 |
 | 资源名 | `local-applications` |
 
-| 字段 | 类型 | 必填 | 可空 | 含义 |
+| 字段 | 类型 | 必填 | 可空 | description |
 | --- | --- | --- | --- | --- |
 | `identifiers` | `array` | 是 | 否 | 平台标识线索，顺序无意义；没有线索时为 `[]` |
-| `identifiers[].scheme` | `string` | 是 | 否 | 线索的种类 |
+| `identifiers[]` | `object` | 不适用 | 否 | 一项平台标识线索，由 scheme 和 value 共同解释 |
+| `identifiers[].scheme` | `string` | 是 | 否 | 线索的种类：macos.bundle-id 是应用包标识，macos.executable-path 是可执行文件路径 |
 | `identifiers[].value` | `string` | 是 | 否 | 线索的原始值 |
 
 | `scheme` | `value` |

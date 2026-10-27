@@ -1,6 +1,6 @@
 ---
 title: "SDK Local Versions"
-description: "草稿的合并与冻结，以及两种提交策略"
+description: "草稿的合并与冻结、两种提交策略，以及观测草稿的写入"
 ---
 
 export const caseId = 'sdk-local-versions';
@@ -23,10 +23,20 @@ SDK 使用独立的 SQLite 文件，后端是记录每次请求、按需返回�
 | 结束后提交：通知结束前发送一次，通知结束后再发送 | 第一次没有发送这份 Observation；第二次只发送一个版本，内容是最终结果 |
 | 及时提交：形成草稿后发送，再补全并发送 | 后端依次收到两个版本，第二个的 `previousVersionId` 指向第一个 |
 | 结束后提交：重启 SDK，再通知结束并发送 | 发送的是重启前那份草稿的 VersionId |
+| 写入观测草稿：形成 Observation 的草稿，再补全一次 | 观测内容先发送；确认保存后写入草稿，两次写入的 `sequence` 递增，第二次带补全后的内容 |
+| 写入观测草稿：重启 SDK 后再补全 | `sequence` 大于重启前的最后一次 |
+| 写入观测草稿时后端返回 `409`，`rule` 为 `VERSION-6` | SDK 停止写入这份草稿，本地草稿不变 |
+| 通知结束并发送 | 不再写入这份草稿；发送一个版本，内容是最终结果 |
 
 ## 测试实现 [#implementation]
 
-`ObserverSdkTests` 中的草稿与策略测试。
+以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
+
+- 草稿合并保持身份和前驱、结束前不发送该 Observation、重启后沿用草稿身份并发送最终内容：`ObserverSdkTests.DraftMergesFreezeDependenciesAndRecoverInOrder`。
+- 引用草稿使其冻结，之后补全形成后继版本：`ObserverSdkTests.ReferencingDraftFreezesItAndCompletionCreatesSuccessor`。
+- 冻结 Observation 时先冻结并发送其内容依赖：`ObserverSdkTests.FreezingObservationSendsItsDraftContentFirst`。
+- 及时提交的两次发送形成相连版本：`ObserverSdkTests.ImmediateSubmissionSendsTwoLinkedObservationVersions`。
+- 未覆盖：观测草稿的写入。SDK 尚未实现这部分。
 
 ## 执行结果 [#results]
 

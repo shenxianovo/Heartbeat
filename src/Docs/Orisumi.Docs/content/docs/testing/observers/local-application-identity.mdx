@@ -28,7 +28,13 @@ export const caseId = 'foreground-local-application-identity';
 
 ## 测试实现 [#implementation]
 
-`LocalApplicationIdentityTests` 中的三个身份行为测试关联这个 Case。登记文件损坏时的保留由同一文件中的另一个测试验证。
+以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
+
+- 首次登记、重启与改名复用，以及路径、包标识或设备不同则新建：`LocalApplicationIdentityTests.RestartAndRenameReuseInstallationButAnotherPathOrDeviceDoesNot`。
+- 缺少路径时按本次运行的进程线索复用，重启后新建：`LocalApplicationIdentityTests.MissingPathUsesOnlyThisProcessLifetimeAndNeverMatchesByName`。
+- 并发登记三个安装，各有一个身份且全部保留：`LocalApplicationIdentityTests.ConcurrentRegistrationsPreserveEveryApplicationAndPublishOneIdentityPerInstallation`。
+
+登记文件损坏时的保留由 `LocalApplicationIdentityTests.CorruptRegistryIsNotReplaced` 检查，该方法未关联本 Case，页末报告不包含它。
 
 ## 执行结果 [#results]
 

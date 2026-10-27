@@ -23,7 +23,11 @@ export const caseId = 'foreground-rejections';
 
 ## 测试实现 [#implementation]
 
-`ObserverSdkTests` 中的前台拒绝处理测试。
+以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
+
+- 本机应用删除后重新分配身份、更新登记文件并上传新时段：`ObserverSdkTests.ForegroundRecoversDeletedApplicationAndUpdatesRegistry`。
+- 共用登记文件的两个程序实例采用先保存的应用首版：`ObserverSdkTests.ForegroundInstancesSharingRegistryAdoptSavedApplicationFirstVersion`。
+- 其他规则拒绝时报错并暂停发送：`ObserverSdkTests.OtherForegroundRuleRejectionReportsErrorAndPausesSending`。
 
 ## 执行结果 [#results]
 

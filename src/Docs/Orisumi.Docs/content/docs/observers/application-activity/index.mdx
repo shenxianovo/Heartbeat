@@ -25,7 +25,7 @@ flowchart LR
   C -->|localApplicationVersionId| A[Local Application]
   T[标题时段 Observation] -->|observerVersionId| R
   T -->|contentVersionId| TC[Foreground Window Title]
-  TC -->|foregroundObservationVersionId| O
+  TC -->|foregroundApplicationPeriodVersionId| C
 ```
 
 ## 程序实例 [#instance]
@@ -46,20 +46,20 @@ flowchart LR
 
 macOS 即将休眠时，当前时段结束；唤醒后重新读取。读取失败时，当前时段也结束，下一次成功读取开始新的时段。锁屏和无输入不影响前台时段。时段边界的完整规则见 [Foreground Application Period · 事实时间](./foreground-application-period.mdx#fact-time)。
 
-标题通过所属的应用时段 Observation 关联到这一段活动，窗口本身没有身份。标题怎样分段，见 [Foreground Window Title · 粒度](./foreground-window-title.mdx#granularity)。
+标题通过所属应用时段的观测内容关联到这一段活动，窗口本身没有身份。标题怎样分段，见 [Foreground Window Title · 粒度](./foreground-window-title.mdx#granularity)。
 
 ## 提交 [#submission]
 
-前台状态 Observer 使用 [.NET SDK](../submission/dotnet.mdx)，采用[结束后提交](../submission/index.mdx#strategies)：进行中的时段是 SDK 中的草稿，只在本地补全，结束时才冻结并安排发送，所以后端只会看到已结束的时段。业务事件对应的操作如下：
+前台状态 Observer 使用 [.NET SDK](../submission/dotnet.mdx)，采用[结束后提交](../submission/index.mdx#strategies)，并写入[观测草稿](../submission/index.mdx#drafts)：进行中的时段在本地补全，同时作为草稿写入后端，读取方能实时读到；时段结束时才冻结 Observation 并安排发送，所以后端为每个时段保存一个版本。业务事件对应的操作如下：
 
 | 业务事件 | 交给 SDK 的操作 |
 | --- | --- |
-| 首次确认应用在前台 | 识别本机应用；形成观测内容和 Observation 的草稿 |
+| 首次确认应用在前台 | 识别本机应用；形成观测内容并安排发送；形成 Observation 的草稿 |
 | 再次确认同一段活动 | 把新的结束边界合并进 Observation 的草稿 |
 | 切换应用，或应用名称、时区变化 | 通知当前时段结束；为新状态形成新的草稿 |
 | 读取失败、停止采集或其他中断 | 当前时段结束于最后一次确认，通知结束；恢复后形成新的草稿 |
 
-观测内容被 Observation 引用，形成后随即冻结；它引用的本机应用版本也一样。结束当前时段和开始新的时段在同一个本地事务中完成。
+观测内容形成后随即冻结并安排发送，它引用的本机应用版本也一样；SDK 在它们保存之后才写入草稿。结束当前时段和开始新的时段在同一个本地事务中完成。
 
 程序异常退出后，下次启动时，SDK 恢复遗留的草稿，业务代码通知它结束于本地保存的最后一次确认。程序实例的身份不变，停机期间不计入时段，新的读数开始新的时段。
 
@@ -77,7 +77,7 @@ macOS 即将休眠时，当前时段结束；唤醒后重新读取。读取失�
 
 | 平台 | 应用时段 | 窗口标题 |
 | --- | --- | --- |
-| macOS | 已实现：本机应用身份、连续时段，经 .NET SDK 上传 | 未实现 |
+| macOS | 已实现：本机应用身份、连续时段，经 .NET SDK 上传。未实现：时段开始时提交观测内容、写入观测草稿 | 未实现 |
 | Windows | 未实现 | 未实现 |
 | Android | 未实现 | 未实现 |
 

@@ -34,7 +34,7 @@ description: "一次键盘或鼠标事件（草案）"
 | 说明 | 记录人的一次键盘或鼠标操作事件；键盘按下与释放分别记录，过滤长按自动重复，可按用户设置携带具体按键。Observation 表达事件发生的时间点。 |
 | 资源名 | `input-events` |
 
-| 字段 | 类型 | 必填 | 可空 | 含义 |
+| 字段 | 类型 | 必填 | 可空 | description |
 | --- | --- | --- | --- | --- |
 | `kind` | `string` | 是 | 否 | 事件的类别，取值见下表 |
 | `key` | `string` | 否 | 否 | 键盘事件按的键。关闭具体按键记录时省略；鼠标事件没有这个字段 |
@@ -60,11 +60,13 @@ EntitySchema 的内容：
 	"fields": {
 		"kind": {
 			"type": "string",
+			"description": "输入类别：keyDown 为键盘按下，keyUp 为键盘释放，mouseDown 为鼠标按钮按下，mouseUp 为鼠标按钮释放，mouseMove 为鼠标移动，mouseWheel 为鼠标滚动。",
 			"required": true,
 			"nullable": false
 		},
 		"key": {
 			"type": "string",
+			"description": "键盘事件中按下或释放的键，不是最终输入的文字；关闭具体按键记录时省略，鼠标事件也省略。跨平台编码尚未确定，接入前补充。",
 			"required": false,
 			"nullable": false
 		}
@@ -84,8 +86,8 @@ EntitySchema 的内容：
 
 ```json
 {
-  "references": {},
-  "properties": { "kind": "keyDown", "key": "<A 键标识>" }
+  "kind": "keyDown",
+  "key": "<A 键标识>"
 }
 ```
 
@@ -93,8 +95,7 @@ EntitySchema 的内容：
 
 ```json
 {
-  "references": {},
-  "properties": { "kind": "keyDown" }
+  "kind": "keyDown"
 }
 ```
 

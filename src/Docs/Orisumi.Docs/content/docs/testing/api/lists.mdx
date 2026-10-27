@@ -27,7 +27,11 @@ export const caseId = 'api-lists';
 
 ## 测试实现 [#implementation]
 
-`EntityApiTests` 中的列出与查询测试。
+以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
+
+- 本页全部预期：筛选、已知边界、排序、当前版本更新和静态数据分页：`EntityApiTests.ListsFilterCategoriesAndOrderCurrentKnownBoundariesAcrossPages`。
+
+分页检查期间没有并发写入；本页结果不覆盖翻页过程中新增、纠正或删除数据的行为。
 
 ## 执行结果 [#results]
 

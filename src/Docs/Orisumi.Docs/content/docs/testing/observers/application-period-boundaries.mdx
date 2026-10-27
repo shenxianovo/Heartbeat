@@ -29,7 +29,14 @@ export const caseId = 'foreground-application-period-boundaries';
 
 ## 测试实现 [#implementation]
 
-`ForegroundTimelineTests` 和 `ForegroundSubmissionTests`，使用模拟的读数和事件。
+以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
+
+- 连续确认延长同一时段，以及应用切换时前后相接：`ForegroundTimelineTests.ContinuousConfirmationExtendsSamePeriodAndSwitchClosesAtNewConfirmation`。
+- 名称或时区变化时分段，旧内容保留：`ForegroundTimelineTests.RenameAndTimeZoneChangeSplitContentWithoutReplacingApplicationIdentity`。
+- 读取失败、长间隔、休眠计时差、时钟倒退与向前跳变；参数分别为 read-failure、long-gap、sleep、clock-backward、clock-forward：`ForegroundTimelineTests.InterruptionsStartNewPeriodWithoutFillingTheGap`。
+- 两次轮询之间的事件，以及休眠通知结束于最后确认：`ForegroundSubmissionTests.EventsBetweenPollsArePreservedAndSleepClosesWithoutExtending`。
+
+未覆盖：另一条设备时间线记下锁屏、休眠或无输入，而前台读数和确认间隔保持不变时，前台时段继续延长。上面的休眠参数检查的是采集自身的计时证据，不覆盖这项跨时间线要求。
 
 ## 执行结果 [#results]
 

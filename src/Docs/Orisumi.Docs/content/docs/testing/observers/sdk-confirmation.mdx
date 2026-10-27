@@ -25,7 +25,14 @@ SDK 使用独立的 SQLite 文件，后端是记录每次请求、按每行的�
 
 ## 测试实现 [#implementation]
 
-`ObserverSdkTests` 中的确认与重试测试。
+以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
+
+- 200 确认整批：`ObserverSdkTests.SuccessfulResponseConfirmsWholeBatch`。
+- 带 index 的 409 确认前缀、拒绝目标、保留后缀待发送：`ObserverSdkTests.IndexedConflictConfirmsPrefixRejectsTargetAndLeavesSuffixPending`。
+- 不带 index 的 400 停止发送并报告错误：`ObserverSdkTests.ContractErrorWithoutIndexStopsSendingAndReportsError`。
+- 响应丢失后重启原样重发，以及 413 拆批：`ObserverSdkTests.LostResponseRetriesIdenticalPayloadAfterRestartAnd413Splits`。
+
+响应丢失用例没有在重试前删除已保存的实体；拒绝位置之后的版本是否曾在更早请求中保存，不在该用例的验证范围内。
 
 ## 执行结果 [#results]
 

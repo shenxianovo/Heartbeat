@@ -29,7 +29,9 @@ export const caseId = 'api-deletion';
 
 ## 测试实现 [#implementation]
 
-`EntityApiTests` 中的删除测试。
+以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
+
+- 本页全部预期：Schema 删除限制、实体全部版本删除、重复删除、重放、身份占用、资源名复用和未知身份：`EntityApiTests.DeletionRemovesAllVersionsPreventsReplayAndAllowsResourceReuse`。
 
 ## 执行结果 [#results]
 

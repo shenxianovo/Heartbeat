@@ -12,7 +12,8 @@ description: ".NET SDK 用 SQLite 保存草稿和待发送的版本"
 1. 业务代码交来的版本先写入 SQLite。形成草稿、合并、冻结和通知结束，可以在同一个本地事务中完成，例如结束当前时段并开始新的时段。
 2. SQLite 还保存每个实体在本地最新的 VersionId。版本确认后移出发送队列，这个 VersionId 仍然保留，供之后的版本作为 `previousVersionId` 或引用。
 3. 后台任务按冻结的顺序读取待发送的版本，分批提交，并按 [Submission · 确认](./index.mdx#confirmation) 处理响应。
-4. 程序重启后，SDK 从 SQLite 恢复草稿、待发送的版本和待处理的被拒绝版本。
+4. 需要写入观测草稿时，SQLite 保存每份草稿的 `sequence`；后台任务把草稿最新的内容写入后端，见 [Submission · 观测草稿](./index.mdx#drafts)。
+5. 程序重启后，SDK 从 SQLite 恢复草稿、待发送的版本和待处理的被拒绝版本。
 
 ## 运行 [#runtime]
 
@@ -21,7 +22,7 @@ description: ".NET SDK 用 SQLite 保存草稿和待发送的版本"
 ## 业务代码的职责 [#business]
 
 - 启动时提供程序实例和所需的 EntitySchema，由 SDK 先登记。
-- 按业务类型选择及时提交或结束后提交。
+- 按业务类型选择及时提交或结束后提交，以及是否写入观测草稿。
 - 把新形成或补全的实体和观测交给 SDK，并明确通知何时结束。
 - 处理 SDK 交来的被拒绝版本，见 [Submission · 被拒绝的版本](./index.mdx#rejections)。
 

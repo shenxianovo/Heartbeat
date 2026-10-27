@@ -1,6 +1,6 @@
 ---
 title: "Overview"
-description: "HTTP 契约共用的约定：接口、版本的表示、提交、列出与查询、引用方、时间、错误格式与授权"
+description: "HTTP 契约共用的约定：接口、版本的表示、提交、列出与查询、引用方、观测草稿、时间、错误格式与授权"
 ---
 
 Orisumi API 按 [Core](../core/index.mdx) 的实体与版本模型保存、读取和删除数据。本页写所有接口共用的约定；每个接口的路径、请求和响应以 `openapi.json` 为准。接口这样设计的理由见 [ADR · 实体 API](../adr/entity-api.mdx)。
@@ -50,6 +50,9 @@ API 中的时间精确到 1 微秒，UTC 指协调世界时。事实时间的含
 | 按事实时间查询观测 | `GET /observations` |
 | 列出引用实体的版本 | `GET /entities/{entityId}/referrers` |
 | 删除实体 | `DELETE /entities/{entityId}` |
+| 写入观测草稿 | `PUT /observation-drafts/{entityId}` |
+| 读取观测草稿 | `GET /observation-drafts/{entityId}` |
+| 列出观测草稿 | `GET /observation-drafts` |
 
 版本链从首版到当前版排列，一次返回全部版本。删除一次作用于一个实体，成组删除时逐个请求，见 [HISTORY-6](../core/rules/history.mdx#history-6)。删除已删除的实体也返回 `204`，所以响应丢失后可以直接重试。
 
@@ -87,6 +90,19 @@ API 中的时间精确到 1 微秒，UTC 指协调世界时。事实时间的含
 基于旧版本的版本被拒绝时（[VERSION-6](../core/model/version.mdx#version-6)），写入方用 `GET /entities/{entityId}` 读取新的当前版本，再重新处理。
 
 一次提交中的版本数不设上限，请求体受 10 MiB 的上限约束，见[错误格式](#errors)。
+
+### 校验阶段 [#validation]
+
+后端先检查整批请求的结构，再按顺序检查每个版本。OpenAPI 的 `VersionSubmission` 用 `category` 选择 `content` 的结构，业务内容的字段仍由所引用的 Schema 版本解释。
+
+| 阶段 | 检查 | 失败时 |
+| --- | --- | --- |
+| 请求结构 | JSON 与版本共有成员、Core 内容的成员和基础值类型、字段配置出现时的值类型，以及存储支持的字符串与数值范围 | `400`，不带 `index`，整批不处理 |
+| 版本规则 | UUIDv7、版本链、引用目标、事实边界、InputSet 非空与去重、Schema 字段定义的必写项与组合、业务字段匹配等 Core 规则 | `400` 或 `409`，带 `rule`、`index` 和 `versionId`，按提交规则保留前面的结果 |
+
+例如第二个版本的 Observation 缺少 `timeZone`，是请求结构错误，第一个版本也不保存；第二个版本的 InputSet 的 `members` 是空数组，结构合法，但违反 [INPUTSET-2](../core/model/input-set.mdx#inputset-2)，第一个版本保留。
+
+字段定义的 `description` 与 `type`、`required`、`nullable` 的必填检查属于 [SCHEMA-10](../core/model/schema.mdx#schema-10)。缺少说明、说明为空字符串或全为空白时，拒绝该版本。说明出现但不是字符串时，是请求结构错误。OpenAPI 的请求结构保留这种两阶段处理，不能只凭结构检查通过就认定版本合法。字符串与数值的存储范围见 [Storage · 内容的表示](../storage/index.mdx#content)。
 
 ## 列出与查询 [#lists]
 
@@ -147,6 +163,47 @@ API 中的时间精确到 1 微秒，UTC 指协调世界时。事实时间的含
 
 三个列表接口都分页。`limit` 是一页最多返回的版本数，默认 100，最大 1000；列出引用方时，一个版本连同它的全部位置算一项。响应中的 `next` 是下一页的游标，把它作为 `after` 传入就得到下一页；没有下一页时，`next` 为 `null`。游标的内容由后端决定，调用方原样传回。
 
+## 观测草稿 [#drafts]
+
+观测草稿是一份 Observation 尚未保存的最新陈述，见 [OBSERVATION-11](../core/model/observation.mdx#observation-11)。后端在进程的内存中为每份 Observation 暂存一份草稿，重启后清空。其他接口只返回已保存的版本。
+
+VS Code 的时段从 10:00 开始，10:12 的确认写入草稿：
+
+```json title="PUT /observation-drafts/01a12e31-9050-7000-8000-000000000030"
+{
+  "previousVersionId": null,
+  "sequence": 721,
+  "content": {
+    "observerVersionId": "01a12e31-9050-7000-8000-0000000000a1",
+    "contentVersionId": "01a12e31-9050-7000-8000-000000000120",
+    "inputSetVersionId": null,
+    "startAt": "2026-10-06T02:00:00Z",
+    "endAt": "2026-10-06T02:12:00Z",
+    "timeZone": "Asia/Shanghai"
+  }
+}
+```
+
+- 路径中的 EntityId 是这份 Observation 的身份，实体可以还没有版本。
+- `previousVersionId` 必须是实体的当前版本，实体还没有版本时为 `null`，见 [OBSERVATION-13](../core/model/observation.mdx#observation-13)。不是当前版本时返回 `409`，`rule` 为 `VERSION-6`。
+- `sequence` 是写入方为这份草稿生成的递增整数。不大于已暂存草稿的 `sequence` 时，草稿保持不变，响应返回已暂存的草稿。
+- `content` 按 Observation 校验，见 [OBSERVATION-12](../core/model/observation.mdx#observation-12)。请求结构的错误和违反规则的错误，与[提交](#submission)中的状态码和 `rule` 相同，不带 `index` 和 `versionId`。
+
+写入成功返回 `200`，响应是暂存的草稿：请求的成员加上 `entityId` 和 `updatedAt`。`updatedAt` 是后端最近一次接受这份草稿的时刻。
+
+后端在两种情况下移除草稿：
+
+| 情况 | 原因 |
+| --- | --- |
+| 实体保存了新版本 | 草稿已经不接在当前版本之后 |
+| 超过 2 分钟没有写入 | 写入方可能已经停止，草稿不再更新 |
+
+草稿被移除不说明事实已经结束，事实是否结束按 [TIME-4](../core/rules/time.mdx#time-4) 判断。
+
+`GET /observation-drafts/{entityId}` 读取一份草稿，没有草稿时返回 `404`。`GET /observation-drafts` 按 EntityId 升序列出全部草稿，不分页；`resourceName` 可以省略，给出时只返回观测内容属于这种业务类型的草稿。
+
+读取方组合已保存的观测和草稿：同一个 EntityId 两者都有时，草稿接在当前版本之后，是较新的陈述。
+
 ## 错误格式 [#errors]
 
 错误响应的 `Content-Type` 是 `application/problem+json`，结构遵循 [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457.html)。
@@ -181,7 +238,7 @@ API 中的时间精确到 1 微秒，UTC 指协调世界时。事实时间的含
 
 | 冲突 | `rule` |
 | --- | --- |
-| 版本基于旧版本 | [VERSION-6](../core/model/version.mdx#version-6) |
+| 版本或观测草稿基于旧版本 | [VERSION-6](../core/model/version.mdx#version-6) |
 | 重试的 VersionId 已保存了不同的内容 | [VERSION-7](../core/model/version.mdx#version-7) |
 | 资源名已被另一个业务类型使用 | [SCHEMA-5](../core/model/schema.mdx#schema-5) |
 | 实体已被删除 | [HISTORY-7](../core/rules/history.mdx#history-7) |

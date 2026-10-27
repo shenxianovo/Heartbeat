@@ -36,11 +36,11 @@ description: "实体页的章节和每一章写什么"
 | 说明 | `description`：业务事实、粒度和事实时间的取值，必须填写 |
 | 资源名 | `resourceName`，未确定时写“待定” |
 
-| 字段 | 类型 | 必填 | 可空 | 含义 |
+| 字段 | 类型 | 必填 | 可空 | description |
 | --- | --- | --- | --- | --- |
 | 字段名 | `string` 等 | 是或否 | 是或否 | 含义、来源和省略的条件 |
 
-引用和普通字段写在同一张表中，用类型 `reference` 区分。对象成员和数组元素逐项列出。声明格式见 [EntitySchema · 字段约束](../../../core/model/schema.mdx#constraints)。
+引用和普通字段写在同一张表中，用类型 `reference` 区分。对象成员和数组元素逐项列出，数组元素的“必填”写“不适用”。每行的 `description` 都要随字段定义保存，说明业务含义，以及适用的单位、取值、来源、引用目标和空值含义，见 [SCHEMA-10](../../../core/model/schema.mdx#schema-10)。声明格式见 [EntitySchema · 字段约束](../../../core/model/schema.mdx#constraints)。
 
 ## 示例 [#example]
 

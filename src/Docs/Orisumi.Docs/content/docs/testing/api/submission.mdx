@@ -28,7 +28,11 @@ export const caseId = 'api-submission';
 
 ## 测试实现 [#implementation]
 
-`EntityApiTests` 中的提交测试。
+以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
+
+- 提交顺序、保存时间、原样重试、等值时间、VersionId 内容冲突和旧前驱冲突：`EntityApiTests.SubmissionConfirmsInOrderRetriesAndRejectsConflictingVersions`。
+- 规则拒绝保留前缀，以及请求带 recordedAt 时整批不保存：`EntityApiTests.ContractErrorSavesNothingAndRuleRejectionSavesOnlyPrefix`。
+- 请求体超过 10 MiB：`EntityApiTests.RequestLargerThanTenMiBIsRejected`。
 
 ## 执行结果 [#results]
 

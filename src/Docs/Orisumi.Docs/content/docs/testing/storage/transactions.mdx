@@ -22,7 +22,10 @@ export const caseId = 'storage-transactions';
 
 ## 测试实现 [#implementation]
 
-`ReferrerApiTests` 中的部分提交测试，以及 `EntityApiTests` 中的并发首版测试。
+以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
+
+- 部分提交与重试只留下已保存版本的引用：`ReferrerApiTests.PartialSubmissionAndRetryPreserveExactlyTheSavedReferences`。
+- 两个服务实例并发提交同一实体的首版：`EntityApiTests.ConcurrentFirstVersionsFromTwoServicesConflict`。
 
 ## 执行结果 [#results]
 

@@ -1,0 +1,36 @@
+---
+title: "Schema Fields"
+description: "字段说明的保存、嵌套声明，以及请求结构与版本规则的拒绝边界"
+---
+
+export const caseId = 'api-schema-fields';
+
+## 为什么验证 [#why]
+
+字段说明随 Schema 版本保存，写入方和读取方才能解释字段。每个字段、对象成员和数组元素都要有说明，见 [SCHEMA-10](../../core/model/schema.mdx#schema-10)。请求结构错误和版本规则错误影响的范围不同，见 [API · 校验阶段](../../api/index.mdx#validation)。
+
+## 前置条件 [#setup]
+
+通过 `WebApplicationFactory` 启动 API，连接独立的测试数据库，见 [Database](../database.mdx)。每个场景提交两个新的 EntitySchema：第一个有合法声明，第二个按表中条件构造。合法声明含普通字段、可空字段、对象成员和对象数组，数组元素也写非空 `description`。
+
+## 操作与预期结果 [#steps]
+
+| 操作 | 预期结果 |
+| --- | --- |
+| 提交合法声明，再读取 Schema 版本 | `200`；各层的 description 原样读回，包括引用角色、取值解释和单位 |
+| 第二个 EntitySchema 的字段、对象成员或数组元素缺少 description，分别检查这三个位置 | `400`，rule 为 SCHEMA-10，index 为 1；第一个版本已保存，第二个未保存 |
+| 第二个 EntitySchema 的说明是空字符串或全为空白，分别检查各层位置 | 同上；字段的 nullable 为 true 也不允许省略说明 |
+| 第二个 EntitySchema 的字段说明是 null、数字、布尔值、对象或数组 | 请求结构错误，`400`，不带 index；两个版本都未保存 |
+| 只修改字段说明的措辞，形成同一 EntitySchema 的新版本 | 新旧版本分别读回自己的说明；旧业务版本仍引用原来的 Schema 版本，见 [SCHEMA-15](../../core/model/schema.mdx#schema-15)、[SCHEMA-17](../../core/model/schema.mdx#schema-17) |
+| 第二个版本的 category 为 observation，content 却是空对象 | 请求结构错误，`400`，不带 index；第一个版本也未保存 |
+| 第二个版本是 members 为空的 InputSet | `400`，rule 为 INPUTSET-2，index 为 1；第一个版本已保存，见 [INPUTSET-2](../../core/model/input-set.mdx#inputset-2) |
+
+## 测试实现 [#implementation]
+
+字段 description 的保存和校验、按层分别拒绝缺失或空白说明、说明措辞演进，以及空对象 Observation 的整批拒绝，尚无关联本 Case 的自动测试，均标为未覆盖。
+
+空 InputSet 的部分拒绝已由 `EntityApiTests.ContractErrorSavesNothingAndRuleRejectionSavesOnlyPrefix` 检查；该方法关联 [Submission](./submission.mdx)，执行结果在那一页显示。新增测试时复用这个边界，不重复增加相同测试。
+
+## 执行结果 [#results]
+
+<TestCaseResults caseId={caseId} />

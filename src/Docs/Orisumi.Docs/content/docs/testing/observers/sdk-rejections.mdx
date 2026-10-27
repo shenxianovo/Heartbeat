@@ -25,7 +25,11 @@ SDK 使用独立的 SQLite 文件，后端是记录每次请求、按需拒绝�
 
 ## 测试实现 [#implementation]
 
-`ObserverSdkTests` 中的拒绝处理测试。
+以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
+
+- 拒绝后暂停、恢复拒绝状态，以及采用内容相同的已保存版本并替换依赖：`ObserverSdkTests.PartialRejectionPausesPersistsAndAdoptsEqualSavedVersion`。
+- 丢弃被拒绝版本和依赖，继续其他版本：`ObserverSdkTests.DiscardingRejectedVersionDiscardsDependentsAndResumesOthers`。
+- 读取当前版本后改写被拒绝版本及依赖，再发送：`ObserverSdkTests.RewritingRejectedVersionUsesReadCurrentVersionAndResendsDependents`。
 
 ## 执行结果 [#results]
 
