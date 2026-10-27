@@ -28,7 +28,7 @@ TUnit 通过 Microsoft.Testing.Platform 运行，版本 `1.72.16` 由 `Directory
 
 ## 模型测试 [#model]
 
-`tests/Orisumi.Model.Tests` 按 Core 的规则检查 Core 和 Application：提交、读取和删除版本，EntitySchema 的校验，引用的枚举，以及事实时间。存储使用内存实现，时间由可控的 `TimeProvider` 提供，不需要数据库。每个测试用注释写明它验证的规则编号，例如 `// VERSION-7`。
+`tests/Orisumi.Model.Tests` 按 Core 的规则检查 Core 和 Application：提交、读取和删除版本，EntitySchema 的校验，引用的枚举，以及事实时间。存储使用内存实现，时间由可控的 `TimeProvider` 提供，不需要数据库。每个测试用注释写明它验证的规则编号，例如 `// VERSION-7`。这些测试直接验证 T0，不需要先把规则复制到 T1；它们的结果不覆盖 HTTP 表示、PostgreSQL 或原生采集。
 
 ```sh
 dotnet test --project tests/Orisumi.Model.Tests/Orisumi.Model.Tests.csproj
@@ -38,7 +38,7 @@ dotnet test --project tests/Orisumi.Model.Tests/Orisumi.Model.Tests.csproj
 
 `tests/Orisumi.Integration.Tests` 按 Case 组织，覆盖四部分：
 
-- API 与 PostgreSQL 存储：通过 `WebApplicationFactory` 启动 API，每个用例连接自己的测试数据库。Case 见 [Submission](./api/submission.mdx)、[Reading](./api/reading.mdx)、[Lists](./api/lists.mdx)、[Referrers](./api/referrers.mdx)、[Deletion](./api/deletion.mdx)、[Errors](./api/errors.mdx) 和 [Transactions](./storage/transactions.mdx)。
+- API 与 PostgreSQL 存储：通过 `WebApplicationFactory` 启动 API，每个用例连接自己的测试数据库。Case 见 [Submission](./api/submission.mdx)、[Reading](./api/reading.mdx)、[Lists](./api/lists.mdx)、[Referrers](./api/referrers.mdx)、[Drafts](./api/drafts.mdx)、[Deletion](./api/deletion.mdx)、[Errors](./api/errors.mdx) 和 [Transactions](./storage/transactions.mdx)。
 - .NET SDK 的提交：SDK 使用独立的 SQLite 文件，后端是模拟的 HTTP 处理器或真实的 API。Case 见 [Registration](./observers/sdk-registration.mdx)、[Local Versions](./observers/sdk-local-versions.mdx)、[Confirmation](./observers/sdk-confirmation.mdx) 和 [Rejections](./observers/sdk-rejections.mdx)。
 - 前台状态 Observer：使用模拟的读数。Case 见 [本机应用身份](./observers/local-application-identity.mdx)、[时段边界](./observers/application-period-boundaries.mdx)、[提交与恢复](./observers/foreground-submission.mdx) 和 [被拒绝的版本](./observers/foreground-rejections.mdx)。另有身份文件和登记文件的复用与损坏保留测试。
 - API 的遥测：检查结构化日志、HTTP 追踪、指标和 OTLP 导出。
@@ -47,8 +47,16 @@ dotnet test --project tests/Orisumi.Model.Tests/Orisumi.Model.Tests.csproj
 
 ## Case [#cases]
 
-每个 Case 一页，写为什么验证、前置条件、操作和预期结果。Case ID 稳定，与测试方法名无关；测试用 `[Property("caseId", "…")]` 引用它。页面末尾显示最新报告中匹配这个 ID 的执行结果，参数化的测试会有多条结果。这样设计的理由见 [ADR · 开发验证与测试证据](../adr/verification.mdx)。
+字段说明和两阶段拒绝的验证定义见 [Schema Fields](./api/schema-fields.mdx)，页面单独列出尚未覆盖的预期。
+
+每个 Case 一页，写为什么验证、前置条件、操作和预期结果。预期依据 T0 的 Core 规则或 T1 的具体约定，并链接到对应位置。预期描述要求，执行结果描述某次检查发生了什么。这样设计的理由见 [ADR · 开发验证与测试证据](../adr/verification.mdx)。
+
+Case ID 稳定，与测试方法名无关；测试用 `[Property("caseId", "…")]` 引用它。页面的“测试实现”逐项说明哪些预期由哪个测试方法检查；一个方法可以检查多项预期，参数化测试还要说明参数范围。没有自动测试的预期，写明可重复的手动步骤或标为“未覆盖”。测试方法重命名时，同步更新这份对应说明，报告仍通过 `caseId` 关联。
+
+评审覆盖范围时，核对测试的输入和断言。例如分页用例在翻页期间没有写入，只能验证静态数据的分页。涉及重试、删除和引用等规则的组合时，按风险选择组合场景；分别检查单条规则不能代替组合检查。尚未决定的行为先回到相应的规则页讨论。
 
 ## 报告 [#reports]
 
 [Integration Report](./reports/integration.mdx) 显示 TUnit 集成测试的 JSON 报告。本地文档站每次刷新都重新读取 `TestResults` 中最新的报告；公开站显示发布时运行集成测试得到的报告，见 [ADR · 文档站的发布](../adr/documentation-publishing.mdx)。JSON 是测试结果的权威来源；查看报告不会运行测试。报告由 `fumadocs-test-reports` 展示，可以搜索、筛选，查看详情、输出和时间线。
+
+Case 页末尾按 `caseId` 显示匹配的执行结果；参数化测试会有多条结果。这些结果只说明列出的测试在该次运行中的表现，不自动证明页面的每项预期都已覆盖。接受验证结论时，还要核对检查的源码状态、规则、环境和参数与当前任务是否相符，并报告跳过、缺失和未执行的检查。相关依据改变后，旧报告仍描述旧运行；当前结论需要重新检查，或说明原证据仍适用的理由。

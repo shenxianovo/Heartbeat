@@ -10,13 +10,13 @@ internal sealed class EnvironmentCommand(RepositoryContext repository, IProcessR
 
     public Command CreateCommand()
     {
-        var command = new Command("env", "Manage the environment for this checkout");
+        var command = new Command("env", "Manage this checkout's environment and machine-wide database volumes");
         command.SetAction(parse => new HelpAction().Invoke(parse));
         var up = new Command("up", "Start selected services and wait until ready");
         var services = new Argument<string[]>("services") { Arity = ArgumentArity.ZeroOrMore };
         services.AcceptOnlyFromAmong("api", "docs", "web");
-        var temporary = new Option<bool>("--temp");
-        var reset = new Option<bool>("--reset");
+        var temporary = new Option<bool>("--temp") { Description = "Use a temporary database volume, removed on env down" };
+        var reset = new Option<bool>("--reset") { Description = "Delete and recreate this checkout's default database volume" };
         up.Options.Add(reset);
         up.Arguments.Add(services);
         up.Options.Add(temporary);
@@ -41,7 +41,7 @@ internal sealed class EnvironmentCommand(RepositoryContext repository, IProcessR
         });
         command.Subcommands.Add(status);
         var logs = new Command("logs", "Read resource console logs");
-        var logResource = new Argument<string>("service");
+        var logResource = new Argument<string>("resource");
         var follow = new Option<bool>("--follow");
         logs.Arguments.Add(logResource);
         logs.Options.Add(follow);
@@ -53,24 +53,28 @@ internal sealed class EnvironmentCommand(RepositoryContext repository, IProcessR
         });
         command.Subcommands.Add(logs);
         var restart = new Command("restart", "Restart one resource");
-        var resource = new Argument<string>("service");
+        var resource = new Argument<string>("resource");
         restart.Arguments.Add(resource);
         restart.SetAction((parse, token) => ForwardAsync(["resource", parse.GetValue(resource)!, "restart"], token));
         command.Subcommands.Add(restart);
-        var otel = new Command("otel", "Read environment telemetry");
-        var kind = new Argument<string>("kind");
-        kind.AcceptOnlyFromAmong("logs", "spans", "traces");
-        var telemetryResource = new Argument<string?>("service") { Arity = ArgumentArity.ZeroOrOne };
-        otel.Arguments.Add(kind);
-        otel.Arguments.Add(telemetryResource);
-        otel.SetAction((parse, token) => ForwardAsync(parse.GetValue(telemetryResource) is { } name
-            ? ["otel", parse.GetValue(kind)!, name] : ["otel", parse.GetValue(kind)!], token));
-        command.Subcommands.Add(otel);
-        var volumes = new Command("volumes", "List labeled Orisumi database volumes");
+        var telemetry = DeveloperCli.Group("telemetry", "Read telemetry from this checkout's environment");
+        foreach (var kind in new[] { "logs", "spans", "traces" })
+        {
+            var read = new Command(kind, $"Read telemetry {kind}");
+            var target = new Argument<string?>("resource") { Arity = ArgumentArity.ZeroOrOne };
+            read.Arguments.Add(target);
+            read.SetAction((parse, token) => ForwardAsync(parse.GetValue(target) is { } name
+                ? ["otel", kind, name] : ["otel", kind], token));
+            telemetry.Subcommands.Add(read);
+        }
+        command.Subcommands.Add(telemetry);
+        var volumes = DeveloperCli.Group("volumes", "Manage Orisumi database volumes across all checkouts on this machine");
         var volumeManager = new EnvironmentVolumes(manager);
-        volumes.SetAction(async (_, token) => { await WriteAsync(await volumeManager.ListAsync(token)); return 0; });
-        var prune = new Command("prune", "Preview or remove volumes whose checkout no longer exists");
-        var apply = new Option<bool>("--apply");
+        var list = new Command("list", "List volumes for all checkouts on this machine");
+        list.SetAction(async (_, token) => { await WriteAsync(await volumeManager.ListAsync(token)); return 0; });
+        volumes.Subcommands.Add(list);
+        var prune = new Command("prune", "Preview orphaned volumes across this machine; --apply deletes them");
+        var apply = new Option<bool>("--apply") { Description = "Delete volumes whose checkout no longer exists" };
         prune.Options.Add(apply);
         prune.SetAction(async (parse, token) =>
         {

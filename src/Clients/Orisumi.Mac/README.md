@@ -67,7 +67,7 @@ orisumi mac stop
 
 ```sh
 swift test --package-path src/Clients/Orisumi.Mac/OrisumiClient
-orisumi verify changed
+orisumi verify checks
 ```
 
-`orisumi verify` 在 `src/Clients/Orisumi.Mac/` 有改动时运行 `swift test`，并构建 Debug 版。单元测试用 shell 脚本代替 helper，用替身代替 API，覆盖事件解析、停止时发送 SIGINT、helper 意外退出和重新启动、读取今天的时段（分页、按程序实例筛选、跳过已删除的内容、版本缓存），以及时段的合并、按应用汇总、按小时拆分和时间范围。菜单、窗口和与真实 helper 的配合需要实际运行：用 `orisumi env up api web --temp` 和 `orisumi mac run --window` 启动，切换几次应用，然后在窗口和 Web 控制台中读到已结束的时段。
+`orisumi verify checks` 在 `src/Clients/Orisumi.Mac/` 有改动时运行 `swift test`，并构建 Debug 版。单元测试用 shell 脚本代替 helper，用替身代替 API，覆盖事件解析、停止时发送 SIGINT、helper 意外退出和重新启动、读取今天的时段（分页、按程序实例筛选、跳过已删除的内容、版本缓存），以及时段的合并、按应用汇总、按小时拆分和时间范围。菜单、窗口和与真实 helper 的配合需要实际运行：用 `orisumi env up api web --temp` 和 `orisumi mac run --window` 启动，切换几次应用，然后在窗口和 Web 控制台中读到已结束的时段。

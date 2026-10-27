@@ -6,6 +6,8 @@ internal sealed record VerificationRequest(string Mode, string? Base, bool PlanO
 {
     public async Task<VerificationRequest> ResolveAsync(IProcessRunner runner, CancellationToken cancellationToken)
     {
+        if (Mode == "full" && (Base is not null || Quality))
+            throw new CommandUsageException("--base and --quality require --scope changed.");
         var baseRef = await ResolveBaseAsync(Mode, Base, runner, cancellationToken);
         // Pin quality comparisons to one commit so both checks see the same base.
         if (Quality && baseRef is not null) baseRef = await ResolveCommitAsync(baseRef, runner, cancellationToken);
@@ -22,7 +24,7 @@ internal sealed record VerificationRequest(string Mode, string? Base, bool PlanO
         var status = await runner.CaptureAsync("git", ["status", "--porcelain"], null, cancellationToken);
         if (status.ExitCode != 0) throw new InvalidOperationException(status.StdErr.Trim());
         if (string.IsNullOrWhiteSpace(status.StdOut))
-            throw new CommandUsageException("verify changed needs --base when the worktree is clean.");
+            throw new CommandUsageException("verify checks --scope changed needs --base when the worktree is clean.");
         return "HEAD";
     }
 
@@ -163,13 +165,14 @@ internal static class VerificationPlanner
 
 internal static class VerificationReporter
 {
-    public static async Task WriteAsync(TextWriter output, VerificationPlan plan, bool json)
+    public static async Task WriteAsync(TextWriter output, VerificationPlan plan, bool json, bool quality = false)
     {
         if (json)
         {
             await output.WriteLineAsync(JsonSerializer.Serialize(new
             {
                 plan.Mode,
+                quality,
                 plan.Base,
                 plan.ChangedPaths,
                 steps = plan.Steps.Select(step => new { step.Name, step.FileName, step.Arguments }),
@@ -181,6 +184,7 @@ internal static class VerificationReporter
         {
             await output.WriteLineAsync($"  {step.Name}: {step.FileName} {string.Join(' ', step.Arguments)}");
         }
+        if (quality) await output.WriteLineAsync($"  quality: structural observations --base {plan.Base}");
         if (plan.Steps.Count == 0) await output.WriteLineAsync("  No executable checks selected.");
     }
 }

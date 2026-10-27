@@ -60,9 +60,9 @@ public sealed class EvidenceTests
             var selected = store.SelectForPruning(RetentionPolicy.Default);
             await Assert.That(selected.Candidates.Count).IsEqualTo(3);
             var cli = new DeveloperCli(repository, new CancelledRunner(), TextWriter.Null, TextWriter.Null);
-            await Assert.That(await cli.RunAsync(["artifacts", "prune"], CancellationToken.None)).IsEqualTo(0);
+            await Assert.That(await cli.RunAsync(["runs", "prune"], CancellationToken.None)).IsEqualTo(0);
             await Assert.That(store.List().Count).IsEqualTo(18);
-            await Assert.That(await cli.RunAsync(["artifacts", "prune", "--apply"], CancellationToken.None)).IsEqualTo(0);
+            await Assert.That(await cli.RunAsync(["runs", "prune", "--apply"], CancellationToken.None)).IsEqualTo(0);
             await Assert.That(store.List().Count).IsEqualTo(15);
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }

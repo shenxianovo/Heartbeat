@@ -66,7 +66,7 @@ dotnet run --project src/Observers/Orisumi.Observer.ForegroundState -- --samples
 自动测试覆盖本机应用身份、时段边界、采集事件、休眠边界、本地事务恢复，以及经 API 上传和本机应用被删除后的恢复。测试不调用 macOS 原生接口。Case 见文档站的 Testing 分区。
 
 ```sh
-orisumi verify changed --base HEAD --quality
+orisumi verify checks --base HEAD --quality
 ```
 
 原生读取需要在 macOS 上实际运行。使用临时文件：

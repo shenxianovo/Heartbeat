@@ -23,7 +23,7 @@ Orisumi 保存一个人经历了什么：来自不同设备和软件的观测及
 dotnet tool install --global Aspire.Cli --version 13.6.3
 dotnet tool restore
 aspire certs trust
-dotnet run --project tools/Orisumi.Dev -- install
+dotnet run --project tools/Orisumi.Dev -- tool install
 ```
 
 启动和停止：
@@ -57,7 +57,7 @@ dotnet run --project src/Observers/Orisumi.Observer.ForegroundState
 ## 验证
 
 ```sh
-orisumi verify changed --base HEAD --quality
+orisumi verify checks --base HEAD --quality
 ```
 
 命令说明见 [Orisumi.Dev README](tools/Orisumi.Dev/README.md)。

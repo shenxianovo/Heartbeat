@@ -10,7 +10,7 @@ internal sealed class ArtifactsCommand(RepositoryContext repository, TextWriter 
 
     public Command CreateCommand()
     {
-        var command = new Command("artifacts", "List or prune verification evidence");
+        var command = new Command("runs", "List or prune verification and analysis records for this checkout");
         command.SetAction(parse => new HelpAction().Invoke(parse));
         var list = new Command("list", "List verification runs");
         var listJson = new Option<bool>("--json") { Description = "Print JSON" };

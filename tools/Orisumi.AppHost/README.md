@@ -103,8 +103,8 @@ orisumi verify scenarios environment
 ```sh
 orisumi env up api --temp
 curl -i http://localhost:8080/api/entities/019a0d3b-1d20-7000-8000-000000000001
-orisumi env otel logs api
-orisumi env otel traces api
+orisumi env telemetry logs api
+orisumi env telemetry traces api
 ```
 
 在工作树中运行时，把地址换成 `orisumi env status` 给出的 API 入口。

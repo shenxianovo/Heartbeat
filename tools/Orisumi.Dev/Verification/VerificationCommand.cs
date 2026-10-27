@@ -1,5 +1,6 @@
 using System.CommandLine;
 using System.CommandLine.Help;
+using System.Text.Json;
 
 namespace Orisumi.Dev;
 
@@ -11,7 +12,8 @@ internal sealed record CombinedResult(int Verification, int? Quality)
 internal sealed class VerificationCommand(
     RepositoryContext repository,
     IProcessRunner runner,
-    TextWriter output)
+    TextWriter output,
+    TextWriter? error = null)
 {
     private const string Limitation = "Container startup and browser interaction are verified separately.";
     private const string QualityLimitation = "Quality findings guide review; scans must complete, but findings do not fail the run.";
@@ -21,50 +23,84 @@ internal sealed class VerificationCommand(
         var command = new Command("verify", "Verify code and tests");
         command.SetAction(parse => new HelpAction().Invoke(parse));
 
-        var changed = new Command("changed", "Check changed paths; a clean worktree requires --base");
-        var baseRef = new Option<string?>("--base") { Description = "Git comparison base" };
-        var quality = new Option<bool>("--quality") { Description = "Also collect structural quality observations against the same base" };
-        var changedPlan = PlanOption();
-        var changedJson = JsonOption();
-        changed.Options.Add(baseRef);
-        changed.Options.Add(quality);
-        changed.Options.Add(changedPlan);
-        changed.Options.Add(changedJson);
-        changed.SetAction((parse, token) => RunAsync(new VerificationRequest("changed", parse.GetValue(baseRef),
-            parse.GetValue(changedPlan), parse.GetValue(changedJson), parse.GetValue(quality)), token));
-
-        var full = new Command("full", "Run all code and test checks");
-        var fullPlan = PlanOption();
-        var fullJson = JsonOption();
-        full.Options.Add(fullPlan);
-        full.Options.Add(fullJson);
-        full.SetAction((parse, token) => RunAsync(new VerificationRequest("full", null,
-            parse.GetValue(fullPlan), parse.GetValue(fullJson)), token));
-
-        command.Subcommands.Add(changed);
-        command.Subcommands.Add(full);
+        var checks = new Command("checks", "Run build and automated checks; scope selects changed paths or all checks");
+        var scope = new Option<string>("--scope")
+        {
+            Description = "Check selection; all excludes scenarios and quality analysis",
+            DefaultValueFactory = _ => "changed",
+        };
+        scope.AcceptOnlyFromAmong("changed", "all");
+        var baseRef = new Option<string?>("--base") { Description = "Git comparison base for changed scope" };
+        var quality = new Option<bool>("--quality") { Description = "Also analyze quality against the same base (changed scope only)" };
+        var plan = PlanOption();
+        var json = JsonOption();
+        checks.Options.Add(scope);
+        checks.Options.Add(baseRef);
+        checks.Options.Add(quality);
+        checks.Options.Add(plan);
+        checks.Options.Add(json);
+        checks.SetAction((parse, token) => RunAsync(new VerificationRequest(
+            parse.GetValue(scope) == "all" ? "full" : "changed", parse.GetValue(baseRef),
+            parse.GetValue(plan), parse.GetValue(json), parse.GetValue(quality)), token));
+        command.Subcommands.Add(checks);
         command.Subcommands.Add(new ScenarioCommand(repository, runner, output).CreateCommand());
         return command;
     }
 
     private static Option<bool> PlanOption() => new("--plan") { Description = "Print the plan without executing it" };
 
-    private static Option<bool> JsonOption() => new("--json") { Description = "Print the plan as JSON" };
+    private static Option<bool> JsonOption() => new("--json") { Description = "Print the plan or execution result as JSON" };
 
     public async Task<int> RunAsync(VerificationRequest request, CancellationToken cancellationToken)
     {
         request = await request.ResolveAsync(runner, cancellationToken);
         var plan = await VerificationPlanner.CreateAsync(repository, runner, request, cancellationToken);
-        await VerificationReporter.WriteAsync(output, plan, request.Json);
-        if (request.Quality && !request.Json) await output.WriteLineAsync($"  quality: structural observations --base {request.Base}");
         if (request.PlanOnly)
         {
+            await VerificationReporter.WriteAsync(output, plan, request.Json, request.Quality);
             return 0;
         }
+        var progress = request.Json ? error ?? Console.Error : output;
+        await VerificationReporter.WriteAsync(progress, plan, false, request.Quality);
+        var execution = new VerificationCommand(repository, runner, progress);
         string[] limitations = request.Quality ? [Limitation, QualityLimitation] : [Limitation];
-        return await EvidenceSession.ExecuteAsync(repository, "verify", plan.Mode, limitations, evidence => request.Quality
-            ? RunWithQualityAsync(plan, request.Base!, evidence, cancellationToken)
-            : RunPlanAsync(plan, evidence, cancellationToken), notes: output);
+        string? directory = null;
+        var exitCode = 1;
+        try
+        {
+            exitCode = await EvidenceSession.ExecuteAsync(repository, "verify", plan.Mode, limitations, evidence =>
+            {
+                directory = evidence.Run.Directory;
+                return request.Quality
+                    ? execution.RunWithQualityAsync(plan, request.Base!, evidence, cancellationToken)
+                    : execution.RunPlanAsync(plan, evidence, cancellationToken);
+            }, notes: progress);
+            return exitCode;
+        }
+        catch (OperationCanceledException)
+        {
+            exitCode = 130;
+            throw;
+        }
+        finally
+        {
+            if (request.Json && directory is not null)
+            {
+                await output.WriteLineAsync(JsonSerializer.Serialize(new
+                {
+                    exitCode,
+                    evidence = directory,
+                    verification = await ReadReportAsync(directory, "verification.json"),
+                    quality = await ReadReportAsync(directory, "quality.json"),
+                }, JsonOptions.Indented));
+            }
+        }
+    }
+
+    private static async Task<JsonElement?> ReadReportAsync(string directory, string name)
+    {
+        var path = Path.Combine(directory, name);
+        return File.Exists(path) ? JsonSerializer.Deserialize<JsonElement>(await File.ReadAllTextAsync(path)) : null;
     }
 
     private async Task<int> RunWithQualityAsync(

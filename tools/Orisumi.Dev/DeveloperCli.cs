@@ -9,20 +9,32 @@ internal sealed class DeveloperCli(
     TextWriter output,
     TextWriter error)
 {
-    internal RootCommand CreateCommand()
+    internal Command CreateCommand()
     {
-        var root = new RootCommand("Orisumi development and verification")
+        var root = new Command("orisumi", "Orisumi development and verification")
         {
-            new InstallCommand(repository, runner, output).CreateCommand(),
+            new HelpOption { Recursive = true },
+            new VersionOption(),
             new EnvironmentCommand(repository, runner, output).CreateCommand(),
             new MacCommand(repository, runner, output).CreateCommand(),
-            new VerificationCommand(repository, runner, output).CreateCommand(),
-            new QualityCommand(repository, runner, output).CreateCommand(),
-            new LocCommand(repository, runner, output).CreateCommand(),
+            new VerificationCommand(repository, runner, output, error).CreateCommand(),
+            Group("analyze", "Analyze code structure and size",
+                new QualityCommand(repository, runner, output).CreateCommand(),
+                new LocCommand(repository, runner, output).CreateCommand()),
             new ArtifactsCommand(repository, output).CreateCommand(),
+            Group("tool", "Install or update the developer tool itself",
+                new InstallCommand(repository, runner, output).CreateCommand()),
         };
         root.SetAction(parse => new HelpAction().Invoke(parse));
         return root;
+    }
+
+    internal static Command Group(string name, string description, params Command[] commands)
+    {
+        var group = new Command(name, description);
+        group.SetAction(parse => new HelpAction().Invoke(parse));
+        foreach (var command in commands) group.Subcommands.Add(command);
+        return group;
     }
 
     public async Task<int> RunAsync(string[] args, CancellationToken cancellationToken)

@@ -4,6 +4,7 @@ public static class Program
 {
     public static async Task<int> Main(string[] args)
     {
+        System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.CultureInfo.InvariantCulture;
         using var cancellation = new CancellationTokenSource();
         ConsoleCancelEventHandler cancel = (_, eventArgs) =>
         {
@@ -21,7 +22,7 @@ public static class Program
         catch (CommandUsageException exception)
         {
             Console.Error.WriteLine(exception.Message);
-            Console.Error.WriteLine("Run dotnet run --project tools/Orisumi.Dev -- --help for usage.");
+            Console.Error.WriteLine("Run orisumi --help for usage.");
             return 2;
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)

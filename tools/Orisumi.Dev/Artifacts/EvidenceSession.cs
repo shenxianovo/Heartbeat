@@ -52,8 +52,8 @@ internal sealed class EvidenceSession(ArtifactRun run)
     }
 
     /// <summary>
-    /// 跑完就收一次。手动 `artifacts prune` 的默认值以前基本命中不到，证据目录只会涨；
-    /// 保留规则与 `artifacts prune` 完全一致（最近若干次 + 最近若干次失败的），并且把删了什么说出来。
+    /// 跑完就收一次。手动 `runs prune` 的默认值以前基本命中不到，证据目录只会涨；
+    /// 保留规则与 `runs prune` 完全一致（最近若干次 + 最近若干次失败的），并且把删了什么说出来。
     /// </summary>
     private static async Task CollectAsync(ArtifactStore store, TextWriter? notes)
     {

@@ -18,15 +18,28 @@ npm --prefix tools/Orisumi.Dev/jscpd ci --ignore-scripts
 
 ## 安装
 
-Orisumi.Dev 是 .NET 全局工具，命令名是 `orisumi`。在仓库根目录运行：
+Orisumi.Dev 是 .NET 全局工具，命令名是 `orisumi`。首次安装时，在仓库根目录运行：
 
 ```sh
-dotnet run --project tools/Orisumi.Dev -- install
+dotnet run --project tools/Orisumi.Dev -- tool install
 ```
 
-这条命令打包当前检出目录中的 Orisumi.Dev，然后安装或更新 `orisumi`。每次打包都生成新的版本号，所以更新后运行的总是刚打包的版本。Orisumi.Dev 改动后，再运行一次即可。
+这条命令打包当前检出目录中的 Orisumi.Dev，然后安装或更新 `orisumi`。每次打包都生成新的版本号，所以更新后运行的总是刚打包的版本。Orisumi.Dev 改动后，运行 `orisumi tool install` 更新。
 
 `orisumi` 在仓库中的任何目录都可以运行，它通过 Git 找到当前检出目录的根目录。`orisumi <命令>` 与 `dotnet run --project tools/Orisumi.Dev -- <命令>` 等价；某个分支修改了 Orisumi.Dev 时，用后一种形式运行这个分支的版本。
+
+## 命令
+
+| 命令 | 作用 |
+| --- | --- |
+| `env` | 本检出目录的环境，以及本机的数据卷 |
+| `mac` | 构建和运行 macOS 客户端 |
+| `verify` | 构建与自动化检查、冒烟场景 |
+| `analyze` | 质量扫描和行数统计 |
+| `runs` | 验证与质量扫描的运行记录 |
+| `tool` | 安装和更新 `orisumi` 自身 |
+
+只输入命令组时显示该组的帮助。
 
 ## 环境
 
@@ -37,7 +50,7 @@ orisumi env up api --temp       # 使用临时卷
 orisumi env up --reset          # 重建默认卷
 orisumi env status --json
 orisumi env logs api --follow
-orisumi env otel traces api
+orisumi env telemetry traces api
 orisumi env restart api
 orisumi env down
 ```
@@ -47,13 +60,13 @@ orisumi env down
 | `env up [服务...] [--temp \| --reset]` | 在后台启动环境，等所选服务就绪后返回，并输出状态 |
 | `env down` | 停止环境。使用临时卷时，同时删除临时卷 |
 | `env status [--json]` | 显示已启动的服务及其状态、入口地址、看板地址、数据库连接和数据卷 |
-| `env logs <服务> [--follow]` | 读取服务的控制台日志 |
-| `env otel <logs\|spans\|traces> [服务]` | 读取环境中的遥测 |
-| `env restart <服务>` | 重启一个服务 |
-| `env volumes` | 列出 Orisumi 的数据卷，以及每个卷所属的检出目录 |
-| `env volumes prune [--apply]` | 预览或删除所属检出目录已不存在的卷 |
+| `env logs <资源> [--follow]` | 读取资源的控制台日志 |
+| `env restart <资源>` | 重启一个资源 |
+| `env telemetry <logs\|spans\|traces> [资源]` | 读取环境中的遥测 |
+| `env volumes list` | 列出本机全部 Orisumi 数据卷，以及每个卷所属的检出目录 |
+| `env volumes prune [--apply]` | 预览本机所属检出目录已不存在的卷，加 `--apply` 删除 |
 
-命令作用于当前检出目录的环境。`env logs`、`env otel` 和 `env restart` 的服务名可以是任何资源，包括 `db`、`migrate` 和 `nginx`。
+`env volumes` 作用于本机全部带 Orisumi 标签的数据卷，其他命令作用于当前检出目录的环境。资源可以是 `env up` 的任一服务，也可以是 `db`、`migrate` 和 `nginx`。
 
 ### 服务
 
@@ -81,7 +94,7 @@ NGINX 总是启动，提供固定的入口端口。各入口在不同服务组�
 - 默认卷在 `env down` 后保留。
 - `--temp` 使用名为 `orisumi-temp-<时间>` 的临时卷，`env down` 时删除。
 - `--reset` 删除当前检出目录的默认卷，重新创建后启动，卷中的数据全部丢失。表结构与当前迁移不一致时使用，例如 Initial migration 改动之后。`--reset` 与 `--temp` 不能同时使用。
-- 每个卷都带有所属检出目录的标签，`env volumes` 据此列出归属。工作树删除后，用 `env volumes prune --apply` 回收它的卷。
+- 每个卷都带有所属检出目录的标签，`env volumes list` 据此列出归属。工作树删除后，用 `env volumes prune --apply` 回收它的卷。
 
 ### 状态
 
@@ -120,14 +133,17 @@ NGINX 总是启动，提供固定的入口端口。各入口在不同服务组�
 ```sh
 orisumi mac build
 orisumi mac run --build --window
+orisumi mac run --configuration debug --build
 orisumi mac stop
 ```
 
 | 命令 | 作用 |
 | --- | --- |
-| `mac build [--debug]` | 用 `xcodebuild` 构建客户端到 `.artifacts/mac`，默认 Release |
-| `mac run [--build] [--window]` | 启动已构建的 Release 客户端，连接本检出目录环境的 API 和 Web 控制台。`--build` 先构建，`--window` 启动时打开窗口 |
+| `mac build [--configuration debug\|release]` | 用 `xcodebuild` 构建客户端到 `.artifacts/mac` |
+| `mac run [--configuration debug\|release] [--build] [--window]` | 启动已构建的客户端，连接本检出目录环境的 API 和 Web 控制台。`--build` 先构建同一配置，`--window` 启动时打开窗口 |
 | `mac stop` | 退出从本检出目录启动的客户端。客户端先让 helper 结束当前时段，再退出 |
+
+`--configuration` 默认是 `release`。`mac run` 运行所选配置的客户端。
 
 - `mac run` 要求环境运行中、API 已启动；客户端已在运行时报错，先运行 `mac stop`。
 - 每个数据卷对应一个程序实例：客户端的身份文件、登记文件和 SDK 状态放在 `.artifacts/mac/instances/<卷名>/`。所以本地待发送的版本只会发往它所属的后端。删除卷之后，可以一并删除对应的目录。
@@ -136,24 +152,45 @@ orisumi mac stop
 ## 验证
 
 ```sh
-orisumi verify full
-orisumi verify changed --base HEAD
-orisumi verify changed --base HEAD --quality
+orisumi verify checks --base HEAD
+orisumi verify checks --base HEAD --quality
+orisumi verify checks --scope all
 orisumi verify scenarios
 orisumi verify scenarios api
 ```
 
 | 命令 | 作用 |
 | --- | --- |
-| `verify full` | 构建 .NET 解决方案，运行模型测试、集成测试和开发工具测试，运行前端的 `npm run verify`，检查并构建文档站；在 macOS 上还运行客户端的 `swift test` 并构建客户端 |
-| `verify changed` | 根据相对基点的改动选择检查。无法识别的路径触发全量检查 |
-| `verify changed --quality` | 在同一次运行中执行变更检查，再以同一基点运行质量扫描 |
+| `verify checks [--scope changed\|all]` | 运行构建和自动化检查，`--scope` 选择范围，默认 `changed` |
 | `verify scenarios [场景...]` | 运行冒烟场景。不指定时运行全部场景 |
 
-- 加 `--plan` 只显示会运行哪些检查或场景，不执行。加 `--json` 以 JSON 输出计划。
-- 有未提交的改动时，`verify changed` 可以省略 `--base`，默认使用 `HEAD`。没有改动时，必须指定 `--base`。
+两种范围：
+
+| 范围 | 检查 |
+| --- | --- |
+| `changed` | 根据相对基点的改动选择检查。无法识别的路径触发全部检查 |
+| `all` | 构建 .NET 解决方案，运行模型测试、集成测试和开发工具测试，运行前端的 `npm run verify`，检查并构建文档站；在 macOS 上还运行客户端的 `swift test` 并构建客户端 |
+
+两种范围都只包括构建和自动化检查。冒烟场景由 `verify scenarios` 运行，质量扫描由 `analyze quality` 或 `--quality` 运行。
+
+- `--base` 指定基点。有未提交的改动时可以省略，默认使用 `HEAD`；没有改动时必须指定。
+- `--quality` 在同一次运行中执行检查，再以同一基点运行质量扫描，两者共用一份运行记录。
+- `--base` 和 `--quality` 只用于 `changed` 范围，与 `--scope all` 一起使用时返回参数错误。
 - 构建失败、测试失败、场景失败或扫描未完成时，命令返回失败。质量扫描的发现不使命令失败，供评审参考。
 - 构建和自动测试不覆盖容器运行、页面和交互，运行时行为由冒烟场景检查。热更新和页面另外检查。
+
+### 计划与 JSON 输出
+
+加 `--plan` 只输出计划，不执行。加 `--json` 以 JSON 输出：
+
+| 命令 | stdout |
+| --- | --- |
+| `verify checks --plan --json` | 计划：范围、`quality`、基点、改动路径和步骤 |
+| `verify checks --json` | 一个结果对象：`exitCode`、`evidence`、`verification`、`quality` |
+| `verify scenarios --plan --json` | 场景计划，包括每个场景的前提是否满足 |
+| `verify scenarios --json` | 场景结果 |
+
+`verify checks --json` 的 `evidence` 是证据目录，`verification` 和 `quality` 是这次运行保存的报告，没有生成的报告为 `null`。执行进度写到 stderr，stdout 可以整体解析。取消时同样输出结果，内容是已经完成的部分。
 
 ### 冒烟场景
 
@@ -169,13 +206,13 @@ orisumi verify scenarios api
 ## 质量与行数
 
 ```sh
-orisumi quality --base HEAD
-orisumi loc
+orisumi analyze quality --base HEAD
+orisumi analyze loc
 ```
 
 两个命令都可以加 `--json`。
 
-`quality` 扫描业务代码、文档站和开发工具，并与基点比较：
+`analyze quality` 扫描业务代码、文档站和开发工具，并与基点比较。需要同时运行检查时，用 `verify checks --quality`。
 
 | 检查 | 工具 | 报告方式 |
 | --- | --- | --- |
@@ -187,7 +224,7 @@ orisumi loc
 - 基点必须能完成分析构建。历史代码无法编译时，命令报告比较未完成并返回失败，但保留当前代码的扫描结果。
 - JS 扫描工具的版本固定在 `jscpd/package-lock.json`。
 
-`loc` 统计已跟踪和未忽略的文件，不构建也不扫描。统计排除空行和纯注释行，按模块、语言和类别分类：
+`analyze loc` 统计已跟踪和未忽略的文件，不构建也不扫描。统计排除空行和纯注释行，按模块、语言和类别分类：
 
 | 类别 | 包括 |
 | --- | --- |
@@ -202,30 +239,30 @@ orisumi loc
 
 ## 证据
 
-每次验证的证据保存在 `.artifacts/verification/<run-id>/`：
+每次验证和质量扫描的证据保存在 `.artifacts/verification/<run-id>/`：
 
 | 文件 | 内容 |
 | --- | --- |
 | `manifest.json` | 执行清单 |
 | `verification.json` | 验证结果，包括每个场景的通过、失败或跳过及原因 |
-| `quality.json` | 质量报告，加 `--quality` 或运行 `quality` 时生成 |
+| `quality.json` | 质量报告，加 `--quality` 或运行 `analyze quality` 时生成 |
 | 步骤日志 | 每个步骤和场景的输出，场景日志包括它发出的请求和收到的响应 |
 
 成功、失败和取消的运行都保存。TUnit 的原始报告在 `TestResults/`，由文档站读取。
 
 ```sh
-orisumi artifacts list
-orisumi artifacts prune           # 只预览
-orisumi artifacts prune --apply   # 删除
+orisumi runs list
+orisumi runs prune           # 只预览
+orisumi runs prune --apply   # 删除
 ```
 
-每次验证结束时自动清理。满足任一条件的运行会保留：
+每次运行结束时自动清理。满足任一条件的运行会保留：
 
 - 最近 10 次运行。
 - 最近 5 次没有成功的运行，包括失败、取消和缺少清单的运行。
 - 2 天内的全部运行。
 
-`artifacts prune` 使用同样的条件。
+`runs prune` 使用同样的条件。
 
 质量扫描的基线工作树缓存在 `.artifacts/quality-baselines/<commit>/`，不参与上述清理。需要回收空间时，移除对应的 Git worktree，下次扫描会重新创建。
 
