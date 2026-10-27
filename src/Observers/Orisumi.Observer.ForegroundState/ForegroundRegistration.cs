@@ -14,21 +14,21 @@ internal sealed record ForegroundRegistration(VersionId ObserverSchema, VersionI
     {
         var observerSchema = await sdk.RegisterSchemaAsync(ObserverSchemaId, new("前台状态 Observer",
             "表示一个前台状态 Observer 程序实例，保存它运行的平台、主机名和程序版本；它作为 Observer 对前台应用时段和窗口标题时段的观测负责。", "foreground-state-observers", Json("""
-            {"platform":{"type":"string","required":true,"nullable":false},
-             "hostName":{"type":"string","required":true,"nullable":true},
-             "programVersion":{"type":"string","required":true,"nullable":false}}
+            {"platform":{"type":"string","description":"运行的平台：macos、windows、android 或 linux。","required":true,"nullable":false},
+             "hostName":{"type":"string","description":"本机的名称，读不到时为 null。","required":true,"nullable":true},
+             "programVersion":{"type":"string","description":"程序的版本。","required":true,"nullable":false}}
             """)), token);
         var applicationSchema = await sdk.RegisterSchemaAsync(ApplicationSchemaId, new("本机应用",
             "表示某台设备上的一个应用安装，保存用于识别安装的平台标识线索。", "local-applications", Json("""
-            {"identifiers":{"type":"array","required":true,"nullable":false,
-              "items":{"type":"object","nullable":false,"fields":{
-                "scheme":{"type":"string","required":true,"nullable":false},
-                "value":{"type":"string","required":true,"nullable":false}}}}}
+            {"identifiers":{"type":"array","description":"平台标识线索，顺序无意义；没有线索时为空数组。","required":true,"nullable":false,
+              "items":{"type":"object","description":"一项平台标识线索。","nullable":false,"fields":{
+                "scheme":{"type":"string","description":"线索的种类：macos.bundle-id 是应用包标识，macos.executable-path 是可执行文件路径。","required":true,"nullable":false},
+                "value":{"type":"string","description":"标识方案对应的原始值。","required":true,"nullable":false}}}}}
             """)), token);
         var periodSchema = await sdk.RegisterSchemaAsync(PeriodSchemaId, new("前台应用时段",
             "表达某个本机应用连续处于前台的一段活动；内容保存应用引用与当时读到的名称，Observation 保存时段。", "foreground-application-periods", Json("""
-            {"localApplicationVersionId":{"type":"reference","required":true,"nullable":false},
-             "name":{"type":"string","required":true,"nullable":true}}
+            {"localApplicationVersionId":{"type":"reference","description":"观测设备上的本机应用。","required":true,"nullable":false},
+             "name":{"type":"string","description":"当时读到的应用名称，没读到时为 null。","required":true,"nullable":true}}
             """)), token);
         sdk.RegisterInstance(observer, observerSchema, new(JsonSerializer.SerializeToElement(new
         {

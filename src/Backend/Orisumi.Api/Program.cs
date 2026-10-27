@@ -52,4 +52,5 @@ app.UseStatusCodePages(async context =>
 });
 
 app.MapEntities();
+app.MapObservationDrafts();
 app.Run();

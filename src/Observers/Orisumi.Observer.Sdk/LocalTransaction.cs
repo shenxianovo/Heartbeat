@@ -21,8 +21,9 @@ public sealed class LocalTransaction
         """, ("$id", id.Value.ToString())).SingleOrDefault();
 
     public VersionId Draft(EntityId entityId, VersionContent content, VersionId? schemaVersionId = null,
-        SubmissionStrategy strategy = SubmissionStrategy.Immediate)
+        SubmissionStrategy strategy = SubmissionStrategy.Immediate, bool publishDraft = false)
     {
+        if (publishDraft && content is not Observation) throw new ArgumentException("Only Observations have live drafts.", nameof(publishDraft));
         schemaVersionId = schemaVersionId is { } schema ? Resolve(schema) : null;
         var latest = Latest(entityId);
         var version = latest?.State == SubmissionState.Draft
@@ -32,8 +33,37 @@ public sealed class LocalTransaction
         FreezeReferences(version, []);
         Put(version, SubmissionState.Draft, strategy, null);
         SetLatest(entityId, version.VersionId);
+        if (publishDraft)
+            Execute("""
+                INSERT INTO observation_drafts(entity_id,version_id,sequence,stopped) VALUES($entity,$version,0,0)
+                ON CONFLICT(entity_id) DO UPDATE SET version_id=excluded.version_id,
+                    stopped=CASE WHEN observation_drafts.version_id=excluded.version_id THEN observation_drafts.stopped ELSE 0 END
+                """, ("$entity", entityId.Value.ToString()), ("$version", version.VersionId.Value.ToString()));
         return version.VersionId;
     }
+
+    internal IReadOnlyList<VersionId> ObservationDraftIds()
+    {
+        using var command = Command("SELECT version_id FROM observation_drafts WHERE stopped=0 ORDER BY entity_id");
+        using var reader = command.ExecuteReader();
+        var result = new List<VersionId>();
+        while (reader.Read()) result.Add(new(Guid.Parse(reader.GetString(0))));
+        return result;
+    }
+
+    internal (VersionSubmission Version, long Sequence)? PrepareObservationDraft(VersionId id)
+    {
+        var local = Find(id);
+        if (local is not { State: SubmissionState.Draft, Version.Content: Observation }
+            || References(local.Version).Any(reference => Find(reference.Target)?.State != SubmissionState.Saved)) return null;
+        using var command = Command("""
+            UPDATE observation_drafts SET sequence=sequence+1 WHERE version_id=$id AND stopped=0 RETURNING sequence
+            """, ("$id", id.Value.ToString()));
+        return command.ExecuteScalar() is long sequence ? (local.Version, sequence) : null;
+    }
+
+    internal void StopObservationDraft(VersionId id) => Execute(
+        "UPDATE observation_drafts SET stopped=1 WHERE version_id=$id", ("$id", id.Value.ToString()));
 
     public VersionId Resolve(VersionId version)
     {
@@ -71,6 +101,7 @@ public sealed class LocalTransaction
         FreezeReferences(local.Version, visiting);
         visiting.Remove(id);
         Put(local.Version, SubmissionState.Frozen, local.Strategy, NextOrder());
+        if (local.Version.Content is Observation) StopObservationDraft(id);
     }
 
     private void FreezeReferences(VersionSubmission version, HashSet<VersionId> visiting)

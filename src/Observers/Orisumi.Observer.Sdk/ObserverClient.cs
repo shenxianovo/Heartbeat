@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Orisumi.Core;
@@ -32,6 +33,8 @@ public sealed class ObserverClient : IDisposable
                 sequence INTEGER PRIMARY KEY AUTOINCREMENT, version_id TEXT NOT NULL UNIQUE,
                 entity_id TEXT NOT NULL, payload TEXT NOT NULL, state TEXT NOT NULL,
                 strategy TEXT NOT NULL, freeze_order INTEGER, rule TEXT, detail TEXT);
+            CREATE TABLE IF NOT EXISTS observation_drafts(
+                entity_id TEXT PRIMARY KEY, version_id TEXT NOT NULL, sequence INTEGER NOT NULL, stopped INTEGER NOT NULL);
             CREATE INDEX IF NOT EXISTS ix_local_versions_delivery ON local_versions(state,freeze_order);
             INSERT OR IGNORE INTO local_metadata(key,value) VALUES('freeze_order','0');
             """;
@@ -135,6 +138,7 @@ public sealed class ObserverClient : IDisposable
             {
                 if (Status is { Rejection: not null } or { Error: not null }) return;
                 if (!await ReconcileSchemasAsync(cancellationToken)) return;
+                if (!await SendDraftsAsync(cancellationToken)) return;
                 var batch = Execute(local =>
                 {
                     foreach (var draft in local.Versions().Where(version => version.State == SubmissionState.Draft && version.Strategy == SubmissionStrategy.Immediate))
@@ -187,6 +191,31 @@ public sealed class ObserverClient : IDisposable
         catch (Exception exception) when (exception is JsonException or KeyNotFoundException or FormatException or InvalidOperationException)
         { Fail("Invalid submission response: " + exception.Message); }
         finally { _sender.Release(); }
+    }
+
+    private async Task<bool> SendDraftsAsync(CancellationToken token)
+    {
+        foreach (var id in Execute(local => local.ObservationDraftIds()))
+        {
+            var draft = Execute(local => local.PrepareObservationDraft(id));
+            if (draft is not { } ready) continue;
+            using var response = await _http.PutAsJsonAsync("observation-drafts/" + ready.Version.EntityId.Value, new
+            {
+                previousVersionId = ready.Version.PreviousVersionId?.Value,
+                sequence = ready.Sequence, content = VersionJson.Content(ready.Version.Content),
+            }, token);
+            if (response.IsSuccessStatusCode || (int)response.StatusCode >= 500) continue;
+            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
+            if (response.StatusCode == HttpStatusCode.Conflict && json.RootElement.TryGetProperty("rule", out var rule)
+                && rule.GetString() == "VERSION-6")
+                Execute(local => local.StopObservationDraft(id));
+            else
+            {
+                Fail($"Observation draft failed: HTTP {(int)response.StatusCode}: {json.RootElement.GetRawText()}");
+                return false;
+            }
+        }
+        return true;
     }
 
     private List<LocalVersion> SelectBatch(IReadOnlyList<LocalVersion> versions)

@@ -167,10 +167,10 @@ export function createDemoSource(options: DemoOptions = {}): OrisumiSource {
   const begin = Math.max(dayStart, t0 - 15 * 60 * MINUTE);
   const created = begin - MINUTE;
   const observerSchemaFields: Record<string, FieldDefinition> = {
-    name: { type: "string", required: true, nullable: false },
+    name: { type: "string", description: "Observer 的显示名称", required: true, nullable: false },
   };
   const contentFields: Record<string, FieldDefinition> = {
-    summary: { type: "string", required: true, nullable: false },
+    summary: { type: "string", description: "这份观测的内容摘要", required: true, nullable: false },
   };
 
   for (const s of SPECS) {
@@ -250,8 +250,8 @@ export function createDemoSource(options: DemoOptions = {}): OrisumiSource {
       "陈述",
       "demo-statements",
       {
-        target: { type: "reference", required: true, nullable: false },
-        statement: { type: "string", required: true, nullable: false },
+        target: { type: "reference", description: "这份陈述所针对的观测版本", required: true, nullable: false },
+        statement: { type: "string", description: "用户对目标观测的陈述", required: true, nullable: false },
       },
       created,
     );

@@ -35,7 +35,7 @@ public sealed class SchemaBoundaryTests
     [Arguments("integer", "1e-10000000000000000000000", false)]
     public async Task PrimitiveValuesMatchTheirDeclaredType(string type, string value, bool valid)
     {
-        var fields = JsonSerializer.SerializeToElement(new { value = new { type, required = true, nullable = false } });
+        var fields = JsonSerializer.SerializeToElement(new { value = new { type, description = "Test field value.", required = true, nullable = false } });
         var content = ModelFixture.Json($$"""{"value":{{value}}}""");
         await Assert.That(EntitySchemaRules.ValidEntity(fields, content)).IsEqualTo(valid);
     }
@@ -48,7 +48,7 @@ public sealed class SchemaBoundaryTests
     [Arguments(true, true)]
     public async Task RequiredAndNullableHaveIndependentTruthTables(bool required, bool nullable)
     {
-        var fields = JsonSerializer.SerializeToElement(new { value = new { type = "string", required, nullable } });
+        var fields = JsonSerializer.SerializeToElement(new { value = new { type = "string", description = "Test field value.", required, nullable } });
         await Assert.That(EntitySchemaRules.ValidEntity(fields, ModelFixture.Json("{}"))).IsEqualTo(!required);
         await Assert.That(EntitySchemaRules.ValidEntity(fields, ModelFixture.Json("{\"value\":null}"))).IsEqualTo(nullable);
         await Assert.That(EntitySchemaRules.ValidEntity(fields, ModelFixture.Json("{\"value\":\"text\"}"))).IsTrue();

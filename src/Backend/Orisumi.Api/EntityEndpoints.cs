@@ -105,7 +105,7 @@ internal static class EntityEndpoints
 
     private static IResult Page(IReadOnlyList<EntityVersion> versions, int limit, Func<EntityVersion, string> cursor) =>
         Results.Json(new { versions = versions.Take(limit).Select(VersionJson.Saved), next = versions.Count > limit ? cursor(versions[limit - 1]) : null });
-    private static string? Parameter(HttpRequest request, string name)
+    internal static string? Parameter(HttpRequest request, string name)
     {
         if (!request.Query.TryGetValue(name, out var values)) return null;
         if (values.Count != 1 || values[0]!.Contains('\0')) throw new JsonException($"Invalid parameter {name}.");
@@ -119,7 +119,7 @@ internal static class EntityEndpoints
             throw new JsonException("limit must be between 1 and 1000.");
         return limit;
     }
-    private static Guid Id(string value) => Guid.TryParseExact(value, "D", out var id) ? id : throw new JsonException("ID must be a UUID.");
+    internal static Guid Id(string value) => Guid.TryParseExact(value, "D", out var id) ? id : throw new JsonException("ID must be a UUID.");
     private static string Encode(string kind, string value) => Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(kind + "|" + value));
     private static string Decode(string cursor, string kind)
     {

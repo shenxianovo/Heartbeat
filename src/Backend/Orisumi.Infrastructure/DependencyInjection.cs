@@ -20,6 +20,8 @@ public static class DependencyInjection
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<IEntityStore, PostgresEntityStore>();
         services.AddScoped<EntityService>();
+        services.AddSingleton<ObservationDraftCache>();
+        services.AddScoped<ObservationDraftService>();
         return services;
     }
 }

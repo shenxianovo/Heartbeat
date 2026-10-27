@@ -38,7 +38,7 @@ internal sealed class ForegroundStore(ObserverClient sdk, EntityId observerId, F
         var content = local.Reference(capture.Content.Id);
         var observer = local.Reference(observerId);
         local.Draft(capture.ObservationId, new Observation(observer, content, null, capture.StartAt, capture.EndAt, capture.TimeZone),
-            strategy: SubmissionStrategy.OnCompletion);
+            strategy: SubmissionStrategy.OnCompletion, publishDraft: true);
     }
 
     internal static BusinessContent ApplicationContent(LocalApplication application) =>

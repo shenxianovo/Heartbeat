@@ -26,6 +26,8 @@ public static partial class EntitySchemaRules
     private static string? DefinitionViolation(JsonElement value, bool field)
     {
         if (!UniqueProperties(value)) return "SCHEMA-12";
+        if (!value.TryGetProperty("description", out var description) || description.ValueKind != JsonValueKind.String
+            || string.IsNullOrWhiteSpace(description.GetString())) return "SCHEMA-10";
         if (!value.TryGetProperty("type", out var type) || type.ValueKind != JsonValueKind.String
             || !value.TryGetProperty("nullable", out var nullable)
             || nullable.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) return "SCHEMA-10";
@@ -33,7 +35,7 @@ public static partial class EntitySchemaRules
             || field && required.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) return "SCHEMA-10";
         var kind = type.GetString();
         if (kind is not ("string" or "boolean" or "integer" or "number" or "reference" or "object" or "array")) return "SCHEMA-12";
-        if (value.EnumerateObject().Any(p => p.Name is not ("type" or "nullable" or "required" or "fields" or "items"))) return "SCHEMA-12";
+        if (value.EnumerateObject().Any(p => p.Name is not ("type" or "description" or "nullable" or "required" or "fields" or "items"))) return "SCHEMA-12";
         if ((kind == "object") != value.TryGetProperty("fields", out var fields)
             || (kind == "array") != value.TryGetProperty("items", out var items)) return "SCHEMA-14";
         return kind switch

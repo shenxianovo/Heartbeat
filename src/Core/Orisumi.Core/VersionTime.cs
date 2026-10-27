@@ -10,11 +10,12 @@ public static class VersionTime
     public static string Format(DateTimeOffset value) =>
         Normalize(value).ToString("yyyy-MM-dd'T'HH:mm:ss.ffffff'Z'", CultureInfo.InvariantCulture);
 
+    public static Observation Normalize(Observation observation) => observation with
+    {
+        StartAt = observation.StartAt is { } start ? Normalize(start) : null,
+        EndAt = observation.EndAt is { } end ? Normalize(end) : null,
+    };
+
     public static VersionSubmission Normalize(VersionSubmission version) => version.Content is Observation observation
-        ? version with { Content = observation with
-        {
-            StartAt = observation.StartAt is { } start ? Normalize(start) : null,
-            EndAt = observation.EndAt is { } end ? Normalize(end) : null,
-        } }
-        : version;
+        ? version with { Content = Normalize(observation) } : version;
 }

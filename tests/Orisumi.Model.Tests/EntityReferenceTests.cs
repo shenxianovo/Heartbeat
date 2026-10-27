@@ -12,11 +12,11 @@ public sealed class EntityReferenceTests
         using var f = new ModelFixture();
         var target = await f.Schema("targets");
         var schema = await f.Schema("nested", """
-            {"direct":{"type":"reference","required":true,"nullable":false},
-             "a/b~c":{"type":"array","required":true,"nullable":false,"items":{"type":"reference","nullable":true}},
-             "objects":{"type":"array","required":true,"nullable":false,"items":{"type":"object","nullable":false,"fields":{
-                "ref":{"type":"reference","required":true,"nullable":false},
-                "text":{"type":"string","required":true,"nullable":false}}}}}
+            {"direct":{"type":"reference","description":"Test field value.","required":true,"nullable":false},
+             "a/b~c":{"type":"array","description":"Test field value.","required":true,"nullable":false,"items":{"type":"reference","description":"Test field value.","nullable":true}},
+             "objects":{"type":"array","description":"Test field value.","required":true,"nullable":false,"items":{"type":"object","description":"Test field value.","nullable":false,"fields":{
+                "ref":{"type":"reference","description":"Test field value.","required":true,"nullable":false},
+                "text":{"type":"string","description":"Test field value.","required":true,"nullable":false}}}}}
             """);
         var business = await f.Business(schema, $$"""
             {"direct":"{{target.VersionId.Value}}","a/b~c":[null,"{{target.VersionId.Value}}"],
@@ -45,12 +45,12 @@ public sealed class EntityReferenceTests
     {
         using var f = new ModelFixture();
         var schema = await f.Schema(fields: """
-            {"direct":{"type":"reference","required":false,"nullable":true},
-             "object":{"type":"object","required":false,"nullable":false,"fields":{
-                "target":{"type":"reference","required":true,"nullable":false}}},
-             "array":{"type":"array","required":false,"nullable":false,"items":{"type":"reference","nullable":false}},
-             "array-object":{"type":"array","required":false,"nullable":false,"items":{"type":"object","nullable":false,"fields":{
-                "target":{"type":"reference","required":true,"nullable":false}}}}}
+            {"direct":{"type":"reference","description":"Test field value.","required":false,"nullable":true},
+             "object":{"type":"object","description":"Test field value.","required":false,"nullable":false,"fields":{
+                "target":{"type":"reference","description":"Test field value.","required":true,"nullable":false}}},
+             "array":{"type":"array","description":"Test field value.","required":false,"nullable":false,"items":{"type":"reference","description":"Test field value.","nullable":false}},
+             "array-object":{"type":"array","description":"Test field value.","required":false,"nullable":false,"items":{"type":"object","description":"Test field value.","nullable":false,"fields":{
+                "target":{"type":"reference","description":"Test field value.","required":true,"nullable":false}}}}}
             """);
         foreach (var id in new[] { Guid.Empty.ToString(), Guid.NewGuid().ToString(), "019e1bbb-ec00-7000-0000-000000000001", "not-a-uuid" })
         {

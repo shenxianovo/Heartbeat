@@ -13,7 +13,7 @@ public sealed class SchemaTests
         var schema = await f.Schema();
         var old = await f.Business(schema);
         var nextSchema = await f.Save(Next(schema, new EntitySchema("Required title", "Title", "items",
-            Json("""{"title":{"type":"string","required":true,"nullable":false}}"""))));
+            Json("""{"title":{"type":"string","description":"Test field value.","required":true,"nullable":false}}"""))));
         await f.Business(schema);
         await Reject(() => f.Business(nextSchema), "SCHEMA-11");
         var updated = await f.Save(Next(old, new BusinessContent(Json("""{"title":"new"}"""))) with { SchemaVersionId = nextSchema.VersionId });
@@ -74,20 +74,20 @@ public sealed class SchemaTests
 
     // SCHEMA-7, SCHEMA-10, SCHEMA-12, SCHEMA-14
     [Test]
-    [Arguments("{\"id\":{\"type\":\"string\",\"required\":true,\"nullable\":false}}", "SCHEMA-7")]
-    [Arguments("{\"x\":{\"required\":true,\"nullable\":false}}", "SCHEMA-10")]
-    [Arguments("{\"x\":{\"type\":\"string\",\"nullable\":false}}", "SCHEMA-10")]
-    [Arguments("{\"x\":{\"type\":\"string\",\"required\":true}}", "SCHEMA-10")]
-    [Arguments("{\"x\":{\"type\":\"string\",\"required\":true,\"nullable\":false,\"default\":\"x\"}}", "SCHEMA-12")]
-    [Arguments("{\"x\":{\"type\":\"object\",\"required\":true,\"nullable\":false}}", "SCHEMA-14")]
-    [Arguments("{\"x\":{\"type\":\"array\",\"required\":true,\"nullable\":false}}", "SCHEMA-14")]
-    [Arguments("{\"x\":{\"type\":\"string\",\"required\":true,\"nullable\":false,\"fields\":{}}}", "SCHEMA-14")]
-    [Arguments("{\"x\":{\"type\":\"array\",\"required\":true,\"nullable\":false,\"items\":{\"type\":\"string\",\"required\":false,\"nullable\":false}}}", "SCHEMA-10")]
+    [Arguments("{\"id\":{\"type\":\"string\",\"description\":\"Test field value.\",\"required\":true,\"nullable\":false}}", "SCHEMA-7")]
+    [Arguments("{\"x\":{\"description\":\"Test field value.\",\"required\":true,\"nullable\":false}}", "SCHEMA-10")]
+    [Arguments("{\"x\":{\"type\":\"string\",\"description\":\"Test field value.\",\"nullable\":false}}", "SCHEMA-10")]
+    [Arguments("{\"x\":{\"type\":\"string\",\"description\":\"Test field value.\",\"required\":true}}", "SCHEMA-10")]
+    [Arguments("{\"x\":{\"type\":\"string\",\"description\":\"Test field value.\",\"required\":true,\"nullable\":false,\"default\":\"x\"}}", "SCHEMA-12")]
+    [Arguments("{\"x\":{\"type\":\"object\",\"description\":\"Test field value.\",\"required\":true,\"nullable\":false}}", "SCHEMA-14")]
+    [Arguments("{\"x\":{\"type\":\"array\",\"description\":\"Test field value.\",\"required\":true,\"nullable\":false}}", "SCHEMA-14")]
+    [Arguments("{\"x\":{\"type\":\"string\",\"description\":\"Test field value.\",\"required\":true,\"nullable\":false,\"fields\":{}}}", "SCHEMA-14")]
+    [Arguments("{\"x\":{\"type\":\"array\",\"description\":\"Test field value.\",\"required\":true,\"nullable\":false,\"items\":{\"type\":\"string\",\"description\":\"Test field value.\",\"required\":false,\"nullable\":false}}}", "SCHEMA-10")]
     public async Task MalformedDeclarationsAreRejectedBeforeSaving(string fields, string rule)
     {
         using var f = new ModelFixture();
         await Reject(() => f.Schema(fields: fields), rule);
-        await f.Schema(fields: """{"object":{"type":"object","required":true,"nullable":false,"fields":{"id":{"type":"string","required":false,"nullable":true}}}}""");
+        await f.Schema(fields: """{"object":{"type":"object","description":"Test field value.","required":true,"nullable":false,"fields":{"id":{"type":"string","description":"Test field value.","required":false,"nullable":true}}}}""");
     }
 
 
@@ -97,9 +97,9 @@ public sealed class SchemaTests
     {
         using var f = new ModelFixture();
         var schema = await f.Schema(fields: """
-            {"optional":{"type":"string","required":false,"nullable":true},
-             "list":{"type":"array","required":true,"nullable":true,"items":{"type":"object","nullable":false,
-                 "fields":{"value":{"type":"integer","required":true,"nullable":true}}}}}
+            {"optional":{"type":"string","description":"Test field value.","required":false,"nullable":true},
+             "list":{"type":"array","description":"Test field value.","required":true,"nullable":true,"items":{"type":"object","description":"Test field value.","nullable":false,
+                 "fields":{"value":{"type":"integer","description":"Test field value.","required":true,"nullable":true}}}}}
             """);
         var omitted = await f.Business(schema, """{"list":null}""");
         var withNull = await f.Business(schema, """{"optional":null,"list":[{"value":null},{"value":1e100}]}""");
@@ -126,7 +126,7 @@ public sealed class SchemaTests
     {
         using var f = new ModelFixture();
         EntityVersion schema;
-        using (var document = System.Text.Json.JsonDocument.Parse("""{"n":{"type":"number","required":true,"nullable":false},"s":{"type":"string","required":false,"nullable":true}}"""))
+        using (var document = System.Text.Json.JsonDocument.Parse("""{"n":{"type":"number","description":"Test field value.","required":true,"nullable":false},"s":{"type":"string","description":"Test field value.","required":false,"nullable":true}}"""))
             schema = await f.Save(New(new EntitySchema("Item", "Item", "items", document.RootElement)));
         EntityVersion business;
         using (var document = System.Text.Json.JsonDocument.Parse("""{"n":1,"s":"x"}"""))

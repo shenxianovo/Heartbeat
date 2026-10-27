@@ -27,7 +27,7 @@ public sealed class EntityApiTests
         await using var database = await DatabaseFixture.CreateAsync();
         await using var factory = new OrisumiApiFactory(database.ConnectionString);
         using var http = factory.CreateClient();
-        var schema = Schema(fields: """{"name":{"type":"string","required":true,"nullable":false}}""");
+        var schema = Schema(fields: """{"name":{"type":"string","description":"Test field value.","required":true,"nullable":false}}""");
         var first = Business(schema, """{"name":"first"}""");
         var second = first with { VersionId = VersionId.New(), PreviousVersionId = first.VersionId };
         using var submitted = await Submit(http, schema, first, second);

@@ -19,14 +19,14 @@ public sealed class ReferrerApiTests
         var target = Business(schema);
         var targetNext = target with { VersionId = VersionId.New(), PreviousVersionId = target.VersionId };
         var references = Schema("links", """
-            {"nested":{"type":"object","required":true,"nullable":false,"fields":{
-                "a~/VersionId":{"type":"reference","required":true,"nullable":false}}},
-             "links":{"type":"array","required":true,"nullable":false,"items":{
-                "type":"object","nullable":false,"fields":{
-                    "targetVersionIds":{"type":"array","required":true,"nullable":false,
-                        "items":{"type":"reference","nullable":true}}}}},
-             "optionalVersionId":{"type":"reference","required":false,"nullable":true},
-             "text":{"type":"string","required":true,"nullable":false}}
+            {"nested":{"type":"object","description":"Test field value.","required":true,"nullable":false,"fields":{
+                "a~/VersionId":{"type":"reference","description":"Test field value.","required":true,"nullable":false}}},
+             "links":{"type":"array","description":"Test field value.","required":true,"nullable":false,"items":{
+                "type":"object","description":"Test field value.","nullable":false,"fields":{
+                    "targetVersionIds":{"type":"array","description":"Test field value.","required":true,"nullable":false,
+                        "items":{"type":"reference","description":"Test field value.","nullable":true}}}}},
+             "optionalVersionId":{"type":"reference","description":"Test field value.","required":false,"nullable":true},
+             "text":{"type":"string","description":"Test field value.","required":true,"nullable":false}}
             """);
         var link = Business(references, $$"""
             {"nested":{"a~/VersionId":"{{target.VersionId.Value}}"},

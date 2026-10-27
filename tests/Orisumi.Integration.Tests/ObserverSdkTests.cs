@@ -170,6 +170,10 @@ public sealed class ObserverSdkTests
         await delivery.SendAsync(CancellationToken.None);
         using var active = await http.GetAsync($"/entities/{capture.ObservationId.Value}");
         await Assert.That(active.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
+        using var activeContent = await http.GetAsync($"/entities/{capture.Content.Id.Value}");
+        await Assert.That(activeContent.StatusCode).IsEqualTo(HttpStatusCode.OK);
+        using var draft = await http.GetAsync($"/observation-drafts/{capture.ObservationId.Value}");
+        await Assert.That(draft.StatusCode).IsEqualTo(HttpStatusCode.OK);
         store.FinishActive();
         await delivery.SendAsync(CancellationToken.None);
         using var ended = await http.GetAsync($"/entities/{capture.ObservationId.Value}");
@@ -224,7 +228,7 @@ public sealed class ObserverSdkTests
         using var handler = new ScriptedBackend();
         using var http = new HttpClient(handler) { BaseAddress = new("http://localhost/") };
         using var sdk = new ObserverClient(directory.Path, EntityId.New(), http);
-        var schema = EntityApiTests.Schema(fields: """{"name":{"type":"string","required":true,"nullable":false}}""");
+        var schema = EntityApiTests.Schema(fields: """{"name":{"type":"string","description":"Test field value.","required":true,"nullable":false}}""");
         var entity = EntityId.New();
         var original = sdk.Execute(local =>
         {
@@ -462,7 +466,7 @@ public sealed class ObserverSdkTests
         using var http = factory.CreateClient();
         using var directory = new SdkDirectory();
         var owner = EntityId.New();
-        var schema = EntityApiTests.Schema(fields: """{"programVersion":{"type":"string","required":true,"nullable":false}}""");
+        var schema = EntityApiTests.Schema(fields: """{"programVersion":{"type":"string","description":"Test field value.","required":true,"nullable":false}}""");
         VersionId schemaVersion, first;
         using (var sdk = new ObserverClient(directory.Path, owner, http))
         {

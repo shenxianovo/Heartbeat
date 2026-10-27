@@ -29,13 +29,7 @@ public static class VersionRules
                     throw new ModelViolationException(contentRule, "Content does not match its Schema version.");
                 break;
             case Observation observation:
-                Require(IsUuid7(observation.ObserverVersionId.Value) && IsUuid7(observation.ContentVersionId.Value),
-                    "VERSION-12", "Observer and content must be VersionIds.");
-                Require(observation.InputSetVersionId is not { } input || IsUuid7(input.Value), "VERSION-12", "Invalid InputSet VersionId.");
-                Require(observation.StartAt is null || observation.EndAt is null || observation.StartAt <= observation.EndAt,
-                    "OBSERVATION-6", "startAt must not be later than endAt.");
-                Require(observation.TimeZone is null || TimeZoneInfo.TryConvertIanaIdToWindowsId(observation.TimeZone, out _),
-                    "OBSERVATION-9", "timeZone must be an IANA time zone or null.");
+                ValidateObservation(observation);
                 break;
             case InputSet inputs:
                 Require(inputs.Members.Length > 0, "INPUTSET-2", "An InputSet must not be empty.");
@@ -45,6 +39,17 @@ public static class VersionRules
             default:
                 throw new ModelViolationException("VERSION-3", "Missing or unknown content category.");
         }
+    }
+
+    public static void ValidateObservation(Observation observation)
+    {
+        Require(IsUuid7(observation.ObserverVersionId.Value) && IsUuid7(observation.ContentVersionId.Value),
+            "VERSION-12", "Observer and content must be VersionIds.");
+        Require(observation.InputSetVersionId is not { } input || IsUuid7(input.Value), "VERSION-12", "Invalid InputSet VersionId.");
+        Require(observation.StartAt is null || observation.EndAt is null || observation.StartAt <= observation.EndAt,
+            "OBSERVATION-6", "startAt must not be later than endAt.");
+        Require(observation.TimeZone is null || TimeZoneInfo.TryConvertIanaIdToWindowsId(observation.TimeZone, out _),
+            "OBSERVATION-9", "timeZone must be an IANA time zone or null.");
     }
 
     public static IReadOnlyList<VersionReference> GetReferences(VersionSubmission version, EntitySchema? schema = null)

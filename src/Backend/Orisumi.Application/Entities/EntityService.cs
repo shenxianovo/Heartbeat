@@ -2,29 +2,34 @@ using Orisumi.Core;
 
 namespace Orisumi.Application.Entities;
 
-public sealed class EntityService(IEntityStore store, TimeProvider timeProvider)
+public sealed class EntityService(IEntityStore store, TimeProvider timeProvider, ObservationDraftCache? drafts = null)
 {
     // VERSION-13: rejection commits the prefix; an unexpected failure rolls back the whole operation.
-    public Task<SubmissionResult> SubmitAsync(IEnumerable<VersionSubmission> versions,
-        CancellationToken cancellationToken = default) => store.ExecuteAsync(async (transaction, token) =>
+    public async Task<SubmissionResult> SubmitAsync(IEnumerable<VersionSubmission> versions,
+        CancellationToken cancellationToken = default)
     {
-        var saved = new List<EntityVersion>();
-        foreach (var version in versions)
+        var result = await store.ExecuteAsync(async (transaction, token) =>
         {
-            await transaction.CreateSavepointAsync(token);
-            try
+            var saved = new List<EntityVersion>();
+            foreach (var version in versions)
             {
-                saved.Add(await SaveAsync(transaction, VersionTime.Normalize(version), token));
-                await transaction.ReleaseSavepointAsync(token);
+                await transaction.CreateSavepointAsync(token);
+                try
+                {
+                    saved.Add(await SaveAsync(transaction, VersionTime.Normalize(version), token));
+                    await transaction.ReleaseSavepointAsync(token);
+                }
+                catch (ModelViolationException exception)
+                {
+                    await transaction.RollbackSavepointAsync(token);
+                    return new SubmissionResult(saved, new(saved.Count, version.VersionId, exception.Rule, exception.Message));
+                }
             }
-            catch (ModelViolationException exception)
-            {
-                await transaction.RollbackSavepointAsync(token);
-                return new SubmissionResult(saved, new(saved.Count, version.VersionId, exception.Rule, exception.Message));
-            }
-        }
-        return new SubmissionResult(saved, null);
-    }, cancellationToken);
+            return new SubmissionResult(saved, null);
+        }, cancellationToken);
+        foreach (var saved in result.Saved) drafts?.RemovePredecessor(saved);
+        return result;
+    }
 
     public Task<EntityVersion?> ReadVersionAsync(VersionId id, CancellationToken cancellationToken = default) =>
         store.ExecuteAsync(async (transaction, token) =>
@@ -47,8 +52,9 @@ public sealed class EntityService(IEntityStore store, TimeProvider timeProvider)
             return await transaction.ReadCurrentAsync(id, token);
         }, cancellationToken);
 
-    public Task<bool> DeleteAsync(EntityId id, CancellationToken cancellationToken = default) =>
-        store.ExecuteAsync(async (transaction, token) =>
+    public async Task<bool> DeleteAsync(EntityId id, CancellationToken cancellationToken = default)
+    {
+        var deleted = await store.ExecuteAsync(async (transaction, token) =>
         {
             if (await transaction.IsEntityDeletedAsync(id, token)) return true;
             var current = await transaction.ReadCurrentAsync(id, token);
@@ -58,6 +64,9 @@ public sealed class EntityService(IEntityStore store, TimeProvider timeProvider)
             await transaction.DeleteAsync(id, token);
             return true;
         }, cancellationToken);
+        if (deleted) drafts?.Remove(id);
+        return deleted;
+    }
 
     public Task<IReadOnlyList<EntityVersion>> ListEntitiesAsync(EntityQuery query, string? resourceName,
         CancellationToken cancellationToken = default) => store.ExecuteAsync(async (transaction, token) =>
@@ -145,16 +154,20 @@ public sealed class EntityService(IEntityStore store, TimeProvider timeProvider)
         VersionRules.Require(previousSchema?.EntityId == schema!.EntityId, "ENTITY-3", "An entity cannot change business type.");
     }
 
-    private static async Task CheckObservationAsync(IEntityTransaction transaction, Observation observation,
+    internal static async Task CheckObservationAsync(IEntityTransaction transaction, Observation observation,
         Observation? previous, CancellationToken token)
     {
         var observer = await transaction.ReadVersionAsync(observation.ObserverVersionId, token);
         var content = await transaction.ReadVersionAsync(observation.ContentVersionId, token);
+        VersionRules.Require(observer is not null && content is not null, "ENTITY-6", "Observer and content must be saved versions.");
         VersionRules.Require(observer?.Content is BusinessContent && content?.Content is BusinessContent,
             "OBSERVATION-1", "Observer and content must be business versions.");
         if (observation.InputSetVersionId is { } inputs)
-            VersionRules.Require((await transaction.ReadVersionAsync(inputs, token))?.Content is InputSet,
-                "OBSERVATION-1", "inputSetVersionId must point to an InputSet.");
+        {
+            var input = await transaction.ReadVersionAsync(inputs, token);
+            VersionRules.Require(input is not null, "ENTITY-6", "InputSet must be saved.");
+            VersionRules.Require(input!.Content is InputSet, "OBSERVATION-1", "inputSetVersionId must point to an InputSet.");
+        }
         if (previous is null) return;
         var original = await transaction.FindVersionEntityAsync(previous.ObserverVersionId, token);
         VersionRules.Require(original == observer!.EntityId, "OBSERVATION-10", "An Observation cannot change its Observer entity.");

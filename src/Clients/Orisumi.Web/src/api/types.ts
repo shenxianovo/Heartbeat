@@ -16,6 +16,7 @@ export interface InputSet {
 }
 
 export interface FieldDefinition {
+  description: string;
   type: "string" | "boolean" | "integer" | "number" | "reference" | "object" | "array";
   required?: boolean;
   nullable?: boolean;
