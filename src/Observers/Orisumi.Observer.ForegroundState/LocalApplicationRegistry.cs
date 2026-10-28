@@ -9,10 +9,6 @@ internal sealed class LocalApplicationRegistry(string path)
     private readonly string _path = Path.GetFullPath(path);
     private readonly ConcurrentDictionary<(int, DateTimeOffset, string?), LocalApplication> _runningApplications = [];
 
-    internal static string DefaultPath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-        "Library", "Application Support", "Orisumi", "local-applications.json");
-
     internal LocalApplication Resolve(ForegroundApplicationReading reading)
     {
         var identifiers = new List<ApplicationIdentifier>();

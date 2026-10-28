@@ -53,7 +53,7 @@ internal sealed class MacCommand(RepositoryContext repository, IProcessRunner ru
     internal string Application(string configuration) =>
         Path.Combine(DerivedData, "Build", "Products", configuration, "Orisumi.app");
 
-    /// Matches the main executable of any configuration built here, not the helper inside the bundle.
+    /// Matches the main executable of any configuration built here, not Runtime or an Observer inside the bundle.
     internal string ProcessPattern =>
         System.Text.RegularExpressions.Regex.Escape(Path.Combine(DerivedData, "Build", "Products")) + "/[^/]+/Orisumi\\.app/Contents/MacOS/Orisumi( |$)";
 
@@ -67,7 +67,7 @@ internal sealed class MacCommand(RepositoryContext repository, IProcessRunner ru
         ["-project", Project, "-scheme", "Orisumi", "-configuration", configuration, "-destination", Destination,
             "-derivedDataPath", DerivedData, "-quiet", "build"];
 
-    /// This Mac's architecture; the bundled helper is published for it.
+    /// This Mac's architecture; Runtime and the bundled Observer are published for it.
     internal static string Destination =>
         $"platform=macOS,arch={(System.Runtime.InteropServices.RuntimeInformation.OSArchitecture == System.Runtime.InteropServices.Architecture.Arm64 ? "arm64" : "x86_64")}";
 
@@ -117,7 +117,7 @@ internal sealed class MacCommand(RepositoryContext repository, IProcessRunner ru
             await output.WriteLineAsync("No client from this checkout is running.");
             return 0;
         }
-        // The client handles SIGTERM like Quit: the helper ends the active period before the client exits.
+        // The client handles SIGTERM like Quit: Runtime stops the Observers before the client exits.
         foreach (var id in running) await runner.CaptureAsync("kill", ["-TERM", id], null, token);
         for (var attempt = 0; attempt < 30 && (await RunningAsync(token)).Count > 0; attempt++)
             await Task.Delay(TimeSpan.FromMilliseconds(500), token);

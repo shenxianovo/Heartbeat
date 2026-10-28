@@ -20,6 +20,7 @@
     "entity-api",
     "entity-storage",
     "---Clients---",
+    "observer-runtime",
     "device-client",
     "---Verification---",
     "verification",

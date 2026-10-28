@@ -13,7 +13,16 @@ public sealed class LocalTransaction
     internal LocalTransaction(SqliteConnection connection, SqliteTransaction transaction)
     { _connection = connection; _transaction = transaction; }
 
+    public bool IsKnownDeleted(EntityId id) => Metadata("deleted:" + id.Value) == "true";
+    public void RememberDeleted(EntityId id) => Metadata("deleted:" + id.Value, "true");
+    public bool IsKnownMissing(VersionId id) => Metadata("missing:" + id.Value) == "true";
+    public void RememberMissing(VersionId id) => Metadata("missing:" + id.Value, "true");
+
     public IReadOnlyList<LocalVersion> Versions() => Read("SELECT payload, state, strategy, freeze_order, rule, detail FROM local_versions ORDER BY sequence");
+    public IReadOnlyList<LocalVersion> CurrentVersions() => Read("""
+        SELECT v.payload, v.state, v.strategy, v.freeze_order, v.rule, v.detail
+        FROM latest l JOIN local_versions v ON v.version_id = l.version_id ORDER BY v.sequence
+        """);
     public LocalVersion? Find(VersionId id) => Read("SELECT payload, state, strategy, freeze_order, rule, detail FROM local_versions WHERE version_id = $id", ("$id", id.Value.ToString())).SingleOrDefault();
     public LocalVersion? Latest(EntityId id) => Read("""
         SELECT v.payload, v.state, v.strategy, v.freeze_order, v.rule, v.detail

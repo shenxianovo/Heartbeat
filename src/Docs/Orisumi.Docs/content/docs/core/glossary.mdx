@@ -60,7 +60,8 @@ Core 类型、Observer 和各种 Id 用英文名，其余概念用中文。Obser
 | --- | --- | --- |
 | 用户 | 拥有数据的人。在模型中是业务实体，可以作为 Observer | [OBSERVER-6](./model/observer.mdx#observer-6) |
 | 程序实例 | 独立运行、有自己 EntityId 的程序，例如前台状态 Observer 或推断 Observer | [OBSERVER-5](./model/observer.mdx#observer-5) |
-| SDK | 程序实例使用的提交组件，负责持久保存实例身份、本地保存，以及按依赖顺序发送 | [Overview · 谁决定什么](./index.mdx#responsibility) |
+| SDK | 程序实例使用的提交组件，负责持久保存实例身份、本地保存，以及按依赖顺序发送。由各语言的 SDK 库和公共的 Runtime 组成 | [Overview · 谁决定什么](./index.mdx#responsibility) |
+| Runtime | 设备端客户端中运行 Observer 进程的公共组件，完成 SDK 的本地保存和发送 | [Clients · Runtime](../clients/runtime.mdx) |
 | 写入方 | 向后端提交版本的软件：Observer 的业务代码、SDK 和用户使用的工具 | [Conventions · 规则的格式](./conventions.mdx#rules) |
 | 读取方 | 读取和追溯数据的软件，例如 Agent 和 Web 控制台 | [Conventions · 规则的格式](./conventions.mdx#rules) |
 | 后端 | 校验并保存版本的服务 | [Overview · 谁决定什么](./index.mdx#responsibility) |

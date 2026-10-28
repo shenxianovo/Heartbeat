@@ -159,11 +159,11 @@ public sealed class ObserverSdkTests
         using var directory = new SdkDirectory();
         var owner = EntityId.New();
         using var sdk = new ObserverClient(directory.Path, owner, http);
-        var registration = await ForegroundRegistration.RegisterAsync(sdk, owner);
+        var registration = await ForegroundRegistration.RegisterAsync(new LocalObserverSession(sdk), owner);
         var registry = new LocalApplicationRegistry(directory.Path + ".apps");
         var application = registry.Resolve(ForegroundTimelineTests.Reading(0));
-        var store = new ForegroundStore(sdk, owner, registration);
-        var delivery = new ForegroundDelivery(sdk, registry, registration, TextWriter.Null);
+        var store = new ForegroundStore(new LocalObserverSession(sdk), owner, registration);
+        var delivery = new ForegroundTestDelivery(sdk, registry, registration, TextWriter.Null);
         var capture = ForegroundCapture.Create(owner, application, ForegroundTimelineTests.Reading(0));
         store.Checkpoint(capture, null);
         store.Checkpoint(capture.Through(ForegroundTimelineTests.Reading(1).ObservedAt), null);
@@ -192,11 +192,11 @@ public sealed class ObserverSdkTests
         using var directory = new SdkDirectory();
         var owner = EntityId.New();
         using var sdk = new ObserverClient(directory.Path, owner, http);
-        var registration = await ForegroundRegistration.RegisterAsync(sdk, owner);
+        var registration = await ForegroundRegistration.RegisterAsync(new LocalObserverSession(sdk), owner);
         var registry = new LocalApplicationRegistry(directory.Path + ".apps");
         var application = registry.Resolve(ForegroundTimelineTests.Reading(0));
-        var store = new ForegroundStore(sdk, owner, registration);
-        var delivery = new ForegroundDelivery(sdk, registry, registration, TextWriter.Null);
+        var store = new ForegroundStore(new LocalObserverSession(sdk), owner, registration);
+        var delivery = new ForegroundTestDelivery(sdk, registry, registration, TextWriter.Null);
         var capture = ForegroundCapture.Create(owner, application, ForegroundTimelineTests.Reading(0));
         store.Checkpoint(capture, null);
         store.FinishActive();
@@ -500,17 +500,17 @@ public sealed class ObserverSdkTests
         var firstOwner = EntityId.New(); var secondOwner = EntityId.New();
         using var first = new ObserverClient(firstDirectory.Path, firstOwner, http);
         using var second = new ObserverClient(secondDirectory.Path, secondOwner, http);
-        var firstRegistration = await ForegroundRegistration.RegisterAsync(first, firstOwner);
+        var firstRegistration = await ForegroundRegistration.RegisterAsync(new LocalObserverSession(first), firstOwner);
         await first.SendAsync();
-        var secondRegistration = await ForegroundRegistration.RegisterAsync(second, secondOwner);
+        var secondRegistration = await ForegroundRegistration.RegisterAsync(new LocalObserverSession(second), secondOwner);
         await second.SendAsync();
         var firstRegistry = new LocalApplicationRegistry(firstDirectory.Path + ".apps");
         var firstApplication = firstRegistry.Resolve(ForegroundTimelineTests.Reading(0));
         var secondRegistry = new LocalApplicationRegistry(firstDirectory.Path + ".apps");
         var secondApplication = secondRegistry.Resolve(ForegroundTimelineTests.Reading(0));
         await Assert.That(secondApplication.Id).IsEqualTo(firstApplication.Id);
-        var firstStore = new ForegroundStore(first, firstOwner, firstRegistration);
-        var secondStore = new ForegroundStore(second, secondOwner, secondRegistration);
+        var firstStore = new ForegroundStore(new LocalObserverSession(first), firstOwner, firstRegistration);
+        var secondStore = new ForegroundStore(new LocalObserverSession(second), secondOwner, secondRegistration);
         var firstCapture = ForegroundCapture.Create(firstOwner, firstApplication, ForegroundTimelineTests.Reading(0));
         var secondCapture = ForegroundCapture.Create(secondOwner, secondApplication, ForegroundTimelineTests.Reading(0));
         firstStore.Checkpoint(firstCapture, null); firstStore.FinishActive();
@@ -518,8 +518,8 @@ public sealed class ObserverSdkTests
         var savedApplication = first.Execute(local => local.Latest(firstApplication.Id)!.Version.VersionId);
         var competing = second.Execute(local => local.Latest(secondApplication.Id)!.Version.VersionId);
         await Assert.That(competing).IsNotEqualTo(savedApplication);
-        await new ForegroundDelivery(first, firstRegistry, firstRegistration, TextWriter.Null).SendAsync(CancellationToken.None);
-        await new ForegroundDelivery(second, secondRegistry, secondRegistration, TextWriter.Null).SendAsync(CancellationToken.None);
+        await new ForegroundTestDelivery(first, firstRegistry, firstRegistration, TextWriter.Null).SendAsync(CancellationToken.None);
+        await new ForegroundTestDelivery(second, secondRegistry, secondRegistration, TextWriter.Null).SendAsync(CancellationToken.None);
         await Assert.That(second.Status.Rejection).IsNull();
         await Assert.That(second.Status.Pending).IsEqualTo(0);
         using var chain = await http.GetAsync($"/entities/{firstApplication.Id.Value}/versions");
@@ -541,11 +541,11 @@ public sealed class ObserverSdkTests
         using var directory = new SdkDirectory();
         var owner = EntityId.New();
         using var sdk = new ObserverClient(directory.Path, owner, http);
-        var registration = await ForegroundRegistration.RegisterAsync(sdk, owner);
+        var registration = await ForegroundRegistration.RegisterAsync(new LocalObserverSession(sdk), owner);
         await sdk.SendAsync();
         var registry = new LocalApplicationRegistry(directory.Path + ".apps");
         var capture = ForegroundCapture.Create(owner, registry.Resolve(ForegroundTimelineTests.Reading(0)), ForegroundTimelineTests.Reading(0));
-        var store = new ForegroundStore(sdk, owner, registration);
+        var store = new ForegroundStore(new LocalObserverSession(sdk), owner, registration);
         store.Checkpoint(capture, null);
         // OBSERVATION-6: an invalid interval exercises an unhandled business rejection.
         sdk.Execute(local =>
@@ -555,7 +555,7 @@ public sealed class ObserverSdkTests
             local.Complete(capture.ObservationId);
         });
         using var progress = new StringWriter();
-        var delivery = new ForegroundDelivery(sdk, registry, registration, progress);
+        var delivery = new ForegroundTestDelivery(sdk, registry, registration, progress);
         await delivery.SendAsync(CancellationToken.None);
         await Assert.That(sdk.Status.Rejection!.Version.Rule).IsEqualTo("OBSERVATION-6");
         await Assert.That(progress.ToString().Contains("\"rule\":\"OBSERVATION-6\"", StringComparison.Ordinal)).IsTrue();

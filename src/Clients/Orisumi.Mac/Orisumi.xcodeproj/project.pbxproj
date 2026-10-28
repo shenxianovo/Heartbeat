@@ -60,7 +60,7 @@
 				A60000000000000000000001 /* Sources */,
 				A30000000000000000000001 /* Frameworks */,
 				A60000000000000000000002 /* Resources */,
-				A60000000000000000000003 /* Publish Helper */,
+				A60000000000000000000003 /* Publish Runtime */,
 			);
 			buildRules = (
 			);
@@ -120,7 +120,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		A60000000000000000000003 /* Publish Helper */ = {
+		A60000000000000000000003 /* Publish Runtime */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
@@ -130,14 +130,14 @@
 			);
 			inputPaths = (
 			);
-			name = "Publish Helper";
+			name = "Publish Runtime";
 			outputFileListPaths = (
 			);
 			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "\"$SRCROOT/Scripts/publish-helper.sh\"\n";
+			shellScript = "\"$SRCROOT/Scripts/publish-runtime.sh\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

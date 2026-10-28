@@ -2,156 +2,165 @@ import AppKit
 import OrisumiClient
 import SwiftUI
 
-/// The main window. The app shows in the Dock only while it is open.
+/// The main window: the registered Observers in the sidebar, the selected one on the right.
+/// The app shows in the Dock only while it is open.
 struct MainView: View {
     static let windowId = "main"
-    let model: ClientModel
+    let model: RuntimeModel
     @Bindable var navigation: Navigation
+    @State private var adding = false
 
     var body: some View {
-        TabView(selection: $navigation.page) {
-            Tab("状态", systemImage: "waveform.path.ecg", value: .status) {
-                StatusPage(model: model)
-            }
-            Tab("设置", systemImage: "gearshape", value: .settings) {
+        NavigationSplitView {
+            Sidebar(model: model, selection: $navigation.selection, adding: $adding)
+                .navigationSplitViewColumnWidth(min: 210, ideal: 230, max: 300)
+        } detail: {
+            switch navigation.selection {
+            case .observer(let packageId):
+                if let observer = model.observer(packageId) {
+                    ObserverDetail(model: model, observer: observer)
+                } else {
+                    ContentUnavailableView("没有这个 Observer", systemImage: "questionmark.circle",
+                                           description: Text("它已卸载，本机也没有待发送的数据。"))
+                }
+            case .settings:
                 SettingsPage(model: model)
+            case nil:
+                ContentUnavailableView {
+                    Label("还没有 Observer", systemImage: "eye")
+                } description: {
+                    Text("安装一个 Observer，它会直接开始记录。")
+                } actions: {
+                    Button("添加 Observer…") { adding = true }
+                }
             }
         }
-        .frame(minWidth: 820, minHeight: 680)
+        .sheet(isPresented: $adding) { AddObserverSheet(model: model) }
+        .frame(minWidth: 980, minHeight: 680)
         .onAppear {
+            navigation.windowVisible = true
+            selectFirst()
+            Task {
+                await model.refresh()
+                await model.refreshCatalog()
+            }
             NSApp.setActivationPolicy(.regular)
             NSApp.activate()
         }
-        .onDisappear { NSApp.setActivationPolicy(.accessory) }
+        .onDisappear {
+            navigation.windowVisible = false
+            NSApp.setActivationPolicy(.accessory)
+        }
+        .onChange(of: model.observers.map(\.packageId)) { selectFirst() }
+    }
+
+    private func selectFirst() {
+        guard navigation.selection == nil, let first = model.installed.first ?? model.uninstalled.first else { return }
+        navigation.selection = .observer(first.packageId)
     }
 }
 
-/// The status page keeps its header in place; today's applications and the period list scroll inside their own boxes.
-struct StatusPage: View {
-    let model: ClientModel
-    @Environment(\.openURL) private var openURL
-    /// The application picked in the legend: the chart highlights it and the period list shows only it.
-    @State private var selected: String?
-    /// The application under the pointer in the legend.
-    @State private var hoveredApp: String?
+struct Sidebar: View {
+    let model: RuntimeModel
+    @Binding var selection: Navigation.Item?
+    @Binding var adding: Bool
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            let now = context.date
-            let day = Today.interval(containing: now)
-            let periods = model.today(now: now)
-            let usage = Today.usage(periods, day: day, now: now)
-            let shown = selected.map { key in periods.filter { $0.applicationKey == key } } ?? periods
-            VStack(alignment: .leading, spacing: 8) {
-                Card {
-                    header(total: usage.reduce(0) { $0 + $1.duration })
-                    if let rejection = model.delivery?.rejection {
-                        Label("发送已暂停：\(rejection.rule)，\(rejection.detail)", systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.red)
-                            .padding(.top, 8)
-                    }
-                    if let error = model.delivery?.error {
-                        Label("发送已暂停：\(error)", systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.red)
-                            .padding(.top, 8)
+        List(selection: $selection) {
+            if !model.installed.isEmpty {
+                Section("Observer") {
+                    ForEach(model.installed) { observer in
+                        ObserverRow(observer: observer).tag(Navigation.Item.observer(observer.packageId))
                     }
                 }
-                .padding(.bottom, 8)
-
-                SectionTitle("今天", detail: model.readError ?? (usage.isEmpty ? nil : "\(usage.count) 个应用"))
-                Card {
-                    if usage.isEmpty {
-                        Text(model.state == .running ? "今天还没有前台时段" : "采集未运行，今天还没有前台时段")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        HStack(alignment: .top, spacing: 20) {
-                            TodayChart(periods: periods, usage: usage, day: day, now: now, highlighted: hoveredApp)
-                            UsageLegend(usage: usage, selected: $selected, hovered: $hoveredApp)
-                                .frame(width: 300, height: TodayChart.height)
-                        }
-                    }
-                }
-                .padding(.bottom, 8)
-
-                HStack(spacing: 8) {
-                    SectionTitle("时段", detail: shown.isEmpty ? nil : "\(shown.count) 个")
-                    if let selected {
-                        Button {
-                            self.selected = nil
-                        } label: {
-                            Label("只看 \(usage.first { $0.id == selected }?.name ?? "未知应用")", systemImage: "xmark.circle.fill")
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .help("显示全部应用的时段")
-                    }
-                }
-                Card(padding: 0) {
-                    ScrollView {
-                        LazyVStack(spacing: 0) {
-                            ForEach(shown) { period in
-                                PeriodRow(period: period, now: now)
-                                if period.id != shown.last?.id { Divider().padding(.leading, 40) }
-                            }
-                        }
-                    }
-                    .defaultScrollAnchor(.top)
-                    .scrollIndicators(.visible)
-                    .frame(minHeight: PeriodRow.height * 4, maxHeight: .infinity)
-                }
-                Text("其他日期的记录在 Web 控制台中查看。")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 4)
             }
-            .padding(20)
+            if !model.uninstalled.isEmpty {
+                Section("已卸载") {
+                    ForEach(model.uninstalled) { observer in
+                        ObserverRow(observer: observer).tag(Navigation.Item.observer(observer.packageId))
+                    }
+                }
+            }
+            Section {
+                Label("设置", systemImage: "gearshape").tag(Navigation.Item.settings)
+            }
         }
-        .toolbar {
-            ToolbarItem {
-                Button("打开 Web 控制台", systemImage: "safari") { openURL(Preferences.webConsole) }
-                    .help("打开 Web 控制台")
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if let problem = runtimeProblem {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label(problem, systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.red)
+                        .font(.callout)
+                    if case .failed = model.state {
+                        Button("重新启动 Runtime") { model.retryRuntime() }.controlSize(.small)
+                    }
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .padding(.horizontal, 10)
+                .padding(.top, 6)
             }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            Button { adding = true } label: {
+                Label("添加 Observer…", systemImage: "plus")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.borderless)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
         }
     }
 
-    private func header(total: TimeInterval) -> some View {
-        HStack(spacing: 14) {
-            Image("Mascot")
-                .resizable()
-                .frame(width: 56, height: 56)
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Image(systemName: "circle.fill").foregroundStyle(stateColor).imageScale(.small)
-                    Text(StateText.title(model.state)).font(.headline)
-                    if total > 0 {
-                        Text("· 今天 \(Format.duration(total))").font(.headline).foregroundStyle(.secondary)
-                    }
-                }
-                Text(deliveryText)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
-            Spacer()
-            switch model.state {
-            case .running: Button("暂停采集") { Task { await model.pause() } }
-            case .paused: Button("继续采集") { model.start() }.buttonStyle(.borderedProminent)
-            case .failed: Button("重新启动") { model.start() }.buttonStyle(.borderedProminent)
-            }
-        }
-    }
-
-    private var deliveryText: String {
-        guard let delivery = model.delivery else { return Preferences.backend.absoluteString }
-        return "待发送 \(delivery.pending) · 已保存 \(delivery.saved) · \(Preferences.backend.absoluteString)"
-    }
-
-    private var stateColor: Color {
+    private var runtimeProblem: String? {
         switch model.state {
-        case .running: .green
-        case .paused: .secondary
-        case .failed: .red
+        case .failed, .restarting: ObserverText.runtime(model)
+        default: nil
         }
+    }
+}
+
+struct ObserverRow: View {
+    let observer: ObserverStatus
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ObserverIcon(packageId: observer.packageId, size: 20)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(observer.name)
+                Text(rowDetail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 4)
+            Circle()
+                .fill(ObserverText.color(observer))
+                .frame(width: 7, height: 7)
+                .help(ObserverText.state(observer))
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var rowDetail: String {
+        if !observer.installed, observer.delivery.pending > 0 { return "待发送 \(observer.delivery.pending)" }
+        if observer.delivery.rejection != nil { return "发送已暂停" }
+        return ObserverText.state(observer)
+    }
+}
+
+/// A symbol for each known Observer; others share a generic one.
+struct ObserverIcon: View {
+    let packageId: String
+    let size: CGFloat
+
+    var body: some View {
+        Image(systemName: packageId == ForegroundToday.packageId ? "macwindow.on.rectangle" : "dot.radiowaves.left.and.right")
+            .font(.system(size: size * 0.6, weight: .medium))
+            .foregroundStyle(.white)
+            .frame(width: size, height: size)
+            .background(packageId == ForegroundToday.packageId ? Color.blue : Color.indigo,
+                        in: RoundedRectangle(cornerRadius: size * 0.24, style: .continuous))
     }
 }
 
@@ -190,7 +199,6 @@ struct SectionTitle: View {
 struct PeriodRow: View {
     static let height: CGFloat = 34
     let period: Period
-    let now: Date
 
     var body: some View {
         HStack(spacing: 10) {
@@ -205,10 +213,10 @@ struct PeriodRow: View {
                     .foregroundStyle(.green)
             }
             Spacer()
-            Text(period.isActive ? "\(Format.time(period.startAt)) 起" : "\(Format.time(period.startAt)) – \(Format.time(period.endAt))")
+            Text("\(Format.time(period.startAt)) – \(Format.time(period.endAt))")
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
-            Text(Format.duration(from: period.startAt, to: period.isActive ? max(now, period.endAt) : period.endAt))
+            Text(Format.duration(from: period.startAt, to: period.endAt))
                 .monospacedDigit()
                 .frame(minWidth: 88, alignment: .trailing)
         }

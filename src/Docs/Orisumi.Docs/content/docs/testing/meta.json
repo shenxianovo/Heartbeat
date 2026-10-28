@@ -22,10 +22,18 @@
     "observers/sdk-local-versions",
     "observers/sdk-confirmation",
     "observers/sdk-rejections",
+    "observers/sdk-handoff",
+    "observers/sdk-languages",
     "observers/local-application-identity",
     "observers/application-period-boundaries",
     "observers/foreground-submission",
     "observers/foreground-rejections",
+    "---Clients---",
+    "clients/observer-installation",
+    "clients/observer-updates",
+    "clients/observer-lifecycle",
+    "clients/hosted-sending",
+    "clients/native-views",
     "---Reports---",
     "reports/integration"
   ]

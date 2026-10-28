@@ -5,7 +5,11 @@
   "root": true,
   "pages": [
     "index",
+    "---Platforms---",
     "web",
-    "macos"
+    "macos",
+    "---Device Hosting---",
+    "runtime",
+    "packages"
   ]
 }

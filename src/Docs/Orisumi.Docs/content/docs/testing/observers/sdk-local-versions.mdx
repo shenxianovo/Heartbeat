@@ -27,6 +27,7 @@ SDK 使用独立的 SQLite 文件，后端是记录每次请求、按需返回�
 | 写入观测草稿：重启 SDK 后再补全 | `sequence` 大于重启前的最后一次 |
 | 写入观测草稿时后端返回 `409`，`rule` 为 `VERSION-6` | SDK 停止写入这份草稿，本地草稿不变 |
 | 通知结束并发送 | 不再写入这份草稿；发送一个版本，内容是最终结果 |
+| 写入观测草稿时，Observer 的进程意外退出 | 本地草稿保留，没有被结束；Runtime 不再写入这份观测草稿；已冻结的观测内容继续发送 |
 
 ## 测试实现 [#implementation]
 
@@ -37,6 +38,7 @@ SDK 使用独立的 SQLite 文件，后端是记录每次请求、按需返回�
 - 冻结 Observation 时先冻结并发送其内容依赖：`ObserverSdkTests.FreezingObservationSendsItsDraftContentFirst`。
 - 及时提交的两次发送形成相连版本：`ObserverSdkTests.ImmediateSubmissionSendsTwoLinkedObservationVersions`。
 - 未覆盖：观测草稿的写入。SDK 尚未实现这部分。
+- 未覆盖：进程意外退出后的草稿。
 
 ## 执行结果 [#results]
 

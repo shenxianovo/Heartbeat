@@ -9,6 +9,8 @@
     <Project Path="src/Backend/Orisumi.Infrastructure/Orisumi.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/src/Observers/">
+    <Project Path="src/Observers/Orisumi.Observer.Protocol/Orisumi.Observer.Protocol.csproj" />
+    <Project Path="src/Observers/Orisumi.Observer.Runtime/Orisumi.Observer.Runtime.csproj" />
     <Project Path="src/Observers/Orisumi.Observer.Sdk/Orisumi.Observer.Sdk.csproj" />
     <Project Path="src/Observers/Orisumi.Observer.ForegroundState/Orisumi.Observer.ForegroundState.csproj" />
   </Folder>
@@ -16,6 +18,7 @@
     <Project Path="tests/Orisumi.Model.Tests/Orisumi.Model.Tests.csproj" />
     <Project Path="tests/Orisumi.Dev.Tests/Orisumi.Dev.Tests.csproj" />
     <Project Path="tests/Orisumi.Integration.Tests/Orisumi.Integration.Tests.csproj" />
+    <Project Path="tests/Orisumi.Observer.Fixture/Orisumi.Observer.Fixture.csproj" />
     <Project Path="tests/Orisumi.Testing/Orisumi.Testing.csproj" />
   </Folder>
   <Folder Name="/tools/">

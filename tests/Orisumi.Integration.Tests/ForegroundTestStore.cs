@@ -16,8 +16,8 @@ internal sealed class ForegroundTestStore : IDisposable
     internal ForegroundTestStore(EntityId observerId)
     {
         Sdk = new(Path, observerId, _http);
-        Registration = ForegroundRegistration.RegisterAsync(Sdk, observerId).GetAwaiter().GetResult();
-        Store = new(Sdk, observerId, Registration);
+        Registration = ForegroundRegistration.RegisterAsync(new LocalObserverSession(Sdk), observerId).GetAwaiter().GetResult();
+        Store = new(new LocalObserverSession(Sdk), observerId, Registration);
     }
     internal IReadOnlyList<LocalVersion> Observations() => Sdk.Execute(local => local.Versions().Where(version => version.Version.Content is Observation).ToArray());
     internal IReadOnlyList<LocalVersion> Pending() => Observations().Where(version => version.State == SubmissionState.Frozen).ToArray();

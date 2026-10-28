@@ -1,0 +1,32 @@
+---
+title: "SDK Languages"
+description: "用另一种语言写的最小 Observer 经同一个 Runtime 提交"
+---
+
+export const caseId = 'sdk-languages';
+
+## 为什么验证 [#why]
+
+各语言的 SDK 库只封装管道中的消息，可靠保存和发送都在 Runtime 中。用一个 .NET 以外的最小 Observer 走一遍协议，确认接入新语言不需要另写保存和发送。约定见 [Runtime · Observer 管道](../../clients/runtime.mdx#observer-pipe)。
+
+## 前置条件 [#setup]
+
+一个用 .NET 以外的语言编写的最小 Observer，打成安装包放进附带目录。Runtime 使用独立的数据目录，连接通过 `WebApplicationFactory` 启动的 API。
+
+## 操作与预期结果 [#steps]
+
+| 操作 | 预期结果 |
+| --- | --- |
+| 启动 Runtime | 安装这个包；Observer 收到 `init`，回复 `ready` |
+| Observer 登记程序实例和 EntitySchema，提交一个形成 Observation 的批次 | 收到回执；API 中读到程序实例、EntitySchema 和这份 Observation |
+| 停用这个 Observer | 收到 `stop` 后退出；Runtime 报告进程已停止 |
+
+## 测试实现 [#implementation]
+
+以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
+
+- Python 编写的 Observer 收到 `init`，经同一个管道登记并提交，停用时收到 `stop` 后结束草稿并退出，结束的版本留在待发送中：`RuntimeHostingTests.PythonObserverUsesTheSamePipeAndStopsAfterLocalCompletion`。后端离线，API 中读回的预期未覆盖。
+
+## 执行结果 [#results]
+
+<TestCaseResults caseId={caseId} />

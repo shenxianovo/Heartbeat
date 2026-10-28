@@ -141,13 +141,13 @@ orisumi mac stop
 | --- | --- |
 | `mac build [--configuration debug\|release]` | 用 `xcodebuild` 构建客户端到 `.artifacts/mac` |
 | `mac run [--configuration debug\|release] [--build] [--window]` | 启动已构建的客户端，连接本检出目录环境的 API 和 Web 控制台。`--build` 先构建同一配置，`--window` 启动时打开窗口 |
-| `mac stop` | 退出从本检出目录启动的客户端。客户端先让 helper 结束当前时段，再退出 |
+| `mac stop` | 退出从本检出目录启动的客户端。客户端先让 Runtime 停止所有 Observer，再退出 |
 
 `--configuration` 默认是 `release`。`mac run` 运行所选配置的客户端。
 
 - `mac run` 要求环境运行中、API 已启动；客户端已在运行时报错，先运行 `mac stop`。
-- 每个数据卷对应一个程序实例：客户端的身份文件、登记文件和 SDK 状态放在 `.artifacts/mac/instances/<卷名>/`。所以本地待发送的版本只会发往它所属的后端。删除卷之后，可以一并删除对应的目录。
-- 日常使用的客户端从 `/Applications` 启动，使用默认的程序实例，与这里的实例互不影响。
+- 每个数据卷对应一个 Runtime 数据目录 `.artifacts/mac/instances/<卷名>/`，其中有安装的 Observer、各程序实例的身份和本地数据。所以本地待发送的版本只会发往它所属的后端。删除卷之后，可以一并删除对应的目录。
+- 日常使用的客户端从 `/Applications` 启动，使用默认的数据目录，与这里的互不影响。
 
 ## 验证
 

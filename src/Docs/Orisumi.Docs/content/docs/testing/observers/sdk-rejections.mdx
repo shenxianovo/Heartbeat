@@ -22,6 +22,9 @@ SDK 使用独立的 SQLite 文件，后端是记录每次请求、按需拒绝�
 | 丢弃被拒绝的版本 | InputSet 一起丢弃，其余版本继续发送 |
 | 读取实体新的当前版本，基于它改写被拒绝的版本 | 发送改写后的版本和 InputSet |
 | 后端的当前版本与被拒绝的版本内容相同，采用已保存的版本 | InputSet 改为引用当前版本后发送；之后引用这个实体时得到当前版本 |
+| Runtime 中有两个程序实例，其中一个的版本被拒绝 | 这个实例的发送暂停，另一个实例照常发送 |
+| 版本被拒绝后停用这个 Observer，再重启 Runtime | 拒绝状态保留，Observer 保持停用，不为处理拒绝而启动；再次启用后，业务代码收到被拒绝的版本 |
+| 用批次中的普通操作改写被拒绝的版本 | Runtime 拒绝这个批次，被拒绝的版本不变 |
 
 ## 测试实现 [#implementation]
 
@@ -30,6 +33,7 @@ SDK 使用独立的 SQLite 文件，后端是记录每次请求、按需拒绝�
 - 拒绝后暂停、恢复拒绝状态，以及采用内容相同的已保存版本并替换依赖：`ObserverSdkTests.PartialRejectionPausesPersistsAndAdoptsEqualSavedVersion`。
 - 丢弃被拒绝版本和依赖，继续其他版本：`ObserverSdkTests.DiscardingRejectedVersionDiscardsDependentsAndResumesOthers`。
 - 读取当前版本后改写被拒绝版本及依赖，再发送：`ObserverSdkTests.RewritingRejectedVersionUsesReadCurrentVersionAndResendsDependents`。
+- 未覆盖：实例之间的隔离、停用期间保留拒绝、普通操作不能改写被拒绝的版本。
 
 ## 执行结果 [#results]
 

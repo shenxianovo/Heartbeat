@@ -1,13 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <Version>0.1.0</Version>
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>Orisumi.Observers.ForegroundState</RootNamespace>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="System.CommandLine" />
-    <ProjectReference Include="../Orisumi.Observer.Sdk/Orisumi.Observer.Sdk.csproj" />
+    <ProjectReference Include="../Orisumi.Observer.Protocol/Orisumi.Observer.Protocol.csproj" />
     <ProjectReference Include="../../Core/Orisumi.Core/Orisumi.Core.csproj" />
     <InternalsVisibleTo Include="Orisumi.Integration.Tests" />
   </ItemGroup>

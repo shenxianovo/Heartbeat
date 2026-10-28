@@ -26,11 +26,13 @@ dotnet test --project tests/Orisumi.Integration.Tests/Orisumi.Integration.Tests.
 
 | 测试类 | 检查内容 | 依赖 |
 | --- | --- | --- |
-| `MacObserverIdentityTests` | 首次创建、重复启动、独立实例、并发首次启动、损坏文件保留 | 临时身份文件 |
 | `ForegroundTimelineTests` | 时段的延长、切换、中断和时间跳变 | 模拟读数 |
 | `LocalApplicationIdentityTests` | 本机应用身份的复用和新建、并发登记 | 临时登记文件 |
 | `ForegroundSubmissionTests` | 进行中时段只在本地、重启恢复、事务回滚、事件和休眠边界 | 独立 SQLite、模拟读数 |
 | `ObserverSdkTests` | SDK 的登记、草稿与策略、确认与重试、拒绝处理，以及前台时段的上传和拒绝处理 | 独立 SQLite；部分用例需要独立 PostgreSQL |
+| `RuntimeProtocolTests` | 批次的回执与重发、整批回滚、离线登记，以及 Observer 进程的管道收尾 | 独立 SQLite、子进程 |
+| `RuntimeHostingTests` | 安装、卸载与重装的身份，包的校验，数据目录的独占，崩溃重启，更新，以及 Python 编写的 Observer | 临时数据目录、Python 3 |
+| `RuntimeReadingTests` | 经 Runtime 读取：上传后不重复、删除后离线不复现、翻页的快照 | 独立 PostgreSQL、临时数据目录 |
 
 这些测试不调用 macOS 原生接口。原生读取的验证方法见 [Foreground State README](../../src/Observers/Orisumi.Observer.ForegroundState/README.md#验证)。
 

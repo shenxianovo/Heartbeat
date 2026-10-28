@@ -1,29 +1,43 @@
 ---
 title: ".NET"
-description: ".NET SDK 用 SQLite 保存草稿和待发送的版本"
+description: "Runtime 用 .NET SDK 本地保存和发送，.NET Observer 用 Protocol 库连接 Runtime"
 ---
 
-.NET 运行环境中的 Observer 共用 .NET SDK。SDK 是一个类库，代码在 `src/Observers/Orisumi.Observer.Sdk/`；它用 SQLite 保存草稿和待发送的版本，版本的状态、发送和确认遵循 [Submission](./index.mdx) 的约定。
+.NET 有两个项目：
+
+| 项目 | 用途 |
+| --- | --- |
+| `src/Observers/Orisumi.Observer.Sdk/` | 本地保存和发送，[Runtime](../../clients/runtime.mdx) 引用它 |
+| `src/Observers/Orisumi.Observer.Protocol/` | .NET 编写的 Observer 使用的 SDK 库，只处理管道、JSON 和请求的对应 |
+
+版本的状态、发送和确认遵循 [Submission](./index.mdx) 的约定。
 
 ## 本地保存 [#store]
 
-每个程序实例使用自己的 SQLite 文件，路径由业务代码提供。
+每个程序实例一个 SQLite 文件，位于实例目录的 `sdk.sqlite`，只有 Runtime 打开，见 [Runtime · 数据目录](../../clients/runtime.mdx#data)。
 
-1. 业务代码交来的版本先写入 SQLite。形成草稿、合并、冻结和通知结束，可以在同一个本地事务中完成，例如结束当前时段并开始新的时段。
+1. 业务代码交来的批次在一个 SQLite 事务中执行，回执和数据一起提交，见 [Submission · 本地交接](./index.mdx#handoff)。
 2. SQLite 还保存每个实体在本地最新的 VersionId。版本确认后移出发送队列，这个 VersionId 仍然保留，供之后的版本作为 `previousVersionId` 或引用。
 3. 后台任务按冻结的顺序读取待发送的版本，分批提交，并按 [Submission · 确认](./index.mdx#confirmation) 处理响应。
 4. 需要写入观测草稿时，SQLite 保存每份草稿的 `sequence`；后台任务把草稿最新的内容写入后端，见 [Submission · 观测草稿](./index.mdx#drafts)。
-5. 程序重启后，SDK 从 SQLite 恢复草稿、待发送的版本和待处理的被拒绝版本。
+5. Runtime 重启后，从 SQLite 恢复草稿、待发送的版本和待处理的被拒绝版本。
 
-## 运行 [#runtime]
+批次的回执一直保留到实例目录删除。
 
-网络中断时采集照常进行，下次运行或网络恢复后继续发送。SDK 统一处理后端地址、请求和响应，并向业务代码报告待发送的数量、已确认的数据和被拒绝的原因，见 [Submission · 连接后端](./index.mdx#connection) 和 [发送状态](./index.mdx#status)。
+网络中断时采集照常进行，网络恢复或下次运行后继续发送。
+
+## SDK 库 [#library]
+
+.NET 编写的 Observer 引用 `Orisumi.Observer.Protocol` 连接 Runtime，不打开 SQLite。SDK 库读取 `init`，把业务操作编码成管道中的请求，等待回执，再把结果、本地状态和被拒绝的版本交给业务代码，见 [Runtime · Observer 管道](../../clients/runtime.mdx#observer-pipe)。
+
+测试可以通过 `LocalObserverSession` 直接调用本地保存，不经过管道。
 
 ## 业务代码的职责 [#business]
 
-- 启动时提供程序实例和所需的 EntitySchema，由 SDK 先登记。
+- 启动时读取 Runtime 交来的程序实例 EntityId，提供程序实例的信息和所需的 EntitySchema，由 SDK 先登记。
 - 按业务类型选择及时提交或结束后提交，以及是否写入观测草稿。
-- 把新形成或补全的实体和观测交给 SDK，并明确通知何时结束。
+- 把一次业务变化组织成一个批次交给 SDK，并明确通知何时结束。
+- 启动时读取本地状态，按业务规则恢复遗留的草稿。
 - 处理 SDK 交来的被拒绝版本，见 [Submission · 被拒绝的版本](./index.mdx#rejections)。
 
-读取来源、判断应用是否切换、确定事实时间、识别内容身份和保留历史，都由业务代码完成；发送和重试由 SDK 完成。前台状态 Observer 使用 .NET SDK，见 [Foreground State · 提交](../foreground-state/index.mdx#submission)。
+读取来源、判断应用是否切换、确定事实时间、识别内容身份和保留历史，都由业务代码完成；发送和重试由 Runtime 完成。前台状态 Observer 只引用 Protocol 和 Core，见 [Foreground State · 提交](../foreground-state/index.mdx#submission)。

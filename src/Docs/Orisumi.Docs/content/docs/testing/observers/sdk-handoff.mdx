@@ -1,0 +1,39 @@
+---
+title: "SDK Handoff"
+description: "批次整批提交或回滚，回执在提交后返回，重发同一个批次不重复"
+---
+
+export const caseId = 'sdk-handoff';
+
+## 为什么验证 [#why]
+
+一次业务变化的几项操作必须一起成立，例如结束旧时段和开始新时段。业务代码靠回执判断数据已本地保存，回执丢失后的重发不能形成第二份数据。约定见 [Submission · 本地交接](../../observers/submission/index.mdx#handoff) 和 [回执](../../observers/submission/index.mdx#receipts)。
+
+## 前置条件 [#setup]
+
+Runtime 使用独立的数据目录，启动一个由测试控制的 Observer 进程，后端是记录每次请求的 HTTP 处理器。
+
+## 操作与预期结果 [#steps]
+
+| 操作 | 预期结果 |
+| --- | --- |
+| 一个批次结束旧的 Observation，引用新的本机应用，形成新的观测内容和 Observation 草稿 | 收到一个回执，回执中有这些版本；本地同时有旧时段的最终版本和新时段的草稿 |
+| 同样的批次中最后一个操作不合法 | Runtime 返回错误，本地没有这一批的任何改动 |
+| 批次中先引用一个实体，后面的观测内容绑定这个结果；之后再补全这个实体 | 观测内容引用的是批次中取得的版本，补全形成新版本，引用不变 |
+| 提交后回执丢失，用同一个标识重发同样的批次 | 返回原来的回执，没有新的版本 |
+| 同一个标识带着不同的内容 | Runtime 拒绝，本地没有改动 |
+| 收到回执前结束 Observer 的进程，再启动 | 业务代码读到的本地状态是批次之前或之后之一，不会只有一部分 |
+| 批次的操作数超过 512，或一行超过 16 MiB | 批次被拒绝或连接断开，本地没有改动 |
+
+## 测试实现 [#implementation]
+
+以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
+
+- 提交后回执丢失，重启后用同一个标识重发得到原回执、没有新版本；同一个标识带不同内容被拒绝：`RuntimeProtocolTests.LostReceiptReplaysAfterRestartAndDifferentPayloadIsRejected`。
+- 批次中的操作不合法时整批回滚、不留回执，改正后可沿用同一个标识；批次取得的引用不随实体之后的版本改变：`RuntimeProtocolTests.FailedBatchRollsBackReceiptAndVersionsAndReferencesStayFixed`。
+- 前台时段切换的批次形成一个回执：由 [提交与恢复](./foreground-submission.mdx) 的测试经 `LocalObserverSession` 覆盖。
+- 未覆盖：收到回执前结束 Observer 的进程；超过 512 个操作或 16 MiB 的一行。
+
+## 执行结果 [#results]
+
+<TestCaseResults caseId={caseId} />

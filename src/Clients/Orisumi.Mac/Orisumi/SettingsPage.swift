@@ -1,9 +1,10 @@
+import AppKit
 import OrisumiClient
 import ServiceManagement
 import SwiftUI
 
 struct SettingsPage: View {
-    let model: ClientModel
+    let model: RuntimeModel
     @AppStorage(Preferences.backendKey) private var backend = Preferences.defaultBackend
     @AppStorage(Preferences.webConsoleKey) private var webConsole = Preferences.defaultWebConsole
     @State private var backendDraft = ""
@@ -18,17 +19,29 @@ struct SettingsPage: View {
                 }
                 Button("应用") {
                     backend = backendDraft
-                    // Running or failed collection restarts with the new address; a paused one stays paused.
-                    if model.state != .paused { Task { await model.restart() } }
+                    Task { await model.restartRuntime() }
                 }
                 .disabled(!backendValid || backendDraft == backend)
             } header: {
                 Text("后端")
             } footer: {
-                Text("应用后重新启动采集。")
+                Text("应用后重新启动 Runtime，启用的 Observer 随之重新开始采集。")
             }
             Section("Web 控制台") {
                 TextField("地址", text: $webConsole)
+            }
+            Section {
+                LabeledContent("数据目录") {
+                    Text(Preferences.dataDirectory.path)
+                        .textSelection(.enabled)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                Button("在 Finder 中显示") { NSWorkspace.shared.activateFileViewerSelecting([Preferences.dataDirectory]) }
+            } header: {
+                Text("本机数据")
+            } footer: {
+                Text("每个 Observer 的身份、设置和还没发送的数据保存在这里，卸载 Observer 后仍然保留。")
             }
             Section {
                 Toggle("登录时启动", isOn: Binding(get: { loginItem.enabled }, set: { loginItem.set($0) }))
@@ -47,7 +60,7 @@ struct SettingsPage: View {
         }
     }
 
-    private var backendValid: Bool { HelperConfiguration.backend(from: backendDraft) != nil }
+    private var backendValid: Bool { RuntimeConfiguration.address(from: backendDraft) != nil }
 }
 
 @MainActor

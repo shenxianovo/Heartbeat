@@ -34,14 +34,14 @@ description: "某台设备上的一个应用安装"
 
 ### 登记文件 [#registry]
 
-本机应用的登记文件保存原生线索到 EntityId 的映射，是这一映射的权威来源。它与程序实例的身份文件分开，同一设备上的多个程序实例共用一个登记文件。
+本机应用的登记文件保存原生线索到 EntityId 的映射，是这一映射的权威来源。它是 Runtime 共用数据目录中的 `local-applications.json`，见 [Runtime · 数据目录](../../clients/runtime.mdx#data)；同一个 Runtime 中的多个程序实例共用它，与程序实例的身份分开保存。
 
 - 登记文件只属于创建它的设备。
 - 文件损坏时，前台状态 Observer 报告错误并保留原文件。
 - 删除文件后，下次采集重新分配身份。
 - 创建和更新文件时使用互斥锁和原子替换。
 
-文件路径和启动参数见 `src/Observers/Orisumi.Observer.ForegroundState/README.md`。
+运行方式见 `src/Observers/Orisumi.Observer.ForegroundState/README.md`。
 
 ## 引用 [#references]
 

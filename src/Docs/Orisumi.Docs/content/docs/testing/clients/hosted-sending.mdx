@@ -1,0 +1,36 @@
+---
+title: "Hosted Sending"
+description: "停用、崩溃和卸载后继续发送，退出客户端后全部停止，下次启动后继续"
+---
+
+export const caseId = 'hosted-sending';
+
+## 为什么验证 [#why]
+
+版本交给 Runtime 后，发送不再依赖形成它的进程。Observer 停下的原因各不相同，已经交出的数据都要送到后端。约定见 [Overview · 发送](../../clients/index.mdx#sending) 和 [Submission · 本地保存与发送](../../observers/submission/index.mdx#outbox)。
+
+## 前置条件 [#setup]
+
+Runtime 使用独立的数据目录，运行一个由测试控制的 Observer。后端可以切换为总是网络失败。
+
+## 操作与预期结果 [#steps]
+
+| 操作 | 预期结果 |
+| --- | --- |
+| 离线时 Observer 提交几个已结束的版本，然后停用；恢复网络 | 版本全部保存，`delivery.pending` 变为 0 |
+| 同样的情况下 Observer 崩溃 | 已冻结的版本全部保存，进行中的草稿保留在本地，没有被结束 |
+| 同样的情况下卸载 Observer | 版本全部保存；`list` 中它的 `installed` 为 `false`，直到没有待发送的数据 |
+| 离线时退出 Runtime | 退出不等待发送；所有 Observer 的进程都已结束 |
+| 再启动 Runtime，恢复网络 | 退出前待发送的版本全部保存 |
+
+## 测试实现 [#implementation]
+
+以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
+
+- SDK 库在 Runtime 关闭管道前就能结束会话：`RuntimeProtocolTests.SessionDisposalDoesNotWaitForHostToCloseItsPipe`。
+- 停用后版本留在待发送中：见 [SDK Languages](../observers/sdk-languages.mdx) 的测试。
+- 未覆盖：停用、崩溃和卸载后恢复网络、版本全部保存；离线退出 Runtime 后再启动继续发送。
+
+## 执行结果 [#results]
+
+<TestCaseResults caseId={caseId} />

@@ -1,0 +1,54 @@
+---
+title: "Runtime 与进程托管"
+description: "客户端启动一个 Runtime，Runtime 启动各 Observer 的进程，经标准输入输出双向通信；实例身份和本地数据由 Runtime 保管，与程序文件分开"
+---
+
+## 背景 [#context]
+
+[ADR · 提交与 SDK](./submission.mdx) 让各语言的 SDK 共用一个 Runtime。还要决定 Runtime、客户端和 Observer 的进程怎样连接，程序实例的身份和本地数据放在哪里，以及更新和卸载之后它们怎样保留。
+
+## 决定 [#decision]
+
+- 设备端客户端启动一个 Runtime 进程，Runtime 再启动每个启用的 Observer 的进程。
+- Observer 和 Runtime 通过标准输入和标准输出通信，双向逐行传递 JSON，日志写入标准错误。连接在 Runtime 启动进程时建立，并绑定到这个程序实例。Runtime 不开放本地监听端口。
+- 客户端通过另一对管道向 Runtime 发出管理指令、读取状态和数据。Observer 交来的数据直接由 Runtime 接收，客户端不转发。
+- Runtime 持久保存每个程序实例的 EntityId，启动进程时交给它。业务对象的 EntityId 仍由各 Observer 的业务规则确定。
+- 每个程序实例一个 SQLite 文件，只有 Runtime 读写。业务代码自己的持久数据放在实例的数据目录中，由业务代码解释。
+- 程序文件和实例数据分开保存：`packages/<package-id>/<version>/` 是解压后的包，`instances/<entity-id>/` 是实例的数据。安装登记记录包和程序实例的对应关系。
+- Runtime 随客户端运行，客户端退出时一起退出。
+- 开发时不启动客户端，用同一个 Runtime 在命令行中运行 Observer。
+- Runtime 不是 Observer，没有自己的实体。
+- 以上是桌面平台的做法。其他平台承担相同的职责，运行机制另定。
+
+## 理由 [#rationale]
+
+每种语言都能读写标准输入和标准输出，接入一种新语言不需要额外的通信库。Runtime 自己启动进程，所以它知道这条管道属于哪个程序实例，Observer 不能声称自己是另一个实例。不开放端口，本机的其他程序也连不进来。
+
+客户端只发管理指令和读取，不在数据的路径上。Swift 代码因此只处理界面和进程，采集的数据也只经过一次可靠交接。
+
+身份和数据放在实例目录，目录名不含包版本，所以更新、卸载后重装都找回同一个程序实例，见 [OBSERVER-4](../core/model/observer.mdx#observer-4)。程序文件在独立的版本目录中，更新时可以先完整准备新版本，再切换过去。
+
+SQLite 只有 Runtime 打开，数据库结构可以随 Runtime 改变，界面和各语言的 SDK 都通过协议读取。业务代码自己的状态，例如前台状态 Observer 的本机应用登记，含义只有业务代码清楚，所以留在业务代码中。
+
+开发和产品使用同一个 Runtime，Observer 只有一种运行方式，测试覆盖的就是用户运行的路径。
+
+Runtime 只运行进程和传送数据，陈述由形成它的 Observer 负责，见 [OBSERVER-6](../core/model/observer.mdx#observer-6)。
+
+放弃的方案：
+
+- **Runtime 开放本地接口，任何进程都可以连接。** 要处理连接的发现，还要防止一个进程冒用另一个实例的身份。以后出现独立启动的接入方时再加。
+- **客户端转发 Observer 的数据。** Swift 代码进入数据的路径，多一次交接。
+- **命令行运行时在 Observer 的进程中发送。** 开发和产品走两条路径，行为会逐渐不同。
+
+## 代价 [#costs]
+
+- Runtime 是本机所有 Observer 共用的进程。它崩溃时所有采集都会中断，由客户端重新启动；已经本地保存的数据还在。
+- Observer 必须能作为子进程运行，并只在标准输出中写协议消息。
+- 每个 Observer 的进程各自带着自己语言的运行库。
+- 卸载后，实例的身份和数据仍留在本机。
+
+## 规则位置 [#details]
+
+- [Clients · Runtime](../clients/runtime.mdx)、[Packages](../clients/packages.mdx)
+- [Submission · 本地交接](../observers/submission/index.mdx#handoff)、[.NET](../observers/submission/dotnet.mdx)
+- [OBSERVER-4](../core/model/observer.mdx#observer-4)、[OBSERVER-5](../core/model/observer.mdx#observer-5)、[OBSERVER-6](../core/model/observer.mdx#observer-6)

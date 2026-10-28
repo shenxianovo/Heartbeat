@@ -12,13 +12,14 @@ public struct AppIdentifier: Codable, Equatable, Hashable, Sendable {
 }
 
 /// A foreground application period shown in the client, saved or still local.
+/// An active period is an Observation draft; its end is the last confirmation.
 public struct Period: Equatable, Identifiable, Sendable {
     /// The Observation's EntityId.
     public var id: UUID
     public var name: String?
     public var identifiers: [AppIdentifier]
     public var startAt: Date
-    /// The last confirmation. An active period continues past it.
+    /// The last confirmation.
     public var endAt: Date
     public var isActive: Bool
 
@@ -31,20 +32,15 @@ public struct Period: Equatable, Identifiable, Sendable {
         self.isActive = isActive
     }
 
-    init(_ checkpoint: Checkpoint, isActive: Bool) {
-        self.init(id: checkpoint.observationId, name: checkpoint.name, identifiers: checkpoint.identifiers ?? [],
-                  startAt: checkpoint.startAt, endAt: checkpoint.endAt, isActive: isActive)
-    }
-
     public var bundleId: String? { identifiers.first { $0.scheme == "macos.bundle-id" }?.value }
     public var executablePath: String? { identifiers.first { $0.scheme == "macos.executable-path" }?.value }
     /// Groups periods of the same application.
     public var applicationKey: String { bundleId ?? executablePath ?? name ?? "" }
 
-    /// The part of the period inside `day`; an active period runs until `now`.
+    /// The part of the period inside `day`. Durations count up to the last confirmation, never past it.
     public func clipped(to day: DateInterval, now: Date) -> DateInterval? {
         let start = max(startAt, day.start)
-        let end = min(isActive ? max(now, endAt) : endAt, day.end)
+        let end = min(endAt, day.end)
         return start < end ? DateInterval(start: start, end: end) : nil
     }
 }
@@ -71,16 +67,6 @@ public struct HourSlice: Equatable, Identifiable, Sendable {
 public enum Today {
     public static func interval(containing date: Date, calendar: Calendar = .current) -> DateInterval {
         calendar.dateInterval(of: .day, for: date)!
-    }
-
-    /// Saved periods come from the API; local ones fill in what the helper has not sent yet. Newest first.
-    public static func merge(saved: [Period], local: [Period], active: Period?, day: DateInterval, now: Date) -> [Period] {
-        var periods = Dictionary(saved.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        for period in local where periods[period.id] == nil { periods[period.id] = period }
-        if let active { periods[active.id] = active }
-        return periods.values
-            .filter { $0.clipped(to: day, now: now) != nil }
-            .sorted { $0.startAt > $1.startAt }
     }
 
     /// Foreground time per application inside `day`, longest first.

@@ -16,9 +16,13 @@ public sealed class ObserverClient : IDisposable
     private int _batchLimit = 500;
     private bool _disposed;
 
+    public EntityId InstanceId { get; }
+    public bool PublishDrafts { get; set; } = true;
+
     public ObserverClient(string path, EntityId instanceId, HttpClient http)
     {
         _http = http;
+        InstanceId = instanceId;
         path = Path.GetFullPath(path);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         _connectionString = new SqliteConnectionStringBuilder { DataSource = path, Pooling = false, DefaultTimeout = 30 }.ToString();
@@ -85,6 +89,17 @@ public sealed class ObserverClient : IDisposable
         finally { _sender.Release(); }
     }
 
+    public VersionId RegisterSchemaLocally(EntityId id, EntitySchema schema) => Execute(local =>
+    {
+        var existing = local.Versions().FirstOrDefault(version => version.Version.EntityId == id
+            && SameContent(version.Version, schema, null));
+        if (existing is not null) return local.Resolve(existing.Version.VersionId);
+        var versionId = local.Draft(id, schema);
+        local.Complete(id);
+        local.Metadata("schema:" + versionId.Value, "pending");
+        return versionId;
+    });
+
     public VersionId RegisterInstance(EntityId id, VersionId schemaVersionId, BusinessContent content) => Execute(local =>
     {
         schemaVersionId = local.Resolve(schemaVersionId);
@@ -138,7 +153,7 @@ public sealed class ObserverClient : IDisposable
             {
                 if (Status is { Rejection: not null } or { Error: not null }) return;
                 if (!await ReconcileSchemasAsync(cancellationToken)) return;
-                if (!await SendDraftsAsync(cancellationToken)) return;
+                if (PublishDrafts && !await SendDraftsAsync(cancellationToken)) return;
                 var batch = Execute(local =>
                 {
                     foreach (var draft in local.Versions().Where(version => version.State == SubmissionState.Draft && version.Strategy == SubmissionStrategy.Immediate))

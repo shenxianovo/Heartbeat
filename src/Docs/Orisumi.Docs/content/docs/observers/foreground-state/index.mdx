@@ -33,8 +33,7 @@ flowchart LR
 ## 程序实例 [#instance]
 
 - 一个程序实例对应本机上运行的一个前台状态 Observer。它重启或升级后沿用原来的 EntityId；另一台设备上的、或独立运行的实例，各有自己的 EntityId。
-- 身份文件由 `--identity-file` 指定，只保存程序实例的 EntityId。文件不存在时生成一个 UUIDv7；文件损坏时报告错误，并保留原文件。
-- 一个身份文件同时只允许一个进程使用。
+- 程序实例的 EntityId 由 Runtime 生成和保存，进程启动时从 `init` 读取，见 [Runtime · 数据目录](../../clients/runtime.mdx#data)。程序版本取 `init` 中安装包的版本。
 - 本机应用的身份保存在单独的登记文件中，见 [Local Application · 登记文件](./local-application.mdx#registry)。
 - 程序实例本身是一个业务实体，EntitySchema 见 [Foreground State Observer](./foreground-state-observer.mdx)。
 
@@ -52,7 +51,7 @@ macOS 即将休眠时，当前时段结束；唤醒后重新读取。读取失�
 
 ## 提交 [#submission]
 
-前台状态 Observer 使用 [.NET SDK](../submission/dotnet.mdx)，采用[结束后提交](../submission/index.mdx#strategies)，并写入[观测草稿](../submission/index.mdx#drafts)：进行中的时段在本地补全，同时作为草稿写入后端，读取方能实时读到；时段结束时才冻结 Observation 并安排发送，所以后端为每个时段保存一个版本。业务事件对应的操作如下：
+前台状态 Observer 使用 [.NET](../submission/dotnet.mdx) 的 SDK 库，采用[结束后提交](../submission/index.mdx#strategies)，并写入[观测草稿](../submission/index.mdx#drafts)：进行中的时段在本地补全，同时作为草稿写入后端，读取方能实时读到；时段结束时才冻结 Observation 并安排发送，所以后端为每个时段保存一个版本。业务事件对应的操作如下：
 
 | 业务事件 | 交给 SDK 的操作 |
 | --- | --- |
@@ -61,9 +60,9 @@ macOS 即将休眠时，当前时段结束；唤醒后重新读取。读取失�
 | 切换应用，或应用名称、时区变化 | 通知当前时段结束；为新状态形成新的草稿 |
 | 读取失败、停止采集或其他中断 | 当前时段结束于最后一次确认，通知结束；恢复后形成新的草稿 |
 
-观测内容形成后随即冻结并安排发送，它引用的本机应用版本也一样；SDK 在它们保存之后才写入草稿。结束当前时段和开始新的时段在同一个本地事务中完成。
+观测内容形成后随即冻结并安排发送，它引用的本机应用版本也一样；SDK 在它们保存之后才写入草稿。结束当前时段和开始新的时段在同一个批次中提交，见 [Submission · 本地交接](../submission/index.mdx#handoff)。
 
-程序异常退出后，下次启动时，SDK 恢复遗留的草稿，业务代码通知它结束于本地保存的最后一次确认。程序实例的身份不变，停机期间不计入时段，新的读数开始新的时段。
+程序异常退出或停止超时被结束后，下次启动时，SDK 恢复遗留的草稿，业务代码通知它结束于本地保存的最后一次确认。程序实例的身份不变，停机期间不计入时段，新的读数开始新的时段。
 
 ### 被拒绝的版本 [#rejections]
 
@@ -83,7 +82,7 @@ macOS 即将休眠时，当前时段结束；唤醒后重新读取。读取失�
 | Windows | 未实现 | 未实现 |
 | Android | 未实现 | 未实现 |
 
-macOS 程序在 `src/Observers/Orisumi.Observer.ForegroundState/`，通过 AppKit 读取前台应用，可以持续采集，也可以只采样指定的次数。启动参数见该目录的 README。平时由 [macOS 客户端](../../clients/macos.mdx)托管。
+macOS 程序在 `src/Observers/Orisumi.Observer.ForegroundState/`，通过 AppKit 读取前台应用，可以持续采集，也可以只采样指定的次数。启动参数见该目录的 README。它作为安装包随 [macOS 客户端](../../clients/macos.mdx)附带，由 Runtime 运行。
 
 用到的 macOS 接口：[应用激活通知](https://developer.apple.com/documentation/appkit/nsworkspace/didactivateapplicationnotification)、[焦点窗口变化通知](https://developer.apple.com/documentation/applicationservices/kaxfocusedwindowchangednotification)、[标题变化通知](https://developer.apple.com/documentation/applicationservices/kaxtitlechangednotification)。
 

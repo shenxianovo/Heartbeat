@@ -1,6 +1,6 @@
 # Orisumi.Observer.Sdk
 
-.NET 程序实例用这个类库把版本交给后端：草稿和待发送的版本保存在本地 SQLite 中，按依赖顺序提交，按响应确认。版本的状态、提交策略和确认规则见 [Submission](../../Docs/Orisumi.Docs/content/docs/observers/submission/index.mdx)，本地保存见 [.NET](../../Docs/Orisumi.Docs/content/docs/observers/submission/dotnet.mdx)。
+Runtime 用这个类库把程序实例的版本交给后端：草稿和待发送的版本保存在本地 SQLite 中，按依赖顺序提交，按响应确认。Observer 不直接引用它，而是通过 [Orisumi.Observer.Protocol](../Orisumi.Observer.Protocol/README.md) 连接 Runtime；`LocalObserverSession` 把同样的请求直接交给这个类库，供测试使用。版本的状态、提交策略和确认规则见 [Submission](../../Docs/Orisumi.Docs/content/docs/observers/submission/index.mdx)，本地保存见 [.NET](../../Docs/Orisumi.Docs/content/docs/observers/submission/dotnet.mdx)。
 
 ## 用法
 

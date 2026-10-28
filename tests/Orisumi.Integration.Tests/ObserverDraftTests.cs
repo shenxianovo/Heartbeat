@@ -26,11 +26,11 @@ public sealed class ObserverDraftTests
             long lastSequence;
             using (var sdk = new ObserverClient(path, owner, firstHttp))
             {
-                registration = await ForegroundRegistration.RegisterAsync(sdk, owner);
+                registration = await ForegroundRegistration.RegisterAsync(new LocalObserverSession(sdk), owner);
                 var registry = new LocalApplicationRegistry(Path.Combine(directory.FullName, "apps"));
                 var reading = ForegroundTimelineTests.Reading(0);
                 capture = ForegroundCapture.Create(owner, registry.Resolve(reading), reading);
-                var store = new ForegroundStore(sdk, owner, registration);
+                var store = new ForegroundStore(new LocalObserverSession(sdk), owner, registration);
                 store.Checkpoint(capture, null);
                 await sdk.SendAsync();
                 await Assert.That(sdk.Status.Error).IsNull();
@@ -54,7 +54,7 @@ public sealed class ObserverDraftTests
             await recovered.SendAsync();
             await Assert.That(secondHandler.Drafts.Single().GetProperty("sequence").GetInt64()).IsGreaterThan(lastSequence);
             await ReadEnd(http, capture, capture.EndAt.AddSeconds(2));
-            var resumedStore = new ForegroundStore(recovered, owner, registration);
+            var resumedStore = new ForegroundStore(new LocalObserverSession(recovered), owner, registration);
             resumedStore.FinishActive();
             await recovered.SendAsync();
             await recovered.SendAsync();
@@ -121,12 +121,12 @@ public sealed class ObserverDraftTests
         {
             var owner = EntityId.New();
             using var sdk = new ObserverClient(Path.Combine(directory.FullName, "state.sqlite"), owner, http);
-            var registration = await ForegroundRegistration.RegisterAsync(sdk, owner);
+            var registration = await ForegroundRegistration.RegisterAsync(new LocalObserverSession(sdk), owner);
             var registry = new LocalApplicationRegistry(Path.Combine(directory.FullName, "apps"));
             var reading = ForegroundTimelineTests.Reading(0);
             var application = registry.Resolve(reading);
             var first = ForegroundCapture.Create(owner, application, reading);
-            var store = new ForegroundStore(sdk, owner, registration);
+            var store = new ForegroundStore(new LocalObserverSession(sdk), owner, registration);
             store.Checkpoint(first, null);
             var titleSchema = EntityApiTests.Schema("test-title-contents", """
                 {"foregroundApplicationPeriodVersionId":{"type":"reference","description":"The parent activity content version","required":true,"nullable":false},
