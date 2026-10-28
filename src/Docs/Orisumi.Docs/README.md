@@ -33,7 +33,7 @@ pnpm dev
 `pnpm build` 生成的 `out/` 是完整的站点，任何静态文件服务都能提供。页面、搜索索引、Markdown、LLM 导出和 OG 图都在构建时生成。
 
 - `scripts/finish-export.mjs` 把每个页面的 Markdown 复制为 `/<页面路径>.md`，写入 `.nojekyll`，并把根页面写成跳转到 `/start/` 的页面。
-- `scripts/check-export.mjs` 检查必要的页面和文件存在、搜索索引是 JSON、Markdown 内容正确，以及每个 HTML 中以 `/` 开头的站内链接和资源都有对应的文件。任何一项不通过，构建失败。
+- `scripts/check-export.mjs` 检查必要的页面和文件存在、搜索索引是 JSON、Markdown 内容正确，以及每个 HTML 中以 `/` 开头的站内链接和资源都有对应的文件。它还检查页面标题唯一、canonical 与页面地址一致、sitemap 覆盖全部文档页，以及 robots.txt 和 favicon 已导出。任何一项不通过，构建失败。
 - 地址以 `/` 结尾，例如 `/core/`，`next.config.mjs` 设置了 `trailingSlash`。
 
 ## 发布
@@ -184,6 +184,17 @@ MDX 页面末尾用 [`fumadocs-page-history@0.4.2`](https://github.com/shenxiano
 - 页面使用 Fumadocs 的 [Spacious 布局](https://www.fumadocs.dev/docs/ui/layouts/spacious)，样式在 `app/global.css` 中引入。
 - 右侧页内目录使用 `clerk` 样式，配置在 `app/(docs)/[[...slug]]/page.tsx`。
 - 站点名称和 Git 仓库信息在 `lib/site-config.ts`。编辑链接指向 `main` 分支。
+
+### 搜索引擎与站点图标
+
+页面通过 Next.js Metadata API 生成浏览器标题、canonical 和分享信息。浏览器标题按 Fumadocs 页面树补上所属分组与分区，用来区分各分区的 Overview 等同名页面；导航和正文标题仍取页面的 `title`。Introduction 的浏览器标题说明 Orisumi 的用途。公开地址由 `lib/site-config.ts` 的 `siteUrl` 定义，canonical 以 `/` 结尾。
+
+`app/sitemap.ts` 和 `app/robots.ts` 使用 Next.js 原生约定，构建时导出 `/sitemap.xml` 和 `/robots.txt`。sitemap 包含 Fumadocs 页面源中的全部文档页和生成的 API 页，使用与 canonical 相同的地址。robots.txt 允许抓取全站，并声明 sitemap 地址。
+
+公开站点通过 `public/analytics.js` 接入 GA4（`G-WKHX52M7JW`），只在 `https://docs.orisumi.dev` 采集，本地与预览地址跳过，广告信号关闭。
+Search Console 已通过 Cloudflare 中 `docs.orisumi.dev` 的 TXT 记录验证并关联 GA4；保留该记录，发布后检查并提交 `https://docs.orisumi.dev/sitemap.xml`。
+
+站标和 favicon 共用 `lib/platform-icon.ts` 的系统判断：macOS 使用 `icon-macos.png` 对应的吉祥物，其他系统使用 `icon-windows.png` 对应的吉祥物。`public/favicon-macos.png` 和 `public/favicon-windows.png` 是原图的 48 × 48 像素版本。`components/site-icon.tsx` 中的 `SiteFavicon` 用 React 的 `<link>` 输出 favicon，浏览器加载后按系统选择；静态 HTML 和根地址的跳转页提供 Windows 版本作为默认图标。
 
 ### 正文组件
 

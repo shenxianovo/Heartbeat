@@ -1,4 +1,5 @@
 export const appName = 'Orisumi';
+export const siteUrl = 'https://docs.orisumi.dev';
 
 export const gitConfig = {
   user: 'shenxianovo',

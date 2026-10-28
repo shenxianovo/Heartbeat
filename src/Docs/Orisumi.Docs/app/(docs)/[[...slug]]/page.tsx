@@ -15,6 +15,7 @@ import type { Metadata } from 'next';
 import { createRelativeLink } from 'fumadocs-ui/mdx';
 import { getPageImageUrl, getPageMarkdownUrl } from '@/lib/routes';
 import { gitConfig } from '@/lib/site-config';
+import { getCanonicalUrl, getPageTitle } from '@/lib/metadata';
 
 export const dynamicParams = false;
 
@@ -76,9 +77,11 @@ export async function generateMetadata(props: PageProps<'/[[...slug]]'>): Promis
   if (!page) notFound();
 
   return {
-    title: page.data.title,
+    title: { absolute: getPageTitle(page, source.getPageTree(page.locale)) },
     description: page.data.description,
+    alternates: { canonical: getCanonicalUrl(page.url) },
     openGraph: {
+      url: getCanonicalUrl(page.url),
       images: getPageImageUrl(page).url,
     },
   };

@@ -17,5 +17,6 @@ await writeFile(join(output, '.nojekyll'), '');
 await writeFile(join(output, 'index.html'), `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><title>Orisumi</title>
 <meta http-equiv="refresh" content="0;url=/start/">
-<link rel="canonical" href="https://docs.orisumi.dev/start/"></head>
+<link rel="canonical" href="https://docs.orisumi.dev/start/">
+<link rel="icon" href="/favicon-windows.png" type="image/png" sizes="48x48"></head>
 <body><a href="/start/">Orisumi</a></body></html>\n`);
