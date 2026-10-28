@@ -231,3 +231,38 @@ extension RuntimeModel: RuntimeReading {
         try await call("versions", VersionsRequest(instanceId: instanceId, versionIds: ids))
     }
 }
+
+/// What the add sheet offers for one package.
+public enum CatalogAction: Equatable, Sendable {
+    case install
+    /// Uninstalled earlier; installing again reuses the program instance.
+    case reinstall
+    case update(to: String)
+    /// Installed and current: the sheet opens it in the window.
+    case open
+    /// Not for this Mac's platform or Runtime.
+    case unavailable
+}
+
+extension RuntimeModel {
+    public func action(for package: CatalogPackage) -> CatalogAction {
+        guard package.compatible else { return .unavailable }
+        if package.hasUpdate { return .update(to: package.version) }
+        if package.installedVersion != nil { return .open }
+        return observer(package.id) == nil ? .install : .reinstall
+    }
+
+    /// Packages to add or update first, then the installed ones, then those this Mac cannot run.
+    public var catalogByAction: [CatalogPackage] {
+        func rank(_ package: CatalogPackage) -> Int {
+            switch action(for: package) {
+            case .install, .reinstall, .update: 0
+            case .open: 1
+            case .unavailable: 2
+            }
+        }
+        return catalog.enumerated()
+            .sorted { (rank($0.element), $0.offset) < (rank($1.element), $1.offset) }
+            .map(\.element)
+    }
+}

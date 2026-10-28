@@ -2,41 +2,34 @@ import AppKit
 import OrisumiClient
 import SwiftUI
 
-/// The main window: the registered Observers in the sidebar, the selected one on the right.
-/// The app shows in the Dock only while it is open.
+/// The main window: one view of data for each installed Observer. Managing Observers is in Settings.
 struct MainView: View {
     static let windowId = "main"
     let model: RuntimeModel
     @Bindable var navigation: Navigation
-    @State private var adding = false
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         NavigationSplitView {
-            Sidebar(model: model, selection: $navigation.selection, adding: $adding)
-                .navigationSplitViewColumnWidth(min: 210, ideal: 230, max: 300)
+            Sidebar(model: model, selection: $navigation.selection) { settings(.general) }
+                .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 280)
         } detail: {
-            switch navigation.selection {
-            case .observer(let packageId):
-                if let observer = model.observer(packageId) {
-                    ObserverDetail(model: model, observer: observer)
-                } else {
-                    ContentUnavailableView("没有这个 Observer", systemImage: "questionmark.circle",
-                                           description: Text("它已卸载，本机也没有待发送的数据。"))
-                }
-            case .settings:
-                SettingsPage(model: model)
-            case nil:
+            if let packageId = navigation.selection, let observer = model.observer(packageId), observer.installed {
+                ObserverPage(model: model, observer: observer, openSettings: settings)
+                    .id(packageId)
+            } else if model.installed.isEmpty {
                 ContentUnavailableView {
-                    Label("还没有 Observer", systemImage: "eye")
+                    Label("还没有在记录的数据", systemImage: "puzzlepiece.extension")
                 } description: {
-                    Text("安装一个 Observer，它会直接开始记录。")
+                    Text("添加一个 Observer，它会直接开始记录。")
                 } actions: {
-                    Button("添加 Observer…") { adding = true }
+                    Button("添加 Observer…") { settings(.observers, adding: true) }
                 }
+            } else {
+                ContentUnavailableView("选择一个视图", systemImage: "sidebar.left")
             }
         }
-        .sheet(isPresented: $adding) { AddObserverSheet(model: model) }
-        .frame(minWidth: 980, minHeight: 680)
+        .frame(minWidth: 860, minHeight: 600)
         .onAppear {
             navigation.windowVisible = true
             selectFirst()
@@ -44,108 +37,67 @@ struct MainView: View {
                 await model.refresh()
                 await model.refreshCatalog()
             }
-            NSApp.setActivationPolicy(.regular)
             NSApp.activate()
         }
-        .onDisappear {
-            navigation.windowVisible = false
-            NSApp.setActivationPolicy(.accessory)
-        }
-        .onChange(of: model.observers.map(\.packageId)) { selectFirst() }
+        .onDisappear { navigation.windowVisible = false }
+        .onChange(of: model.installed.map(\.packageId)) { selectFirst() }
     }
 
+    private var settings: SettingsOpener { SettingsOpener(navigation: navigation, openSettings: openSettings) }
+
+    /// Keeps a view selected while there is one.
     private func selectFirst() {
-        guard navigation.selection == nil, let first = model.installed.first ?? model.uninstalled.first else { return }
-        navigation.selection = .observer(first.packageId)
+        if let selection = navigation.selection, model.installed.contains(where: { $0.packageId == selection }) { return }
+        navigation.selection = model.installed.first?.packageId
     }
 }
 
 struct Sidebar: View {
     let model: RuntimeModel
-    @Binding var selection: Navigation.Item?
-    @Binding var adding: Bool
+    @Binding var selection: String?
+    let openSettings: () -> Void
 
     var body: some View {
         List(selection: $selection) {
-            if !model.installed.isEmpty {
-                Section("Observer") {
-                    ForEach(model.installed) { observer in
-                        ObserverRow(observer: observer).tag(Navigation.Item.observer(observer.packageId))
-                    }
-                }
-            }
-            if !model.uninstalled.isEmpty {
-                Section("已卸载") {
-                    ForEach(model.uninstalled) { observer in
-                        ObserverRow(observer: observer).tag(Navigation.Item.observer(observer.packageId))
-                    }
-                }
-            }
-            Section {
-                Label("设置", systemImage: "gearshape").tag(Navigation.Item.settings)
-            }
-        }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            if let problem = runtimeProblem {
-                VStack(alignment: .leading, spacing: 6) {
-                    Label(problem, systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.red)
-                        .font(.callout)
-                    if case .failed = model.state {
-                        Button("重新启动 Runtime") { model.retryRuntime() }.controlSize(.small)
-                    }
-                }
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .padding(.horizontal, 10)
-                .padding(.top, 6)
+            ForEach(model.installed) { observer in
+                SidebarRow(observer: observer).tag(observer.packageId)
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            Button { adding = true } label: {
-                Label("添加 Observer…", systemImage: "plus")
+            Button(action: openSettings) {
+                Label("设置", systemImage: "gearshape")
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .help("Observer 的管理、外观和连接（⌘,）")
             .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-        }
-    }
-
-    private var runtimeProblem: String? {
-        switch model.state {
-        case .failed, .restarting: ObserverText.runtime(model)
-        default: nil
+            .padding(.vertical, 12)
         }
     }
 }
 
-struct ObserverRow: View {
+struct SidebarRow: View {
     let observer: ObserverStatus
 
     var body: some View {
         HStack(spacing: 8) {
             ObserverIcon(packageId: observer.packageId, size: 20)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(observer.name)
-                Text(rowDetail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            Text(ObserverText.viewName(observer))
             Spacer(minLength: 4)
-            Circle()
-                .fill(ObserverText.color(observer))
-                .frame(width: 7, height: 7)
-                .help(ObserverText.state(observer))
+            if !ObserverText.problems(observer).isEmpty || observer.state == .failed {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .foregroundStyle(.red)
+                    .help(ObserverText.state(observer))
+            } else if !observer.enabled {
+                Text("已停用").font(.caption).foregroundStyle(.secondary)
+            } else if observer.state != .running {
+                Image(systemName: "clock")
+                    .foregroundStyle(.orange)
+                    .help(ObserverText.state(observer))
+            }
         }
-        .padding(.vertical, 2)
-    }
-
-    private var rowDetail: String {
-        if !observer.installed, observer.delivery.pending > 0 { return "待发送 \(observer.delivery.pending)" }
-        if observer.delivery.rejection != nil { return "发送已暂停" }
-        return ObserverText.state(observer)
     }
 }
 
@@ -196,14 +148,19 @@ struct SectionTitle: View {
     }
 }
 
+/// One period in time order: when, which application, how long.
 struct PeriodRow: View {
-    static let height: CGFloat = 34
+    static let height: CGFloat = 30
     let period: Period
 
     var body: some View {
         HStack(spacing: 10) {
-            AppIcon(identifiers: period.identifiers, size: 18)
-            Text(period.name ?? "未知应用")
+            Text(Format.span(from: period.startAt, to: period.endAt))
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .frame(width: 96, alignment: .leading)
+            AppIcon(identifiers: period.identifiers, size: 16)
+            Text(period.name ?? "未知应用").lineLimit(1)
             if period.isActive {
                 Text("进行中")
                     .font(.caption)
@@ -213,12 +170,9 @@ struct PeriodRow: View {
                     .foregroundStyle(.green)
             }
             Spacer()
-            Text("\(Format.time(period.startAt)) – \(Format.time(period.endAt))")
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
             Text(Format.duration(from: period.startAt, to: period.endAt))
                 .monospacedDigit()
-                .frame(minWidth: 88, alignment: .trailing)
+                .foregroundStyle(period.endAt.timeIntervalSince(period.startAt) < 60 ? .secondary : .primary)
         }
         .padding(.horizontal, 12)
         .frame(height: Self.height)
@@ -271,6 +225,12 @@ enum Format {
         date.formatted(Date.VerbatimFormatStyle(
             format: "\(hour: .twoDigits(clock: .twentyFourHour, hourCycle: .zeroBased)):\(minute: .twoDigits)",
             timeZone: .current, calendar: .current))
+    }
+
+    /// "09:12 – 09:40", or just the start when both fall in the same minute.
+    static func span(from start: Date, to end: Date) -> String {
+        let first = time(start), last = time(end)
+        return first == last ? first : "\(first) – \(last)"
     }
 
     static func duration(from start: Date, to end: Date) -> String {

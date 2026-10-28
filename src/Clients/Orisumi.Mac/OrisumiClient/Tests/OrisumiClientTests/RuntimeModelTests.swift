@@ -122,3 +122,28 @@ func waitUntil(_ condition: () -> Bool) async throws {
     for _ in 0..<200 where !condition() { try await Task.sleep(for: .milliseconds(5)) }
     #expect(condition())
 }
+
+extension RuntimeModelTests {
+    @Test func offersOneActionPerCatalogPackage() async {
+        let transport = FakeTransport()
+        transport.responses["list"] = .success(Self.list)
+        transport.responses["catalog"] = .success("""
+            {"packages":[
+              {"id":"foreground-state","name":"Foreground State","description":"","version":"0.1.0","target":"osx-arm64","installedVersion":"0.1.0","compatible":true},
+              {"id":"windows-only","name":"Windows","description":null,"version":"1.0.0","target":"win-x64","installedVersion":null,"compatible":false},
+              {"id":"old","name":"Old","description":null,"version":"0.1.0","target":"osx-arm64","installedVersion":null,"compatible":true},
+              {"id":"new","name":"New","description":null,"version":"0.3.0","target":"osx-arm64","installedVersion":null,"compatible":true},
+              {"id":"stale","name":"Stale","description":null,"version":"0.2.0","target":"osx-arm64","installedVersion":"0.1.0","compatible":true}
+            ]}
+            """)
+        let model = RuntimeModel(transport: transport)
+        model.start()
+        await model.refresh()
+        await model.refreshCatalog()
+        let actions = Dictionary(uniqueKeysWithValues: model.catalog.map { ($0.id, model.action(for: $0)) })
+        #expect(actions == ["foreground-state": .open, "windows-only": .unavailable, "old": .reinstall,
+                            "new": .install, "stale": .update(to: "0.2.0")])
+        // What can be done comes first, keeping the catalog's order within each group.
+        #expect(model.catalogByAction.map(\.id) == ["old", "new", "stale", "foreground-state", "windows-only"])
+    }
+}

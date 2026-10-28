@@ -26,6 +26,7 @@ struct MenuContent: View {
     let navigation: Navigation
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openURL) private var openURL
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         Text(ObserverText.runtime(model))
@@ -37,33 +38,37 @@ struct MenuContent: View {
             ForEach(model.installed) { observer in
                 Toggle(isOn: Binding(get: { observer.enabled },
                                      set: { enabled in Task { await model.setEnabled(observer.packageId, enabled) } })) {
-                    Text("\(observer.name)：\(ObserverText.state(observer))")
+                    Text(label(observer))
                 }
                 .disabled(model.busy.contains(observer.packageId))
             }
         }
         let pending = model.observers.reduce(0) { $0 + $1.delivery.pending }
-        let saved = model.observers.reduce(0) { $0 + $1.delivery.saved }
-        if !model.observers.isEmpty {
-            Text("待发送 \(pending)，已保存 \(saved)")
+        if pending > 0 {
+            Text("\(pending) 份等待发送")
         }
         ForEach(model.observers.filter { $0.delivery.rejection != nil }) { observer in
             Text("\(observer.name) 的发送已暂停：\(observer.delivery.rejection!.rule)")
         }
         Divider()
-        Button("打开 Orisumi") { open(nil) }
+        Button("打开 Orisumi") {
+            openWindow(id: MainView.windowId)
+            NSApp.activate()
+        }
         Button("打开 Web 控制台") { openURL(Preferences.webConsole) }
-        Button("设置…") { open(.settings) }
+        Button("设置…") { SettingsOpener(navigation: navigation, openSettings: openSettings)(navigation.settingsTab) }
             .keyboardShortcut(",")
         Divider()
-        Button("退出 Orisumi") { NSApp.terminate(nil) }
+        Button("退出 Orisumi") { AppDelegate.quit() }
             .keyboardShortcut("q")
     }
 
-    private func open(_ item: Navigation.Item?) {
-        if let item { navigation.selection = item }
-        openWindow(id: MainView.windowId)
-        NSApp.activate()
+    /// The checkmark already says whether it is enabled; the state is added only when it is not the expected one.
+    private func label(_ observer: ObserverStatus) -> String {
+        switch observer.state {
+        case .running where observer.enabled, .stopped where !observer.enabled: observer.name
+        default: "\(observer.name)（\(ObserverText.state(observer))）"
+        }
     }
 }
 
@@ -80,6 +85,11 @@ enum ObserverText {
             let running = model.installed.filter { $0.state == .running }.count
             return running == 0 ? "没有正在采集的 Observer" : "\(running) 个 Observer 正在采集"
         }
+    }
+
+    /// The name of the Observer's view in the window: what it records when the client has a view for it.
+    static func viewName(_ observer: ObserverStatus) -> String {
+        observer.packageId == ForegroundToday.packageId ? "前台应用" : observer.name
     }
 
     static func state(_ observer: ObserverStatus) -> String {
@@ -106,6 +116,25 @@ enum ObserverText {
 
     static func delivery(_ delivery: Delivery) -> String {
         "草稿 \(delivery.drafts) · 待发送 \(delivery.pending) · 已保存 \(delivery.saved)"
+    }
+
+    /// One phrase for sending: what needs attention, otherwise how much is waiting or saved.
+    static func deliverySummary(_ delivery: Delivery) -> String {
+        if delivery.rejection != nil { return "发送已暂停" }
+        if delivery.error != nil { return "发送出错" }
+        if delivery.pending > 0 { return "待发送 \(delivery.pending)" }
+        return "已保存 \(delivery.saved)"
+    }
+
+    /// The Observer's failures in sending and running, as sentences.
+    static func problems(_ observer: ObserverStatus) -> [String] {
+        var problems: [String] = []
+        if let error = observer.error { problems.append(error) }
+        if let rejection = observer.delivery.rejection {
+            problems.append("发送已暂停：\(rejection.rule)，\(rejection.detail)")
+        }
+        if let error = observer.delivery.error { problems.append("发送出错：\(error)") }
+        return problems
     }
 
     static func hasFailure(_ model: RuntimeModel) -> Bool {

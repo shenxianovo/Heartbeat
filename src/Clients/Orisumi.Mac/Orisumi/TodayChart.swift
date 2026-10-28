@@ -126,7 +126,8 @@ struct HourTooltip: View {
     }
 }
 
-/// Today's applications, longest first. Hovering one highlights it in the chart; clicking one filters the periods.
+/// Today's applications, longest first. Hovering one highlights it in the chart; clicking one keeps it highlighted and
+/// filters the periods.
 struct UsageLegend: View {
     let usage: [Usage]
     @Binding var selected: String?
@@ -138,60 +139,67 @@ struct UsageLegend: View {
         ScrollView {
             LazyVStack(spacing: 2) {
                 ForEach(usage) { item in
-                    LegendRow(usage: item, color: AppVisuals.color(for: keys.contains(item.id) ? item.id : nil, among: keys),
-                              longest: usage.first?.duration ?? 1, total: total,
-                              hovered: hovered == item.id, filtering: selected == item.id)
-                        .contentShape(Rectangle())
-                        .onTapGesture { selected = selected == item.id ? nil : item.id }
-                        .onHover { inside in
-                            if inside { hovered = item.id } else if hovered == item.id { hovered = nil }
-                        }
-                        .help(item.name ?? "未知应用")
+                    Button {
+                        selected = selected == item.id ? nil : item.id
+                    } label: {
+                        LegendRow(usage: item, color: AppVisuals.color(for: keys.contains(item.id) ? item.id : nil, among: keys),
+                                  total: total, hovered: hovered == item.id, selected: selected == item.id)
+                    }
+                    .buttonStyle(.plain)
+                    .onHover { inside in
+                        if inside { hovered = item.id } else if hovered == item.id { hovered = nil }
+                    }
+                    .help("\(item.periods) 个时段，最长 \(Format.duration(item.longest))")
                 }
             }
         }
         .defaultScrollAnchor(.top)
-        .scrollIndicators(.visible)
     }
 }
 
+/// An application's share of today: the bar and the percentage use the same scale.
 struct LegendRow: View {
-    static let height: CGFloat = 64
+    static let height: CGFloat = 44
     let usage: Usage
     let color: Color
-    let longest: TimeInterval
     let total: TimeInterval
     let hovered: Bool
-    let filtering: Bool
+    let selected: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        let share = usage.duration / max(total, 1)
+        VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 8) {
-                RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 8, height: 8)
                 AppIcon(identifiers: usage.identifiers, size: 18)
                 Text(usage.name ?? "未知应用").lineLimit(1)
-                if filtering {
-                    Image(systemName: "line.3.horizontal.decrease.circle.fill")
-                        .foregroundStyle(.secondary)
-                        .help("时段列表只显示这个应用")
-                }
                 Spacer(minLength: 8)
-                Text(Format.duration(usage.duration)).fontWeight(.semibold).monospacedDigit()
+                Text(Format.duration(usage.duration)).fontWeight(.medium).monospacedDigit()
             }
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(.quaternary)
-                    Capsule().fill(color).frame(width: max(4, geometry.size.width * usage.duration / max(longest, 1)))
+            HStack(spacing: 8) {
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(.quaternary)
+                        Capsule().fill(color).frame(width: max(3, geometry.size.width * share))
+                    }
                 }
+                .frame(height: 4)
+                Text("\(Int((share * 100).rounded()))%")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .frame(width: 34, alignment: .trailing)
             }
-            .frame(height: 4)
-            Text("\(usage.periods) 个时段 · 最长 \(Format.duration(usage.longest)) · \(Int((usage.duration / max(total, 1) * 100).rounded()))%")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
+            .padding(.leading, 26)
         }
         .padding(.horizontal, 8)
         .frame(height: Self.height)
-        .background(hovered ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear), in: RoundedRectangle(cornerRadius: 8))
+        .contentShape(Rectangle())
+        .background(background, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var background: AnyShapeStyle {
+        if selected { return AnyShapeStyle(color.opacity(0.16)) }
+        if hovered { return AnyShapeStyle(.quaternary) }
+        return AnyShapeStyle(.clear)
     }
 }

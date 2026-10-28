@@ -15,13 +15,10 @@ struct OrisumiApp: App {
         Window("Orisumi", id: MainView.windowId) {
             MainView(model: delegate.model, navigation: delegate.navigation)
         }
-        .defaultSize(width: 1180, height: 760)
+        .defaultSize(width: 1080, height: 760)
         .defaultLaunchBehavior(UserDefaults.standard.bool(forKey: "showWindow") ? .presented : .suppressed)
-        .commands {
-            CommandGroup(replacing: .appSettings) {
-                Button("设置…") { delegate.navigation.selection = .settings }
-                    .keyboardShortcut(",")
-            }
+        Settings {
+            SettingsView(model: delegate.model, navigation: delegate.navigation)
         }
     }
 }
@@ -34,13 +31,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var polling: Task<Void, Never>?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Appearance(stored: UserDefaults.standard.string(forKey: Appearance.key)).apply()
         model.start()
-        // The menu bar icon needs the Observers' state while the window is closed, so the list is read less often then.
+        // The menu bar icon needs the Observers' state while the windows are closed, so the list is read less often then.
         polling = Task { [model, navigation] in
             await model.refresh()
             await model.refreshCatalog()
             while !Task.isCancelled {
-                try? await Task.sleep(for: navigation.windowVisible ? .seconds(2) : .seconds(15))
+                try? await Task.sleep(for: navigation.windowVisible || navigation.settingsVisible ? .seconds(2) : .seconds(15))
                 await model.refresh()
             }
         }
@@ -48,11 +46,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         signal(SIGTERM, SIG_IGN)
         let termination = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
         termination.setEventHandler {
-            // terminate(_:) waits in a nested event loop; leave this queue block so Runtime can be stopped.
-            RunLoop.main.perform { MainActor.assumeIsolated { NSApp.terminate(nil) } }
+            // terminate(_:) waits in a nested event loop; leave this queue block so Runtime can be stopped. Common modes
+            // include the one the run loop is in while a sheet is open.
+            RunLoop.main.perform(inModes: [.common]) { MainActor.assumeIsolated { AppDelegate.quit() } }
         }
         termination.resume()
         self.termination = termination
+    }
+
+    /// Quits like the menu item. An open sheet keeps terminate(_:) from going ahead, so sheets are closed first.
+    static func quit() {
+        for window in NSApp.windows {
+            if let sheet = window.attachedSheet { window.endSheet(sheet) }
+        }
+        NSApp.terminate(nil)
     }
 
     /// Waits for Runtime to stop the Observers and exit before quitting.
@@ -66,21 +73,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-/// What the main window shows.
+/// Which window shows what. The app shows in the Dock while the main window or Settings is open.
 @MainActor
 @Observable
 final class Navigation {
-    enum Item: Hashable {
-        case observer(String)
-        case settings
+    enum SettingsTab: Hashable {
+        case general, observers, advanced
     }
 
-    var selection: Item?
-    var windowVisible = false
+    /// The package whose view the main window shows.
+    var selection: String?
+    var settingsTab: SettingsTab = .general
+    /// Settings opens the add sheet when it next shows the Observer tab.
+    var addingObserver = false
+    var windowVisible = false { didSet { updateActivation() } }
+    var settingsVisible = false { didSet { updateActivation() } }
+
+    private func updateActivation() {
+        NSApp.setActivationPolicy(windowVisible || settingsVisible ? .regular : .accessory)
+    }
 }
 
-/// Settings live in UserDefaults. `dataDirectory`, `runtime`, `catalog` and `showWindow` have no UI; pass them as
-/// launch arguments in development.
+/// Settings live in UserDefaults, including `appearance` (see `Appearance`). `dataDirectory`, `runtime`, `catalog` and
+/// `showWindow` have no UI; pass them as launch arguments in development.
 enum Preferences {
     static let backendKey = "backend"
     static let webConsoleKey = "webConsole"
