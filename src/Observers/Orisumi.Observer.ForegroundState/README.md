@@ -1,6 +1,6 @@
 # Orisumi.Observer.ForegroundState
 
-Orisumi.Observer.ForegroundState 在 macOS 上持续采集前台应用，通过 [.NET SDK](../Orisumi.Observer.Sdk/README.md) 把本机应用和已结束的前台应用时段上传到后端。业务规则见 [Foreground State](../../Docs/Orisumi.Docs/content/docs/observers/application-activity/index.mdx)。
+Orisumi.Observer.ForegroundState 在 macOS 上持续采集前台应用，通过 [.NET SDK](../Orisumi.Observer.Sdk/README.md) 把本机应用和已结束的前台应用时段上传到后端。业务规则见 [Foreground State](../../Docs/Orisumi.Docs/content/docs/observers/foreground-state/index.mdx)。
 
 程序在主线程运行 AppKit 事件循环，持续读取时才能取得更新后的前台应用。
 

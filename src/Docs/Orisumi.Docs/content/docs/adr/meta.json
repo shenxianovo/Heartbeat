@@ -20,7 +20,7 @@
     "entity-api",
     "entity-storage",
     "---Clients---",
-    "desktop-client",
+    "device-client",
     "---Verification---",
     "verification",
     "development-environment",

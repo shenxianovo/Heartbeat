@@ -1,0 +1,11 @@
+{
+  "title": "Clients",
+  "description": "用户使用的 Web 控制台和设备端客户端",
+  "icon": "AppWindow",
+  "root": true,
+  "pages": [
+    "index",
+    "web",
+    "macos"
+  ]
+}

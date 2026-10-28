@@ -1,6 +1,6 @@
 # Orisumi.Mac
 
-Orisumi.Mac 是常驻菜单栏的 macOS 客户端，托管本机的桌面 Observer。第一版托管[前台状态 Observer](../../Observers/Orisumi.Observer.ForegroundState/README.md) 的应用时段。客户端的责任见 [ADR · 桌面客户端](../../Docs/Orisumi.Docs/content/docs/adr/desktop-client.mdx)，托管规则见 [Desktop · 客户端](../../Docs/Orisumi.Docs/content/docs/observers/desktop/index.mdx#client)。
+Orisumi.Mac 是常驻菜单栏的 macOS 客户端，托管本机的 Observer。第一版托管[前台状态 Observer](../../Observers/Orisumi.Observer.ForegroundState/README.md) 的应用时段。客户端的责任见 [ADR · 设备端客户端](../../Docs/Orisumi.Docs/content/docs/adr/device-client.mdx)，托管规则见 [Clients · 设备端客户端](../../Docs/Orisumi.Docs/content/docs/clients/index.mdx#device)，实现进度见 [macOS](../../Docs/Orisumi.Docs/content/docs/clients/macos.mdx)。
 
 ## 结构
 

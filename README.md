@@ -70,7 +70,7 @@ orisumi verify checks --base HEAD --quality
 | `src/Backend` | API、应用操作和 PostgreSQL 实现 |
 | `src/Observers` | Observer 程序 |
 | `src/Clients/Orisumi.Web` | Web 控制台 |
-| `src/Clients/Orisumi.Mac` | macOS 客户端，托管桌面 Observer |
+| `src/Clients/Orisumi.Mac` | macOS 客户端，托管本机的 Observer |
 | `src/Docs/Orisumi.Docs` | 文档站，长期文档的唯一位置 |
 | `tests` | 模型、集成和开发工具测试 |
 | `tools/Orisumi.AppHost` | Aspire 本地编排 |

@@ -1,27 +1,42 @@
 ---
 title: "Overview"
-description: "各来源的 Observer 目录，以及接入新来源从哪里开始"
+description: "有哪些 Observer、各自形成什么观测，以及接入新来源从哪里开始"
 ---
 
-Observer 把来源中发生的事变成观测。本分区按来源组织：每个来源说明有哪些 Observer、它们形成哪些业务实体，以及事实时间怎样取值。Observer 的身份和责任规则见 [Observer](../core/model/observer.mdx)。
+Observer 把来源中发生的事变成观测。本分区按 Observer 组织：每个 Observer 一页，说明它负责什么、形成哪些业务类型、事实时间怎样取值；它下面的每一页说明一种业务类型。Observer 的身份和责任规则见 [Observer](../core/model/observer.mdx)。
+
+Observer 在哪台设备上运行、由哪个客户端托管，见 [Clients](../clients/index.mdx)。
 
 ## 目录 [#catalog]
 
-| 来源 | 观测内容 | 状态 |
+| Observer | 观测内容 | 状态 |
 | --- | --- | --- |
-| [Foreground State](./application-activity/index.mdx) | 前台应用时段与窗口标题时段 | 应用时段已在 macOS 实现 |
+| [Foreground State](./foreground-state/index.mdx) | 前台应用时段与窗口标题时段 | 业务已定义；应用时段已在 macOS 实现 |
 | [Input Events](./input-events/index.mdx) | 逐条键鼠事件 | 草案 |
-| [Device State](./device-state/index.mdx) | 设备休眠与清醒时段 | 草案 |
-| [Browser History](./browser-history/index.mdx) | 网页访问与历史删除 | 草案 |
-| [Assistant Sessions](./assistant-sessions/index.mdx) | 助手会话、执行与工具调用 | 草案 |
-| [Screen Capture](./screen-capture/index.mdx) | 屏幕捕获、OCR 与图像检测 | 草案 |
-| [Health](./health/index.mdx) | 步数与睡眠 | 草案 |
-| [VRChat](./vrchat/index.mdx) | 实例加入、离开与玩家在场 | 草案 |
-| [Playback](./playback/index.mdx) | 媒体播放状态与进度 | 草案 |
-| [Audio](./audio/index.mdx) | 音频材料、片段与说话人 | 草案 |
+| [Device State](./device-state/index.mdx) | 设备休眠、清醒与会话锁定 | 草案 |
 
-前三个来源都在桌面端，从 [Desktop](./desktop/index.mdx) 进入。前台状态 Observer 的程序在 `src/Observers/Orisumi.Observer.ForegroundState/`，运行方式见该目录的 README。
+### 来源草案 [#drafts]
+
+下面的来源还没有划分 Observer，页面记下来源中有什么、可能形成哪些实体，以及待定的问题。一个来源以后可能由多个 Observer 负责。
+
+| 来源 | 内容 |
+| --- | --- |
+| [Browser History](./browser-history/index.mdx) | 网页访问与历史删除 |
+| [Assistant Sessions](./assistant-sessions/index.mdx) | 助手会话、执行与工具调用 |
+| [Screen Capture](./screen-capture/index.mdx) | 屏幕捕获、OCR 与图像检测 |
+| [Health](./health/index.mdx) | 步数与睡眠 |
+| [VRChat](./vrchat/index.mdx) | 实例加入、离开与玩家在场 |
+| [Playback](./playback/index.mdx) | 媒体播放状态与进度 |
+| [Audio](./audio/index.mdx) | 音频材料、片段与说话人 |
+
+## 前台、输入与设备的时间线 [#timelines]
+
+前台状态、输入事件和设备状态三个 Observer 各有自己的程序实例身份，可以运行在同一个程序中。它们各有一条时间线，每条只依据自己的证据形成和补全。所以锁屏时，前台应用的时段照样延续，和锁屏的时段在时间上重叠。
+
+这三条时间线记下的都是系统确认的状态。“用户是否活跃”是读取时的推断：例如要算“没锁屏时 VS Code 在前台多久”，读取方把前台时段和锁屏时段叠在一起计算。活跃的定义和无输入的阈值尚未确定。
+
+读取失败、采集停止，或两次读数的间隔超过业务允许的范围时，各 Observer 按自己的规则在最后一次确认处结束当前的时段，具体边界见各自的业务类型页。没有读数的空白保持空白。
 
 ## 接入新的来源 [#integration]
 
-先按 [Integration Guide](./integration.mdx) 设计业务实体、身份和时间，再按 [Document Template](./template/index.mdx) 写文档。程序实例怎样把数据交给后端，见 [Submission](./submission/index.mdx)。
+先按 [Integration Guide](./integration.mdx) 设计业务类型、身份和时间，再按 [Document Template](./template/index.mdx) 写文档。程序实例怎样把数据交给后端，见 [Submission](./submission/index.mdx)。

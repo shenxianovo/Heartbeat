@@ -15,6 +15,7 @@ description: "程序实例的身份持久不变，Observer 的业务代码按业
 - SDK 按依赖顺序提交版本，重试沿用原 VersionId。队列和合并的算法由各平台的 SDK 决定。
 - 后端按顺序逐个保存一次提交中的版本，遇到被拒绝的版本就停止，之前已保存的保留。
 - SDK 按提交的响应确认版本。错误响应指出被拒绝的版本，它之前的版本已保存，之后的版本没有处理，仍可改写。
+- 程序实例由客户端托管时，SDK 的本地保存和发送随客户端运行。程序实例停止后，已经交给 SDK 的版本继续发送。
 
 ## 理由 [#rationale]
 
@@ -25,6 +26,8 @@ SDK 负责本地保存、恢复发送和按依赖顺序发送。只有尚未提�
 重试沿用 VersionId，已保存的版本重发时直接确认，所以一次提交不必整体成功或整体失败：SDK 处理完被拒绝的原因后，原样重发整次提交即可。逐个保存让后端不必为整次提交维护一个可回滚的工作区。
 
 响应已经说明每个版本的结果，SDK 不需要读回确认。被拒绝的版本之后的版本确定没有保存，所以和草稿一样可以改写，例如改为引用另一个程序实例先保存的首版。
+
+版本交给 SDK 之后，发送已经和业务判断无关。所以由客户端托管时，发送跟着客户端运行：程序实例停用、崩溃或卸载后，它形成的版本照常送到后端，见 [ADR · 设备端客户端](./device-client.mdx)。程序实例单独运行时，SDK 在它的进程中发送。
 
 放弃的方案：
 
@@ -38,8 +41,10 @@ SDK 负责本地保存、恢复发送和按依赖顺序发送。只有尚未提�
 - Observer 的业务代码必须显式通知事实结束。
 - SDK 要记住每个版本的依赖和发送状态。
 - 一次提交被中途拒绝后，后端可能只保存了其中一部分，读取方会暂时看到不完整的一组版本。
+- 由客户端托管时，形成版本和发送的生命周期不同，每种语言的 SDK 都要处理两者之间的交接。
 
 ## 规则位置 [#details]
 
 - [VERSION-13](../core/model/version.mdx#version-13)、[OBSERVER-4](../core/model/observer.mdx#observer-4)、[OBSERVER-5](../core/model/observer.mdx#observer-5)、[Core · 谁决定什么](../core/index.mdx#responsibility)
 - [Observers · Submission](../observers/submission/index.mdx)、[.NET SDK](../observers/submission/dotnet.mdx)
+- [Submission · 由客户端托管](../observers/submission/index.mdx#hosting)

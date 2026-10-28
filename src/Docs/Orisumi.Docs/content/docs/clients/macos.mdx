@@ -1,0 +1,36 @@
+---
+title: "macOS"
+description: "macOS 客户端托管哪些 Observer，以及实现到了哪一步"
+---
+
+macOS 客户端常驻在菜单栏，托管这台 Mac 上的 Observer。它遵循[设备端客户端](./index.mdx#device)的托管规则；本页写它托管哪些 Observer、怎样展示今天的数据，以及实现的进度。
+
+## 托管的 Observer [#observers]
+
+| Observer | 内容 | 状态 |
+| --- | --- | --- |
+| [Foreground State](../observers/foreground-state/index.mdx) | 前台应用时段 | 随客户端附带 |
+
+## 今天的前台应用 [#today]
+
+客户端用 `GET /observations` 读取今天的前台应用时段，只保留 Observer 是本机程序实例的，再补上本地还没发送的时段和进行中的时段。这些时段画成按小时的时间线，按应用汇总，并按时间列出。API 不可用时，只显示本地的时段。
+
+这是前台状态 Observer 的专用视图，目前写在客户端中。
+
+## 实现 [#implementation]
+
+| 规则 | 状态 |
+| --- | --- |
+| 常驻菜单栏，关闭窗口后继续运行 | 已实现 |
+| 显示待发送和已保存的数量、被拒绝的原因 | 已实现 |
+| 设置与登录时启动 | 已实现 |
+| 今天的前台应用 | 已实现，视图写在客户端中 |
+| [安装与卸载](./index.mdx#install)、[更新](./index.mdx#updates) | 未实现：前台状态 Observer 打包在客户端中，随客户端更新 |
+| [启用与停用](./index.mdx#enable) | 部分实现：可以停止和恢复采集，停止期间待发送的版本留在本地，恢复后才发送 |
+| [故障恢复](./index.mdx#recovery) | 部分实现：Observer 意外退出后，由用户手动重新启动 |
+| [发送](./index.mdx#sending)随客户端运行 | 未实现：SDK 在 Observer 的进程中发送 |
+| Observer 提供专用视图 | 未实现 |
+
+目前前台状态 Observer 作为 helper 进程运行在客户端中：客户端启动和停止它，从它的输出读取运行和发送状态。
+
+代码在 `src/Clients/Orisumi.Mac/`，用 SwiftUI 编写。构建、运行和菜单的说明见该目录的 README。

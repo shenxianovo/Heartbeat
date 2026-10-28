@@ -4,6 +4,7 @@
   "collapsible": true,
   "pagesIndex": "index",
   "pages": [
+    "---Business Types---",
     "foreground-state-observer",
     "local-application",
     "foreground-application-period",

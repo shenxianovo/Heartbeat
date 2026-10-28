@@ -90,6 +90,7 @@ pnpm dev
 | Start | [content/docs/start](content/docs/start) | `/start` |
 | Core | [content/docs/core](content/docs/core) | `/core` |
 | Observers | [content/docs/observers](content/docs/observers) | `/observers` |
+| Clients | [content/docs/clients](content/docs/clients) | `/clients` |
 | API | [content/docs/api](content/docs/api) | `/api` |
 | Storage | [content/docs/storage](content/docs/storage) | `/storage` |
 | Testing | [content/docs/testing](content/docs/testing) | `/testing` |

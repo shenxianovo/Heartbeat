@@ -7,11 +7,13 @@ description: "逐条记下键盘和鼠标操作（草案）"
 
 <ObserverStructure node="INPUT_EVENTS" />
 
-## 实体 [#entities]
+## 业务类型 [#types]
 
-| 实体 | 资源名 | 说明 |
+| 业务类型 | 用途 | 资源名 |
 | --- | --- | --- |
-| [Input Event](./input-event.mdx) | `input-events` | 一次键盘或鼠标事件 |
+| [Input Event](./input-event.mdx) | 观测内容：一次键盘或鼠标事件 | `input-events` |
+
+程序实例自身的业务类型尚未定义。
 
 各平台只要事件的含义、字段和时间规则相同，就共用这一种业务类型；各平台怎样读取事件属于实现。
 
@@ -23,7 +25,7 @@ description: "逐条记下键盘和鼠标操作（草案）"
 
 键盘的按下和释放分别记下，长按时系统产生的自动重复被过滤掉；组合键中的每个键各自形成事件。具体的粒度见 [Input Event · 粒度](./input-event.mdx#granularity)。
 
-输入事件 Observer 只记下取得的操作，事件的取舍与其他 Observer 的状态无关，见 [Desktop · 各自的时间线](../desktop/index.mdx#timelines)。
+输入事件 Observer 只记下取得的操作，事件的取舍与其他 Observer 的状态无关，见 [Observers · 前台、输入与设备的时间线](../index.mdx#timelines)。
 
 ### 具体按键记录 [#key-recording]
 

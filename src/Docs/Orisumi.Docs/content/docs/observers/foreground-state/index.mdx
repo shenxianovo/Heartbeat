@@ -5,18 +5,20 @@ description: "前台应用时段与窗口标题时段"
 
 前台状态 Observer 记下某台设备上系统确认的前台应用和窗口标题。两种观测由同一个程序实例形成，各有自己的 EntitySchema 和时间线：标题变化时，应用时段照样延续；标题读取失败时，应用时段照样记录。
 
-它记下的是前台时长。用户是否活跃由读取方组合多条时间线判断，见 [Desktop · 各自的时间线](../desktop/index.mdx#timelines)。
+它记下的是前台时长。用户是否活跃由读取方组合多条时间线判断，见 [Observers · 前台、输入与设备的时间线](../index.mdx#timelines)。
+
+本页写这个 Observer 的职责和运行规则。程序实例自身也是一种业务类型，它的字段和 EntitySchema 见 [Foreground State Observer](./foreground-state-observer.mdx)。
 
 <ObserverStructure node="FOREGROUND_STATE" />
 
-## 实体 [#entities]
+## 业务类型 [#types]
 
-| 实体 | 资源名 | 说明 |
+| 业务类型 | 用途 | 资源名 |
 | --- | --- | --- |
-| [Foreground State Observer](./foreground-state-observer.mdx) | `foreground-state-observers` | 一个前台状态 Observer 程序实例 |
-| [Local Application](./local-application.mdx) | `local-applications` | 设备上的一个应用安装 |
-| [Foreground Application Period](./foreground-application-period.mdx) | `foreground-application-periods` | 应用处于前台的一个时段 |
-| [Foreground Window Title](./foreground-window-title.mdx) | 待定 | 窗口标题的一个时段 |
+| [Foreground State Observer](./foreground-state-observer.mdx) | 程序实例自身：一个前台状态 Observer | `foreground-state-observers` |
+| [Local Application](./local-application.mdx) | 被应用时段引用：设备上的一个应用安装 | `local-applications` |
+| [Foreground Application Period](./foreground-application-period.mdx) | 观测内容：应用处于前台的一个时段 | `foreground-application-periods` |
+| [Foreground Window Title](./foreground-window-title.mdx) | 观测内容：窗口标题的一个时段 | 待定 |
 
 ```mermaid
 flowchart LR
@@ -81,7 +83,7 @@ macOS 即将休眠时，当前时段结束；唤醒后重新读取。读取失�
 | Windows | 未实现 | 未实现 |
 | Android | 未实现 | 未实现 |
 
-macOS 程序在 `src/Observers/Orisumi.Observer.ForegroundState/`，通过 AppKit 读取前台应用，可以持续采集，也可以只采样指定的次数。启动参数见该目录的 README。平时由 [macOS 客户端](../desktop/index.mdx#client)作为 helper 运行。
+macOS 程序在 `src/Observers/Orisumi.Observer.ForegroundState/`，通过 AppKit 读取前台应用，可以持续采集，也可以只采样指定的次数。启动参数见该目录的 README。平时由 [macOS 客户端](../../clients/macos.mdx)托管。
 
 用到的 macOS 接口：[应用激活通知](https://developer.apple.com/documentation/appkit/nsworkspace/didactivateapplicationnotification)、[焦点窗口变化通知](https://developer.apple.com/documentation/applicationservices/kaxfocusedwindowchangednotification)、[标题变化通知](https://developer.apple.com/documentation/applicationservices/kaxtitlechangednotification)。
 

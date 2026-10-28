@@ -1,0 +1,18 @@
+---
+title: "Web"
+description: "在浏览器中读取、追溯和删除记录"
+---
+
+Web 控制台是 Orisumi 的完整读取界面，目前只在本机使用。首页“现在”显示各 Observer 正在写入什么、今天记下了什么；从任何一个 Observer 或版本出发，可以进入实体页，沿引用逐层追溯。
+
+控制台是读取方：它读取所有 Observer 的数据，也可以删除实体，见 [ADR · 删除](../adr/deletion.mdx)。数据由 Observer 通过 SDK 写入。设备端客户端只展示今天的数据，更早的日期和追溯都在这里查看。
+
+| 页面 | 内容 |
+| --- | --- |
+| 现在 | 今天各 Observer 的写入和 Observation，有心电、气泡、行和表盘四种视图 |
+| 实体 | 一个实体的内容、引用链、版本和被引用 |
+| EntitySchema | 已登记的 EntitySchema |
+
+## 实现 [#implementation]
+
+代码在 `src/Clients/Orisumi.Web/`，用 React 编写，按 [`openapi.json`](../api/index.mdx) 读取后端。各视图的取数方式、运行和验证见该目录的 README。

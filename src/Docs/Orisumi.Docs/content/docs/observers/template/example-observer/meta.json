@@ -3,5 +3,8 @@
   "defaultOpen": false,
   "collapsible": true,
   "pagesIndex": "index",
-  "pages": ["example-entity"]
+  "pages": [
+    "---Business Types---",
+    "example-entity"
+  ]
 }

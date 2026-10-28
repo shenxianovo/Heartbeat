@@ -3,7 +3,7 @@ title: "Integration Guide"
 description: "接入新来源时，依次确定事实、Observer、实体、EntitySchema、身份、时间、历史和提交"
 ---
 
-接入一个新来源，就是依次回答下面九个问题，前面的结论是后面的前提。已确认的结论写进这个来源的 Observer 页和实体页，格式见 [Document Template](./template/index.mdx)；还没确认的写进“待定”。
+接入一个新来源，就是依次回答下面九个问题，前面的结论是后面的前提。已确认的结论写进这个 Observer 的 Observer 页和业务类型页，格式见 [Document Template](./template/index.mdx)；还没确认的写进“待定”。
 
 ## 1. 事实 [#fact]
 
@@ -11,7 +11,7 @@ description: "接入新来源时，依次确定事实、Observer、实体、Enti
 
 然后定粒度：什么时候延续同一份观测，什么时候形成新的观测。用业务例子检验，一次读取多半是在补全已有的观测，见 [IDENTITY-4](../core/rules/identity.mdx#identity-4)。
 
-结论写进 Observer 页的开头和实体页的“粒度”。
+结论写进 Observer 页的开头和业务类型页的“粒度”。
 
 ## 2. Observer [#observer]
 
@@ -33,7 +33,7 @@ description: "接入新来源时，依次确定事实、Observer、实体、Enti
 
 为业务类型选择稳定的 SchemaId 和唯一的资源名。结构或约束变化时，形成同一 EntitySchema 的新版本；业务含义变化时，新建一个 EntitySchema，见 [SCHEMA-15](../core/model/schema.mdx#schema-15) 和 [SCHEMA-16](../core/model/schema.mdx#schema-16)。
 
-一种业务类型的含义、粒度、身份、时间、EntitySchema 和示例，集中写在同一个实体页。
+一种业务类型的含义、粒度、身份、时间、EntitySchema 和示例，集中写在同一个业务类型页。
 
 ## 5. 身份 [#identity]
 
@@ -65,9 +65,11 @@ description: "接入新来源时，依次确定事实、Observer、实体、Enti
 
 在 Observer 页写明用的是哪个 SDK、哪种策略，并链接 [Submission](./submission/index.mdx)。SDK 负责本地保存、发送、确认和恢复；事实判断、身份和历史保留由 Observer 的业务代码负责。
 
+在设备上运行的 Observer 由设备端客户端托管，安装、启用、停用和发送怎样随客户端进行，见 [Clients · 设备端客户端](../clients/index.mdx#device)。
+
 ## 9. 读回 [#read-back]
 
-提交实体页的示例，再用 `GET /versions/{versionId}` 逐个读回（[API · 接口](../api/index.mdx#operations)），检查保存和读取是否一致：
+提交业务类型页的示例，再用 `GET /versions/{versionId}` 逐个读回（[API · 接口](../api/index.mdx#operations)），检查保存和读取是否一致：
 
 - 业务版本的 `schemaVersionId` 指向它所用的 Schema 版本。观测内容的类型由内容版本自己的 `schemaVersionId` 给出。
 - 每个版本都带有后端赋值的 `recordedAt`，提交时不带它。

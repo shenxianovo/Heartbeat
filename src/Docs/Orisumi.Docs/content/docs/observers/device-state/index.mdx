@@ -7,15 +7,15 @@ description: "设备休眠、清醒与会话锁定（草案）"
 
 <ObserverStructure node="DEVICE_STATE" />
 
-## 实体 [#entities]
+## 业务类型 [#types]
 
-| 实体 | 资源名 | 说明 |
+| 业务类型 | 用途 | 资源名 |
 | --- | --- | --- |
-| [Sleep State](./sleep-state.mdx) | 待定 | 有证据的休眠或清醒状态 |
+| [Sleep State](./sleep-state.mdx) | 观测内容：有证据的休眠或清醒状态 | 待定 |
 
-设备清醒和会话锁定分别建模。设备实体和会话锁定实体尚未定义。
+设备清醒和会话锁定分别建模。程序实例自身、设备和会话锁定的业务类型尚未定义。
 
-设备状态是一条独立的时间线：它只记下设备的状态，其他 Observer 的时段不因它而切开，见 [Desktop · 各自的时间线](../desktop/index.mdx#timelines)。
+设备状态是一条独立的时间线：它只记下设备的状态，其他 Observer 的时段不因它而切开，见 [Observers · 前台、输入与设备的时间线](../index.mdx#timelines)。
 
 ## 程序实例 [#instance]
 

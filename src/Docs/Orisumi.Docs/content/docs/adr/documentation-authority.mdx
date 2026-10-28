@@ -27,7 +27,7 @@ Orisumi 由人和 Agent 共同维护。同一条规则会出现在模型文档�
 | 层 | 名称 | 内容 |
 | --- | --- | --- |
 | T0 | 模型与决策 | ADR、Core 的类型页和规则页、Glossary |
-| T1 | 对外约定 | OpenAPI、API、Storage、Observers 文档 |
+| T1 | 对外约定 | OpenAPI、API、Storage、Observers、Clients 文档 |
 | T2 | 验证定义 | Testing 的 Case、验证入口、证据位置 |
 | T3 | 实现 | 后端、Observer、前端和测试代码 |
 
@@ -54,7 +54,7 @@ T0 的核心建模规定所有数据共用的结构与规则。单个 Observer �
 | 层 | 默认顺序 |
 | --- | --- |
 | T0 | 先在对话中确认，再改 ADR，然后改 Core 的类型页和规则页，最后改 Glossary。只改措辞时不改 ADR |
-| T1 | 先改 OpenAPI 和 API 文档，再改 Storage 和 Observers 文档。只涉及存储或 Observer 时，两者没有先后 |
+| T1 | 先改 OpenAPI 和 API 文档，再改 Storage、Observers 和 Clients 文档。后三者之间没有先后 |
 | T2 | 先写 Case 的预期结果，再更新验证入口，最后更新证据位置 |
 | T3 | 先改 Core 和 Application，再改 Infrastructure、API，最后改 Observer 和前端。测试代码按 T2 的 Case 编写 |
 
@@ -85,6 +85,7 @@ flowchart TD
     OAS[OpenAPI] --> APIDOC[API 文档]
     STO[Storage 文档]
     OBS[Observers 文档]
+    CLI[Clients 文档]
   end
 
   subgraph T2[T2 验证定义]

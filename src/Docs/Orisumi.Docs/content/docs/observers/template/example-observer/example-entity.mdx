@@ -1,9 +1,9 @@
 ---
 title: "Example Entity"
-description: "实体页的章节和每一章写什么"
+description: "业务类型页的章节和每一章写什么"
 ---
 
-开头用一段话说明这种业务实体表达什么、是否作为观测内容，以及由哪个 Observer 形成。本页的结构图借用 [Input Event](../../input-events/input-event.mdx) 的节点，实际写作时换成自己的节点。
+开头用一段话说明这种业务类型表示什么实体、在当前观测中起什么作用（程序实例自身、被引用的实体或观测内容），以及由哪个 Observer 形成。程序实例自身也用这份模板。本页的结构图借用 [Input Event](../../input-events/input-event.mdx) 的节点，实际写作时换成自己的节点。
 
 <ObserverStructure node="INPUT_CONTENT" />
 
@@ -25,7 +25,7 @@ description: "实体页的章节和每一章写什么"
 
 ## 事实时间 [#fact-time]
 
-写对应的 Observation 是时间点还是时段、边界取自哪里、未知的边界怎样表示、补全时怎样更新。不作为观测内容的实体，写它的时间由哪些观测表达。
+写对应的 Observation 是时间点还是时段、边界取自哪里、未知的边界怎样表示、补全时怎样更新。不作为观测内容的业务类型，写“不适用”，以及它的时间由哪些观测表达；不在业务实体上增加事实时间字段。
 
 ## EntitySchema [#schema]
 
