@@ -33,7 +33,7 @@
 
 Core 只记录用户已确认的结构与语义。改变模型语义前，逐项取得用户确认。已确认的内容可以直接起草和整理成文档。
 
-实施中的每项决定先在对话中说明，取得用户确认后再做。已确认范围内的工作可以继续。
+以下决定先在对话中说明，取得用户确认后再做：改变目标、模型语义或用户可以观察到的行为；重要的取舍，例如引入持续的费用或新的部署依赖；现有要求不足以选择方向。其余工作在已确认的范围内直接完成，包括落实已确认的决定、选择实现方式、修复偏离规范的实现、同步字段名和链接。完整规则见 [ADR · 设计层与变更流程](src/Docs/Orisumi.Docs/content/docs/adr/documentation-authority.mdx#confirmation)。
 
 以下三类决定写成 ADR：
 
@@ -43,20 +43,19 @@ Core 只记录用户已确认的结构与语义。改变模型语义前，逐项
 
 较小的决定写入对应的类型页、规则页或契约。只涉及单个 Observer 的决定写入该 Observer 的文档。
 
-## 传播层级
+## 设计层与变更
 
-更新沿以下层级向下传播：
+设计分为三层：目标与模型（Core、Glossary）、组件与契约（OpenAPI、API、Storage、Observers、Clients）、实现（实现设计、代码和测试）。决定按内容归层，ADR 可以属于任何一层，上层约束下层。
 
-T0 模型与决策（ADR、Core、Glossary）→ T1 对外约定（OpenAPI、API、Storage、Observers）→ T2 验证定义（Testing Case）→ T3 实现（代码和测试）。
-
-从受影响的最高层开始修改，并传播到最远的受影响层。下层问题在本层解决不了时，先改最早能解决问题的上层，再重新向下传播。完整规则、各层内部顺序和图见 [ADR · 文档的权威与传播](src/Docs/Orisumi.Docs/content/docs/adr/documentation-authority.mdx#layers)。
+变更从现有设计与目标之间最早需要改变的位置开始，沿实际依赖同步到同层的其他文档、下层、消费者和测试。每个受影响的位置要么同步，要么写明不用改的理由。实施中需要改变已确认的行为或重要取舍时，带着原因和可选方案回到对应的决定。每项要求由直接依据它的检查验证。完整规则和图见 [ADR · 设计层与变更流程](src/Docs/Orisumi.Docs/content/docs/adr/documentation-authority.mdx#layers)。
 
 ## 文档与实现分工
 
 文档和实现由不同的任务负责。
 
 - 实现任务只改代码和测试。文档站、各级 `README.md`、`AGENTS.md` 和 skill 都由文档任务修改。
-- 实现任务发现文档需要修改时，仍按传播层级找到最早能解决问题的一层，把改动写成需求，放进 `.scratch/<feature-slug>/doc-requests.md`，并告诉用户。每条需求写明位置（页面和规则编号）、问题，以及希望表达的意思。
+- 修改接口时，文档任务先改契约，实现任务在一次改动中同步生产者、消费者和测试。
+- 实现任务发现文档需要修改时，找到最早能解决问题的位置，把改动写成需求，放进 `.scratch/<feature-slug>/doc-requests.md`，并告诉用户。每条需求写明位置（页面和规则编号）、问题，以及希望表达的意思。
 - 文档任务按 [Core · Conventions](src/Docs/Orisumi.Docs/content/docs/core/conventions.mdx#writing) 的文字和用词把需求写进文档，用自己的语言重新组织，需求原文只作参考。
 
 ## 工作约定
@@ -74,4 +73,6 @@ T0 模型与决策（ADR、Core、Glossary）→ T1 对外约定（OpenAPI、API
 - 文档站：另外运行 `pnpm test`、`pnpm types:check` 和 `pnpm build`。
 - 页面或交互：在本地环境中打开实际页面检查。
 
-所有改动都要检查改动范围内的代码、文档和链接是否一致，并报告验证结果和未验证的范围。
+验证的力度看出错的后果、影响范围、能否撤回，以及错误是否容易发现。所有改动都要检查改动范围内的代码、文档和链接是否一致。
+
+收口时说明：最初的问题是否解决；同步了哪些位置，哪些确认不用改；证据覆盖的范围；未完成和未验证的部分，以及承接它们的任务。见 [ADR · 设计层与变更流程](src/Docs/Orisumi.Docs/content/docs/adr/documentation-authority.mdx#closing)。

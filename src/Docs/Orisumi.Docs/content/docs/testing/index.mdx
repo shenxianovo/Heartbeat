@@ -28,7 +28,7 @@ TUnit 通过 Microsoft.Testing.Platform 运行，版本 `1.72.16` 由 `Directory
 
 ## 模型测试 [#model]
 
-`tests/Orisumi.Model.Tests` 按 Core 的规则检查 Core 和 Application：提交、读取和删除版本，EntitySchema 的校验，引用的枚举，以及事实时间。存储使用内存实现，时间由可控的 `TimeProvider` 提供，不需要数据库。每个测试用注释写明它验证的规则编号，例如 `// VERSION-7`。这些测试直接验证 T0，不需要先把规则复制到 T1；它们的结果不覆盖 HTTP 表示、PostgreSQL 或原生采集。
+`tests/Orisumi.Model.Tests` 按 Core 的规则检查 Core 和 Application：提交、读取和删除版本，EntitySchema 的校验，引用的枚举，以及事实时间。存储使用内存实现，时间由可控的 `TimeProvider` 提供，不需要数据库。每个测试用注释写明它验证的规则编号，例如 `// VERSION-7`。这些测试直接依据 Core 规则，结果不覆盖 HTTP 表示、PostgreSQL 或原生采集。
 
 ```sh
 dotnet test --project tests/Orisumi.Model.Tests/Orisumi.Model.Tests.csproj
@@ -50,7 +50,7 @@ dotnet test --project tests/Orisumi.Model.Tests/Orisumi.Model.Tests.csproj
 
 字段说明和两阶段拒绝的验证定义见 [Schema Fields](./api/schema-fields.mdx)，页面单独列出尚未覆盖的预期。
 
-每个 Case 一页，写为什么验证、前置条件、操作和预期结果。预期依据 T0 的 Core 规则或 T1 的具体约定，并链接到对应位置。预期描述要求，执行结果描述某次检查发生了什么。这样设计的理由见 [ADR · 开发验证与测试证据](../adr/verification.mdx)。
+每个 Case 一页，写为什么验证、前置条件、操作和预期结果。预期依据 Core 规则，或 API、Storage、Observers、Clients 中的具体约定，并链接到对应位置。预期描述要求，执行结果描述某次检查发生了什么。这样设计的理由见 [ADR · 开发验证与测试证据](../adr/verification.mdx)。
 
 Case ID 稳定，与测试方法名无关；测试用 `[Property("caseId", "…")]` 引用它。页面的“测试实现”逐项说明哪些预期由哪个测试方法检查；一个方法可以检查多项预期，参数化测试还要说明参数范围。没有自动测试的预期，写明可重复的手动步骤或标为“未覆盖”。测试方法重命名时，同步更新这份对应说明，报告仍通过 `caseId` 关联。
 

@@ -105,7 +105,7 @@ pnpm dev
 
 ## OpenAPI
 
-[content/docs/api/openapi.json](content/docs/api/openapi.json) 是 HTTP 契约的权威来源，维护者直接编辑这个文件，见 [ADR · 文档的权威与传播](content/docs/adr/documentation-authority.mdx)。
+[content/docs/api/openapi.json](content/docs/api/openapi.json) 是 HTTP 契约的权威来源，维护者直接编辑这个文件，见 [ADR · 设计层与变更流程](content/docs/adr/documentation-authority.mdx)。
 
 - `lib/openapi.ts` 读取契约，`lib/source.ts` 用 `staticSource({ baseDir: 'api' })` 生成接口页，与 MDX 页面合并。
 - 接口页地址是 `/api/<operationId>`。没有 `operationId` 时，使用路径和 HTTP 方法。

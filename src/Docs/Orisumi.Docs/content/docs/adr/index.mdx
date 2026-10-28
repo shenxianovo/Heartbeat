@@ -25,7 +25,7 @@ ADR（Architecture Decision Record）记录一项架构决定和它的理由。�
 | 代价 | 接受了哪些成本或限制 |
 | 规则位置 | 承载具体规则的文档 |
 
-条件、例外和细节写在规则中，ADR 链接过去。流程类决定在 Core 中没有页面，这类 ADR 在“决定”之后加一节“规则”，例如[文档的权威与传播](./documentation-authority.mdx)。写法见 [Core · Conventions](../core/conventions.mdx#writing)。
+条件、例外和细节写在规则中，ADR 链接过去。ADR 可以属于任何一层，归层方式见 [设计层与变更流程](./documentation-authority.mdx#layers)。流程类决定在 Core 中没有页面，这类 ADR 在“决定”之后加一节“规则”，例如[设计层与变更流程](./documentation-authority.mdx)。写法见 [Core · Conventions](../core/conventions.mdx#writing)。
 
 ## 命名 [#naming]
 
@@ -39,7 +39,7 @@ ADR 用英文 slug 命名，例如 `entity-model.mdx`，没有编号。引用时
 | 分组 | ADR | 决定 |
 | --- | --- | --- |
 | Foundation | [定位与边界](./positioning.mdx) | Orisumi 保存一个人经历了什么，记录以用户为主体，独立于采集和使用它的软件 |
-| Foundation | [文档的权威与传播](./documentation-authority.mdx) | 文档是唯一权威，分为四层，更新只能从模型向实现前向传播 |
+| Foundation | [设计层与变更流程](./documentation-authority.mdx) | 文档是唯一权威；设计分为目标与模型、组件与契约、实现三层，变更从最早需要改变的位置开始，沿依赖同步，以验证证据收口 |
 | Model | [实体模型](./entity-model.mdx) | 实体表达身份，不可变的版本保存完整内容，引用固定到版本，只引用已保存的版本 |
 | Model | [Observer 与输入集](./observers-and-evidence.mdx) | Observer 是对观测负责的实体，按负责的陈述划分；一次处理实际使用的版本由可共享的 InputSet 列出 |
 | Model | [身份、时间与更新](./identity-and-updates.mdx) | 业务规则决定身份和粒度，每个版本有自己的保存时间，更新形成新版本，独立的陈述形成新观测 |
