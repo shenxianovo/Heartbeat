@@ -53,6 +53,7 @@ public sealed class EnvironmentTests
     [Arguments("web", "api,db,migrate,nginx,web")]
     [Arguments("api", "api,db,migrate,nginx")]
     [Arguments("docs", "docs,nginx")]
+    [Arguments("application-identity", "api,application-identity,db,migrate,nginx")]
     public async Task SelectionCompletesDependencies(string service, string expected) =>
         await Assert.That(string.Join(',', ServiceSelection.Resolve([service]).Order())).IsEqualTo(expected);
 

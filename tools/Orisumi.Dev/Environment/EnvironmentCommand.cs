@@ -14,7 +14,7 @@ internal sealed class EnvironmentCommand(RepositoryContext repository, IProcessR
         command.SetAction(parse => new HelpAction().Invoke(parse));
         var up = new Command("up", "Start selected services and wait until ready");
         var services = new Argument<string[]>("services") { Arity = ArgumentArity.ZeroOrMore };
-        services.AcceptOnlyFromAmong("api", "docs", "web");
+        services.AcceptOnlyFromAmong("api", "docs", "web", "application-identity");
         var temporary = new Option<bool>("--temp") { Description = "Use a temporary database volume, removed on env down" };
         var reset = new Option<bool>("--reset") { Description = "Delete and recreate this checkout's default database volume" };
         up.Options.Add(reset);
