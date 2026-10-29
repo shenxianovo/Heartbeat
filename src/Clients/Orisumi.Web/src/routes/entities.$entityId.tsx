@@ -9,12 +9,13 @@ import { Content } from "@/components/entity/Content";
 import { coreKind } from "@/components/entity/kinds";
 import { DeleteDialog, VersionList } from "@/components/entity/Panels";
 import { ReferenceMap } from "@/components/entity/ReferenceMap";
-import { useVersionKind } from "@/components/entity/VersionChip";
-import { Button, Card, Message, Mono, SectionTitle, Sigil } from "@/components/ui";
+import { iconOf, Mark } from "@/components/token/Token";
+import { Button, Card, Message, Mono, SectionTitle } from "@/components/ui";
 import { useEntity, useEntityVersions } from "@/hooks/queries";
+import { useDescribe } from "@/hooks/useEntityInfo";
 import { useNow } from "@/hooks/useNow";
 import { ago, dateTime, parseTime } from "@/lib/time";
-import { CATEGORY_NAMES, versionLabel, versionNumber } from "@/lib/versions";
+import { versionLabel, versionNumber } from "@/lib/versions";
 
 interface EntitySearch {
   version?: string | undefined;
@@ -42,7 +43,7 @@ function EntityPage() {
 
   const versions = chain.data ?? (entity.data ? [entity.data] : []);
   const selected = versions.find((v) => v.versionId === search.version) ?? entity.data;
-  const kind = useVersionKind(selected);
+  const { info } = useDescribe(selected);
 
   if (entity.isPending) return <Message title="读取中" mascot />;
   if (entity.isError) {
@@ -60,15 +61,22 @@ function EntityPage() {
   const number = versionNumber(versions, selected.versionId);
   const recordedAt = parseTime(selected.recordedAt);
   const schema = isEntitySchema(selected) ? (selected as Version<EntitySchema>) : null;
-  const title = schema ? schema.content.displayName : (kind.name ?? "…");
+  const title = info?.title ?? "…";
   const typeKey =
     selected.category === "business"
-      ? kind.schema?.content.resourceName
+      ? info?.schema?.content.resourceName
       : selected.category === "entity_schema"
         ? undefined
         : selected.category;
-  const typeName =
-    selected.category === "business" ? (kind.schema?.content.displayName ?? "…") : CATEGORY_NAMES[selected.category];
+  const typeName = info?.typeName ?? "…";
+  const mark = (size: "lg" | "xl") =>
+    info ? (
+      <Mark role={info.role} color={info.color} icon={iconOf(info)} size={size} framed />
+    ) : (
+      <span
+        className={size === "xl" ? "bg-panel size-14 shrink-0 rounded-2xl" : "bg-panel size-10 shrink-0 rounded-[10px]"}
+      />
+    );
 
   async function remove() {
     setBusy(true);
@@ -106,10 +114,10 @@ function EntityPage() {
 
       <header className="bg-card border-line mb-4 rounded-xl border p-4 sm:p-5">
         <div className="flex items-start gap-3.5">
-          <Sigil tint={kind.tint} text={title} icon={kind.icon} size="lg" />
+          {mark("xl")}
           <div className="min-w-0 flex-1">
-            {schema && <p className="text-fg-3 text-xs">EntitySchema</p>}
-            <h1 className="text-[22px] leading-tight font-medium">{title}</h1>
+            <p className="text-fg-3 text-xs">{info ? `${info.roleName} · ${typeName}` : "读取中"}</p>
+            <h1 className="text-[22px] leading-tight font-medium break-all">{title}</h1>
             <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
               <CopyId id={entityId} />
               <span className="text-fg-2 text-xs">
@@ -132,11 +140,11 @@ function EntityPage() {
         <SectionTitle>引用</SectionTitle>
         <ReferenceMap
           version={selected}
-          fields={kind.schema?.content.fields}
+          fields={info?.schema?.content.fields}
           title={`这个${title}`}
           center={
             <>
-              <Sigil tint={kind.tint} text={title} icon={kind.icon} size="md" />
+              {mark("lg")}
               <span className="min-w-0">
                 <span className="block truncate text-[13px] font-medium">{title}</span>
                 <span className="text-fg-3 block text-[11px]">这个实体 · {number === null ? "v?" : `v${number}`}</span>

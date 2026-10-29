@@ -46,3 +46,16 @@ function visit(value: unknown, definition: FieldDefinition, path: string, found:
     value.forEach((item, i) => visit(item, definition.items!, `${path}[${i}]`, found));
   else if (definition.type === "object" && definition.fields) collect(value, definition.fields, path, found);
 }
+
+/**
+ * 引用位置在界面上的写法：去掉内容的根 `/content/` 和字段名末尾的 `VersionId`，数组下标写成方括号。
+ * 例如 `/content/localApplicationVersionId` 写成 `localApplication`，`/content/items/0/targetVersionId` 写成 `items[0].target`。
+ */
+export function referenceLabel(path: string): string {
+  return path
+    .replace(/^\/content(?=\/|$)/, "")
+    .replace(/\/(\d+)(?=\/|$)/g, "[$1]")
+    .replace(/^\//, "")
+    .replaceAll("/", ".")
+    .replace(/VersionId(?=$|[.[])/g, "");
+}

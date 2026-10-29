@@ -1,11 +1,18 @@
-import { isEntitySchema, isInputSet, isObservation, type EntitySchema, type Version } from "@/api/types";
+import {
+  isEntitySchema,
+  isInputSet,
+  isObservation,
+  type EntitySchema,
+  type Observation,
+  type Version,
+} from "@/api/types";
 import { roleOf, ROLE_NAMES, thingColor, type Role } from "@/lib/roles";
 import { clock, parseTime } from "@/lib/time";
 import { businessTitle } from "@/lib/titles";
 import { CATEGORY_NAMES } from "@/lib/versions";
 import { LOCAL_APPLICATIONS } from "@/lib/applications";
 import { useCatalog } from "./useApplications";
-import { useVersion } from "./queries";
+import { useReferrers, useVersion } from "./queries";
 import { useTypes } from "./useTypes";
 
 /** 一个版本在界面上的样子：角色、名字、类型名，以及事物的颜色。 */
@@ -73,3 +80,18 @@ export function useDescribe(version: Version | undefined, pending = false, faile
 }
 
 const EMPTY = { contentTypes: new Set<string>(), observerTypes: new Set<string>() };
+
+/**
+ * 经历的事实时间在 Observation 上：Observation 就是它自己，观测内容取引用它的那份 Observation。
+ * 其他角色没有 Observation，不发请求。
+ */
+export function useObservationOf(info: EntityInfo | null) {
+  const direct = info && isObservation(info.version) ? info.version : null;
+  const lookup = !direct && info?.role === "experience" ? info.version.entityId : null;
+  const referrers = useReferrers(lookup);
+  const found = referrers.data?.pages.flatMap((page) => page.referrers).find((r) => isObservation(r.version))?.version;
+  return {
+    observation: (direct ?? found ?? null) as Version<Observation> | null,
+    pending: !!lookup && referrers.isPending,
+  };
+}

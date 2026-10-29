@@ -12,14 +12,19 @@ const MARK_SIZES = {
   sm: "size-4 rounded-[4px] text-[9px]",
   md: "size-5 rounded-[5px] text-[10px]",
   lg: "size-10 rounded-[10px] text-base",
+  xl: "size-14 rounded-2xl text-xl",
 };
 
-/** 记号的形状按角色：事物是带类型图标的色块，经历是一段条，来源是圆点，依据是叠起的卡，定义是虚线框。 */
+/**
+ * 记号的形状按角色：事物是带类型图标的色块，经历是一段条，来源是圆点，依据是叠起的卡，定义是虚线框。
+ * framed 时其他角色的记号也放进同样大小的底块，用在标题这类单独出现、需要分量的位置。
+ */
 export function Mark({
   role,
   color,
   icon: Icon,
   size = "md",
+  framed,
   className,
 }: {
   role: Role | null;
@@ -27,9 +32,16 @@ export function Mark({
   /** 类型的记号用图标代替首字母。 */
   icon?: ComponentType<{ className?: string }> | undefined;
   size?: keyof typeof MARK_SIZES;
+  framed?: boolean;
   className?: string;
 }) {
   const base = cn("grid shrink-0 place-items-center font-semibold", MARK_SIZES[size], className);
+  if (framed && role !== "thing")
+    return (
+      <span aria-hidden="true" className={cn(base, "bg-panel")}>
+        <Mark role={role} color={color} icon={Icon} size={size} className="size-[58%]" />
+      </span>
+    );
   if (role === "thing")
     return (
       <span

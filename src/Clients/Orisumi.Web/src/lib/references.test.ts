@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { FieldDefinition, Version } from "@/api/types";
 import { observation } from "@/test/fixtures";
-import { outgoingReferences } from "./references";
+import { outgoingReferences, referenceLabel } from "./references";
 
 function business(content: Record<string, unknown>): Version {
   return {
@@ -45,5 +45,18 @@ describe("outgoingReferences", () => {
 
   it("读不到 Schema 时业务版本没有可识别的引用", () => {
     expect(outgoingReferences(business({ author: "a" }), undefined)).toEqual([]);
+  });
+});
+
+describe("referenceLabel", () => {
+  it("去掉内容的根和 VersionId 后缀", () => {
+    expect(referenceLabel("/content/localApplicationVersionId")).toBe("localApplication");
+    expect(referenceLabel("observerVersionId")).toBe("observer");
+  });
+
+  it("数组下标写成方括号，嵌套字段用点连接", () => {
+    expect(referenceLabel("/content/items/0/targetVersionId")).toBe("items[0].target");
+    expect(referenceLabel("members[2]")).toBe("members[2]");
+    expect(referenceLabel("tagsVersionId[]")).toBe("tags[]");
   });
 });

@@ -9,7 +9,6 @@ import {
   type EntitySchema,
   type FieldDefinition,
   type InputSet,
-  type Observation,
   type Version,
 } from "@/api/types";
 import { Blueprint } from "@/components/entity/Content";
@@ -17,7 +16,7 @@ import { Mono } from "@/components/ui";
 import { useEntityVersions, useReferrers, useVersion } from "@/hooks/queries";
 import { productGroup, useCatalog } from "@/hooks/useApplications";
 import { useDay } from "@/hooks/useDay";
-import { describeVersion, type EntityInfo } from "@/hooks/useEntityInfo";
+import { describeVersion, useObservationOf, type EntityInfo } from "@/hooks/useEntityInfo";
 import { useNow } from "@/hooks/useNow";
 import { useTypes } from "@/hooks/useTypes";
 import { LOCAL_APPLICATIONS, PRODUCTS } from "@/lib/applications";
@@ -297,11 +296,7 @@ function Siblings({ info }: { info: EntityInfo }) {
 
 function ExperienceBody({ info }: { info: EntityInfo }) {
   const direct = isObservation(info.version) ? info.version : null;
-  const referrers = useReferrers(direct ? null : info.version.entityId);
-  const found = direct
-    ? null
-    : referrers.data?.pages.flatMap((p) => p.referrers).find((r) => isObservation(r.version))?.version;
-  const observation = (direct ?? found ?? null) as Version<Observation> | null;
+  const { observation, pending } = useObservationOf(info);
   const contentQuery = useVersion(direct ? direct.content.contentVersionId : null);
   const content = direct ? (contentQuery.data ?? null) : info.version;
   const contentSchema = useVersion(content?.category === "business" ? content.schemaVersionId : null);
@@ -332,7 +327,7 @@ function ExperienceBody({ info }: { info: EntityInfo }) {
           )}
         </Section>
       ) : (
-        !direct && referrers.isPending && <Empty>读取中</Empty>
+        pending && <Empty>读取中</Empty>
       )}
 
       {content && (
@@ -517,51 +512,85 @@ function EvidenceBody({ info }: { info: EntityInfo }) {
 
 // —— 字段 ——
 
-function Fields({
+const COMPACT_ITEMS = 3;
+
+/** 内容的字段表。limit 限制显示的行数，多出的写成“还有 N 个字段”。 */
+export function Fields({
   version,
   schema,
   fields: given,
   skipReferences,
+  skip,
+  limit,
 }: {
   version: Version;
   schema: Version<EntitySchema> | null;
   fields?: Record<string, FieldDefinition> | undefined;
   skipReferences?: boolean;
+  /** 已经写在别处的字段，例如作为名字的那个。 */
+  skip?: string | undefined;
+  limit?: number;
 }) {
   const fields = given ?? schema?.content.fields ?? {};
   const content = (version.content ?? {}) as Record<string, unknown>;
   const names = [...Object.keys(fields), ...Object.keys(content).filter((k) => !(k in fields))].filter(
-    (name) => content[name] !== undefined && !(skipReferences && fields[name]?.type === "reference"),
+    (name) => content[name] !== undefined && name !== skip && !(skipReferences && fields[name]?.type === "reference"),
   );
   if (!names.length) return null;
+  const shown = limit === undefined ? names : names.slice(0, limit);
   return (
-    <dl className="grid gap-1.5">
-      {names.map((name) => (
-        <div key={name} className="grid grid-cols-[minmax(0,7.5rem)_minmax(0,1fr)] gap-3 text-[13px]">
-          <dt className="text-fg-3 truncate font-mono text-xs leading-5" title={fields[name]?.description}>
-            {name}
-          </dt>
-          <dd className="min-w-0">
-            <FieldValue value={content[name]} definition={fields[name]} />
-          </dd>
-        </div>
-      ))}
-    </dl>
+    <>
+      <dl className="grid gap-1.5">
+        {shown.map((name) => (
+          <div
+            key={name}
+            className={cn(
+              "grid gap-3 text-[13px]",
+              limit === undefined
+                ? "grid-cols-[minmax(0,7.5rem)_minmax(0,1fr)]"
+                : "grid-cols-[minmax(0,5.5rem)_minmax(0,1fr)]",
+            )}
+          >
+            <dt className="text-fg-3 truncate font-mono text-xs leading-5" title={fields[name]?.description}>
+              {name}
+            </dt>
+            <dd className="min-w-0">
+              {/* 限制行数时是预览，每个值也写得紧凑些。 */}
+              <FieldValue value={content[name]} definition={fields[name]} compact={limit !== undefined} />
+            </dd>
+          </div>
+        ))}
+      </dl>
+      {shown.length < names.length && (
+        <p className="text-fg-3 mt-1.5 text-xs">还有 {names.length - shown.length} 个字段</p>
+      )}
+    </>
   );
 }
 
-function FieldValue({ value, definition }: { value: unknown; definition: FieldDefinition | undefined }) {
+/** 字段的值。compact 时数组只列前几项，长文字只写一两行。 */
+function FieldValue({
+  value,
+  definition,
+  compact,
+}: {
+  value: unknown;
+  definition: FieldDefinition | undefined;
+  compact?: boolean;
+}) {
   if (value === null) return <span className="text-fg-3">null</span>;
   if (definition?.type === "reference" && typeof value === "string") return <Token versionId={value} size="sm" />;
   if (Array.isArray(value)) {
     if (!value.length) return <span className="text-fg-3">空</span>;
+    const shown = compact ? value.slice(0, COMPACT_ITEMS) : value;
     return (
       <ul className="grid gap-1">
-        {value.map((item, i) => (
+        {shown.map((item, i) => (
           <li key={i} className="min-w-0">
-            <FieldValue value={item} definition={definition?.items} />
+            <FieldValue value={item} definition={definition?.items} compact={compact} />
           </li>
         ))}
+        {shown.length < value.length && <li className="text-fg-3 text-xs">还有 {value.length - shown.length} 项</li>}
       </ul>
     );
   }
@@ -572,7 +601,9 @@ function FieldValue({ value, definition }: { value: unknown; definition: FieldDe
       return (
         <span className="block min-w-0">
           <span className="text-fg-3 font-mono text-[11px]">{record.scheme}</span>
-          <span className="block font-mono text-xs break-all">{String(record.value)}</span>
+          <span className={cn("block font-mono text-xs", compact ? "truncate" : "break-all")}>
+            {String(record.value)}
+          </span>
         </span>
       );
     return (
@@ -581,7 +612,7 @@ function FieldValue({ value, definition }: { value: unknown; definition: FieldDe
           <div key={key} className="flex min-w-0 gap-2">
             <dt className="text-fg-3 shrink-0 font-mono text-[11px]">{key}</dt>
             <dd className="min-w-0">
-              <FieldValue value={item} definition={definition?.fields?.[key]} />
+              <FieldValue value={item} definition={definition?.fields?.[key]} compact={compact} />
             </dd>
           </div>
         ))}
@@ -589,7 +620,7 @@ function FieldValue({ value, definition }: { value: unknown; definition: FieldDe
     );
   }
   if (typeof value === "boolean") return <span>{value ? "是" : "否"}</span>;
-  return <span className="break-words">{String(value)}</span>;
+  return <span className={cn("break-words", compact && "line-clamp-2")}>{String(value)}</span>;
 }
 
 function Raw({ version }: { version: Version }) {

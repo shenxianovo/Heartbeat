@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { isEntitySchema, isObservation, type EntitySchema, type Version } from "@/api/types";
+import { isEntitySchema, isObservation, type Version } from "@/api/types";
 import { Chip, Dot } from "@/components/ui";
 import { useEntityVersions, useVersion } from "@/hooks/queries";
 import { tintOf } from "@/lib/categories";
@@ -24,17 +24,11 @@ export function useVersionType(version: Version | undefined) {
   return { name: schema.isError ? CATEGORY_NAMES.business : null, resourceName: null };
 }
 
-/** 版本的类型：名称、颜色、图标，业务版本另有所属的 Schema 版本。 */
-export function useVersionKind(version: Version | undefined) {
+/** 版本的类型：名称和颜色。 */
+function useVersionKind(version: Version | undefined) {
   const type = useVersionType(version);
-  const schema = useVersion(version?.category === "business" ? version.schemaVersionId : null);
   const core = version && version.category !== "business" ? coreKind(version.category) : undefined;
-  return {
-    name: type.name,
-    tint: core ? core.tint : tintOf(type.resourceName),
-    icon: core?.icon,
-    schema: schema.data && isEntitySchema(schema.data) ? (schema.data as Version<EntitySchema>) : null,
-  };
+  return { name: type.name, tint: core ? core.tint : tintOf(type.resourceName) };
 }
 
 /** 指向一个版本的标签，点击进入它所属的实体。放在别的链接里时用 plain，只显示不链接。 */

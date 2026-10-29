@@ -10,6 +10,7 @@ import { Card, Message } from "@/components/ui";
 import { useEntityCount, type EntityFilter } from "@/hooks/queries";
 import { describeVersion } from "@/hooks/useEntityInfo";
 import { useTypes, type TypeEdge, type TypeIndex, type TypeNode } from "@/hooks/useTypes";
+import { referenceLabel } from "@/lib/references";
 import { differences, ROLE_NAMES } from "@/lib/roles";
 import { DAY } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -46,11 +47,6 @@ const MAX_GAP_X = 160;
 const LABEL_CHAR_W = 6;
 const LABEL_PAD = 12;
 const LABEL_STEP = 12;
-
-/** 连线上显示的字段名，去掉 VersionId 后缀。 */
-function edgeLabel(label: string) {
-  return label.replace(/VersionId(\[\])?$/, "$1");
-}
 
 /** 实体：类型之间怎样引用画成一张图，点一个类型在下面展开它的实体。 */
 function EntitiesPage() {
@@ -131,7 +127,7 @@ function TypeMap({
   );
 
   const n = columns.length;
-  const longest = Math.max(0, ...index.edges.map((edge) => edgeLabel(edge.label).length));
+  const longest = Math.max(0, ...index.edges.map((edge) => referenceLabel(edge.label).length));
   const minGap = Math.max(MIN_GAP_X, longest * LABEL_CHAR_W + LABEL_PAD);
   const nodeW = Math.min(MAX_NODE_W, (width - (n - 1) * minGap) / n);
   const fits = nodeW >= MIN_NODE_W;
@@ -274,7 +270,7 @@ function TypeGraph({
               strokeWidth={3}
               paintOrder="stroke"
             >
-              {edgeLabel(group.label)}
+              {referenceLabel(group.label)}
               <title>{group.label}</title>
             </text>
           );

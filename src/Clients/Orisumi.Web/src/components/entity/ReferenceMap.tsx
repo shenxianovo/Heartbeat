@@ -1,12 +1,14 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import type { FieldDefinition, Version } from "@/api/types";
-import { Button, Mono, Sigil } from "@/components/ui";
-import { useReferrers, useVersion } from "@/hooks/queries";
+import { isObservation, type FieldDefinition, type Version } from "@/api/types";
+import { iconOf, Mark } from "@/components/token/Token";
+import { Button, Mono } from "@/components/ui";
+import { useReferrers } from "@/hooks/queries";
+import { timeLabel, useDescribe, useEntityInfo, useObservationOf } from "@/hooks/useEntityInfo";
 import { UNREADABLE } from "@/lib/observers";
-import { outgoingReferences } from "@/lib/references";
+import { outgoingReferences, referenceLabel } from "@/lib/references";
 import { cn } from "@/lib/utils";
-import { useVersionKind } from "./VersionChip";
+import { Peek } from "./Peek";
 
 const NODE = 46;
 const GAP = 10;
@@ -57,7 +59,9 @@ export function ReferenceMap({
       >
         <Column label="它引用的">
           {outgoing.length ? (
-            outgoing.map((ref) => <VersionNode key={ref.path} versionId={ref.versionId} sub={ref.path} />)
+            outgoing.map((ref) => (
+              <VersionNode key={ref.path} versionId={ref.versionId} paths={[ref.path]} side="right" />
+            ))
           ) : (
             <Placeholder>不引用其他版本</Placeholder>
           )}
@@ -92,7 +96,8 @@ export function ReferenceMap({
                     <VersionNode
                       versionId={referrer.version.versionId}
                       version={referrer.version}
-                      sub={referrer.references.map((r) => r.path).join(" ")}
+                      paths={referrer.references.map((r) => r.path)}
+                      side="left"
                     />
                   </li>
                 ))}
@@ -167,33 +172,68 @@ function Wires({
   );
 }
 
-/** 图里的一个版本：徽记、类型名和引用位置，点击进入它所属的实体。 */
-export function VersionNode({ versionId, version, sub }: { versionId: string; version?: Version; sub: string }) {
-  const query = useVersion(version ? null : versionId);
-  const data = version ?? query.data;
-  const kind = useVersionKind(data);
-  if (!version && query.isError) {
+/**
+ * 图里的一个版本：记号、名字、类型和引用位置，经历在右边写出事实时间，点击进入它所属的实体。
+ * 悬停时在 side 一边浮出预览。
+ */
+export function VersionNode({
+  versionId,
+  version,
+  paths,
+  side,
+}: {
+  versionId: string;
+  version?: Version;
+  paths: string[];
+  side: "left" | "right";
+}) {
+  const byId = useEntityInfo(version ? null : versionId);
+  const given = useDescribe(version);
+  const { info, unreadable } = version ? given : byId;
+  const { observation } = useObservationOf(info && !isObservation(info.version) ? info : null);
+  const where = paths.map(referenceLabel).join(" ");
+  if (unreadable) {
     return (
       <div className="border-line-2 text-fg-3 flex h-[46px] items-center gap-2 rounded-xl border border-dashed px-2.5 text-[13px]">
         <span className="min-w-0">
           <span className="block truncate">{UNREADABLE}</span>
-          <Mono className="block truncate text-[11px]">{sub}</Mono>
+          <Mono className="block truncate text-[11px]">{where}</Mono>
         </span>
       </div>
     );
   }
+  const time = observation ? timeLabel(observation.content.startAt, observation.content.endAt) : null;
   return (
-    <Link
-      to="/versions/$versionId"
-      params={{ versionId }}
-      className="bg-card border-line hover:border-line-3 flex h-[46px] items-center gap-2 rounded-xl border px-2.5 transition-colors"
-    >
-      <Sigil tint={kind.tint} icon={kind.icon} text={kind.name} size="sm" />
-      <span className="min-w-0">
-        <span className="block truncate text-[13px]">{kind.name ?? "…"}</span>
-        <Mono className="text-fg-3 block truncate text-[11px]">{sub}</Mono>
-      </span>
-    </Link>
+    <Peek info={info} side={side} footer={<Mono className="truncate text-[11px]">{where}</Mono>}>
+      <Link
+        to="/versions/$versionId"
+        params={{ versionId }}
+        className="bg-card border-line hover:border-line-3 hover:bg-panel/40 flex h-[46px] items-center gap-2.5 rounded-xl border px-2.5 transition-colors"
+      >
+        {info ? (
+          <Mark
+            role={info.role}
+            color={info.color}
+            icon={iconOf(info)}
+            size="lg"
+            className="size-7 rounded-lg"
+            framed
+          />
+        ) : (
+          <span className="bg-panel size-7 shrink-0 rounded-lg" />
+        )}
+        <span className="min-w-0 flex-1">
+          <span className="flex items-baseline gap-2">
+            <span className="min-w-0 flex-1 truncate text-[13px]">{info?.title ?? "…"}</span>
+            {time && <span className="text-fg-3 shrink-0 text-[11px] tabular-nums">{time}</span>}
+          </span>
+          <span className="text-fg-3 block truncate text-[11px]">
+            {info && info.title !== info.typeName && <>{info.typeName} · </>}
+            <span className="font-mono">{where}</span>
+          </span>
+        </span>
+      </Link>
+    </Peek>
   );
 }
 

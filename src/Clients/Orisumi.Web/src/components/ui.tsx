@@ -124,34 +124,3 @@ export function Message({
 export function Mono({ children, className }: { children: ReactNode; className?: string }) {
   return <span className={cn("font-mono text-xs", className)}>{children}</span>;
 }
-
-const SIGIL_SIZES = {
-  sm: "size-6 rounded-lg text-[11px]",
-  md: "size-9 rounded-xl text-sm",
-  lg: "size-14 rounded-2xl text-xl",
-};
-
-/** 类型的徽记：业务类型写名字的第一个字，Core 类型用图标。颜色来自类型。 */
-export function Sigil({
-  tint,
-  text,
-  icon: Icon,
-  size = "md",
-  className,
-}: {
-  tint: string;
-  text?: string | null;
-  icon?: ComponentType<{ className?: string }>;
-  size?: keyof typeof SIGIL_SIZES;
-  className?: string;
-}) {
-  return (
-    <span
-      aria-hidden="true"
-      className={cn("grid shrink-0 place-items-center font-semibold", SIGIL_SIZES[size], className)}
-      style={{ background: `color-mix(in srgb, ${tint} 15%, transparent)`, color: tint }}
-    >
-      {Icon ? <Icon className="size-[55%]" /> : (text ?? "·").slice(0, 1)}
-    </span>
-  );
-}
