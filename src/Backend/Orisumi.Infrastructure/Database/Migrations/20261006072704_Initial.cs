@@ -13,6 +13,60 @@ namespace Orisumi.Infrastructure.Database.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.CreateTable(
+                name: "server_observers",
+                columns: table => new
+                {
+                    entity_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    observer_key = table.Column<string>(type: "text", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("pk_server_observers", x => x.entity_id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "server_observer_state",
+                columns: table => new
+                {
+                    entity_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    payload = table.Column<string>(type: "jsonb", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("pk_server_observer_state", x => x.entity_id);
+                    table.ForeignKey(
+                        name: "fk_server_observer_state_server_observers_entity_id",
+                        column: x => x.entity_id,
+                        principalTable: "server_observers",
+                        principalColumn: "entity_id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "server_observer_submissions",
+                columns: table => new
+                {
+                    entity_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    payload = table.Column<string>(type: "jsonb", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("pk_server_observer_submissions", x => x.entity_id);
+                    table.ForeignKey(
+                        name: "fk_server_observer_submissions_server_observers_entity_id",
+                        column: x => x.entity_id,
+                        principalTable: "server_observers",
+                        principalColumn: "entity_id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateIndex(
+                name: "ux_server_observers_observer_key",
+                table: "server_observers",
+                column: "observer_key",
+                unique: true);
+
             migrationBuilder.AlterDatabase()
                 .Annotation("Npgsql:PostgresExtension:btree_gist", ",,");
 
@@ -196,6 +250,15 @@ namespace Orisumi.Infrastructure.Database.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropTable(
+                name: "server_observer_state");
+
+            migrationBuilder.DropTable(
+                name: "server_observer_submissions");
+
+            migrationBuilder.DropTable(
+                name: "server_observers");
+
             migrationBuilder.DropTable(
                 name: "version_references");
 

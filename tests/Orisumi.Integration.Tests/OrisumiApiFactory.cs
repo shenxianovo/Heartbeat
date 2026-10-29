@@ -6,7 +6,7 @@ using Microsoft.Extensions.Hosting;
 namespace Orisumi.Integration.Tests;
 
 internal sealed class OrisumiApiFactory(string connectionString,
-    IReadOnlyDictionary<string, string?>? settings = null)
+    IReadOnlyDictionary<string, string?>? settings = null, Action<IServiceCollection>? configureServices = null)
     : WebApplicationFactory<Program>
 {
     protected override IHost CreateHost(IHostBuilder builder)
@@ -17,6 +17,7 @@ internal sealed class OrisumiApiFactory(string connectionString,
             {
                 ["ConnectionStrings:Orisumi"] = connectionString,
                 ["OTEL_EXPORTER_OTLP_ENDPOINT"] = null,
+                ["OPENAI_API_KEY"] = null,
             });
             if (settings is not null)
             {
@@ -24,6 +25,7 @@ internal sealed class OrisumiApiFactory(string connectionString,
             }
         });
 
+        if (configureServices is not null) builder.ConfigureServices(configureServices);
         return base.CreateHost(builder);
     }
 }

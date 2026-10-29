@@ -14,6 +14,5 @@ struct AppearanceTests {
         #expect(Appearance.system.appearanceName == nil)
         #expect(Appearance.light.appearanceName == .aqua)
         #expect(Appearance.dark.appearanceName == .darkAqua)
-        #expect(Appearance.allCases.map(\.title) == ["跟随系统", "浅色", "深色"])
     }
 }

@@ -2,6 +2,24 @@ using NpgsqlTypes;
 
 namespace Orisumi.Infrastructure.Database;
 
+internal sealed class ServerObserverRegistration
+{
+    public string ObserverKey { get; set; } = null!;
+    public Guid EntityId { get; set; }
+}
+
+internal sealed class ServerObserverSubmission
+{
+    public Guid EntityId { get; set; }
+    public string Payload { get; set; } = null!;
+}
+
+internal sealed class ServerObserverState
+{
+    public Guid EntityId { get; set; }
+    public string Payload { get; set; } = null!;
+}
+
 internal sealed class StoredEntity
 {
     public Guid EntityId { get; set; }

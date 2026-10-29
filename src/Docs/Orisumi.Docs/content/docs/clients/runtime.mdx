@@ -35,7 +35,7 @@ Runtime 对 API 的每个请求最多等待 5 秒，超时按网络失败处理�
   registry.json                 安装登记
   packages/<package-id>/<version>/   解压后的安装包，安装后不再改动
   instances/<entity-id>/
-    sdk.sqlite                  Runtime 为这个实例本地保存的数据
+    store.sqlite                Runtime 为这个实例本地保存的数据
     data/                       业务代码自己的持久数据
   shared/                       这个 Runtime 中各程序实例共用的业务数据
   staging/                      下载和解压中的安装包
@@ -43,7 +43,7 @@ Runtime 对 API 的每个请求最多等待 5 秒，超时按网络失败处理�
 
 - 安装登记记录每个安装包当前的版本、对应的程序实例、是否已安装、是否启用，以及设置。Runtime 写入新的登记文件后整个替换旧文件，所以登记总是完整的。
 - 实例目录的名字是程序实例的 EntityId，不含包版本。更新、卸载和重装都使用同一个实例目录。
-- `sdk.sqlite` 只有 Runtime 打开。客户端和各语言的 SDK 都通过管道读取。
+- `store.sqlite` 只有 Runtime 打开。客户端和各语言的 SDK 都通过管道读取。
 - `data/` 和 `shared/` 中的内容由 Observer 的业务代码解释。`shared/` 供同一设备上的多个程序实例共用，例如前台状态 Observer 的[本机应用登记文件](../observers/foreground-state/local-application.mdx#registry)。
 - 设置是一个 JSON 对象，含义由各 Observer 定义。
 

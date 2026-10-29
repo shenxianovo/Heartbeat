@@ -6,6 +6,7 @@ namespace Orisumi.Testing;
 public sealed class PostgresTestInstance : IAsyncDisposable
 {
     private readonly PostgreSqlContainer _container;
+    private readonly SemaphoreSlim _databaseCreation = new(1);
     private bool _disposed;
 
     private PostgresTestInstance(PostgreSqlContainer container)
@@ -60,8 +61,11 @@ public sealed class PostgresTestInstance : IAsyncDisposable
         }.ConnectionString;
         var database = new TestDatabase(adminConnectionString, databaseName, connectionString);
 
+        await _databaseCreation.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            // Concurrent DDL across all isolated databases can exhaust PostgreSQL's shared lock table.
+            // Only provisioning is serialized; the tests' application reads and writes remain concurrent.
             await database.CreateAsync(cancellationToken).ConfigureAwait(false);
             return database;
         }
@@ -81,6 +85,7 @@ public sealed class PostgresTestInstance : IAsyncDisposable
 
             throw;
         }
+        finally { _databaseCreation.Release(); }
     }
 
     public async ValueTask DisposeAsync()
@@ -91,6 +96,7 @@ public sealed class PostgresTestInstance : IAsyncDisposable
         }
 
         await _container.DisposeAsync().ConfigureAwait(false);
+        _databaseCreation.Dispose();
         _disposed = true;
         GC.SuppressFinalize(this);
     }

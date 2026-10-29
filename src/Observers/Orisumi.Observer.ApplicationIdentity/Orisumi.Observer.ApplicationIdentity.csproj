@@ -1,10 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../Core/Orisumi.Core/Orisumi.Core.csproj" />
+    <ProjectReference Include="../../Backend/Orisumi.Application/Orisumi.Application.csproj" />
     <InternalsVisibleTo Include="Orisumi.Integration.Tests" />
+    <InternalsVisibleTo Include="Orisumi.Api" />
   </ItemGroup>
 </Project>

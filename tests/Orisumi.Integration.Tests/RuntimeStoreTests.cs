@@ -2,27 +2,27 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Orisumi.Core;
-using Orisumi.Observer.Sdk;
+using Orisumi.Observer.Runtime.Store;
 using Orisumi.Observers.ForegroundState;
 
 namespace Orisumi.Integration.Tests;
 
-public sealed class ObserverSdkTests
+public sealed class RuntimeStoreTests
 {
     [Test]
     [Property("caseId", "runtime-local-versions")]
     public async Task DraftMergesFreezeDependenciesAndRecoverInOrder()
     {
-        using var directory = new SdkDirectory();
+        using var directory = new StoreDirectory();
         using var handler = new ScriptedBackend();
         using var http = new HttpClient(handler) { BaseAddress = new("http://localhost/") };
         var owner = EntityId.New();
         var schema = EntityApiTests.Schema();
         var observationId = EntityId.New();
         VersionId original;
-        using (var sdk = new ObserverClient(directory.Path, owner, http))
+        using (var runtimeStore = new ObserverStore(directory.Path, owner, http))
         {
-            sdk.Execute(local =>
+            runtimeStore.Execute(local =>
             {
                 local.Remember(new(schema, DateTimeOffset.UtcNow));
                 var content = EntityApiTests.Business(schema);
@@ -30,15 +30,15 @@ public sealed class ObserverSdkTests
                 var referenced = local.Reference(content.EntityId);
                 original = local.Draft(observationId, new Observation(referenced, referenced, null, null, null, null), strategy: SubmissionStrategy.OnCompletion);
             });
-            original = sdk.Execute(local => local.Latest(observationId)!.Version.VersionId);
-            sdk.Execute(local => local.Draft(observationId, ((Observation)local.Find(original)!.Version.Content) with { TimeZone = "Asia/Shanghai" }, strategy: SubmissionStrategy.OnCompletion));
-            await Assert.That(sdk.Execute(local => local.Latest(observationId)!.Version.VersionId)).IsEqualTo(original);
-            await Assert.That(sdk.Execute(local => local.Latest(observationId)!.Version.PreviousVersionId)).IsNull();
-            await sdk.SendAsync();
-            await Assert.That(sdk.Status.Drafts).IsEqualTo(1);
+            original = runtimeStore.Execute(local => local.Latest(observationId)!.Version.VersionId);
+            runtimeStore.Execute(local => local.Draft(observationId, ((Observation)local.Find(original)!.Version.Content) with { TimeZone = "Asia/Shanghai" }, strategy: SubmissionStrategy.OnCompletion));
+            await Assert.That(runtimeStore.Execute(local => local.Latest(observationId)!.Version.VersionId)).IsEqualTo(original);
+            await Assert.That(runtimeStore.Execute(local => local.Latest(observationId)!.Version.PreviousVersionId)).IsNull();
+            await runtimeStore.SendAsync();
+            await Assert.That(runtimeStore.Status.Drafts).IsEqualTo(1);
             await Assert.That(handler.Posts.Single().Length).IsEqualTo(1);
         }
-        using var restarted = new ObserverClient(directory.Path, owner, http);
+        using var restarted = new ObserverStore(directory.Path, owner, http);
         restarted.Execute(local => local.Complete(observationId));
         await restarted.SendAsync();
         await Assert.That(handler.Posts[^1].Single().VersionId).IsEqualTo(original);
@@ -52,21 +52,21 @@ public sealed class ObserverSdkTests
     [Property("caseId", "runtime-confirmation")]
     public async Task LostResponseRetriesIdenticalPayloadAfterRestartAnd413Splits()
     {
-        using var directory = new SdkDirectory();
+        using var directory = new StoreDirectory();
         using var handler = new ScriptedBackend { LoseFirstResponse = true, MaximumBatch = 1 };
         using var http = new HttpClient(handler) { BaseAddress = new("http://localhost/") };
         var owner = EntityId.New();
-        using (var sdk = new ObserverClient(directory.Path, owner, http))
+        using (var runtimeStore = new ObserverStore(directory.Path, owner, http))
         {
-            sdk.Execute(local =>
+            runtimeStore.Execute(local =>
             {
                 local.Draft(EntityId.New(), EntityApiTests.Schema("one").Content);
                 local.Draft(EntityId.New(), EntityApiTests.Schema("two").Content);
             });
-            await sdk.SendAsync();
-            await Assert.That(sdk.Status.Pending).IsEqualTo(2);
+            await runtimeStore.SendAsync();
+            await Assert.That(runtimeStore.Status.Pending).IsEqualTo(2);
         }
-        using var restarted = new ObserverClient(directory.Path, owner, http);
+        using var restarted = new ObserverStore(directory.Path, owner, http);
         await restarted.SendAsync();
         await Assert.That(JsonSerializer.Serialize(handler.Posts[0].Select(VersionJson.Submission)))
             .IsEqualTo(JsonSerializer.Serialize(handler.Posts[1].Select(VersionJson.Submission)));
@@ -79,15 +79,15 @@ public sealed class ObserverSdkTests
     [Property("caseId", "runtime-rejections")]
     public async Task PartialRejectionPausesPersistsAndAdoptsEqualSavedVersion()
     {
-        using var directory = new SdkDirectory();
+        using var directory = new StoreDirectory();
         using var handler = new ScriptedBackend { RejectIndex = 1 };
         using var http = new HttpClient(handler) { BaseAddress = new("http://localhost/") };
         var owner = EntityId.New();
         var schema = EntityApiTests.Schema();
         VersionSubmission rejected;
-        using (var sdk = new ObserverClient(directory.Path, owner, http))
+        using (var runtimeStore = new ObserverStore(directory.Path, owner, http))
         {
-            rejected = sdk.Execute(local =>
+            rejected = runtimeStore.Execute(local =>
             {
                 var schemaId = local.Draft(schema.EntityId, schema.Content);
                 var business = EntityApiTests.Business(schema);
@@ -95,15 +95,15 @@ public sealed class ObserverSdkTests
                 local.Draft(EntityId.New(), new InputSet([target]));
                 return local.Find(target)!.Version;
             });
-            await sdk.SendAsync();
-            await Assert.That(sdk.Status.Saved).IsEqualTo(1);
-            await Assert.That(sdk.Status.Rejection!.Version.Version.VersionId).IsEqualTo(rejected.VersionId);
-            await Assert.That(sdk.Status.Rejection.Version.Rule).IsEqualTo("VERSION-6");
-            await Assert.That(((InputSet)sdk.Status.Rejection.Dependents.Single().Version.Content).Members.Single()).IsEqualTo(rejected.VersionId);
-            await sdk.SendAsync();
+            await runtimeStore.SendAsync();
+            await Assert.That(runtimeStore.Status.Saved).IsEqualTo(1);
+            await Assert.That(runtimeStore.Status.Rejection!.Version.Version.VersionId).IsEqualTo(rejected.VersionId);
+            await Assert.That(runtimeStore.Status.Rejection.Version.Rule).IsEqualTo("VERSION-6");
+            await Assert.That(((InputSet)runtimeStore.Status.Rejection.Dependents.Single().Version.Content).Members.Single()).IsEqualTo(rejected.VersionId);
+            await runtimeStore.SendAsync();
             await Assert.That(handler.Posts.Count).IsEqualTo(1);
         }
-        using var restarted = new ObserverClient(directory.Path, owner, http);
+        using var restarted = new ObserverStore(directory.Path, owner, http);
         await Assert.That(restarted.Status.Rejection!.Version.Version.VersionId).IsEqualTo(rejected.VersionId);
         var adopted = new EntityVersion(rejected with { VersionId = VersionId.New() }, DateTimeOffset.UtcNow);
         restarted.Execute(local =>
@@ -127,17 +127,17 @@ public sealed class ObserverSdkTests
         var first = EntityApiTests.Schema();
         var second = first with { VersionId = VersionId.New(), PreviousVersionId = first.VersionId, Content = new EntitySchema("New", "New description", "items", JsonSerializer.Deserialize<JsonElement>("{}")) };
         using var saved = await EntityApiTests.Submit(http, first, second);
-        using var directory = new SdkDirectory();
+        using var directory = new StoreDirectory();
         using var offlineHandler = new ScriptedBackend { Offline = true };
         using var offline = new HttpClient(offlineHandler) { BaseAddress = new("http://localhost/") };
         var owner = EntityId.New(); var business = EntityId.New();
-        using (var sdk = new ObserverClient(directory.Path, owner, offline))
+        using (var runtimeStore = new ObserverStore(directory.Path, owner, offline))
         {
-            var schema = sdk.RegisterSchemaLocally(first.EntityId, (EntitySchema)first.Content);
-            sdk.Execute(local => local.Draft(business, new BusinessContent(JsonSerializer.Deserialize<JsonElement>("{}")), schema));
-            await sdk.SendAsync();
+            var schema = runtimeStore.RegisterSchemaLocally(first.EntityId, (EntitySchema)first.Content);
+            runtimeStore.Execute(local => local.Draft(business, new BusinessContent(JsonSerializer.Deserialize<JsonElement>("{}")), schema));
+            await runtimeStore.SendAsync();
         }
-        using var online = new ObserverClient(directory.Path, owner, http);
+        using var online = new ObserverStore(directory.Path, owner, http);
         await online.SendAsync();
         await Assert.That(online.Status.Error).IsNull();
         await Assert.That(online.Status.Pending).IsEqualTo(0);
@@ -156,14 +156,14 @@ public sealed class ObserverSdkTests
         await using var database = await DatabaseFixture.CreateAsync();
         await using var factory = new OrisumiApiFactory(database.ConnectionString);
         using var http = factory.CreateClient();
-        using var directory = new SdkDirectory();
+        using var directory = new StoreDirectory();
         var owner = EntityId.New();
-        using var sdk = new ObserverClient(directory.Path, owner, http);
-        var registration = await ForegroundRegistration.RegisterAsync(new LocalObserverSession(sdk), owner);
+        using var runtimeStore = new ObserverStore(directory.Path, owner, http);
+        var registration = await ForegroundRegistration.RegisterAsync(new LocalObserverSession(runtimeStore), owner);
         var registry = new LocalApplicationRegistry(directory.Path + ".apps");
         var application = registry.Resolve(ForegroundTimelineTests.Reading(0));
-        var store = new ForegroundStore(new LocalObserverSession(sdk), owner, registration);
-        var delivery = new ForegroundTestDelivery(sdk, registry, registration, TextWriter.Null);
+        var store = new ForegroundStore(new LocalObserverSession(runtimeStore), owner, registration);
+        var delivery = new ForegroundTestDelivery(runtimeStore, registry, registration, TextWriter.Null);
         var capture = ForegroundCapture.Create(application, ForegroundTimelineTests.Reading(0));
         store.Checkpoint(capture, null);
         store.Checkpoint(capture.Through(ForegroundTimelineTests.Reading(1).ObservedAt), null);
@@ -189,14 +189,14 @@ public sealed class ObserverSdkTests
         await using var database = await DatabaseFixture.CreateAsync();
         await using var factory = new OrisumiApiFactory(database.ConnectionString);
         using var http = factory.CreateClient();
-        using var directory = new SdkDirectory();
+        using var directory = new StoreDirectory();
         var owner = EntityId.New();
-        using var sdk = new ObserverClient(directory.Path, owner, http);
-        var registration = await ForegroundRegistration.RegisterAsync(new LocalObserverSession(sdk), owner);
+        using var runtimeStore = new ObserverStore(directory.Path, owner, http);
+        var registration = await ForegroundRegistration.RegisterAsync(new LocalObserverSession(runtimeStore), owner);
         var registry = new LocalApplicationRegistry(directory.Path + ".apps");
         var application = registry.Resolve(ForegroundTimelineTests.Reading(0));
-        var store = new ForegroundStore(new LocalObserverSession(sdk), owner, registration);
-        var delivery = new ForegroundTestDelivery(sdk, registry, registration, TextWriter.Null);
+        var store = new ForegroundStore(new LocalObserverSession(runtimeStore), owner, registration);
+        var delivery = new ForegroundTestDelivery(runtimeStore, registry, registration, TextWriter.Null);
         var capture = ForegroundCapture.Create(application, ForegroundTimelineTests.Reading(0));
         store.Checkpoint(capture, null);
         store.FinishActive();
@@ -205,9 +205,9 @@ public sealed class ObserverSdkTests
         var next = ForegroundCapture.Create(application, ForegroundTimelineTests.Reading(1));
         store.Checkpoint(next, null); store.FinishActive();
         await delivery.SendAsync(CancellationToken.None);
-        await Assert.That(sdk.Status.Rejection).IsNull();
-        await Assert.That(sdk.Status.Error).IsNull();
-        await Assert.That(sdk.Status.Pending).IsEqualTo(0);
+        await Assert.That(runtimeStore.Status.Rejection).IsNull();
+        await Assert.That(runtimeStore.Status.Error).IsNull();
+        await Assert.That(runtimeStore.Status.Pending).IsEqualTo(0);
         var newApplication = registry.Resolve(ForegroundTimelineTests.Reading(2));
         await Assert.That(newApplication.Id == application.Id).IsFalse();
         using var newPeriod = await http.GetAsync($"/entities/{next.Content.Id.Value}");
@@ -224,50 +224,50 @@ public sealed class ObserverSdkTests
     [Property("caseId", "runtime-local-versions")]
     public async Task ReferencingDraftFreezesItAndCompletionCreatesSuccessor()
     {
-        using var directory = new SdkDirectory();
+        using var directory = new StoreDirectory();
         using var handler = new ScriptedBackend();
         using var http = new HttpClient(handler) { BaseAddress = new("http://localhost/") };
-        using var sdk = new ObserverClient(directory.Path, EntityId.New(), http);
+        using var runtimeStore = new ObserverStore(directory.Path, EntityId.New(), http);
         var schema = EntityApiTests.Schema(fields: """{"name":{"type":"string","description":"Test field value.","required":true,"nullable":false}}""");
         var entity = EntityId.New();
-        var original = sdk.Execute(local =>
+        var original = runtimeStore.Execute(local =>
         {
             local.Remember(new(schema, DateTimeOffset.UtcNow));
             return local.Draft(entity, new BusinessContent(JsonSerializer.SerializeToElement(new { name = "initial" })), schema.VersionId, SubmissionStrategy.OnCompletion);
         });
-        var reference = sdk.Execute(local => local.Reference(entity));
+        var reference = runtimeStore.Execute(local => local.Reference(entity));
         await Assert.That(reference).IsEqualTo(original);
-        await Assert.That(sdk.Execute(local => local.Find(reference)!.State)).IsEqualTo(SubmissionState.Frozen);
-        var next = sdk.Execute(local => local.Draft(entity, new BusinessContent(JsonSerializer.SerializeToElement(new { name = "completed" })), schema.VersionId, SubmissionStrategy.OnCompletion));
+        await Assert.That(runtimeStore.Execute(local => local.Find(reference)!.State)).IsEqualTo(SubmissionState.Frozen);
+        var next = runtimeStore.Execute(local => local.Draft(entity, new BusinessContent(JsonSerializer.SerializeToElement(new { name = "completed" })), schema.VersionId, SubmissionStrategy.OnCompletion));
         await Assert.That(next).IsNotEqualTo(reference);
-        await Assert.That(sdk.Execute(local => local.Find(next)!.Version.PreviousVersionId)).IsEqualTo(reference);
+        await Assert.That(runtimeStore.Execute(local => local.Find(next)!.Version.PreviousVersionId)).IsEqualTo(reference);
     }
 
     [Test]
     [Property("caseId", "runtime-local-versions")]
     public async Task FreezingObservationSendsItsDraftContentFirst()
     {
-        using var directory = new SdkDirectory();
+        using var directory = new StoreDirectory();
         using var handler = new ScriptedBackend();
         using var http = new HttpClient(handler) { BaseAddress = new("http://localhost/") };
-        using var sdk = new ObserverClient(directory.Path, EntityId.New(), http);
+        using var runtimeStore = new ObserverStore(directory.Path, EntityId.New(), http);
         var schema = EntityApiTests.Schema();
         var contentEntity = EntityId.New();
         var observationEntity = EntityId.New();
-        var content = sdk.Execute(local =>
+        var content = runtimeStore.Execute(local =>
         {
             local.Remember(new(schema, DateTimeOffset.UtcNow));
             return local.Draft(contentEntity, new BusinessContent(JsonSerializer.SerializeToElement(new { })), schema.VersionId, SubmissionStrategy.OnCompletion);
         });
-        await Assert.That(sdk.Execute(local => local.Find(content)!.State)).IsEqualTo(SubmissionState.Draft);
-        var observation = sdk.Execute(local =>
+        await Assert.That(runtimeStore.Execute(local => local.Find(content)!.State)).IsEqualTo(SubmissionState.Draft);
+        var observation = runtimeStore.Execute(local =>
         {
             var version = local.Draft(observationEntity, new Observation(content, content, null, null, null, null), strategy: SubmissionStrategy.OnCompletion);
             local.Complete(observationEntity);
             return version;
         });
-        await Assert.That(sdk.Execute(local => local.Find(content)!.FreezeOrder < local.Find(observation)!.FreezeOrder)).IsTrue();
-        await sdk.SendAsync();
+        await Assert.That(runtimeStore.Execute(local => local.Find(content)!.FreezeOrder < local.Find(observation)!.FreezeOrder)).IsTrue();
+        await runtimeStore.SendAsync();
         await Assert.That(handler.Posts.SelectMany(batch => batch).Select(v => v.VersionId).SequenceEqual(new[] { content, observation })).IsTrue();
     }
 
@@ -275,23 +275,23 @@ public sealed class ObserverSdkTests
     [Property("caseId", "runtime-local-versions")]
     public async Task ImmediateSubmissionSendsTwoLinkedObservationVersions()
     {
-        using var directory = new SdkDirectory();
+        using var directory = new StoreDirectory();
         using var handler = new ScriptedBackend();
         using var http = new HttpClient(handler) { BaseAddress = new("http://localhost/") };
-        using var sdk = new ObserverClient(directory.Path, EntityId.New(), http);
+        using var runtimeStore = new ObserverStore(directory.Path, EntityId.New(), http);
         var schema = EntityApiTests.Schema();
         var content = EntityApiTests.Business(schema);
         var entity = EntityId.New();
         var observation = new Observation(content.VersionId, content.VersionId, null, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, null);
-        sdk.Execute(local =>
+        runtimeStore.Execute(local =>
         {
             local.Remember(new(schema, DateTimeOffset.UtcNow));
             local.Remember(new(content, DateTimeOffset.UtcNow));
             local.Draft(entity, observation);
         });
-        await sdk.SendAsync();
-        sdk.Execute(local => local.Draft(entity, observation with { EndAt = DateTimeOffset.UnixEpoch.AddSeconds(1) }));
-        await sdk.SendAsync();
+        await runtimeStore.SendAsync();
+        runtimeStore.Execute(local => local.Draft(entity, observation with { EndAt = DateTimeOffset.UnixEpoch.AddSeconds(1) }));
+        await runtimeStore.SendAsync();
         await Assert.That(handler.Posts.Count).IsEqualTo(2);
         var first = handler.Posts[0].Single();
         var second = handler.Posts[1].Single();
@@ -304,45 +304,45 @@ public sealed class ObserverSdkTests
     [Property("caseId", "runtime-confirmation")]
     public async Task SuccessfulResponseConfirmsWholeBatch()
     {
-        using var directory = new SdkDirectory();
+        using var directory = new StoreDirectory();
         using var handler = new ScriptedBackend();
         using var http = new HttpClient(handler) { BaseAddress = new("http://localhost/") };
-        using var sdk = new ObserverClient(directory.Path, EntityId.New(), http);
-        QueueDependentVersions(sdk);
-        await sdk.SendAsync();
+        using var runtimeStore = new ObserverStore(directory.Path, EntityId.New(), http);
+        QueueDependentVersions(runtimeStore);
+        await runtimeStore.SendAsync();
         await Assert.That(handler.Posts.Single().Length).IsEqualTo(3);
-        await Assert.That(sdk.Status.Saved).IsEqualTo(3);
-        await Assert.That(sdk.Status.Pending).IsEqualTo(0);
+        await Assert.That(runtimeStore.Status.Saved).IsEqualTo(3);
+        await Assert.That(runtimeStore.Status.Pending).IsEqualTo(0);
     }
 
     [Test]
     [Property("caseId", "runtime-confirmation")]
     public async Task IndexedConflictConfirmsPrefixRejectsTargetAndLeavesSuffixPending()
     {
-        using var directory = new SdkDirectory();
+        using var directory = new StoreDirectory();
         using var handler = new ScriptedBackend { RejectIndex = 1 };
         using var http = new HttpClient(handler) { BaseAddress = new("http://localhost/") };
-        using var sdk = new ObserverClient(directory.Path, EntityId.New(), http);
-        var versions = QueueDependentVersions(sdk);
-        await sdk.SendAsync();
-        await Assert.That(sdk.Execute(local => local.Find(versions.Schema)!.State)).IsEqualTo(SubmissionState.Saved);
-        await Assert.That(sdk.Execute(local => local.Find(versions.Business)!.State)).IsEqualTo(SubmissionState.Rejected);
-        await Assert.That(sdk.Execute(local => local.Find(versions.Inputs)!.State)).IsEqualTo(SubmissionState.Frozen);
-        await Assert.That(sdk.Status.Pending).IsEqualTo(2);
+        using var runtimeStore = new ObserverStore(directory.Path, EntityId.New(), http);
+        var versions = QueueDependentVersions(runtimeStore);
+        await runtimeStore.SendAsync();
+        await Assert.That(runtimeStore.Execute(local => local.Find(versions.Schema)!.State)).IsEqualTo(SubmissionState.Saved);
+        await Assert.That(runtimeStore.Execute(local => local.Find(versions.Business)!.State)).IsEqualTo(SubmissionState.Rejected);
+        await Assert.That(runtimeStore.Execute(local => local.Find(versions.Inputs)!.State)).IsEqualTo(SubmissionState.Frozen);
+        await Assert.That(runtimeStore.Status.Pending).IsEqualTo(2);
     }
 
     [Test]
     [Property("caseId", "runtime-confirmation")]
     public async Task ContractErrorWithoutIndexStopsSendingAndReportsError()
     {
-        using var directory = new SdkDirectory();
+        using var directory = new StoreDirectory();
         using var handler = new ScriptedBackend { ContractError = true };
         using var http = new HttpClient(handler) { BaseAddress = new("http://localhost/") };
-        using var sdk = new ObserverClient(directory.Path, EntityId.New(), http);
-        QueueDependentVersions(sdk);
-        await sdk.SendAsync();
-        await Assert.That(sdk.Status.Error!.Contains("HTTP 400", StringComparison.Ordinal)).IsTrue();
-        await sdk.SendAsync();
+        using var runtimeStore = new ObserverStore(directory.Path, EntityId.New(), http);
+        QueueDependentVersions(runtimeStore);
+        await runtimeStore.SendAsync();
+        await Assert.That(runtimeStore.Status.Error!.Contains("HTTP 400", StringComparison.Ordinal)).IsTrue();
+        await runtimeStore.SendAsync();
         await Assert.That(handler.Posts.Count).IsEqualTo(1);
     }
 
@@ -350,48 +350,48 @@ public sealed class ObserverSdkTests
     [Property("caseId", "runtime-rejections")]
     public async Task DiscardingRejectedVersionDiscardsDependentsAndResumesOthers()
     {
-        using var directory = new SdkDirectory();
+        using var directory = new StoreDirectory();
         using var handler = new ScriptedBackend { RejectIndex = 1 };
         using var http = new HttpClient(handler) { BaseAddress = new("http://localhost/") };
-        using var sdk = new ObserverClient(directory.Path, EntityId.New(), http);
-        var versions = QueueDependentVersions(sdk);
-        var independent = sdk.Execute(local => local.Draft(EntityId.New(), EntityApiTests.Schema("other").Content));
-        await sdk.SendAsync();
-        sdk.Execute(local => local.DiscardRejected());
-        await Assert.That(sdk.Execute(local => local.Find(versions.Business))).IsNull();
-        await Assert.That(sdk.Execute(local => local.Find(versions.Inputs))).IsNull();
+        using var runtimeStore = new ObserverStore(directory.Path, EntityId.New(), http);
+        var versions = QueueDependentVersions(runtimeStore);
+        var independent = runtimeStore.Execute(local => local.Draft(EntityId.New(), EntityApiTests.Schema("other").Content));
+        await runtimeStore.SendAsync();
+        runtimeStore.Execute(local => local.DiscardRejected());
+        await Assert.That(runtimeStore.Execute(local => local.Find(versions.Business))).IsNull();
+        await Assert.That(runtimeStore.Execute(local => local.Find(versions.Inputs))).IsNull();
         handler.RejectIndex = null;
-        await sdk.SendAsync();
+        await runtimeStore.SendAsync();
         await Assert.That(handler.Posts[^1].Single().VersionId).IsEqualTo(independent);
-        await Assert.That(sdk.Status.Pending).IsEqualTo(0);
+        await Assert.That(runtimeStore.Status.Pending).IsEqualTo(0);
     }
 
     [Test]
     [Property("caseId", "runtime-rejections")]
     public async Task RewritingRejectedVersionUsesReadCurrentVersionAndResendsDependents()
     {
-        using var directory = new SdkDirectory();
+        using var directory = new StoreDirectory();
         using var handler = new ScriptedBackend { RejectIndex = 1 };
         using var http = new HttpClient(handler) { BaseAddress = new("http://localhost/") };
-        using var sdk = new ObserverClient(directory.Path, EntityId.New(), http);
-        var versions = QueueDependentVersions(sdk);
-        await sdk.SendAsync();
-        var rejected = sdk.Status.Rejection!.Version.Version;
+        using var runtimeStore = new ObserverStore(directory.Path, EntityId.New(), http);
+        var versions = QueueDependentVersions(runtimeStore);
+        await runtimeStore.SendAsync();
+        var rejected = runtimeStore.Status.Rejection!.Version.Version;
         handler.Current = new(rejected with { VersionId = VersionId.New() }, DateTimeOffset.UtcNow);
-        var current = (await sdk.ReadCurrentAsync(rejected.EntityId))!;
-        var replacement = sdk.Execute(local =>
+        var current = (await runtimeStore.ReadCurrentAsync(rejected.EntityId))!;
+        var replacement = runtimeStore.Execute(local =>
         {
             local.Remember(current);
             return local.ReplaceRejected(rejected.EntityId, rejected.Content, rejected.SchemaVersionId, current.VersionId);
         });
         handler.RejectIndex = null;
-        await sdk.SendAsync();
+        await runtimeStore.SendAsync();
         var sent = handler.Posts[^1];
         await Assert.That(handler.Gets.Single()).IsEqualTo("/entities/" + rejected.EntityId.Value);
         await Assert.That(sent.Select(v => v.VersionId).SequenceEqual(new[] { replacement, versions.Inputs })).IsTrue();
         await Assert.That(sent[0].PreviousVersionId).IsEqualTo(current.VersionId);
         await Assert.That(((InputSet)sent[1].Content).Members.Single()).IsEqualTo(replacement);
-        await Assert.That(sdk.Status.Pending).IsEqualTo(0);
+        await Assert.That(runtimeStore.Status.Pending).IsEqualTo(0);
     }
 
     [Test]
@@ -402,21 +402,21 @@ public sealed class ObserverSdkTests
         await using var factory = new OrisumiApiFactory(database.ConnectionString);
         using var recording = new RecordingBackend(factory.Server.CreateHandler());
         using var onlineHttp = new HttpClient(recording) { BaseAddress = new("http://localhost/") };
-        using var directory = new SdkDirectory();
+        using var directory = new StoreDirectory();
         using var offlineHandler = new ScriptedBackend { Offline = true };
         using var offline = new HttpClient(offlineHandler) { BaseAddress = new("http://localhost/") };
         var owner = EntityId.New();
         var schema = EntityApiTests.Schema();
         var business = EntityId.New();
         VersionId schemaVersion, instanceVersion, businessVersion;
-        using (var sdk = new ObserverClient(directory.Path, owner, offline))
+        using (var runtimeStore = new ObserverStore(directory.Path, owner, offline))
         {
-            schemaVersion = sdk.RegisterSchemaLocally(schema.EntityId, (EntitySchema)schema.Content);
-            instanceVersion = sdk.RegisterInstance(owner, schemaVersion, new(JsonSerializer.SerializeToElement(new { })));
-            businessVersion = sdk.Execute(local => local.Draft(business, new BusinessContent(JsonSerializer.SerializeToElement(new { })), schemaVersion));
-            await sdk.SendAsync();
+            schemaVersion = runtimeStore.RegisterSchemaLocally(schema.EntityId, (EntitySchema)schema.Content);
+            instanceVersion = runtimeStore.RegisterInstance(owner, schemaVersion, new(JsonSerializer.SerializeToElement(new { })));
+            businessVersion = runtimeStore.Execute(local => local.Draft(business, new BusinessContent(JsonSerializer.SerializeToElement(new { })), schemaVersion));
+            await runtimeStore.SendAsync();
         }
-        using var online = new ObserverClient(directory.Path, owner, onlineHttp);
+        using var online = new ObserverStore(directory.Path, owner, onlineHttp);
         await online.SendAsync();
         await Assert.That(recording.Posts.SelectMany(batch => batch).Select(v => v.VersionId)
             .SequenceEqual(new[] { schemaVersion, instanceVersion, businessVersion })).IsTrue();
@@ -441,13 +441,13 @@ public sealed class ObserverSdkTests
             Content = new EntitySchema("Items", "Second", "items", JsonSerializer.SerializeToElement(new { })) };
         using var saved = await EntityApiTests.Submit(http, first, second);
         await Assert.That(saved.StatusCode).IsEqualTo(HttpStatusCode.OK);
-        using var directory = new SdkDirectory();
-        using var sdk = new ObserverClient(directory.Path, EntityId.New(), http);
+        using var directory = new StoreDirectory();
+        using var runtimeStore = new ObserverStore(directory.Path, EntityId.New(), http);
         var content = new EntitySchema("Items", "Third", "items", JsonSerializer.SerializeToElement(new { }));
-        var third = sdk.RegisterSchemaLocally(first.EntityId, content);
+        var third = runtimeStore.RegisterSchemaLocally(first.EntityId, content);
         var business = EntityId.New();
-        sdk.Execute(local => local.Draft(business, new BusinessContent(JsonSerializer.SerializeToElement(new { })), third));
-        await sdk.SendAsync();
+        runtimeStore.Execute(local => local.Draft(business, new BusinessContent(JsonSerializer.SerializeToElement(new { })), third));
+        await runtimeStore.SendAsync();
         using var chain = await http.GetAsync($"/entities/{first.EntityId.Value}/versions");
         var versions = (await EntityApiTests.Json(chain)).GetProperty("versions").EnumerateArray().Select(VersionJson.ReadSaved).ToArray();
         await Assert.That(versions.Select(v => v.VersionId).SequenceEqual(new[] { first.VersionId, second.VersionId, third })).IsTrue();
@@ -464,17 +464,17 @@ public sealed class ObserverSdkTests
         await using var database = await DatabaseFixture.CreateAsync();
         await using var factory = new OrisumiApiFactory(database.ConnectionString);
         using var http = factory.CreateClient();
-        using var directory = new SdkDirectory();
+        using var directory = new StoreDirectory();
         var owner = EntityId.New();
         var schema = EntityApiTests.Schema(fields: """{"programVersion":{"type":"string","description":"Test field value.","required":true,"nullable":false}}""");
         VersionId schemaVersion, first;
-        using (var sdk = new ObserverClient(directory.Path, owner, http))
+        using (var runtimeStore = new ObserverStore(directory.Path, owner, http))
         {
-            schemaVersion = sdk.RegisterSchemaLocally(schema.EntityId, (EntitySchema)schema.Content);
-            first = sdk.RegisterInstance(owner, schemaVersion, new(JsonSerializer.SerializeToElement(new { programVersion = "1" })));
-            await sdk.SendAsync();
+            schemaVersion = runtimeStore.RegisterSchemaLocally(schema.EntityId, (EntitySchema)schema.Content);
+            first = runtimeStore.RegisterInstance(owner, schemaVersion, new(JsonSerializer.SerializeToElement(new { programVersion = "1" })));
+            await runtimeStore.SendAsync();
         }
-        using var restarted = new ObserverClient(directory.Path, owner, http);
+        using var restarted = new ObserverStore(directory.Path, owner, http);
         var second = restarted.RegisterInstance(owner, schemaVersion, new(JsonSerializer.SerializeToElement(new { programVersion = "2" })));
         var observationId = EntityId.New();
         restarted.Execute(local => local.Draft(observationId, new Observation(local.Reference(owner), local.Reference(owner), null, null, null, null)));
@@ -495,11 +495,11 @@ public sealed class ObserverSdkTests
         await using var database = await DatabaseFixture.CreateAsync();
         await using var factory = new OrisumiApiFactory(database.ConnectionString);
         using var http = factory.CreateClient();
-        using var firstDirectory = new SdkDirectory();
-        using var secondDirectory = new SdkDirectory();
+        using var firstDirectory = new StoreDirectory();
+        using var secondDirectory = new StoreDirectory();
         var firstOwner = EntityId.New(); var secondOwner = EntityId.New();
-        using var first = new ObserverClient(firstDirectory.Path, firstOwner, http);
-        using var second = new ObserverClient(secondDirectory.Path, secondOwner, http);
+        using var first = new ObserverStore(firstDirectory.Path, firstOwner, http);
+        using var second = new ObserverStore(secondDirectory.Path, secondOwner, http);
         var firstRegistration = await ForegroundRegistration.RegisterAsync(new LocalObserverSession(first), firstOwner);
         await first.SendAsync();
         var secondRegistration = await ForegroundRegistration.RegisterAsync(new LocalObserverSession(second), secondOwner);
@@ -538,33 +538,33 @@ public sealed class ObserverSdkTests
         await using var factory = new OrisumiApiFactory(database.ConnectionString);
         using var recording = new RecordingBackend(factory.Server.CreateHandler());
         using var http = new HttpClient(recording) { BaseAddress = new("http://localhost/") };
-        using var directory = new SdkDirectory();
+        using var directory = new StoreDirectory();
         var owner = EntityId.New();
-        using var sdk = new ObserverClient(directory.Path, owner, http);
-        var registration = await ForegroundRegistration.RegisterAsync(new LocalObserverSession(sdk), owner);
-        await sdk.SendAsync();
+        using var runtimeStore = new ObserverStore(directory.Path, owner, http);
+        var registration = await ForegroundRegistration.RegisterAsync(new LocalObserverSession(runtimeStore), owner);
+        await runtimeStore.SendAsync();
         var registry = new LocalApplicationRegistry(directory.Path + ".apps");
         var capture = ForegroundCapture.Create(registry.Resolve(ForegroundTimelineTests.Reading(0)), ForegroundTimelineTests.Reading(0));
-        var store = new ForegroundStore(new LocalObserverSession(sdk), owner, registration);
+        var store = new ForegroundStore(new LocalObserverSession(runtimeStore), owner, registration);
         store.Checkpoint(capture, null);
         // OBSERVATION-6: an invalid interval exercises an unhandled business rejection.
-        sdk.Execute(local =>
+        runtimeStore.Execute(local =>
         {
             var observation = (Observation)local.Latest(capture.ObservationId)!.Version.Content;
             local.Draft(capture.ObservationId, observation with { EndAt = observation.StartAt!.Value.AddSeconds(-1) }, strategy: SubmissionStrategy.OnCompletion);
             local.Complete(capture.ObservationId);
         });
         using var progress = new StringWriter();
-        var delivery = new ForegroundTestDelivery(sdk, registry, registration, progress);
+        var delivery = new ForegroundTestDelivery(runtimeStore, registry, registration, progress);
         await delivery.SendAsync(CancellationToken.None);
-        await Assert.That(sdk.Status.Rejection!.Version.Rule).IsEqualTo("OBSERVATION-6");
+        await Assert.That(runtimeStore.Status.Rejection!.Version.Rule).IsEqualTo("OBSERVATION-6");
         await Assert.That(progress.ToString().Contains("\"rule\":\"OBSERVATION-6\"", StringComparison.Ordinal)).IsTrue();
         var requests = recording.Posts.Count;
         await delivery.SendAsync(CancellationToken.None);
         await Assert.That(recording.Posts.Count).IsEqualTo(requests);
     }
 
-    private static (VersionId Schema, VersionId Business, VersionId Inputs) QueueDependentVersions(ObserverClient sdk) => sdk.Execute(local =>
+    private static (VersionId Schema, VersionId Business, VersionId Inputs) QueueDependentVersions(ObserverStore runtimeStore) => runtimeStore.Execute(local =>
     {
         var schema = local.Draft(EntityId.New(), EntityApiTests.Schema().Content);
         var business = local.Draft(EntityId.New(), new BusinessContent(JsonSerializer.SerializeToElement(new { })), schema);
@@ -586,9 +586,9 @@ public sealed class ObserverSdkTests
         }
     }
 
-    private sealed class SdkDirectory : IDisposable
+    private sealed class StoreDirectory : IDisposable
     {
-        private readonly DirectoryInfo _directory = Directory.CreateTempSubdirectory("orisumi-sdk-tests-");
+        private readonly DirectoryInfo _directory = Directory.CreateTempSubdirectory("orisumi-runtime-store-tests-");
         internal string Path => System.IO.Path.Combine(_directory.FullName, "state.sqlite");
         public void Dispose() => _directory.Delete(true);
     }

@@ -1,4 +1,4 @@
-using Orisumi.Observer.Sdk;
+using Orisumi.Observer.Runtime.Store;
 using Orisumi.Core;
 using Orisumi.Observers.ForegroundState;
 using Microsoft.Data.Sqlite;
@@ -17,8 +17,8 @@ public sealed class ForegroundSubmissionTests
         local.Store.Checkpoint(capture, null);
         await Assert.That(local.Pending().Count).IsEqualTo(0);
         using var http = new HttpClient();
-        using var restartedSdk = new ObserverClient(local.Path, observer, http);
-        var restarted = new ForegroundStore(new LocalObserverSession(restartedSdk), observer, local.Registration);
+        using var restartedStore = new ObserverStore(local.Path, observer, http);
+        var restarted = new ForegroundStore(new LocalObserverSession(restartedStore), observer, local.Registration);
         restarted.FinishActive();
         restarted.FinishActive();
         var pending = local.Pending().Single();
@@ -26,7 +26,7 @@ public sealed class ForegroundSubmissionTests
         var observation = (Observation)pending.Version.Content;
         await Assert.That(observation.EndAt).IsEqualTo(capture.EndAt);
         await Assert.That(observation.StartAt).IsEqualTo(capture.StartAt);
-        await Assert.That(() => new ObserverClient(local.Path, EntityId.New(), http)).Throws<InvalidDataException>();
+        await Assert.That(() => new ObserverStore(local.Path, EntityId.New(), http)).Throws<InvalidDataException>();
         await Assert.That(local.Pending().Count).IsEqualTo(1);
     }
 

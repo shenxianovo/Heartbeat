@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json;
 using Orisumi.Core;
 using Orisumi.Observer.Sdk;
+using Orisumi.Observer.Runtime.Store;
 using System.Globalization;
 
 namespace Orisumi.Observer.Runtime;
@@ -49,7 +50,7 @@ internal sealed class RuntimeReader(HttpClient http)
     private async Task<Snapshot> BuildAsync(ManagedObserver observer, string query, DateTimeOffset from, DateTimeOffset to,
         string? resource, CancellationToken token)
     {
-        var (local, currentVersions) = LocalSnapshot(observer.Sdk);
+        var (local, currentVersions) = LocalSnapshot(observer.Store);
         var remote = new Dictionary<EntityId, Item>();
         var cache = new Dictionary<VersionId, VersionSubmission?>();
         var complete = true;
@@ -73,7 +74,7 @@ internal sealed class RuntimeReader(HttpClient http)
                 after = json.RootElement.GetProperty("next").GetString();
             } while (after is not null);
             // Snapshot local again: sending may have confirmed a version after the list was read.
-            (local, currentVersions) = LocalSnapshot(observer.Sdk);
+            (local, currentVersions) = LocalSnapshot(observer.Store);
             foreach (var item in currentVersions)
             {
                 if (item.Version.Content is not Observation observation || !Overlaps(observation, from, to)) continue;
@@ -88,7 +89,7 @@ internal sealed class RuntimeReader(HttpClient http)
                 using var response = await http.GetAsync("entities/" + item.Version.EntityId.Value, token);
                 if (response.StatusCode == HttpStatusCode.Gone)
                 {
-                    observer.Sdk.Execute(transaction => transaction.RememberDeleted(item.Version.EntityId));
+                    observer.Store.Execute(transaction => transaction.RememberDeleted(item.Version.EntityId));
                     continue;
                 }
                 if (response.StatusCode == HttpStatusCode.NotFound)
@@ -112,7 +113,7 @@ internal sealed class RuntimeReader(HttpClient http)
             complete = false;
             error = exception.Message;
             remote = (_lastReads.GetValueOrDefault(query) ?? []).ToDictionary(item => item.Version.EntityId);
-            var deleted = observer.Sdk.Execute(transaction => local.Values.Select(item => item.Version.EntityId).Concat(remote.Keys)
+            var deleted = observer.Store.Execute(transaction => local.Values.Select(item => item.Version.EntityId).Concat(remote.Keys)
                 .Where(transaction.IsKnownDeleted).ToHashSet());
             foreach (var id in deleted) remote.Remove(id);
             foreach (var item in currentVersions)
@@ -133,7 +134,7 @@ internal sealed class RuntimeReader(HttpClient http)
         {
             if (cache.TryGetValue(id, out var found)) return found;
             if (local.TryGetValue(id, out var value)) return cache[id] = value.Version;
-            return cache[id] = (await observer.Sdk.ReadVersionAsync(id, token))?.Submission;
+            return cache[id] = (await observer.Store.ReadVersionAsync(id, token))?.Submission;
         }
         async Task<bool> BelongsAsync(VersionSubmission version) => version.Content is Observation observation
             && (await LookupAsync(observation.ObserverVersionId))?.EntityId.Value == observer.Registration.InstanceId;
@@ -145,8 +146,8 @@ internal sealed class RuntimeReader(HttpClient http)
         }
     }
 
-    private static (Dictionary<VersionId, LocalVersion> Versions, LocalVersion[] Current) LocalSnapshot(ObserverClient sdk) =>
-        sdk.Execute(transaction => (transaction.Versions().ToDictionary(item => item.Version.VersionId),
+    private static (Dictionary<VersionId, LocalVersion> Versions, LocalVersion[] Current) LocalSnapshot(ObserverStore runtimeStore) =>
+        runtimeStore.Execute(transaction => (transaction.Versions().ToDictionary(item => item.Version.VersionId),
             transaction.CurrentVersions().Where(item => !transaction.IsKnownDeleted(item.Version.EntityId)).ToArray()));
 
     private static bool DescendsFrom(VersionSubmission version, VersionId ancestor, Dictionary<VersionId, LocalVersion> local)
@@ -175,19 +176,19 @@ internal sealed class RuntimeReader(HttpClient http)
         string? error = null;
         foreach (var id in ids.Distinct())
         {
-            if (observer.Sdk.Execute(transaction => transaction.IsKnownMissing(id)
+            if (observer.Store.Execute(transaction => transaction.IsKnownMissing(id)
                 || transaction.Find(id) is { } known && transaction.IsKnownDeleted(known.Version.EntityId)))
             { missing.Add(id.Value); continue; }
-            var local = observer.Sdk.Execute(transaction => transaction.Find(id));
+            var local = observer.Store.Execute(transaction => transaction.Find(id));
             VersionSubmission? version;
             if (local is { State: not SubmissionState.Saved }) version = local.Version;
             else
             {
                 try
                 {
-                    version = (await observer.Sdk.ReadVersionAsync(id, token))?.Submission;
+                    version = (await observer.Store.ReadVersionAsync(id, token))?.Submission;
                     if (version is null && local?.State == SubmissionState.Saved)
-                        observer.Sdk.Execute(transaction => transaction.RememberMissing(id));
+                        observer.Store.Execute(transaction => transaction.RememberMissing(id));
                 }
                 catch (Exception exception) when (exception is HttpRequestException || exception is OperationCanceledException && !token.IsCancellationRequested)
                 { error = exception.Message; version = local?.Version; }

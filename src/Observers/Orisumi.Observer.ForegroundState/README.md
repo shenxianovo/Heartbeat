@@ -4,7 +4,7 @@ Orisumi.Observer.ForegroundState 在 macOS 上持续采集前台应用，把本�
 
 时段的 Observation 采用结束后提交，`draft` 请求带 `publishDraft: true`（见 `ForegroundStore.cs`）：时段开始时观测内容先保存，进行中的时段用 `GET /api/observation-drafts/{observationId}` 读到，`endAt` 随每次确认延长；时段结束后保存一个版本，草稿随之移除。
 
-它只引用 `Orisumi.Observer.Protocol` 和 Core，通过标准输入和标准输出与 Runtime 通信，自己不打开 SQLite。程序在主线程运行 AppKit 事件循环，持续读取时才能取得更新后的前台应用。
+它只引用 `Orisumi.Observer.Sdk` 和 Core，通过标准输入和标准输出与 Runtime 通信，自己不打开 SQLite。程序在主线程运行 AppKit 事件循环，持续读取时才能取得更新后的前台应用。
 
 ## 运行
 

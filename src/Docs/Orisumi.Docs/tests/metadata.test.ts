@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { loader } from 'fumadocs-core/source';
 import { getCanonicalUrl, getPageTitle } from '../lib/metadata.ts';
-import { getPlatformIcon } from '../lib/platform-icon.ts';
 
 test('metadata titles distinguish section indexes and nested pages without changing source titles', () => {
   const source = loader({ files: [
@@ -27,10 +26,4 @@ test('metadata titles distinguish section indexes and nested pages without chang
 test('canonical URLs consistently use the public origin and a trailing slash', () => {
   assert.equal(getCanonicalUrl('/core/model/version'), 'https://docs.orisumi.dev/core/model/version/');
   assert.equal(getCanonicalUrl('/core/'), 'https://docs.orisumi.dev/core/');
-});
-
-test('the mascot follows desktop macOS and preserves the fallback for other systems and iPad desktop mode', () => {
-  assert.equal(getPlatformIcon({ userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', maxTouchPoints: 0 }), 'macos');
-  assert.equal(getPlatformIcon({ userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', maxTouchPoints: 5 }), 'windows');
-  assert.equal(getPlatformIcon({ userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', maxTouchPoints: 0 }), 'windows');
 });

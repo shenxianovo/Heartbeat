@@ -16,6 +16,7 @@ if (string.IsNullOrWhiteSpace(connectionString))
 }
 
 builder.Services.AddOrisumiInfrastructure(connectionString);
+builder.Services.AddServerObservers(builder.Configuration);
 builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = true);
 
 builder.Services.ConfigureHttpJsonOptions(options =>

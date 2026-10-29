@@ -33,14 +33,14 @@ Runtime 的本地保存使用独立的 SQLite 文件，后端是记录每次请�
 
 以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
 
-- 草稿合并保持身份和前驱、结束前不发送该 Observation、重启后沿用草稿身份并发送最终内容：`ObserverSdkTests.DraftMergesFreezeDependenciesAndRecoverInOrder`。
-- 引用草稿使其冻结，之后补全形成后继版本：`ObserverSdkTests.ReferencingDraftFreezesItAndCompletionCreatesSuccessor`。
-- 冻结 Observation 时先冻结并发送其内容依赖：`ObserverSdkTests.FreezingObservationSendsItsDraftContentFirst`。
-- 及时提交的两次发送形成相连版本：`ObserverSdkTests.ImmediateSubmissionSendsTwoLinkedObservationVersions`。
+- 草稿合并保持身份和前驱、结束前不发送该 Observation、重启后沿用草稿身份并发送最终内容：`RuntimeStoreTests.DraftMergesFreezeDependenciesAndRecoverInOrder`。
+- 引用草稿使其冻结，之后补全形成后继版本：`RuntimeStoreTests.ReferencingDraftFreezesItAndCompletionCreatesSuccessor`。
+- 冻结 Observation 时先冻结并发送其内容依赖：`RuntimeStoreTests.FreezingObservationSendsItsDraftContentFirst`。
+- 及时提交的两次发送形成相连版本：`RuntimeStoreTests.ImmediateSubmissionSendsTwoLinkedObservationVersions`。
 - 写入观测草稿时后端返回 `VERSION-6`，Runtime 停止写入；之后本地补全或重启 Runtime，都不再写入这份草稿，发送也不报错：`ObserverDraftTests.VersionConflictStopsPublishingEvenAfterLocalUpdatesAndRestart`。
 - 未覆盖：进程意外退出后的草稿。
 
-观测内容先于草稿保存、`sequence` 递增且重启后继续递增，以及通知结束后不再写入、只发送一个版本，由前台状态 Observer 的测试检查：`ObserverSdkTests.ForegroundUploadsOnlyFinishedPeriods` 和 `ObserverDraftTests.LiveDraftRecoversAcrossServerAndSdkRestartsAndCompletesOnce`。它们关联 [Foreground Submission](./foreground-submission.mdx)，执行结果在那一页显示。
+观测内容先于草稿保存、`sequence` 递增且重启后继续递增，以及通知结束后不再写入、只发送一个版本，由前台状态 Observer 的测试检查：`RuntimeStoreTests.ForegroundUploadsOnlyFinishedPeriods` 和 `ObserverDraftTests.LiveDraftRecoversAcrossServerAndStoreRestartsAndCompletesOnce`。它们关联 [Foreground Submission](./foreground-submission.mdx)，执行结果在那一页显示。
 
 ## 执行结果 [#results]
 

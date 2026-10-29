@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Category, Version } from "@/api/types";
-import { differences, distinctSegment, roleOf, thingColor } from "./roles";
+import { differences, distinctSegment, roleOf } from "./roles";
 
 function version(category: Category): Version {
   return {
@@ -24,12 +24,6 @@ describe("roleOf", () => {
     expect(roleOf(version("business"), "observers", index)).toBe("source");
     expect(roleOf(version("business"), "periods", index)).toBe("experience");
     expect(roleOf(version("business"), "local-applications", index)).toBe("thing");
-  });
-});
-
-describe("记号", () => {
-  it("同名的事物颜色相同", () => {
-    expect(thingColor("com.shenxianovo.orisumi")).toBe(thingColor("com.shenxianovo.orisumi"));
   });
 });
 

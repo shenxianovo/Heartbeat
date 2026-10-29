@@ -7,7 +7,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../Orisumi.Observer.Protocol/Orisumi.Observer.Protocol.csproj" />
+    <ProjectReference Include="../Orisumi.Observer.Sdk/Orisumi.Observer.Sdk.csproj" />
     <ProjectReference Include="../../Core/Orisumi.Core/Orisumi.Core.csproj" />
     <InternalsVisibleTo Include="Orisumi.Integration.Tests" />
   </ItemGroup>

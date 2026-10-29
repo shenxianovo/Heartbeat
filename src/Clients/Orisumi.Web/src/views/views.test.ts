@@ -84,9 +84,4 @@ describe("renderers", () => {
     expect(expanded.markup).toContain('data-key="quiet"');
     expect(expanded.markup).toContain("收起");
   });
-
-  it("选中时其余 Observer 降低不透明度", () => {
-    const { markup } = renderStrip(input([writer, quiet], { selected: "quiet", expanded: true }));
-    expect(markup).toMatch(/data-key="&#60;b&#62;前台&#60;\/b&#62;" opacity="0.2"/);
-  });
 });

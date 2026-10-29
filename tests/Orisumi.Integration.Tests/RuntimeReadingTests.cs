@@ -3,6 +3,7 @@ using System.Text.Json;
 using Orisumi.Core;
 using Orisumi.Observer.Runtime;
 using Orisumi.Observer.Sdk;
+using Orisumi.Observer.Runtime.Store;
 using Orisumi.Observers.ForegroundState;
 
 namespace Orisumi.Integration.Tests;
@@ -22,7 +23,7 @@ public sealed class RuntimeReadingTests
         var owner = EntityId.New();
         var installed = new InstalledObserver("foreground-state", "Foreground State", "0.1.0", owner.Value, false, false, JsonLines.Json(new { }));
         await using var observer = new ManagedObserver(packages, installed, http);
-        var session = new LocalObserverSession(observer.Sdk);
+        var session = new LocalObserverSession(observer.Store);
         var registration = await ForegroundRegistration.RegisterAsync(session, owner);
         var store = new ForegroundStore(session, owner, registration);
         var capture = ForegroundCapture.Create(new LocalApplication(EntityId.New(), []), ForegroundTimelineTests.Reading(0));
@@ -34,7 +35,7 @@ public sealed class RuntimeReadingTests
         await Assert.That(draft.GetProperty("observations")[0].GetProperty("state").GetString()).IsEqualTo("draft");
         store.FinishActive();
         gate.Writes = true;
-        await observer.Sdk.SendAsync();
+        await observer.Store.SendAsync();
         var saved = await reader.ReadAsync(observer, query, CancellationToken.None);
         await Assert.That(saved.GetProperty("observations").GetArrayLength()).IsEqualTo(1);
         await Assert.That(saved.GetProperty("observations")[0].GetProperty("state").GetString()).IsEqualTo("saved");
@@ -57,7 +58,7 @@ public sealed class RuntimeReadingTests
         using var packages = new PackageStore(directory.Data, null, null, http);
         var owner = EntityId.New();
         await using var observer = new ManagedObserver(packages, new("foreground-state", "Foreground State", "0.1.0", owner.Value, false, false, JsonLines.Json(new { })), http);
-        var session = new LocalObserverSession(observer.Sdk);
+        var session = new LocalObserverSession(observer.Store);
         var registration = await ForegroundRegistration.RegisterAsync(session, owner);
         var store = new ForegroundStore(session, owner, registration);
         var captures = Enumerable.Range(0, 4).Select(index => ForegroundCapture.Create(new LocalApplication(EntityId.New(), []), ForegroundTimelineTests.Reading(index))).ToArray();

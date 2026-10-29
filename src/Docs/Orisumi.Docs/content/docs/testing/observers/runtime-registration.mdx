@@ -27,10 +27,10 @@ export const caseId = 'runtime-registration';
 
 以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
 
-- 离线登记后按依赖顺序提交程序实例、EntitySchema 和业务版本：`ObserverSdkTests.OfflineRegistrationPrecedesBusinessVersionsWhenConnectionReturns`。
-- 复用已有内容相同的 Schema 版本，版本链不增长：`ObserverSdkTests.SchemaRegistrationReusesHistoricalContentAndOfflineDraftReferencesAreRemapped`。
-- 新的 Schema 内容延长版本链并被业务版本引用：`ObserverSdkTests.NewSchemaContentExtendsCurrentChainAndBusinessReferencesIt`。
-- 重启后程序信息改变，形成并引用后继版本：`ObserverSdkTests.ChangedInstanceInformationAfterRestartCreatesReferencedSuccessor`。
+- 离线登记后按依赖顺序提交程序实例、EntitySchema 和业务版本：`RuntimeStoreTests.OfflineRegistrationPrecedesBusinessVersionsWhenConnectionReturns`。
+- 复用已有内容相同的 Schema 版本，版本链不增长：`RuntimeStoreTests.SchemaRegistrationReusesHistoricalContentAndOfflineDraftReferencesAreRemapped`。
+- 新的 Schema 内容延长版本链并被业务版本引用：`RuntimeStoreTests.NewSchemaContentExtendsCurrentChainAndBusinessReferencesIt`。
+- 重启后程序信息改变，形成并引用后继版本：`RuntimeStoreTests.ChangedInstanceInformationAfterRestartCreatesReferencedSuccessor`。
 - 后端离线时，经 Runtime 的登记不等待后端：`RuntimeProtocolTests.HostedRegistrationDoesNotWaitForAnOfflineBackend`。
 - Runtime 重启后交来同一个 EntityId：`RuntimeHostingTests.UninstallReinstallKeepsIdentityAndDisabledStateSurvivesRestart`。
 

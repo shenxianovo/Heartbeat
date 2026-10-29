@@ -32,8 +32,8 @@ Runtime 的本地保存使用独立的 SQLite 文件，读数是模拟的。需�
 
 以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
 
-- 进行中观测内容已保存、草稿可读、Observation 没有版本，结束后读到 Observation：`ObserverSdkTests.ForegroundUploadsOnlyFinishedPeriods`。
-- 连续确认后草稿的 `endAt` 是最近一次确认，一次写入返回 `503` 后，下一次写入最新的内容；后端和 Runtime 都重启后，下一次写入恢复草稿，`sequence` 继续递增；结束后不再写入草稿，只保存一个版本：`ObserverDraftTests.LiveDraftRecoversAcrossServerAndSdkRestartsAndCompletesOnce`。
+- 进行中观测内容已保存、草稿可读、Observation 没有版本，结束后读到 Observation：`RuntimeStoreTests.ForegroundUploadsOnlyFinishedPeriods`。
+- 连续确认后草稿的 `endAt` 是最近一次确认，一次写入返回 `503` 后，下一次写入最新的内容；后端和 Runtime 都重启后，下一次写入恢复草稿，`sequence` 继续递增；结束后不再写入草稿，只保存一个版本：`ObserverDraftTests.LiveDraftRecoversAcrossServerAndStoreRestartsAndCompletesOnce`。
 - 切换应用后旧时段保存一个版本、草稿移除，新时段有自己的草稿；标题时段引用应用时段的观测内容，应用时段不因此形成版本；同一应用的两个时段有不同的观测内容：`ObserverDraftTests.ContentReferencesDoNotFreezeTheParentObservationAndSeparateRepeatedPeriods`。标题时段用测试 Schema 形成，检查的是引用方式。
 - 重启后按最后确认恢复且只结束一次，以及另一程序实例打开同一文件时报错并保留队列：`ForegroundSubmissionTests.ActivePeriodStaysLocalAndRestartClosesLastCheckpointExactlyOnce`。
 - 切换时写入失败，结束旧时段与新建时段一起回滚：`ForegroundSubmissionTests.FailedTransitionRollsBackBothOldPeriodAndNewCheckpoint`。

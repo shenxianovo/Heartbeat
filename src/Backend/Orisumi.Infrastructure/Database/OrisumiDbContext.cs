@@ -12,6 +12,22 @@ public sealed partial class OrisumiDbContext(DbContextOptions<OrisumiDbContext> 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasPostgresExtension("btree_gist");
+        var observers = modelBuilder.Entity<ServerObserverRegistration>();
+        observers.ToTable("server_observers");
+        observers.HasKey(row => row.EntityId).HasName("pk_server_observers");
+        observers.HasIndex(row => row.ObserverKey).IsUnique().HasDatabaseName("ux_server_observers_observer_key");
+        var submissions = modelBuilder.Entity<ServerObserverSubmission>();
+        submissions.ToTable("server_observer_submissions");
+        submissions.HasKey(row => row.EntityId).HasName("pk_server_observer_submissions");
+        submissions.Property(row => row.Payload).HasColumnType("jsonb");
+        submissions.HasOne<ServerObserverRegistration>().WithMany().HasForeignKey(row => row.EntityId)
+            .OnDelete(DeleteBehavior.Cascade).HasConstraintName("fk_server_observer_submissions_server_observers_entity_id");
+        var states = modelBuilder.Entity<ServerObserverState>();
+        states.ToTable("server_observer_state");
+        states.HasKey(row => row.EntityId).HasName("pk_server_observer_state");
+        states.Property(row => row.Payload).HasColumnType("jsonb");
+        states.HasOne<ServerObserverRegistration>().WithMany().HasForeignKey(row => row.EntityId)
+            .OnDelete(DeleteBehavior.Cascade).HasConstraintName("fk_server_observer_state_server_observers_entity_id");
         var entities = modelBuilder.Entity<StoredEntity>();
         entities.ToTable("entities", table => table.HasCheckConstraint("ck_entities_deleted_state", """
             (deleted_at IS NULL AND category IS NOT NULL AND current_version_id IS NOT NULL)

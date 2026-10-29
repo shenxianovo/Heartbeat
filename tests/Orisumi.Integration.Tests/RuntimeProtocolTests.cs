@@ -4,6 +4,7 @@ using System.IO.Pipes;
 using System.Text.Json;
 using Orisumi.Core;
 using Orisumi.Observer.Sdk;
+using Orisumi.Observer.Runtime.Store;
 using Orisumi.Observers.ForegroundState;
 
 namespace Orisumi.Integration.Tests;
@@ -24,9 +25,9 @@ public sealed class RuntimeProtocolTests
                 category = "entity_schema", content = new { displayName = "Example", description = "Example", resourceName = "examples", fields = new { } }, @as = "version" } } });
             JsonElement receipt;
             var file = Path.Combine(directory.FullName, "state.sqlite");
-            using (var sdk = new ObserverClient(file, owner, http))
-                receipt = await new LocalObserverSession(sdk).RequestAsync("commit", body, "retry-me");
-            using var restarted = new ObserverClient(file, owner, http);
+            using (var runtimeStore = new ObserverStore(file, owner, http))
+                receipt = await new LocalObserverSession(runtimeStore).RequestAsync("commit", body, "retry-me");
+            using var restarted = new ObserverStore(file, owner, http);
             var session = new LocalObserverSession(restarted);
             var replayed = await session.RequestAsync("commit", body, "retry-me");
             await Assert.That(replayed.GetRawText()).IsEqualTo(receipt.GetRawText());
@@ -47,29 +48,29 @@ public sealed class RuntimeProtocolTests
         {
             var owner = EntityId.New();
             using var http = new HttpClient(new OfflineHandler()) { BaseAddress = new("http://localhost/") };
-            using var sdk = new ObserverClient(Path.Combine(directory.FullName, "state.sqlite"), owner, http);
-            var session = new LocalObserverSession(sdk);
+            using var runtimeStore = new ObserverStore(Path.Combine(directory.FullName, "state.sqlite"), owner, http);
+            var session = new LocalObserverSession(runtimeStore);
             var registration = await ForegroundRegistration.RegisterAsync(session, owner);
             var application = new LocalApplication(EntityId.New(), []);
             var capture = ForegroundCapture.Create(application, ForegroundTimelineTests.Reading(0));
             var store = new ForegroundStore(session, owner, registration);
             store.Checkpoint(capture, null);
-            var before = sdk.Execute(local => local.Versions().Count);
+            var before = runtimeStore.Execute(local => local.Versions().Count);
             var invalid = JsonLines.Json(new { operations = new object[] {
                 new { op = "complete", entityId = capture.ObservationId.Value },
                 new { op = "reference", entityId = EntityId.New().Value },
             } });
             await Assert.That(async () => await session.RequestAsync("commit", invalid, "failed")).Throws<InvalidOperationException>();
-            await Assert.That(sdk.Execute(local => local.Latest(capture.ObservationId)!.State)).IsEqualTo(SubmissionState.Draft);
-            await Assert.That(sdk.Execute(local => local.Versions().Count)).IsEqualTo(before);
+            await Assert.That(runtimeStore.Execute(local => local.Latest(capture.ObservationId)!.State)).IsEqualTo(SubmissionState.Draft);
+            await Assert.That(runtimeStore.Execute(local => local.Versions().Count)).IsEqualTo(before);
             // Failed requests leave no receipt; a corrected request can use the same id.
             await session.RequestAsync("commit", JsonLines.Json(new { operations = new[] { new { op = "complete", entityId = capture.ObservationId.Value } } }), "failed");
-            var frozen = sdk.Execute(local => local.Latest(capture.ObservationId)!.Version);
+            var frozen = runtimeStore.Execute(local => local.Latest(capture.ObservationId)!.Version);
             store.Checkpoint(capture.Through(capture.EndAt.AddSeconds(1)), null);
-            var next = sdk.Execute(local => local.Latest(capture.ObservationId)!.Version);
+            var next = runtimeStore.Execute(local => local.Latest(capture.ObservationId)!.Version);
             await Assert.That(next.PreviousVersionId).IsEqualTo(frozen.VersionId);
             await Assert.That(((Observation)next.Content).ContentVersionId).IsEqualTo(((Observation)frozen.Content).ContentVersionId);
-            await Assert.That(sdk.Execute(local => local.Find(frozen.VersionId)!.Version)).IsEqualTo(frozen);
+            await Assert.That(runtimeStore.Execute(local => local.Find(frozen.VersionId)!.Version)).IsEqualTo(frozen);
         }
         finally { directory.Delete(true); }
     }
@@ -79,10 +80,10 @@ public sealed class RuntimeProtocolTests
     public async Task HostedRegistrationDoesNotWaitForAnOfflineBackend()
     {
         using var local = new ForegroundTestStore(EntityId.New());
-        var session = new LocalObserverSession(local.Sdk);
-        var registration = await ForegroundRegistration.RegisterAsync(session, local.Sdk.InstanceId);
+        var session = new LocalObserverSession(local.RuntimeStore);
+        var registration = await ForegroundRegistration.RegisterAsync(session, local.RuntimeStore.InstanceId);
         await Assert.That(registration.ObserverSchema).IsEqualTo(local.Registration.ObserverSchema);
-        await Assert.That(local.Sdk.Status.Pending).IsGreaterThan(0);
+        await Assert.That(local.RuntimeStore.Status.Pending).IsGreaterThan(0);
     }
 
     [Test]

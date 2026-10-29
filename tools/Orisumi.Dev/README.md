@@ -65,7 +65,6 @@ dotnet run --project tools/Orisumi.Dev -- tool install
 | `api` | `db`、`migrate` |
 | `docs` | — |
 | `web` | `api`、`db`、`migrate` |
-| `application-identity` | `api`、`db`、`migrate` |
 
 NGINX 总是启动，提供固定的入口端口。各入口在不同服务组合下的转发见 [AppHost README · 入口](../Orisumi.AppHost/README.md#入口)。
 

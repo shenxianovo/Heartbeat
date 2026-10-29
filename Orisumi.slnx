@@ -10,9 +10,9 @@
   </Folder>
   <Folder Name="/src/Observers/">
     <Project Path="src/Observers/Orisumi.Observer.ApplicationIdentity/Orisumi.Observer.ApplicationIdentity.csproj" />
-    <Project Path="src/Observers/Orisumi.Observer.Protocol/Orisumi.Observer.Protocol.csproj" />
-    <Project Path="src/Observers/Orisumi.Observer.Runtime/Orisumi.Observer.Runtime.csproj" />
     <Project Path="src/Observers/Orisumi.Observer.Sdk/Orisumi.Observer.Sdk.csproj" />
+    <Project Path="src/Observers/Orisumi.Observer.Runtime/Orisumi.Observer.Runtime.csproj" />
+    <Project Path="src/Observers/Orisumi.Observer.Runtime.Store/Orisumi.Observer.Runtime.Store.csproj" />
     <Project Path="src/Observers/Orisumi.Observer.ForegroundState/Orisumi.Observer.ForegroundState.csproj" />
   </Folder>
   <Folder Name="/tests/">

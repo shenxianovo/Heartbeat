@@ -13,7 +13,6 @@
     <PackageReference Include="Aspire.Hosting.PostgreSQL" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="../../src/Observers/Orisumi.Observer.ApplicationIdentity/Orisumi.Observer.ApplicationIdentity.csproj" />
     <ProjectReference Include="../../src/Backend/Orisumi.Api/Orisumi.Api.csproj" />
   </ItemGroup>
 </Project>

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using Orisumi.Observer.Sdk;
+using Orisumi.Observer.Runtime.Store;
 
 namespace Orisumi.Observer.Runtime;
 
@@ -15,7 +16,7 @@ internal sealed class ManagedObserver : IAsyncDisposable
     private string _state = "stopped";
     private string? _error;
     public InstalledObserver Registration { get; private set; }
-    public ObserverClient Sdk { get; }
+    public ObserverStore Store { get; }
     public string State => _state;
     public string? Error => _error;
     public string? Diagnostic { get; private set; }
@@ -27,14 +28,14 @@ internal sealed class ManagedObserver : IAsyncDisposable
         var directory = packages.InstanceDirectory(registration.InstanceId);
         Directory.CreateDirectory(Path.Combine(directory, "data"));
         Directory.CreateDirectory(Path.Combine(packages.Root, "shared"));
-        Sdk = new ObserverClient(Path.Combine(directory, "sdk.sqlite"), new(registration.InstanceId), http) { PublishDrafts = false };
-        _session = new(Sdk);
+        Store = new ObserverStore(Path.Combine(directory, "store.sqlite"), new(registration.InstanceId), http) { PublishDrafts = false };
+        _session = new(Store);
         _delivery = DeliverAsync(_deliveryStop.Token);
     }
 
     private async Task DeliverAsync(CancellationToken token)
     {
-        try { await Sdk.RunAsync(TimeSpan.FromSeconds(2), cancellationToken: token); }
+        try { await Store.RunAsync(TimeSpan.FromSeconds(2), cancellationToken: token); }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
         catch (Exception exception) { _error = "Local delivery failed: " + exception.Message; }
     }
@@ -68,7 +69,7 @@ internal sealed class ManagedObserver : IAsyncDisposable
             try { running = await RunProcessAsync(token); }
             catch (InvalidDataException exception) { _error = exception.Message; incompatible = true; }
             catch (Exception exception) { _error = exception.Message; }
-            finally { Sdk.PublishDrafts = false; }
+            finally { Store.PublishDrafts = false; }
             if (token.IsCancellationRequested) { _state = "stopped"; return; }
             if (running >= TimeSpan.FromSeconds(60)) failures = 0;
             if (incompatible || failures >= 3) { _state = "failed"; return; }
@@ -118,7 +119,7 @@ internal sealed class ManagedObserver : IAsyncDisposable
                         readyAt = Stopwatch.GetTimestamp();
                         _state = "running";
                         _error = null;
-                        Sdk.PublishDrafts = true;
+                        Store.PublishDrafts = true;
                         result = JsonLines.Json(new { });
                     }
                     else result = await _session.RequestAsync(method, request.GetProperty("params"), id, connection.Token);
@@ -152,7 +153,7 @@ internal sealed class ManagedObserver : IAsyncDisposable
             if (!process.HasExited)
             {
                 _state = "stopping";
-                Sdk.PublishDrafts = false;
+                Store.PublishDrafts = false;
                 if (stopping.IsCancellationRequested)
                 {
                     using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -167,7 +168,7 @@ internal sealed class ManagedObserver : IAsyncDisposable
         }
         finally
         {
-            Sdk.PublishDrafts = false;
+            Store.PublishDrafts = false;
             if (!process.HasExited) process.Kill(entireProcessTree: true);
             await process.WaitForExitAsync(CancellationToken.None);
             await connection.CancelAsync();
@@ -181,7 +182,7 @@ internal sealed class ManagedObserver : IAsyncDisposable
         await StopAsync();
         await _deliveryStop.CancelAsync();
         await _delivery;
-        Sdk.Dispose();
+        Store.Dispose();
         _runStop?.Dispose();
         _deliveryStop.Dispose();
     }

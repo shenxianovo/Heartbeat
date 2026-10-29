@@ -4,11 +4,12 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using Orisumi.Core;
+using Orisumi.Observer.Sdk;
 
-namespace Orisumi.Observer.Sdk;
+namespace Orisumi.Observer.Runtime.Store;
 
 /// <summary>The Runtime's finite data operations. Tests can call the same handler in process.</summary>
-public sealed class LocalObserverSession(ObserverClient sdk) : IObserverSession
+public sealed class LocalObserverSession(ObserverStore runtimeStore) : IObserverSession
 {
     public async Task<JsonElement> RequestAsync(string method, JsonElement parameters, string? requestId = null,
         CancellationToken cancellationToken = default)
@@ -16,13 +17,13 @@ public sealed class LocalObserverSession(ObserverClient sdk) : IObserverSession
         switch (method)
         {
             case "registerSchema":
-                return JsonLines.Json(new { versionId = sdk.RegisterSchemaLocally(Entity(parameters, "entityId"),
+                return JsonLines.Json(new { versionId = runtimeStore.RegisterSchemaLocally(Entity(parameters, "entityId"),
                     (EntitySchema)VersionJson.ReadContent("entity_schema", parameters.GetProperty("content"))).Value });
             case "registerInstance":
-                return JsonLines.Json(new { versionId = sdk.RegisterInstance(sdk.InstanceId, Version(parameters, "schemaVersionId"),
+                return JsonLines.Json(new { versionId = runtimeStore.RegisterInstance(runtimeStore.InstanceId, Version(parameters, "schemaVersionId"),
                     new(parameters.GetProperty("content"))).Value });
             case "commit": return Commit(requestId ?? throw new ArgumentException("commit requires a request id."), parameters);
-            case "local": return sdk.Execute(local =>
+            case "local": return runtimeStore.Execute(local =>
             {
                 IEnumerable<LocalVersion> values = local.Versions();
                 if (parameters.TryGetProperty("entityId", out var entity)) values = values.Where(v => v.Version.EntityId.Value == entity.GetGuid());
@@ -31,12 +32,12 @@ public sealed class LocalObserverSession(ObserverClient sdk) : IObserverSession
                 if (parameters.TryGetProperty("category", out var category)) values = values.Where(v => v.Version.Category == category.GetString());
                 return JsonLines.Json(new { versions = values.Select(Value).ToArray() });
             });
-            case "status": return Status(sdk.Status);
+            case "status": return Status(runtimeStore.Status);
             case "readCurrent":
-                var current = await sdk.ReadCurrentAsync(Entity(parameters, "entityId"), cancellationToken);
+                var current = await runtimeStore.ReadCurrentAsync(Entity(parameters, "entityId"), cancellationToken);
                 return current is null ? JsonLines.Json(new { version = (object?)null }) : JsonLines.Json(new { version = VersionJson.Saved(current) });
             case "entityStatus":
-                using (var response = await sdk.GetEntityResponseAsync(Entity(parameters, "entityId"), cancellationToken))
+                using (var response = await runtimeStore.GetEntityResponseAsync(Entity(parameters, "entityId"), cancellationToken))
                     return JsonLines.Json(new { status = (int)response.StatusCode });
             case "repair": return Repair(parameters, requestId ?? throw new ArgumentException("repair requires a request id."));
             default: throw new ArgumentException("Unknown Observer method: " + method);
@@ -54,7 +55,7 @@ public sealed class LocalObserverSession(ObserverClient sdk) : IObserverSession
         rejection = status.Rejection is { } rejected ? new { version = Value(rejected.Version), dependents = rejected.Dependents.Select(Value) } : null,
     });
 
-    private JsonElement Commit(string requestId, JsonElement parameters) => sdk.Execute(local => Once(local, requestId, "commit", parameters, () =>
+    private JsonElement Commit(string requestId, JsonElement parameters) => runtimeStore.Execute(local => Once(local, requestId, "commit", parameters, () =>
     {
         var operations = parameters.GetProperty("operations");
         if (operations.GetArrayLength() is < 1 or > 512) throw new ArgumentException("A batch requires 1 through 512 operations.");
@@ -121,7 +122,7 @@ public sealed class LocalObserverSession(ObserverClient sdk) : IObserverSession
         return JsonSerializer.SerializeToElement(content);
     }
 
-    private JsonElement Repair(JsonElement parameters, string requestId) => sdk.Execute(local => Once(local, requestId, "repair", parameters, () =>
+    private JsonElement Repair(JsonElement parameters, string requestId) => runtimeStore.Execute(local => Once(local, requestId, "repair", parameters, () =>
     {
         if (local.Rejection()?.Version.Version.VersionId != Version(parameters, "rejectedVersionId"))
             throw new InvalidOperationException("The rejected version changed; read its state again.");

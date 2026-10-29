@@ -76,7 +76,7 @@ internal sealed class RuntimeHost : IAsyncDisposable
             case "list": return JsonLines.Json(new { observers = _observers.Values.Select(observer =>
             {
                 var item = observer.Registration;
-                var delivery = observer.Sdk.Status;
+                var delivery = observer.Store.Status;
                 return new
                 {
                     item.PackageId, item.Name, item.Version, item.InstanceId, item.Installed, item.Enabled,

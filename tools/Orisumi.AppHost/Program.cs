@@ -42,20 +42,8 @@ if (services.Contains("api"))
         .WithReference(database)
         .WaitForCompletion(migrate)
         .WithHttpHealthCheck("/entities/019a0d3b-1d20-7000-8000-000000000001", statusCode: 404);
-}
-
-if (services.Contains("application-identity"))
-{
-    var localIdentity = new ConfigurationBuilder()
-        .AddJsonFile(Path.Combine(root, ".local", "application-identity.json"), optional: true)
-        .Build();
-    builder.AddProject<Projects.Orisumi_Observer_ApplicationIdentity>("application-identity")
-        .WithArgs("--backend", api!.GetEndpoint("http"),
-            "--data-dir", Path.Combine(root, ".artifacts", "application-identity", builder.Configuration["DatabaseVolume"]!),
-            "--model", builder.Configuration["ApplicationIdentity:Model"] ?? localIdentity["model"] ?? "gpt-6.1-terra",
-            "--interval-seconds", builder.Configuration["ApplicationIdentity:IntervalSeconds"] ?? localIdentity["intervalSeconds"] ?? "60")
-        .WithEnvironment("OPENAI_API_KEY", builder.Configuration["OPENAI_API_KEY"] ?? localIdentity["apiKey"] ?? "")
-        .WaitFor(api!);
+    foreach (var key in new[] { "OPENAI_API_KEY", "ApplicationIdentity:Model", "ApplicationIdentity:IntervalSeconds" })
+        if (builder.Configuration[key] is { } value) api.WithEnvironment(key.Replace(":", "__", StringComparison.Ordinal), value);
 }
 
 if (services.Contains("docs"))

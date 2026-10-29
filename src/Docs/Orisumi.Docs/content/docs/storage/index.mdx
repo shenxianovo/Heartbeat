@@ -1,6 +1,6 @@
 ---
 title: "Overview"
-description: "表结构、索引、引用的反查、删除与墓碑、事务、内容的表示与命名"
+description: "表结构、索引、引用的反查、删除与墓碑、事务、内容的表示、服务端托管的表与命名"
 ---
 
 实体和它的全部版本保存在 PostgreSQL 中。本页写表结构、索引、引用的反查、删除和事务；数据库的版本、数据访问和时间的保存方式见 [PostgreSQL](./postgresql.mdx)，数据模型见 [Core](../core/index.mdx)。这样设计的理由见 [ADR · 实体存储](../adr/entity-storage.mdx)。
@@ -155,6 +155,43 @@ description: "表结构、索引、引用的反查、删除与墓碑、事务、
 单个 Observation 版本的 `content` 约 260 字节，主要是三个以字符串保存的 VersionId 和两个时间。
 
 2026-10-25 在本机实测：API 为 Debug 构建并开启遥测，每次提交 1,000 个键鼠事件规模的版本，保存速度约 275 个版本/秒；10 万个版本连同索引约 79 MiB。按这个速度，导入上表的数据约需 5 小时，空间按同样的比例估算。
+
+## 服务端托管 [#server-observers]
+
+[服务端托管](../observers/submission/index.mdx#server)为它运行的程序实例另外保存三张表。它们不是 Core 的实体或版本，API 不读取它们。例如应用识别 Observer 在 `server_observers` 中有一行，绑定它的程序实例；它正在提交的产品版本在 `server_observer_submissions` 中，模型回答未知的线索在 `server_observer_state` 中。
+
+### server_observers [#server-observers-table]
+
+每个程序实例一行，是它的管理记录，第一次运行时创建。
+
+| 列 | 类型 | 含义 |
+| --- | --- | --- |
+| `entity_id` | `uuid` | 程序实例的 EntityId，主键 |
+| `observer_key` | `text` | 程序实例的稳定标识，例如 `application-identity`，唯一 |
+
+### server_observer_submissions [#server-observer-submissions]
+
+每个程序实例最多一行，是它的未决提交。
+
+| 列 | 类型 | 含义 |
+| --- | --- | --- |
+| `entity_id` | `uuid` | 程序实例的 EntityId，主键，外键指向 `server_observers` |
+| `payload` | `jsonb` | 按顺序排列的版本，每个版本的写法与 API 提交的版本相同 |
+
+写入时已有一行就报错，旧的批次不被覆盖。批次得到明确的结果，全部保存或某个版本被拒绝，这一行随之删除；出现异常或取消时保留，下次用相同的 VersionId 和内容重发。
+
+### server_observer_state [#server-observer-state]
+
+每个程序实例最多一行，是它的业务状态。
+
+| 列 | 类型 | 含义 |
+| --- | --- | --- |
+| `entity_id` | `uuid` | 程序实例的 EntityId，主键，外键指向 `server_observers` |
+| `payload` | `jsonb` | 业务代码定义的状态，每次整体替换 |
+
+应用识别 Observer 在这里保存未知的线索，见 [Application Identity · 识别](../observers/application-identity/index.mdx#identification)。
+
+这三张表的读写不在实体的事务中：未决提交在保存版本之前写入，在结果确认之后删除，所以中途退出时版本可能已保存、未决提交仍在，重发时由 [VERSION-7](../core/model/version.mdx#version-7) 确认。
 
 ## 命名 [#naming]
 

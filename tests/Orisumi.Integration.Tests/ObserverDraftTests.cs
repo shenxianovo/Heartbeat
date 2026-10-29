@@ -1,7 +1,7 @@
 using System.Net;
 using System.Text.Json;
 using Orisumi.Core;
-using Orisumi.Observer.Sdk;
+using Orisumi.Observer.Runtime.Store;
 using Orisumi.Observers.ForegroundState;
 
 namespace Orisumi.Integration.Tests;
@@ -10,7 +10,7 @@ public sealed class ObserverDraftTests
 {
     [Test]
     [Property("caseId", "foreground-submission")]
-    public async Task LiveDraftRecoversAcrossServerAndSdkRestartsAndCompletesOnce()
+    public async Task LiveDraftRecoversAcrossServerAndStoreRestartsAndCompletesOnce()
     {
         await using var database = await DatabaseFixture.CreateAsync();
         await using var firstFactory = new OrisumiApiFactory(database.ConnectionString);
@@ -24,22 +24,22 @@ public sealed class ObserverDraftTests
             ForegroundCapture capture;
             ForegroundRegistration registration;
             long lastSequence;
-            using (var sdk = new ObserverClient(path, owner, firstHttp))
+            using (var runtimeStore = new ObserverStore(path, owner, firstHttp))
             {
-                registration = await ForegroundRegistration.RegisterAsync(new LocalObserverSession(sdk), owner);
+                registration = await ForegroundRegistration.RegisterAsync(new LocalObserverSession(runtimeStore), owner);
                 var registry = new LocalApplicationRegistry(Path.Combine(directory.FullName, "apps"));
                 var reading = ForegroundTimelineTests.Reading(0);
                 capture = ForegroundCapture.Create(registry.Resolve(reading), reading);
-                var store = new ForegroundStore(new LocalObserverSession(sdk), owner, registration);
+                var store = new ForegroundStore(new LocalObserverSession(runtimeStore), owner, registration);
                 store.Checkpoint(capture, null);
-                await sdk.SendAsync();
-                await Assert.That(sdk.Status.Error).IsNull();
+                await runtimeStore.SendAsync();
+                await Assert.That(runtimeStore.Status.Error).IsNull();
                 await ReadEnd(firstHttp, capture, capture.EndAt);
                 firstHandler.FailNextDraft = true;
                 store.Checkpoint(capture.Through(reading.ObservedAt.AddSeconds(1)), null);
-                await sdk.SendAsync();
+                await runtimeStore.SendAsync();
                 store.Checkpoint(capture.Through(reading.ObservedAt.AddSeconds(2)), null);
-                await sdk.SendAsync();
+                await runtimeStore.SendAsync();
                 await ReadEnd(firstHttp, capture, reading.ObservedAt.AddSeconds(2));
                 lastSequence = firstHandler.Drafts[^1].GetProperty("sequence").GetInt64();
                 using var noVersions = await firstHttp.GetAsync($"/entities/{capture.ObservationId.Value}/versions");
@@ -50,7 +50,7 @@ public sealed class ObserverDraftTests
             using var http = new HttpClient(secondHandler) { BaseAddress = new("http://localhost/") };
             using var absent = await http.GetAsync($"/observation-drafts/{capture.ObservationId.Value}");
             await Assert.That(absent.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
-            using var recovered = new ObserverClient(path, owner, http);
+            using var recovered = new ObserverStore(path, owner, http);
             await recovered.SendAsync();
             await Assert.That(secondHandler.Drafts.Single().GetProperty("sequence").GetInt64()).IsGreaterThan(lastSequence);
             await ReadEnd(http, capture, capture.EndAt.AddSeconds(2));
@@ -86,19 +86,19 @@ public sealed class ObserverDraftTests
             saved.EnsureSuccessStatusCode();
             var id = EntityId.New();
             var observation = new Observation(content.VersionId, content.VersionId, null, null, null, null);
-            using (var sdk = new ObserverClient(path, owner, http))
+            using (var runtimeStore = new ObserverStore(path, owner, http))
             {
-                sdk.Execute(local =>
+                runtimeStore.Execute(local =>
                 {
                     local.Remember(new(content, DateTimeOffset.UtcNow));
                     local.Draft(id, observation, strategy: SubmissionStrategy.OnCompletion, publishDraft: true);
                 });
-                await sdk.SendAsync();
+                await runtimeStore.SendAsync();
                 using var advanced = await EntityApiTests.Submit(http, new VersionSubmission(id, VersionId.New(), null, null, observation));
                 advanced.EnsureSuccessStatusCode();
-                await sdk.SendAsync();
+                await runtimeStore.SendAsync();
             }
-            using var restarted = new ObserverClient(path, owner, http);
+            using var restarted = new ObserverStore(path, owner, http);
             restarted.Execute(local => local.Draft(id, observation with { TimeZone = "Asia/Shanghai" },
                 strategy: SubmissionStrategy.OnCompletion, publishDraft: true));
             var sent = handler.Drafts.Count;
@@ -120,13 +120,13 @@ public sealed class ObserverDraftTests
         try
         {
             var owner = EntityId.New();
-            using var sdk = new ObserverClient(Path.Combine(directory.FullName, "state.sqlite"), owner, http);
-            var registration = await ForegroundRegistration.RegisterAsync(new LocalObserverSession(sdk), owner);
+            using var runtimeStore = new ObserverStore(Path.Combine(directory.FullName, "state.sqlite"), owner, http);
+            var registration = await ForegroundRegistration.RegisterAsync(new LocalObserverSession(runtimeStore), owner);
             var registry = new LocalApplicationRegistry(Path.Combine(directory.FullName, "apps"));
             var reading = ForegroundTimelineTests.Reading(0);
             var application = registry.Resolve(reading);
             var first = ForegroundCapture.Create(application, reading);
-            var store = new ForegroundStore(new LocalObserverSession(sdk), owner, registration);
+            var store = new ForegroundStore(new LocalObserverSession(runtimeStore), owner, registration);
             store.Checkpoint(first, null);
             var titleSchema = EntityApiTests.Schema("test-title-contents", """
                 {"foregroundApplicationPeriodVersionId":{"type":"reference","description":"The parent activity content version","required":true,"nullable":false},
@@ -134,15 +134,15 @@ public sealed class ObserverDraftTests
                 """);
             using var setup = await EntityApiTests.Submit(http, titleSchema);
             setup.EnsureSuccessStatusCode();
-            sdk.Execute(local => local.Remember(new(titleSchema, DateTimeOffset.UtcNow)));
+            runtimeStore.Execute(local => local.Remember(new(titleSchema, DateTimeOffset.UtcNow)));
             for (var index = 0; index < 3; index++)
             {
-                sdk.Execute(local => local.Draft(EntityId.New(), new BusinessContent(JsonSerializer.SerializeToElement(new
+                runtimeStore.Execute(local => local.Draft(EntityId.New(), new BusinessContent(JsonSerializer.SerializeToElement(new
                 {
                     foregroundApplicationPeriodVersionId = local.Reference(first.Content.Id).Value, title = $"Title {index}",
                 })), titleSchema.VersionId));
                 store.Checkpoint(first.Through(reading.ObservedAt.AddSeconds(index)), null);
-                await sdk.SendAsync();
+                await runtimeStore.SendAsync();
             }
             using var noHistory = await http.GetAsync($"/entities/{first.ObservationId.Value}");
             await Assert.That(noHistory.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
@@ -150,7 +150,7 @@ public sealed class ObserverDraftTests
             var second = ForegroundCapture.Create(application, secondReading);
             await Assert.That(second.Content.Id).IsNotEqualTo(first.Content.Id);
             store.Checkpoint(second, first.Through(secondReading.ObservedAt));
-            await sdk.SendAsync();
+            await runtimeStore.SendAsync();
             using var completed = await http.GetAsync($"/entities/{first.ObservationId.Value}/versions");
             await Assert.That((await EntityApiTests.Json(completed)).GetProperty("versions").GetArrayLength()).IsEqualTo(1);
             using var removed = await http.GetAsync($"/observation-drafts/{first.ObservationId.Value}");

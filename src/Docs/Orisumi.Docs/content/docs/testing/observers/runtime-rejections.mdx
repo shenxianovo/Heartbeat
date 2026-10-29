@@ -30,9 +30,9 @@ Runtime 的本地保存使用独立的 SQLite 文件，后端是记录每次请�
 
 以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
 
-- 拒绝后暂停、恢复拒绝状态，以及采用内容相同的已保存版本并替换依赖：`ObserverSdkTests.PartialRejectionPausesPersistsAndAdoptsEqualSavedVersion`。
-- 丢弃被拒绝版本和依赖，继续其他版本：`ObserverSdkTests.DiscardingRejectedVersionDiscardsDependentsAndResumesOthers`。
-- 读取当前版本后改写被拒绝版本及依赖，再发送：`ObserverSdkTests.RewritingRejectedVersionUsesReadCurrentVersionAndResendsDependents`。
+- 拒绝后暂停、恢复拒绝状态，以及采用内容相同的已保存版本并替换依赖：`RuntimeStoreTests.PartialRejectionPausesPersistsAndAdoptsEqualSavedVersion`。
+- 丢弃被拒绝版本和依赖，继续其他版本：`RuntimeStoreTests.DiscardingRejectedVersionDiscardsDependentsAndResumesOthers`。
+- 读取当前版本后改写被拒绝版本及依赖，再发送：`RuntimeStoreTests.RewritingRejectedVersionUsesReadCurrentVersionAndResendsDependents`。
 - 未覆盖：实例之间的隔离、停用期间保留拒绝、普通操作不能改写被拒绝的版本。
 
 ## 执行结果 [#results]

@@ -5,9 +5,9 @@ using System.Text.Json;
 using Orisumi.Core;
 using Microsoft.Data.Sqlite;
 
-namespace Orisumi.Observer.Sdk;
+namespace Orisumi.Observer.Runtime.Store;
 
-public sealed class ObserverClient : IDisposable
+public sealed class ObserverStore : IDisposable
 {
     private readonly string _connectionString;
     private readonly HttpClient _http;
@@ -19,7 +19,7 @@ public sealed class ObserverClient : IDisposable
     public EntityId InstanceId { get; }
     public bool PublishDrafts { get; set; } = true;
 
-    public ObserverClient(string path, EntityId instanceId, HttpClient http)
+    public ObserverStore(string path, EntityId instanceId, HttpClient http)
     {
         _http = http;
         InstanceId = instanceId;

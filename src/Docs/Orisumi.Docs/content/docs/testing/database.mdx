@@ -17,6 +17,8 @@ description: "测试用的 PostgreSQL 实例、用例隔离、迁移与清理"
 
 测试与服务共用 Infrastructure 中的 EF Core 迁移。准备用例时，工具调用 `Database.MigrateAsync()`，把迁移应用到用例的空数据库。数据库创建成功、迁移也成功，工具才返回 `TestDatabase`。
 
+同一个实例中，用例的数据库逐个创建和迁移。许多数据库同时迁移时，PostgreSQL 的共享锁表会用尽，报 `53200`。迁移完成后，用例对数据库的读写仍然并行。
+
 ## 公开方法 [#api]
 
 `PostgresTestInstance` 和 `TestDatabase` 都实现了 `IAsyncDisposable`。

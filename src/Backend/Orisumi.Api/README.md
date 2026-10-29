@@ -15,6 +15,8 @@ dotnet run --project src/Backend/Orisumi.Api/Orisumi.Api.csproj
 
 缺少 `ConnectionStrings__Orisumi` 时，API 启动失败。API 不应用迁移。
 
+API 进程中同时运行[服务端托管](../../Docs/Orisumi.Docs/content/docs/observers/submission/index.mdx#server)，它托管的应用识别 Observer 的配置见[应用识别 README · 运行](../../Observers/Orisumi.Observer.ApplicationIdentity/README.md#运行)。
+
 ## 遥测
 
 API 只有在 `OTEL_EXPORTER_OTLP_ENDPOINT` 是包含主机名的 HTTP 或 HTTPS 绝对地址时，才导出日志、追踪和指标。没有配置或地址无效时，API 只输出控制台日志。

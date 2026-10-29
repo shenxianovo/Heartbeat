@@ -3,9 +3,9 @@ using System.Text.Json.Nodes;
 using Orisumi.Core;
 using Microsoft.Data.Sqlite;
 
-namespace Orisumi.Observer.Sdk;
+namespace Orisumi.Observer.Runtime.Store;
 
-/// <summary>All calls made through ObserverClient.Execute share one durable local transaction.</summary>
+/// <summary>All calls made through ObserverStore.Execute share one durable local transaction.</summary>
 public sealed class LocalTransaction
 {
     private readonly SqliteConnection _connection;

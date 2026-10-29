@@ -118,11 +118,7 @@ struct Banner<Actions: View>: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).fontWeight(.medium)
                 if let message {
-                    Text(message)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(3)
-                        .textSelection(.enabled)
+                    SelectableBannerMessage(message: message)
                 }
             }
             Spacer(minLength: 12)
@@ -132,6 +128,33 @@ struct Banner<Actions: View>: View {
         .padding(.vertical, 10)
         .background(tone.color.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(tone.color.opacity(0.22), lineWidth: 0.5))
+    }
+}
+
+/// Use AppKit's label for selectable text inside the scrolling banner. SwiftUI's
+/// selectable Text can draw vertically flipped in this scroll view.
+private struct SelectableBannerMessage: NSViewRepresentable {
+    let message: String
+
+    func makeNSView(context: Context) -> NSTextField {
+        let label = NSTextField(wrappingLabelWithString: message)
+        label.isSelectable = true
+        label.font = .preferredFont(forTextStyle: .callout)
+        label.textColor = .secondaryLabelColor
+        label.maximumNumberOfLines = 3
+        label.lineBreakMode = .byWordWrapping
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return label
+    }
+
+    func updateNSView(_ label: NSTextField, context: Context) {
+        if label.stringValue != message { label.stringValue = message }
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSTextField, context: Context) -> CGSize? {
+        guard let width = proposal.width, width.isFinite else { return nil }
+        let size = nsView.cell!.cellSize(forBounds: NSRect(x: 0, y: 0, width: width, height: .greatestFiniteMagnitude))
+        return CGSize(width: width, height: ceil(size.height))
     }
 }
 

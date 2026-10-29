@@ -12,10 +12,9 @@ Orisumi.AppHost 用 Aspire 编排本地开发环境，定义资源、依赖关�
 | --- | --- | --- |
 | `db` | 容器 | PostgreSQL 18.6，数据保存在所选的数据卷 |
 | `migrate` | 本机进程 | `db` 就绪后用 EF 工具应用迁移，完成后退出 |
-| `api` | 本机进程 | `migrate` 成功后启动，使用 .NET watch 热更新 |
+| `api` | 本机进程 | `migrate` 成功后启动，使用 .NET watch 热更新；进程中同时运行[应用识别 Observer](../../src/Observers/Orisumi.Observer.ApplicationIdentity/README.md) |
 | `docs` | 本机进程 | 按锁文件安装依赖后运行 `pnpm dev` |
 | `web` | 本机进程 | 运行 `npm ci` 后启动 Vite |
-| `application-identity` | 本机进程 | `api` 启动后运行[应用识别 Observer](../../src/Observers/Orisumi.Observer.ApplicationIdentity/README.md)，直接连接 API，没有对外端口 |
 | `nginx` | 容器 | 提供对外入口，见[入口](#入口) |
 
 `migrate` 失败时，`api` 不启动。只选部分服务时，AppHost 补齐它们的依赖，`nginx` 总是添加。
@@ -52,13 +51,7 @@ NGINX 的转发规则：
 
 `appsettings.json` 提供主检出目录的端口、默认卷名和开发用的数据库账号，数据库名、用户名和密码都是 `orisumi`。`orisumi` 用命令行参数覆盖服务、端口和数据卷。覆盖密码时使用 Aspire user secrets。
 
-应用识别 Observer 的配置放在检出目录的 `.local/application-identity.json`，这个文件不进 Git：
-
-```json
-{ "apiKey": "<OpenAI API Key>", "model": "gpt-6.1-terra", "intervalSeconds": 60 }
-```
-
-AppHost 把 `apiKey` 作为 `OPENAI_API_KEY` 交给它。环境变量 `OPENAI_API_KEY`、`ApplicationIdentity__Model` 和 `ApplicationIdentity__IntervalSeconds` 优先于这个文件。修改后重新启动环境。它的数据目录是 `.artifacts/application-identity/<卷名>/`，每个数据卷一份。
+应用识别 Observer 随 API 运行。启动环境前设置环境变量 `OPENAI_API_KEY`、`ApplicationIdentity__Model` 或 `ApplicationIdentity__IntervalSeconds`，AppHost 把设置了的项交给 `api`，含义见[应用识别 README · 运行](../../src/Observers/Orisumi.Observer.ApplicationIdentity/README.md#运行)。修改后重新启动环境。
 
 Aspire 只用于本地开发。镜像的构建见 [API README · 镜像](../../src/Backend/Orisumi.Api/README.md#镜像) 和 [文档站 README · 镜像](../../src/Docs/Orisumi.Docs/README.md#镜像)。
 

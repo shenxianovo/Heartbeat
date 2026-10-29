@@ -1,6 +1,6 @@
 using Orisumi.Core;
 
-namespace Orisumi.Observer.Sdk;
+namespace Orisumi.Observer.Runtime.Store;
 
 public enum SubmissionState { Draft, Frozen, Saved, Rejected }
 public enum SubmissionStrategy { Immediate, OnCompletion }
