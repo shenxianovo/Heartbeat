@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { observation } from "@/test/fixtures";
-import { ActivityStore, isActive } from "./activity";
+import { ActivityStore, hourly, isActive, type ObserverActivity, type Segment } from "./activity";
 import type { ObserverIdentity } from "./observers";
-import { SECOND } from "./time";
+import { HOUR, SECOND } from "./time";
 
 const now = Date.parse("2026-10-25T06:00:00.000Z");
 const at = (offset: number) => new Date(now + offset).toISOString();
@@ -52,5 +52,32 @@ describe("ActivityStore", () => {
     expect(a.seen.at(-1)).toBe(now);
     expect(isActive(a, now)).toBe(true);
     expect(isActive(a, now + 61 * SECOND)).toBe(false);
+  });
+});
+
+describe("hourly", () => {
+  const dayStart = Date.parse("2026-10-24T16:00:00.000Z");
+  const segment = (start: number | null, end: number | null): Segment => ({
+    entityId: "o",
+    start: start === null ? null : dayStart + start,
+    end: end === null ? null : dayStart + end,
+    recordedAt: dayStart,
+  });
+  const withSegments = (segments: Segment[]) => [{ segments } as ObserverActivity];
+
+  it("跨小时的 Observation 在经过的每个小时各算一次，正好结束在整点的不算下一小时", () => {
+    const hours = hourly(withSegments([segment(1.5 * HOUR, 3 * HOUR)]), dayStart);
+    expect(hours.slice(0, 4)).toEqual([0, 1, 1, 0]);
+  });
+
+  it("只知道一个边界的算在那个小时，超出今天的截到首尾", () => {
+    const hours = hourly(
+      withSegments([segment(null, 5.2 * HOUR), segment(-2 * HOUR, 0.5 * HOUR), segment(23.5 * HOUR, 26 * HOUR)]),
+      dayStart,
+    );
+    expect(hours[5]).toBe(1);
+    expect(hours[0]).toBe(1);
+    expect(hours[23]).toBe(1);
+    expect(hours.reduce((a, b) => a + b, 0)).toBe(3);
   });
 });

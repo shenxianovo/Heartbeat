@@ -1,24 +1,36 @@
 import { useState, type FormEvent } from "react";
 import { Link, Outlet, useNavigate } from "@tanstack/react-router";
 import { isUnreadable } from "@/api/client";
-import { useSource, useSourceKind } from "@/api/source";
-import { readTheme, saveTheme, type Theme } from "@/lib/preferences";
+import { useSource } from "@/api/source";
+import { readTheme, readTone, saveTheme, saveTone, type Theme, type Tone } from "@/lib/preferences";
 import { isUuidv7 } from "@/lib/uuid";
 import { cn } from "@/lib/utils";
+import { Stack } from "./stack/Stack";
+import { HighlightProvider } from "./token/context";
 import { Segmented } from "./ui";
 
 const NAV = [
-  { to: "/", label: "现在" },
-  { to: "/schemas", label: "Schema" },
+  { to: "/", label: "日", exact: true },
+  { to: "/entities", label: "实体", exact: false },
+  { to: "/observers", label: "Observer", exact: true },
 ] as const;
 
 export function AppShell() {
   return (
+    <HighlightProvider>
+      <Shell />
+      <Stack />
+    </HighlightProvider>
+  );
+}
+
+function Shell() {
+  return (
     <div className="min-h-screen">
-      <div className="mx-auto max-w-[960px] px-4 pt-5 pb-12">
+      <div className="mx-auto max-w-[1080px] px-4 pt-5 pb-16">
         <header className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-3">
           <Link to="/" className="flex items-center gap-2 font-medium">
-            <span className="bg-fg size-2 rounded-full" />
+            <img src="/mascots/macos-128.png" alt="" className="size-6" />
             Orisumi
           </Link>
           <nav aria-label="页面" className="bg-panel flex gap-0.5 rounded-lg p-[3px]">
@@ -26,7 +38,7 @@ export function AppShell() {
               <Link
                 key={item.to}
                 to={item.to}
-                activeOptions={{ exact: true, includeSearch: false }}
+                activeOptions={{ exact: item.exact, includeSearch: false }}
                 className="text-fg-2 hover:text-fg rounded-md px-3 py-1 text-[13px]"
                 activeProps={{ className: "bg-card !text-fg" }}
               >
@@ -34,9 +46,9 @@ export function AppShell() {
               </Link>
             ))}
           </nav>
-          <SourceBadge />
           <div className="flex-1" />
           <IdSearch />
+          <ToneSwitch />
           <ThemeSwitch />
         </header>
         <main>
@@ -47,10 +59,22 @@ export function AppShell() {
   );
 }
 
-function SourceBadge() {
-  const kind = useSourceKind();
-  if (kind !== "demo") return null;
-  return <span className="border-line-2 text-fg-3 rounded-md border border-dashed px-2 py-0.5 text-xs">演示数据</span>;
+function ToneSwitch() {
+  const [tone, setTone] = useState<Tone>(readTone);
+  return (
+    <Segmented
+      label="基调"
+      value={tone}
+      onChange={(value) => {
+        setTone(value);
+        saveTone(value);
+      }}
+      options={[
+        { value: "gray", label: "灰" },
+        { value: "sky", label: "蓝" },
+      ]}
+    />
+  );
 }
 
 function ThemeSwitch() {

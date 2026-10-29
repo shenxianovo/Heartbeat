@@ -1,11 +1,12 @@
 import { Link } from "@tanstack/react-router";
-import { isEntitySchema, isObservation, type Version } from "@/api/types";
+import { isEntitySchema, isObservation, type EntitySchema, type Version } from "@/api/types";
 import { Chip, Dot } from "@/components/ui";
 import { useEntityVersions, useVersion } from "@/hooks/queries";
-import { categoryInfo, categoryOf } from "@/lib/categories";
+import { tintOf } from "@/lib/categories";
 import { UNREADABLE } from "@/lib/observers";
 import { clock, parseTime } from "@/lib/time";
 import { CATEGORY_NAMES, versionLabel, versionNumber } from "@/lib/versions";
+import { coreKind } from "./kinds";
 
 /** 版本的类型名：业务版本用 Schema 的 displayName，Core 类型用类型名。 */
 export function useVersionType(version: Version | undefined) {
@@ -23,33 +24,51 @@ export function useVersionType(version: Version | undefined) {
   return { name: schema.isError ? CATEGORY_NAMES.business : null, resourceName: null };
 }
 
-/** 指向一个版本的标签，点击进入它所属的实体。 */
+/** 版本的类型：名称、颜色、图标，业务版本另有所属的 Schema 版本。 */
+export function useVersionKind(version: Version | undefined) {
+  const type = useVersionType(version);
+  const schema = useVersion(version?.category === "business" ? version.schemaVersionId : null);
+  const core = version && version.category !== "business" ? coreKind(version.category) : undefined;
+  return {
+    name: type.name,
+    tint: core ? core.tint : tintOf(type.resourceName),
+    icon: core?.icon,
+    schema: schema.data && isEntitySchema(schema.data) ? (schema.data as Version<EntitySchema>) : null,
+  };
+}
+
+/** 指向一个版本的标签，点击进入它所属的实体。放在别的链接里时用 plain，只显示不链接。 */
 export function VersionChip({
   versionId,
   strong,
   showNumber,
+  plain,
 }: {
   versionId: string;
   strong?: boolean;
   showNumber?: boolean;
+  plain?: boolean;
 }) {
   const version = useVersion(versionId);
-  const type = useVersionType(version.data);
+  const kind = useVersionKind(version.data);
   const chain = useEntityVersions(showNumber ? version.data?.entityId : null);
 
   if (version.isError) return <Chip dashed>{UNREADABLE}</Chip>;
   if (!version.data) return <Chip className="text-fg-3">…</Chip>;
 
-  const category = categoryOf(type.resourceName);
   const number = chain.data ? versionNumber(chain.data, versionId) : null;
+  const chip = (
+    <Chip strong={!!strong}>
+      <Dot color={kind.tint} />
+      {kind.name ?? "…"}
+      {number !== null && chain.data && <span className="text-fg-3">{versionLabel(number, chain.data.length)}</span>}
+      {isObservation(version.data) && <span className="text-fg-3">{factTime(version.data.content)}</span>}
+    </Chip>
+  );
+  if (plain) return chip;
   return (
     <Link to="/versions/$versionId" params={{ versionId }} className="hover:[&>span]:border-line-3">
-      <Chip strong={!!strong}>
-        {category !== "other" && <Dot color={categoryInfo(category).color} />}
-        {type.name ?? "…"}
-        {number !== null && chain.data && <span className="text-fg-3">{versionLabel(number, chain.data.length)}</span>}
-        {isObservation(version.data) && <span className="text-fg-3">{factTime(version.data.content)}</span>}
-      </Chip>
+      {chip}
     </Link>
   );
 }

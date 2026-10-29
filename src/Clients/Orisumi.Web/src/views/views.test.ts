@@ -3,7 +3,6 @@ import type { ObserverActivity } from "@/lib/activity";
 import { SECOND } from "@/lib/time";
 import { createBubbleRenderer } from "./bubble";
 import type { ViewInput } from "./common";
-import { renderEcg } from "./ecg";
 import { MAX_RINGS, renderRing, ringLayout } from "./ring";
 import { renderStrip } from "./strip";
 
@@ -71,7 +70,7 @@ describe("renderers", () => {
   const quiet = observer("quiet");
 
   it("名称经过转义", () => {
-    for (const render of [renderEcg, renderStrip, renderRing, createBubbleRenderer()]) {
+    for (const render of [renderStrip, renderRing, createBubbleRenderer()]) {
       const { markup } = render(input([writer, quiet], { selected: writer.key }));
       expect(markup).not.toContain("<b>");
     }
@@ -84,11 +83,6 @@ describe("renderers", () => {
     const expanded = renderStrip(input([writer, quiet], { expanded: true }));
     expect(expanded.markup).toContain('data-key="quiet"');
     expect(expanded.markup).toContain("收起");
-  });
-
-  it("心电：数字是最近 60 秒的写入，选中时只算选中的 Observer", () => {
-    expect(renderEcg(input([writer, quiet])).markup).toContain(">2</text>");
-    expect(renderEcg(input([writer, quiet], { selected: "quiet" })).markup).toContain(">0</text>");
   });
 
   it("选中时其余 Observer 降低不透明度", () => {

@@ -1,6 +1,7 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { isUnreadable } from "@/api/client";
 import { useSource } from "@/api/source";
+import type { ListEntitiesQuery } from "@/api/types";
 
 const retry = (count: number, error: unknown) => !isUnreadable(error) && count < 2;
 
@@ -31,14 +32,32 @@ export function useEntityVersions(entityId: string | null | undefined) {
   });
 }
 
-export function useReferrers(entityId: string) {
+export function useReferrers(entityId: string | null) {
   const source = useSource();
   return useInfiniteQuery({
     queryKey: ["entity", entityId, "referrers"],
     queryFn: ({ pageParam }) =>
-      source.listReferrers(entityId, { limit: 50, ...(pageParam ? { after: pageParam } : {}) }),
+      source.listReferrers(entityId!, { limit: 50, ...(pageParam ? { after: pageParam } : {}) }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => page.next ?? undefined,
+    enabled: !!entityId,
+    retry,
+  });
+}
+
+export type EntityFilter = Pick<ListEntitiesQuery, "category" | "resourceName">;
+
+export const COUNT_LIMIT = 100;
+
+/** 一类实体的数量，最多数到 100；更多时 more 为 true。 */
+export function useEntityCount(filter: EntityFilter) {
+  const source = useSource();
+  return useQuery({
+    queryKey: ["entities", filter, "count"],
+    queryFn: () =>
+      source
+        .listEntities({ ...filter, limit: COUNT_LIMIT })
+        .then((page) => ({ count: page.versions.length, more: page.next !== null })),
     retry,
   });
 }

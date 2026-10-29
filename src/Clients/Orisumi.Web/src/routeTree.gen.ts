@@ -10,7 +10,8 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as SchemasRouteImport } from './routes/schemas'
+import { Route as ObserversRouteImport } from './routes/observers'
+import { Route as EntitiesIndexRouteImport } from './routes/entities.index'
 import { Route as EntitiesEntityIdRouteImport } from './routes/entities.$entityId'
 import { Route as VersionsVersionIdRouteImport } from './routes/versions.$versionId'
 
@@ -19,9 +20,14 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SchemasRoute = SchemasRouteImport.update({
-  id: '/schemas',
-  path: '/schemas',
+const ObserversRoute = ObserversRouteImport.update({
+  id: '/observers',
+  path: '/observers',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EntitiesIndexRoute = EntitiesIndexRouteImport.update({
+  id: '/entities/',
+  path: '/entities/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const EntitiesEntityIdRoute = EntitiesEntityIdRouteImport.update({
@@ -37,41 +43,56 @@ const VersionsVersionIdRoute = VersionsVersionIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/schemas': typeof SchemasRoute
+  '/observers': typeof ObserversRoute
   '/entities/$entityId': typeof EntitiesEntityIdRoute
   '/versions/$versionId': typeof VersionsVersionIdRoute
+  '/entities/': typeof EntitiesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/schemas': typeof SchemasRoute
+  '/observers': typeof ObserversRoute
   '/entities/$entityId': typeof EntitiesEntityIdRoute
   '/versions/$versionId': typeof VersionsVersionIdRoute
+  '/entities': typeof EntitiesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/schemas': typeof SchemasRoute
+  '/observers': typeof ObserversRoute
   '/entities/$entityId': typeof EntitiesEntityIdRoute
   '/versions/$versionId': typeof VersionsVersionIdRoute
+  '/entities/': typeof EntitiesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/schemas' | '/entities/$entityId' | '/versions/$versionId'
+  fullPaths:
+    | '/'
+    | '/observers'
+    | '/entities/$entityId'
+    | '/versions/$versionId'
+    | '/entities/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/schemas' | '/entities/$entityId' | '/versions/$versionId'
+  to:
+    | '/'
+    | '/observers'
+    | '/entities/$entityId'
+    | '/versions/$versionId'
+    | '/entities'
   id:
     | '__root__'
     | '/'
-    | '/schemas'
+    | '/observers'
     | '/entities/$entityId'
     | '/versions/$versionId'
+    | '/entities/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  SchemasRoute: typeof SchemasRoute
+  ObserversRoute: typeof ObserversRoute
   EntitiesEntityIdRoute: typeof EntitiesEntityIdRoute
   VersionsVersionIdRoute: typeof VersionsVersionIdRoute
+  EntitiesIndexRoute: typeof EntitiesIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -83,11 +104,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/schemas': {
-      id: '/schemas'
-      path: '/schemas'
-      fullPath: '/schemas'
-      preLoaderRoute: typeof SchemasRouteImport
+    '/observers': {
+      id: '/observers'
+      path: '/observers'
+      fullPath: '/observers'
+      preLoaderRoute: typeof ObserversRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/entities/': {
+      id: '/entities/'
+      path: '/entities'
+      fullPath: '/entities/'
+      preLoaderRoute: typeof EntitiesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/entities/$entityId': {
@@ -109,9 +137,10 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  SchemasRoute: SchemasRoute,
+  ObserversRoute: ObserversRoute,
   EntitiesEntityIdRoute: EntitiesEntityIdRoute,
   VersionsVersionIdRoute: VersionsVersionIdRoute,
+  EntitiesIndexRoute: EntitiesIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

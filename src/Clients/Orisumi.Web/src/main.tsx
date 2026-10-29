@@ -2,12 +2,14 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
-import { createSource, initialSourceKind, SourceProvider } from "@/api/source";
-import { applyTheme, readTheme } from "@/lib/preferences";
+import { createHttpSource } from "@/api/client";
+import { SourceProvider } from "@/api/source";
+import { applyTheme, applyTone, readTheme, readTone } from "@/lib/preferences";
 import { routeTree } from "./routeTree.gen";
 import "./styles/globals.css";
 
 applyTheme(readTheme());
+applyTone(readTone());
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -23,15 +25,14 @@ declare module "@tanstack/react-router" {
   }
 }
 
-const kind = initialSourceKind();
-const source = createSource(kind);
+const source = createHttpSource();
 
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("找不到 #root");
 
 createRoot(rootElement).render(
   <StrictMode>
-    <SourceProvider kind={kind} source={source}>
+    <SourceProvider source={source}>
       <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} />
       </QueryClientProvider>

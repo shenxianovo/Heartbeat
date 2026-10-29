@@ -1,7 +1,7 @@
-import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { uuidv7 } from "../../src/lib/uuid";
 
-// 经本地环境的 Web 入口验证：页面、同源 API、Vite HMR WebSocket，以及真实数据在四种视图和实体页中的展示。
+// 经本地环境的 Web 入口验证：页面、同源 API、Vite HMR WebSocket，以及真实数据在日页面、面板、类型图、三种视图和实体页中的展示。
 // 运行前先 `orisumi env up web`，入口地址取自 `orisumi env status --json`，默认是主检出目录的 8081。
 const BASE = process.env.WEB_URL ?? "http://localhost:8081";
 
@@ -70,20 +70,20 @@ async function seed(request: APIRequestContext): Promise<Seed> {
   };
 }
 
-async function clickAt(page: Page, selector: string) {
-  let box: Awaited<ReturnType<Locator["boundingBox"]>> = null;
+/** 视图里的元素每帧都会替换，直接在元素上派发 pointerdown（视图按它判断点中了谁）。 */
+async function press(page: Page, selector: string) {
   await expect
-    .poll(async () => {
-      box = await page
+    .poll(() =>
+      page
         .locator(selector)
         .first()
-        .boundingBox({ timeout: 1000 })
-        .catch(() => null);
-      return box !== null;
-    })
+        .dispatchEvent("pointerdown", { button: 0 }, { timeout: 1000 })
+        .then(
+          () => true,
+          () => false,
+        ),
+    )
     .toBe(true);
-  const { x, y, width, height } = box!;
-  await page.mouse.click(x + Math.min(width / 2, 40), y + height / 2);
 }
 
 test("web edge: page loads, same-origin API works, HMR websocket opens", async ({ page }) => {
@@ -94,8 +94,8 @@ test("web edge: page loads, same-origin API works, HMR websocket opens", async (
     if (msg.type() === "error") consoleErrors.push(msg.text());
   });
 
-  await page.goto(`${BASE}/?source=api`, { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("button", { name: "心电", exact: true })).toBeVisible();
+  await page.goto(`${BASE}/observers`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("button", { name: "气泡", exact: true })).toBeVisible();
 
   await expect.poll(() => wsUrls.length, { timeout: 10_000 }).toBeGreaterThan(0);
   expect(wsUrls.some((u) => u.startsWith(BASE.replace(/^http/, "ws")))).toBe(true);
@@ -103,39 +103,159 @@ test("web edge: page loads, same-origin API works, HMR websocket opens", async (
   const res = await page.request.get(`${BASE}/api/entities/0192b056-7300-7000-8000-0000000000ff`);
   expect(res.status()).toBe(404);
 
-  await page.goto(`${BASE}/schemas`, { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("link", { name: "Schema" })).toBeVisible();
+  await page.goto(`${BASE}/entities`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByRole("link", { name: "实体", exact: true })).toBeVisible();
 
   const viteWsErrors = consoleErrors.filter((t) => /WebSocket|vite/i.test(t));
   expect(viteWsErrors).toEqual([]);
 });
 
-test("web edge: a submitted Observation appears in all four views and opens its Observer", async ({
+test("web edge: a submitted Observation appears in all three views and opens its Observer", async ({
   page,
   request,
 }) => {
   const data = await seed(request);
   try {
-    for (const view of ["strip", "ecg", "bubble", "ring"]) {
-      await page.goto(`${BASE}/?source=api&view=${view}`);
+    for (const view of ["strip", "bubble", "ring"]) {
+      await page.goto(`${BASE}/observers?view=${view}`);
       const mark = page.locator(`svg[data-view="${view}"] [data-key="${data.observerEntityId}"]`);
-      if (view === "ecg") {
-        await expect(page.locator('svg[data-view="ecg"]')).toContainText("每分钟写入");
-        continue;
-      }
       if (view === "strip") await expect(page.locator("svg [data-more], svg [data-key]").first()).toBeAttached();
-      if (view === "strip" && !(await mark.count())) await clickAt(page, "svg [data-more]");
+      if (view === "strip" && !(await mark.count())) await press(page, "svg [data-more]");
       await expect(mark).toBeAttached();
       await expect(mark.locator("title")).toHaveText(data.name);
     }
 
-    await page.goto(`${BASE}/?source=api&view=strip`);
+    await page.goto(`${BASE}/observers?view=strip`);
     const lane = `svg[data-view="strip"] [data-key="${data.observerEntityId}"] rect`;
-    if (!(await page.locator(lane).count())) await clickAt(page, "svg [data-more]");
-    await clickAt(page, lane);
+    // 等视图画出来再数：没画出来时数到 0，会去点不存在的“另外 N 个”。
+    await expect(page.locator("svg [data-more], svg [data-key]").first()).toBeAttached();
+    if (!(await page.locator(lane).count())) await press(page, "svg [data-more]");
+    await press(page, lane);
     await page.locator("footer").getByRole("link", { name: "打开实体" }).click();
     await expect(page.getByRole("heading", { name: data.name })).toBeVisible();
     await expect(page.getByRole("list", { name: "被引用" }).getByRole("link")).toHaveCount(1);
+  } finally {
+    for (const entityId of data.cleanup) await request.delete(`${BASE}/api/entities/${entityId}`);
+  }
+});
+
+/** 一个事物、引用它的观测内容和一份 8 分钟的时段，和前台状态 Observer 的结构相同。 */
+async function seedThing(request: APIRequestContext) {
+  const stamp = Date.now();
+  const id = () => uuidv7();
+  const [thingSchema, thingSchemaV, periodSchema, periodSchemaV, observerSchema, observerSchemaV] = [
+    id(),
+    id(),
+    id(),
+    id(),
+    id(),
+    id(),
+  ];
+  const [thing, thingV, period, periodV, observer, observerV, observation, observationV] = [
+    id(),
+    id(),
+    id(),
+    id(),
+    id(),
+    id(),
+    id(),
+    id(),
+  ];
+  const names = {
+    thing: `e2e.thing.${stamp}`,
+    thingType: `E2E 事物 ${stamp}`,
+    thingResource: `e2e-things-${stamp}`,
+    seenAs: `E2E 应用 ${stamp}`,
+    observer: `E2E 观测者 ${stamp}`,
+  };
+  const string = (description: string) => ({ type: "string", description, required: true, nullable: false });
+  const v = (
+    entityId: string,
+    versionId: string,
+    category: string,
+    schemaVersionId: string | null,
+    content: unknown,
+  ) => ({
+    entityId,
+    versionId,
+    previousVersionId: null,
+    category,
+    schemaVersionId,
+    content,
+  });
+  const end = Date.now() - 2 * 60_000;
+  const response = await request.post(`${BASE}/api/versions`, {
+    data: {
+      versions: [
+        v(thingSchema, thingSchemaV, "entity_schema", null, {
+          displayName: names.thingType,
+          description: "Web e2e 写入的事物类型",
+          resourceName: names.thingResource,
+          fields: { key: string("事物的标识") },
+        }),
+        v(periodSchema, periodSchemaV, "entity_schema", null, {
+          displayName: `E2E 时段 ${stamp}`,
+          description: "Web e2e 写入的时段类型",
+          resourceName: `e2e-periods-${stamp}`,
+          fields: {
+            name: string("当时读到的名字"),
+            thingVersionId: { type: "reference", description: "这一段关于的事物", required: true, nullable: false },
+          },
+        }),
+        v(observerSchema, observerSchemaV, "entity_schema", null, {
+          displayName: names.observer,
+          description: "Web e2e 写入的 Observer 类型",
+          resourceName: `e2e-thing-observers-${stamp}`,
+          fields: { label: string("标签") },
+        }),
+        v(thing, thingV, "business", thingSchemaV, { key: names.thing }),
+        v(observer, observerV, "business", observerSchemaV, { label: "e2e" }),
+        v(period, periodV, "business", periodSchemaV, { name: names.seenAs, thingVersionId: thingV }),
+        v(observation, observationV, "observation", null, {
+          observerVersionId: observerV,
+          contentVersionId: periodV,
+          inputSetVersionId: null,
+          startAt: new Date(end - 8 * 60_000).toISOString(),
+          endAt: new Date(end).toISOString(),
+          timeZone: "Asia/Shanghai",
+        }),
+      ],
+    },
+  });
+  expect(response.status(), await response.text()).toBe(200);
+  return { names, cleanup: [observation, period, observer, thing, periodSchema, observerSchema, thingSchema] };
+}
+
+test("web edge: a thing appears in the day ranking, opens stacked panels and its type on the type map", async ({
+  page,
+  request,
+}) => {
+  const data = await seedThing(request);
+  try {
+    await page.goto(`${BASE}/`);
+    const ranking = page.getByRole("list", { name: "排行" });
+    await expect(ranking).toContainText(data.names.thing);
+    await expect(ranking).toContainText("8 分钟");
+    await expect(page.getByRole("img", { name: "这一天的时间线" })).toBeVisible();
+
+    // 点排行里的记号推出事物的面板，里面有引用它的时段读到的名字。
+    await ranking.getByRole("button", { name: new RegExp(data.names.thing) }).click();
+    const panels = page.getByRole("complementary", { name: "面板" });
+    await expect(panels.getByRole("heading", { name: data.names.thing })).toBeVisible();
+    await expect(page).toHaveURL(/stack=/);
+    await expect(panels).toContainText(data.names.seenAs);
+
+    // 面板里的记号接着打开下一层，Esc 关掉最后一层。
+    await panels.getByRole("button", { name: new RegExp(`^${data.names.observer}`) }).click();
+    await expect(panels.getByRole("region")).toHaveCount(2);
+    await page.keyboard.press("Escape");
+    await expect(panels.getByRole("region")).toHaveCount(1);
+
+    // 类型图里事物在“事物”一列，选中后列出它的实体。
+    await page.goto(`${BASE}/entities?type=${data.names.thingResource}`);
+    await expect(page.getByRole("button", { name: new RegExp(data.names.thingType), pressed: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: data.names.thingType })).toBeVisible();
+    await expect(page.getByRole("button", { name: new RegExp(data.names.thing) }).first()).toBeVisible();
   } finally {
     for (const entityId of data.cleanup) await request.delete(`${BASE}/api/entities/${entityId}`);
   }

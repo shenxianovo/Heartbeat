@@ -3,12 +3,10 @@ import type { ActivityStore } from "@/lib/activity";
 import type { ViewKey } from "@/lib/preferences";
 import { createBubbleRenderer } from "@/views/bubble";
 import { WIDTH, type Renderer } from "@/views/common";
-import { renderEcg } from "@/views/ecg";
 import { renderRing } from "@/views/ring";
 import { renderStrip } from "@/views/strip";
 
-const TITLES: Record<ViewKey, string> = {
-  ecg: "最近 20 秒的写入",
+export const TITLES: Record<ViewKey, string> = {
   bubble: "各 Observer 最近 10 分钟的写入量",
   strip: "各 Observer 最近 10 分钟的写入时刻",
   ring: "今天各 Observer 的 Observation，按事实时间",
@@ -16,8 +14,6 @@ const TITLES: Record<ViewKey, string> = {
 
 function createRenderer(view: ViewKey): Renderer {
   switch (view) {
-    case "ecg":
-      return renderEcg;
     case "bubble":
       return createBubbleRenderer();
     case "strip":

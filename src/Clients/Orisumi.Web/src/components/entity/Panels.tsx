@@ -2,15 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Version } from "@/api/types";
 import { Button, Mono } from "@/components/ui";
-import { useReferrers } from "@/hooks/queries";
 import { dateTime, parseTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { changedFields } from "@/lib/versions";
-import { VersionChip } from "./VersionChip";
 
-const ROW = 34;
+const ROW = 52;
 
-/** 版本：从新到旧，每行写出相对前一版变化的字段。版本多时只渲染可见的行。 */
+/** 版本：从新到旧排成一条时间线，每个点写出相对前一版变化的字段。版本多时只渲染可见的行。 */
 export function VersionList({
   chain,
   selected,
@@ -32,7 +30,7 @@ export function VersionList({
   });
 
   return (
-    <div ref={scroller} className="border-line max-h-[340px] overflow-y-auto border-t">
+    <div ref={scroller} className="max-h-[416px] overflow-y-auto">
       <ol aria-label="版本" className="relative" style={{ height: virtualizer.getTotalSize() }}>
         {virtualizer.getVirtualItems().map((item) => {
           const version = rows[item.index]!;
@@ -40,63 +38,44 @@ export function VersionList({
           const previous = chain[number - 2];
           const changes = changedFields(previous, version);
           const recordedAt = parseTime(version.recordedAt);
+          const current = version.versionId === selected;
+          const last = item.index === rows.length - 1;
           return (
             <li key={version.versionId} className="absolute inset-x-0" style={{ top: item.start, height: ROW }}>
               <button
                 type="button"
-                aria-current={version.versionId === selected}
+                aria-current={current}
                 onClick={() => onSelect(version.versionId)}
                 className={cn(
-                  "border-line flex h-full w-full cursor-pointer items-baseline gap-3 border-b px-2 pt-2 text-left text-[13px]",
-                  version.versionId === selected ? "bg-panel" : "hover:bg-panel/60",
+                  "group relative flex h-full w-full cursor-pointer gap-3 rounded-xl pr-2 pl-1 text-left",
+                  current ? "bg-panel" : "hover:bg-panel/60",
                 )}
               >
-                <Mono className="w-12 shrink-0">v{number}</Mono>
-                <Mono className="text-fg-3 shrink-0">
-                  {recordedAt === null ? version.recordedAt : dateTime(recordedAt)}
-                </Mono>
-                <span className="text-fg-3 truncate text-xs">
-                  {previous ? changes.join(", ") || "内容相同" : "首版"}
+                <span aria-hidden="true" className="relative flex w-4 shrink-0 justify-center">
+                  {!last && <span className="bg-line-2 absolute top-[22px] bottom-[-8px] w-px" />}
+                  <span
+                    className={cn(
+                      "relative mt-[13px] size-2.5 rounded-full ring-2",
+                      current ? "bg-fg ring-line-2" : "bg-card ring-line-2 group-hover:ring-line-3",
+                    )}
+                  />
+                </span>
+                <span className="min-w-0 flex-1 pt-1.5">
+                  <span className="flex items-baseline gap-2">
+                    <Mono className={cn("text-[13px]", "text-fg")}>v{number}</Mono>
+                    <Mono className="text-fg-3 truncate text-[11px]">
+                      {recordedAt === null ? version.recordedAt : dateTime(recordedAt)}
+                    </Mono>
+                  </span>
+                  <span className="text-fg-3 block truncate text-xs">
+                    {previous ? changes.join(", ") || "内容相同" : "首版"}
+                  </span>
                 </span>
               </button>
             </li>
           );
         })}
       </ol>
-    </div>
-  );
-}
-
-/** 被引用：直接引用这个实体的版本和引用位置，分页加载。 */
-export function ReferrerList({ entityId }: { entityId: string }) {
-  const referrers = useReferrers(entityId);
-  const items = referrers.data?.pages.flatMap((page) => page.referrers) ?? [];
-
-  if (referrers.isPending) return <p className="text-fg-3 text-xs">读取中</p>;
-  if (referrers.isError) return <p className="text-danger text-xs">{String((referrers.error as Error).message)}</p>;
-  if (!items.length) return <p className="text-fg-3 border-line border-t pt-2 text-xs">没有其他版本引用它</p>;
-
-  return (
-    <div className="border-line border-t">
-      <ul aria-label="被引用">
-        {items.map((referrer) => (
-          <li
-            key={referrer.version.versionId}
-            className="border-line flex flex-wrap items-center gap-3 border-b py-1.5"
-          >
-            <VersionChip versionId={referrer.version.versionId} />
-            <span className="flex-1" />
-            <Mono className="text-fg-3">{referrer.references.map((r) => r.path).join(" ")}</Mono>
-          </li>
-        ))}
-      </ul>
-      {referrers.hasNextPage && (
-        <div className="pt-2">
-          <Button onClick={() => void referrers.fetchNextPage()} disabled={referrers.isFetchingNextPage}>
-            加载更多
-          </Button>
-        </div>
-      )}
     </div>
   );
 }

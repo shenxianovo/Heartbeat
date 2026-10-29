@@ -30,9 +30,14 @@ export function categoryInfo(key: CategoryKey): CategoryInfo {
   return CATEGORIES.find((c) => c.key === key) ?? CATEGORIES[CATEGORIES.length - 1]!;
 }
 
-/** 演示数据源用到的 resourceName 也在这里登记，和真实 Observer 走同一套映射。 */
-export function registerDemoCategories(entries: Record<string, CategoryKey>): void {
-  for (const [name, key] of Object.entries(entries)) {
-    if (!(name in BY_RESOURCE_NAME)) BY_RESOURCE_NAME[name] = key;
-  }
+/** 图鉴和实体页给每个 Schema 一个颜色：登记过类别的用类别色，其余按 resourceName 从一组柔和的颜色里稳定地取一个。 */
+const TINTS = ["#3f9a8a", "#5f86a8", "#c0904a", "#c4707f", "#7f9a52", "#4c93b4", "#c27052", "#8a8f6a"];
+
+export function tintOf(resourceName: string | null | undefined): string {
+  const category = categoryOf(resourceName);
+  if (category !== "other") return categoryInfo(category).color;
+  if (!resourceName) return CATEGORIES[CATEGORIES.length - 1]!.color;
+  let hash = 0;
+  for (const char of resourceName) hash = (hash * 31 + char.charCodeAt(0)) | 0;
+  return TINTS[Math.abs(hash) % TINTS.length]!;
 }

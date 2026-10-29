@@ -50,3 +50,27 @@ export function dateTime(ms: number): string {
   const date = new Date(ms);
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${clock(ms, true)}`;
 }
+
+/** “1 小时 12 分”“18 分钟”“40 秒”。 */
+export function duration(ms: number): string {
+  if (ms < MINUTE) return `${Math.max(0, Math.round(ms / SECOND))} 秒`;
+  const minutes = Math.round(ms / MINUTE);
+  if (minutes < 60) return `${minutes} 分钟`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${hours} 小时 ${rest} 分` : `${hours} 小时`;
+}
+
+/** “2026-10-29” → 那一天的范围；格式不对时返回 null。 */
+export function dayOf(key: string): ReturnType<typeof dayRange> | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key);
+  if (!match) return null;
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12);
+  return Number.isNaN(date.getTime()) ? null : dayRange(date.getTime());
+}
+
+/** “10 月 29 日 星期四”。 */
+export function dayTitle(ms: number): string {
+  const date = new Date(ms);
+  return `${date.getMonth() + 1} 月 ${date.getDate()} 日 星期${"日一二三四五六"[date.getDay()]}`;
+}

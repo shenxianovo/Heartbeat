@@ -9,7 +9,7 @@ import type {
   VersionPage,
 } from "./types";
 
-/** 控制台读取数据的接口。HTTP 实现读后端，演示实现在浏览器内模拟。 */
+/** 控制台读取数据的接口，HTTP 实现读后端。 */
 export interface OrisumiSource {
   getVersion(versionId: string): Promise<Version>;
   getEntity(entityId: string): Promise<Version>;

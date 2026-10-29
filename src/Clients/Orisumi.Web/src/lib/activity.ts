@@ -1,7 +1,7 @@
 import type { Observation, Version } from "@/api/types";
 import type { CategoryKey } from "./categories";
 import { nameObservers, type ObserverIdentity } from "./observers";
-import { MINUTE, parseTime, SECOND } from "./time";
+import { HOUR, MINUTE, parseTime, SECOND } from "./time";
 import { detectWrites, pruneWrites, type WriteEvent } from "./writes";
 
 export const ACTIVE_WINDOW = MINUTE;
@@ -157,4 +157,19 @@ export class ActivityStore {
     this.revision += 1;
     for (const listener of this.listeners) listener();
   }
+}
+
+/** 今天每个小时内有多少份 Observation，按事实时间。只知道一个边界的算在那个时刻所在的小时。 */
+export function hourly(observers: ObserverActivity[], dayStart: number): number[] {
+  const hours = Array.from({ length: 24 }, () => 0);
+  for (const observer of observers) {
+    for (const segment of observer.segments) {
+      const start = segment.start ?? segment.end!;
+      const end = segment.end ?? segment.start!;
+      const first = Math.max(0, Math.floor((start - dayStart) / HOUR));
+      const last = Math.min(23, Math.floor((Math.max(start, end - 1) - dayStart) / HOUR));
+      for (let hour = first; hour <= last; hour++) hours[hour]! += 1;
+    }
+  }
+  return hours;
 }
