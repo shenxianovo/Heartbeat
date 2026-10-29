@@ -1,6 +1,6 @@
 ---
 name: verify-orisumi
-description: Verify Orisumi changes with the repository Developer CLI and select additional evidence for API, Docs, Aspire, and developer-tool behavior.
+description: 用仓库的 orisumi 开发工具验证 Orisumi 的任何改动，并按 Feature Map 为改到的能力选择额外的证据。
 ---
 
 # Verify Orisumi

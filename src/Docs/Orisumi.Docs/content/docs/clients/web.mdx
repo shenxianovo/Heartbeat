@@ -13,6 +13,23 @@ Web 控制台是 Orisumi 的完整读取界面，目前只在本机使用。首�
 | 实体 | 一个实体的内容、引用链、版本和被引用 |
 | EntitySchema | 已登记的 EntitySchema |
 
+顶栏的输入框接受 EntityId 和 VersionId：先按 EntityId 读取，读不到再按 VersionId 读取。主题有跟随系统、浅色和深色三档，彩色只用来区分 Observer 的类别。
+
+## 现在 [#now]
+
+“现在”用四种视图展示同一份数据。选中一个 Observer 后，切换视图时它保持选中，其余的变淡。
+
+| 视图 | 显示什么 | 时间 |
+| --- | --- | --- |
+| 心电 | 最近 20 秒的写入，指针从左向右扫；左上角是最近 60 秒的写入次数 | 保存时间 |
+| 气泡 | 每个 Observer 一个气泡，面积随 10 分钟内的写入次数变化，同类别聚在一起 | 保存时间 |
+| 行 | 每个活跃的 Observer 一行，最近 10 分钟的每次写入是一条竖线；安静的折叠成一行 | 保存时间 |
+| 表盘 | 今天按 24 小时展开，每个 Observer 一圈，每份 Observation 一段弧；超过 24 圈时，Observation 少的合并成“其他” | 事实时间 |
+
+一份 Observation 新出现或当前版本变了，算一次写入，画在它的保存时间上。控制台靠轮询发现写入，所以写入在发生约 2 秒后出现，同一份 Observation 在一个轮询间隔内的多次更新算一次；事实时间远离今天的补发不在“现在”出现。最近 60 秒内有写入的 Observer 算活跃。
+
+Observer 的名称取它的 Schema 版本的 `displayName`，同名的加 EntityId 末 4 位。系统开启“减少动态效果”时，视图不播放动画。
+
 ## 实现 [#implementation]
 
-代码在 `src/Clients/Orisumi.Web/`，用 React 编写，按 [`openapi.json`](../api/index.mdx) 读取后端。各视图的取数方式、运行和验证见该目录的 README。
+代码在 `src/Clients/Orisumi.Web/`，用 React 编写，按 [`openapi.json`](../api/index.mdx) 读取后端。运行和验证见该目录的 README。

@@ -31,7 +31,10 @@ export const caseId = 'api-observation-drafts';
 
 ## 测试实现 [#implementation]
 
-未覆盖：观测草稿尚未实现。
+以下方法位于 `tests/Orisumi.Integration.Tests/ObservationDraftApiTests.cs`：
+
+- `DraftUpdatesStayTransientAndSavedVersionsRejectLateWrites`：从首次写入到删除实体的各行。写入草稿不形成版本，较小的 `sequence` 返回已暂存的草稿；保存首版后草稿移除，基于旧版本的写入返回 `VERSION-6`，重发首版的 `recordedAt` 不变；2 分钟没有写入后草稿过期；删除实体后草稿移除，再写入返回 `HISTORY-7`。
+- `DraftsValidateReferencesAndFilterByContentType`：引用未保存的版本返回 `ENTITY-6`，没有暂存草稿；按 `resourceName` 只列出这种业务类型的草稿。它还检查两种拒绝：路径中的实体不是 Observation 时为 [ENTITY-3](../../core/model/entity.mdx#entity-3)，草稿换了 Observer 时为 [OBSERVATION-10](../../core/model/observation.mdx#observation-10)。
 
 ## 执行结果 [#results]
 

@@ -37,8 +37,10 @@ SDK 使用独立的 SQLite 文件，后端是记录每次请求、按需返回�
 - 引用草稿使其冻结，之后补全形成后继版本：`ObserverSdkTests.ReferencingDraftFreezesItAndCompletionCreatesSuccessor`。
 - 冻结 Observation 时先冻结并发送其内容依赖：`ObserverSdkTests.FreezingObservationSendsItsDraftContentFirst`。
 - 及时提交的两次发送形成相连版本：`ObserverSdkTests.ImmediateSubmissionSendsTwoLinkedObservationVersions`。
-- 未覆盖：观测草稿的写入。SDK 尚未实现这部分。
+- 写入观测草稿时后端返回 `VERSION-6`，SDK 停止写入；之后本地补全或重启 SDK，都不再写入这份草稿，发送也不报错：`ObserverDraftTests.VersionConflictStopsPublishingEvenAfterLocalUpdatesAndRestart`。
 - 未覆盖：进程意外退出后的草稿。
+
+观测内容先于草稿保存、`sequence` 递增且重启后继续递增，以及通知结束后不再写入、只发送一个版本，由前台状态 Observer 的测试检查：`ObserverSdkTests.ForegroundUploadsOnlyFinishedPeriods` 和 `ObserverDraftTests.LiveDraftRecoversAcrossServerAndSdkRestartsAndCompletesOnce`。它们关联 [Foreground Submission](./foreground-submission.mdx)，执行结果在那一页显示。
 
 ## 执行结果 [#results]
 

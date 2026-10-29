@@ -17,8 +17,7 @@ Orisumi.AppHost 用 Aspire 编排本地开发环境，定义资源、依赖关�
 | `web` | 本机进程 | 运行 `npm ci` 后启动 Vite |
 | `nginx` | 容器 | 提供对外入口，见[入口](#入口) |
 
-- `migrate` 失败时，`api` 不启动。
-- AppHost 只添加所选服务和它们的依赖：`api` 带上 `db` 和 `migrate`，`web` 带上 `api`。`nginx` 总是添加。
+`migrate` 失败时，`api` 不启动。只选部分服务时，AppHost 补齐它们的依赖，`nginx` 总是添加。
 
 ## 入口
 
@@ -40,13 +39,7 @@ NGINX 的转发规则：
 | 3000 | `/api/versions`、`/api/entities`、`/api/observations` 及其子路径转给 API，其他路径转给文档站 |
 | 8081 | `/api/…` 去掉前缀后转给 API，其他路径转给 Vite，支持 HMR WebSocket |
 
-- 三个入口总是监听。API 没有启动时，转给 API 的路径返回 `503` 和 `application/problem+json`。文档站或 Web 控制台没有启动时，它的入口对其余路径返回 `503`。
-- 配置在 [docker/nginx/](../../docker/nginx/)：`default.conf` 定义三个入口，`common.conf` 定义公共代理设置、请求体上限和返回 `503` 的内部服务，每个服务的上游在 `<服务>-enabled.conf` 和 `<服务>-disabled.conf` 中。AppHost 总是挂载前两个文件，再为每个服务挂载其中一个上游片段，所以每个入口的端口不随所选服务改变。
-- AppHost 把已启动服务的内部地址注入为 `API_HOST`、`API_PORT`、`DOCS_HOST`、`DOCS_PORT`、`WEB_HOST`、`WEB_PORT`。
-- NGINX 通过 Docker DNS 解析上游，缓存 30 秒。每个上游保留最多 16 条空闲连接。
-- 连接超时 5 秒，读写超时 60 秒。请求体上限 10 MiB，超过时返回 `413` 和 `application/problem+json`。
-
-看板使用 HTTPS，只监听本机，允许匿名访问。主检出目录的看板、OTLP 接收和资源服务分别使用 18888、18889、18891 端口，工作树的环境使用 Aspire 隔离模式分配的端口。端口被其他进程占用时，先停止那个进程。
+三个入口总是监听。API 没有启动时，转给 API 的路径返回 `503` 和 `application/problem+json`；文档站或 Web 控制台没有启动时，它的入口对其余路径返回 `503`。请求体上限 10 MiB，超过时返回 `413`。NGINX 配置在 [docker/nginx/](../../docker/nginx/)。
 
 ## 环境操作
 
@@ -56,27 +49,9 @@ NGINX 的转发规则：
 
 ## 配置
 
-`appsettings.json` 提供主检出目录的端口、默认卷名和开发用的数据库账号。数据库名、用户名和密码都是 `orisumi`。`orisumi` 用命令行参数覆盖配置：
+`appsettings.json` 提供主检出目录的端口、默认卷名和开发用的数据库账号，数据库名、用户名和密码都是 `orisumi`。`orisumi` 用命令行参数覆盖服务、端口和数据卷。覆盖密码时使用 Aspire user secrets。
 
-| 配置 | 含义 |
-| --- | --- |
-| `Services` | 要启动的服务，逗号分隔，例如 `api,docs`。省略时启动全部服务 |
-| `Ports:Api`、`Ports:Docs`、`Ports:Web`、`Ports:Database` | 入口和数据库的端口 |
-| `DatabaseVolume` | 数据卷名 |
-| `Testing:FailMigration` | 为 `true` 时，`migrate` 更新到不存在的迁移并失败。环境场景用它检查迁移失败时 API 不启动 |
-
-覆盖密码时使用 Aspire user secrets。
-
-文档站从仓库根目录的 `TestResults` 读取测试报告。
-
-## 镜像
-
-```sh
-docker build -f src/Backend/Orisumi.Api/Dockerfile -t orisumi-api:local .
-docker build -f src/Docs/Orisumi.Docs/Dockerfile -t orisumi-docs:local .
-```
-
-Aspire 只用于本地开发。文档站的发布见[文档站 README · 发布](../../src/Docs/Orisumi.Docs/README.md#发布)；后端的部署配置和生产监控尚未建设。
+Aspire 只用于本地开发。镜像的构建见 [API README · 镜像](../../src/Backend/Orisumi.Api/README.md#镜像) 和 [文档站 README · 镜像](../../src/Docs/Orisumi.Docs/README.md#镜像)。
 
 ## 验证
 

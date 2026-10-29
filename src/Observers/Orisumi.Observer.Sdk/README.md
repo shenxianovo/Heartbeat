@@ -21,7 +21,7 @@ sdk.Execute(local =>
     var observer = local.Reference(instanceId);
     var target = local.Reference(contentId);
     local.Draft(observationId, new Observation(observer, target, null, start, end, timeZone),
-        strategy: SubmissionStrategy.OnCompletion);
+        strategy: SubmissionStrategy.OnCompletion, publishDraft: true);
 });
 
 // 事实结束时
@@ -34,6 +34,15 @@ await sdk.RunAsync(TimeSpan.FromSeconds(5), status => Console.Error.WriteLine(st
 - 对同一实体再次调用 `Draft`：最新版本是草稿时合并进去，否则形成新版本。
 - `Reference` 返回实体在本地最新的 VersionId，并冻结这个版本。
 - `SubmissionStrategy.Immediate` 的草稿在发送时冻结，`OnCompletion` 的草稿在 `Complete` 时冻结。
+
+## 观测草稿
+
+Observation 的 `Draft` 传入 `publishDraft: true`，SDK 就把这份草稿写入后端，读取方用 `GET /api/observation-drafts/{entityId}` 读到进行中的 Observation。约定见 [Submission · 观测草稿](../../Docs/Orisumi.Docs/content/docs/observers/submission/index.mdx#drafts)。
+
+- 草稿引用的版本都已保存后，每次 `SendAsync` 先写入草稿最新的内容，再发送待发送的版本。`sequence` 保存在 SQLite 中，重启后继续递增。
+- 写入失败时，下一次发送写入最新的内容。后端返回 `VERSION-6` 时，SDK 停止写入这份草稿。
+- 草稿冻结时停止写入，例如 `Complete` 之后。后端保存这个版本后移除草稿。
+- `ObserverClient.PublishDrafts` 控制是否写入，默认打开。Runtime 只在 Observer 进程报告 `ready` 之后、退出之前打开它。
 
 ## 被拒绝的版本
 

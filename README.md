@@ -44,16 +44,6 @@ orisumi env down
 
 只启动部分服务、使用临时数据卷、在工作树中运行另一套环境，以及读取日志和遥测，见 [Orisumi.Dev README · 环境](tools/Orisumi.Dev/README.md#环境)。资源和入口见 [AppHost README](tools/Orisumi.AppHost/README.md)。
 
-## 采集前台应用
-
-在 macOS 上持续采集前台应用，并保存到本地 API：
-
-```sh
-dotnet run --project src/Observers/Orisumi.Observer.ForegroundState
-```
-
-参数和文件位置见 [Foreground State README](src/Observers/Orisumi.Observer.ForegroundState/README.md)。
-
 ## 验证
 
 ```sh

@@ -32,10 +32,12 @@ SDK 使用独立的 SQLite 文件，读数是模拟的。需要后端的行通�
 
 以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
 
-- 进行中不上传 Observation、结束后可读到内容和 Observation：`ObserverSdkTests.ForegroundUploadsOnlyFinishedPeriods`。这个方法按旧的约定检查进行中也读不到观测内容，需要改为检查观测内容已保存。
+- 进行中观测内容已保存、草稿可读、Observation 没有版本，结束后读到 Observation：`ObserverSdkTests.ForegroundUploadsOnlyFinishedPeriods`。
+- 连续确认后草稿的 `endAt` 是最近一次确认，一次写入返回 `503` 后，下一次写入最新的内容；后端和 SDK 都重启后，下一次写入恢复草稿，`sequence` 继续递增；结束后不再写入草稿，只保存一个版本：`ObserverDraftTests.LiveDraftRecoversAcrossServerAndSdkRestartsAndCompletesOnce`。
+- 切换应用后旧时段保存一个版本、草稿移除，新时段有自己的草稿；标题时段引用应用时段的观测内容，应用时段不因此形成版本；同一应用的两个时段有不同的观测内容：`ObserverDraftTests.ContentReferencesDoNotFreezeTheParentObservationAndSeparateRepeatedPeriods`。标题时段用测试 Schema 形成，检查的是引用方式。
 - 重启后按最后确认恢复且只结束一次，以及另一程序实例打开同一文件时报错并保留队列：`ForegroundSubmissionTests.ActivePeriodStaysLocalAndRestartClosesLastCheckpointExactlyOnce`。
 - 切换时写入失败，结束旧时段与新建时段一起回滚：`ForegroundSubmissionTests.FailedTransitionRollsBackBothOldPeriodAndNewCheckpoint`。
-- 未覆盖：观测草稿的读取、切换后移除、后端重启后恢复，以及窗口标题的归属。观测草稿和窗口标题尚未实现。
+- 未覆盖：切换后旧时段的 `endAt` 是切换的时刻；第二个时段的标题归属；窗口标题的原生采集，它尚未实现。
 
 ## 执行结果 [#results]
 

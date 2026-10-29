@@ -43,18 +43,6 @@ dotnet run --project tools/Orisumi.Dev -- tool install
 
 ## 环境
 
-```sh
-orisumi env up                  # 启动全部服务
-orisumi env up api              # 只启动 API 和它的依赖
-orisumi env up api --temp       # 使用临时卷
-orisumi env up --reset          # 重建默认卷
-orisumi env status --json
-orisumi env logs api --follow
-orisumi env telemetry traces api
-orisumi env restart api
-orisumi env down
-```
-
 | 命令 | 作用 |
 | --- | --- |
 | `env up [服务...] [--temp \| --reset]` | 在后台启动环境，等所选服务就绪后返回，并输出状态 |
@@ -98,44 +86,11 @@ NGINX 总是启动，提供固定的入口端口。各入口在不同服务组�
 
 ### 状态
 
-`env status --json` 的输出：
-
-```json
-{
-  "checkout": "/Users/me/Code/Orisumi",
-  "running": true,
-  "services": [
-    { "name": "db", "state": "Running", "health": "Healthy" },
-    { "name": "migrate", "state": "Finished", "exitCode": 0 },
-    { "name": "api", "state": "Running", "health": "Healthy" },
-    { "name": "nginx", "state": "Running", "health": "Healthy" }
-  ],
-  "entries": {
-    "api": "http://localhost:8080/api",
-    "docs": "http://localhost:3000/",
-    "web": "http://localhost:8081/"
-  },
-  "dashboard": "https://localhost:18888",
-  "database": {
-    "connectionString": "Host=localhost;Port=54329;Database=orisumi;Username=orisumi;Password=orisumi",
-    "volume": "orisumi-aspire-postgres-data",
-    "temporary": false
-  }
-}
-```
-
-`entries` 列出全部入口，未启动服务的入口按 [AppHost README · 入口](../Orisumi.AppHost/README.md#入口) 的规则响应。环境没有运行时，`running` 是 `false`，其他字段省略。
+`env status --json` 输出检出目录、各服务的状态、入口地址 `entries`、看板地址、数据库连接和数据卷。`entries` 列出全部入口，未启动服务的入口按 [AppHost README · 入口](../Orisumi.AppHost/README.md#入口) 的规则响应。环境没有运行时，`running` 是 `false`，其他字段省略。
 
 ## macOS 客户端
 
 `orisumi mac` 构建 [macOS 客户端](../../src/Clients/Orisumi.Mac/README.md)，并让它连接本检出目录的环境。只在 macOS 上可用。
-
-```sh
-orisumi mac build
-orisumi mac run --build --window
-orisumi mac run --configuration debug --build
-orisumi mac stop
-```
 
 | 命令 | 作用 |
 | --- | --- |
@@ -150,14 +105,6 @@ orisumi mac stop
 - 日常使用的客户端从 `/Applications` 启动，使用默认的数据目录，与这里的互不影响。
 
 ## 验证
-
-```sh
-orisumi verify checks --base HEAD
-orisumi verify checks --base HEAD --quality
-orisumi verify checks --scope all
-orisumi verify scenarios
-orisumi verify scenarios api
-```
 
 | 命令 | 作用 |
 | --- | --- |
@@ -212,30 +159,9 @@ orisumi analyze loc
 
 两个命令都可以加 `--json`。
 
-`analyze quality` 扫描业务代码、文档站和开发工具，并与基点比较。需要同时运行检查时，用 `verify checks --quality`。
+`analyze quality` 扫描业务代码、文档站和开发工具的复杂度、重复代码和未使用代码，并与基点比较。发现供审查，业务需要的复杂代码可以保留。基点必须能完成分析构建；历史代码无法编译时，命令报告比较未完成并返回失败，当前代码的扫描结果仍然保存。
 
-| 检查 | 工具 | 报告方式 |
-| --- | --- | --- |
-| 复杂度和耦合 | C# 编译器分析器、ESLint | 按模块报告，突出复杂度大于 10 的函数及其变化 |
-| 重复代码 | jscpd，最少 8 行、70 个 token | 分别报告生产代码、测试和工具 |
-| 未使用代码 | C# 编译器分析器、Knip | 未使用的私有成员、文件、导出和依赖 |
-
-- 扫描结果需要结合行为判断。业务需要的复杂代码可以保留。扫描不证明完整的调用关系，也不检查所有 NuGet 依赖是否有用。
-- 基点必须能完成分析构建。历史代码无法编译时，命令报告比较未完成并返回失败，但保留当前代码的扫描结果。
-- JS 扫描工具的版本固定在 `jscpd/package-lock.json`。
-
-`analyze loc` 统计已跟踪和未忽略的文件，不构建也不扫描。统计排除空行和纯注释行，按模块、语言和类别分类：
-
-| 类别 | 包括 |
-| --- | --- |
-| 生产 | 业务代码 |
-| 测试 | 测试代码，包括共用的测试工具 |
-| 工具 | 开发工具 |
-| 构建 | 构建和项目配置 |
-| 文档 | MDX 和 OpenAPI 契约 |
-| 生成 | 锁文件等生成文件 |
-
-复杂字符串和嵌入的其他语言可能使行数有误差。
+`analyze loc` 按模块、语言和类别统计已跟踪的文件，不计空行和纯注释行。
 
 ## 证据
 
@@ -256,15 +182,7 @@ orisumi runs prune           # 只预览
 orisumi runs prune --apply   # 删除
 ```
 
-每次运行结束时自动清理。满足任一条件的运行会保留：
-
-- 最近 10 次运行。
-- 最近 5 次没有成功的运行，包括失败、取消和缺少清单的运行。
-- 2 天内的全部运行。
-
-`runs prune` 使用同样的条件。
-
-质量扫描的基线工作树缓存在 `.artifacts/quality-baselines/<commit>/`，不参与上述清理。需要回收空间时，移除对应的 Git worktree，下次扫描会重新创建。
+每次运行结束时自动清理，保留最近 10 次、最近 5 次没有成功的，以及 2 天内的全部运行。`runs prune` 使用同样的条件。质量扫描的基线工作树缓存在 `.artifacts/quality-baselines/<commit>/`，不参与清理，需要回收空间时移除对应的 Git worktree。
 
 ## 退出码
 
@@ -274,17 +192,3 @@ orisumi runs prune --apply   # 删除
 | 2 | 参数错误 |
 | 130 | 已取消 |
 | 其他非零值 | 执行失败 |
-
-## 代码组织
-
-| 目录 | 内容 |
-| --- | --- |
-| `Environment` | 启动、停止和读取环境，分配端口，管理数据卷 |
-| `Clients` | 构建、启动和停止 macOS 客户端 |
-| `Verification` | 选择和执行检查 |
-| `Scenarios` | 冒烟场景 |
-| `Quality` | 分类和扫描源码 |
-| `Artifacts` | 保存和管理证据 |
-| `Infrastructure` | 运行进程，定位仓库 |
-
-命令用 System.CommandLine 注册，解析后把类型化的选项直接传给实现，不递归调用 CLI。

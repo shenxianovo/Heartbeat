@@ -27,7 +27,16 @@ export const caseId = 'api-schema-fields';
 
 ## 测试实现 [#implementation]
 
-字段 description 的保存和校验、按层分别拒绝缺失或空白说明、说明措辞演进，以及空对象 Observation 的整批拒绝，尚无关联本 Case 的自动测试，均标为未覆盖。
+以下方法位于 `tests/Orisumi.Integration.Tests/SchemaDescriptionTests.cs`：
+
+- `DescriptionsRoundTripAndChangesPreserveHistory`：合法声明各层的 description 原样读回；只改措辞形成新版本后，旧版本读回原来的说明，实体的当前版本读到新说明。
+- `DescriptionErrorsPreserveStructuralAndPerVersionBoundaries`：六组参数，每组改一个位置。字段缺少说明、对象成员的说明为空字符串、数组元素的说明全为空白时，返回 `SCHEMA-10`，`index` 为 1，第一个版本已保存；这个对象成员的 nullable 为 true。字段说明为数字、对象成员说明为 `null`、数组元素说明为对象时，是请求结构错误，不带 `index`，第一个版本未保存。
+
+未覆盖：
+
+- 上面六组以外的位置与错误组合，例如对象成员缺少说明、说明为布尔值或数组。
+- 说明演进后，旧业务版本仍引用原来的 Schema 版本。
+- category 为 observation、content 为空对象的整批拒绝。
 
 空 InputSet 的部分拒绝已由 `EntityApiTests.ContractErrorSavesNothingAndRuleRejectionSavesOnlyPrefix` 检查；该方法关联 [Submission](./submission.mdx)，执行结果在那一页显示。新增测试时复用这个边界，不重复增加相同测试。
 

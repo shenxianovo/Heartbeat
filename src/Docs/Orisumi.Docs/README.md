@@ -15,26 +15,16 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-打开 <http://localhost:3000/>，确认跳转到入口页 Introduction。
-
-通过 Aspire 启动本地环境时，文档站已经由 NGINX 在 3000 端口提供，直接打开同一地址。
+打开 <http://localhost:3000/>。通过 `orisumi env up` 启动本地环境时，文档站已经在同一地址。
 
 | 命令 | 作用 |
 | --- | --- |
 | `pnpm docs:check` | 检查项目文档的一致性，见[文档检查](#文档检查) |
+| `pnpm test` | 单元测试 |
 | `pnpm types:check` | 生成路由类型并做类型检查 |
-| `pnpm build` | 静态导出到 `out/`，再运行 `scripts/finish-export.mjs` 和 `scripts/check-export.mjs`，见[静态导出](#静态导出) |
-| `pnpm test` | 运行 `tests/` 中的单元测试：测试 Case 与报告的关联、文档检查的解析逻辑 |
+| `pnpm build` | 静态导出到 `out/`，并检查导出的页面、链接和资源 |
 
-`next.config.mjs` 按运行阶段生成配置：开发服务器是普通的 Next.js 服务，构建时开启 `output: 'export'`。所以导出不支持的写法，例如依赖请求的路由，要到 `pnpm build` 时才报错。
-
-## 静态导出
-
-`pnpm build` 生成的 `out/` 是完整的站点，任何静态文件服务都能提供。页面、搜索索引、Markdown、LLM 导出和 OG 图都在构建时生成。
-
-- `scripts/finish-export.mjs` 把每个页面的 Markdown 复制为 `/<页面路径>.md`，写入 `.nojekyll`，并把根页面写成跳转到 `/start/` 的页面。
-- `scripts/check-export.mjs` 检查必要的页面和文件存在、搜索索引是 JSON、Markdown 内容正确，以及每个 HTML 中以 `/` 开头的站内链接和资源都有对应的文件。它还检查页面标题唯一、canonical 与页面地址一致、sitemap 覆盖全部文档页，以及 robots.txt 和 favicon 已导出。任何一项不通过，构建失败。
-- 地址以 `/` 结尾，例如 `/core/`，`next.config.mjs` 设置了 `trailingSlash`。
+开发服务器不按静态导出运行，导出不支持的写法到 `pnpm build` 时才报错。
 
 ## 发布
 
@@ -53,6 +43,7 @@ pnpm dev
 
 - Pages 的发布来源是 GitHub Actions，自定义域名是 `docs.orisumi.dev`，开启 Enforce HTTPS。
 - `docs.orisumi.dev` 有四条 A 记录，指向 GitHub Pages 的 `185.199.108.153` 到 `185.199.111.153`。域名所有权验证的 TXT 记录保留。
+- GA4 的衡量 ID 是 `G-WKHX52M7JW`，只在公开站点采集。Search Console 通过 Cloudflare 中的 TXT 记录验证，这条记录也保留。
 
 发布后在公开站点检查：
 
@@ -62,6 +53,7 @@ pnpm dev
 - API 参考页，以及页面上没有 Playground。
 - 测试报告和一个 Case 页面，报告的提交 SHA 是这次发布的提交。
 - 一个页面的 `.md` 地址、`/llms.txt` 和 `/llms-full.txt`。
+- 在 Search Console 提交 `https://docs.orisumi.dev/sitemap.xml`。
 
 ## 文档检查
 
@@ -81,138 +73,42 @@ pnpm dev
 | `json` | ` ```json ` 代码块可以解析，带标题或行高亮的代码块也检查 |
 | `sidebar` | `meta.json` 中的条目存在，每个页面都被某个 `meta.json` 收录 |
 
-检查逻辑在 `lib/docs-check.ts`，读取文件和输出在 `scripts/check-docs.ts`。
-
-## 内容结构
-
-| 分区 | 源文件 | 地址 |
-| --- | --- | --- |
-| Start | [content/docs/start](content/docs/start) | `/start` |
-| Core | [content/docs/core](content/docs/core) | `/core` |
-| Observers | [content/docs/observers](content/docs/observers) | `/observers` |
-| Clients | [content/docs/clients](content/docs/clients) | `/clients` |
-| API | [content/docs/api](content/docs/api) | `/api` |
-| Storage | [content/docs/storage](content/docs/storage) | `/storage` |
-| Testing | [content/docs/testing](content/docs/testing) | `/testing` |
-| ADR | [content/docs/adr](content/docs/adr) | `/adr` |
-
-- 每个分区的 `meta.json` 设置 `root: true` 和图标，Fumadocs 据此生成分区切换器。
-- 侧边栏的顺序由 `meta.json` 的 `pages` 决定。`---标题---` 添加分组标题，`...目录` 展开一个目录。
-- 访问 `/` 时跳转到 `/start`。
-- 文档站按根路径运行，不配置 `basePath`。
+## 写作
 
 写作约定见仓库根目录的 [AGENTS.md](../../../AGENTS.md) 和 [Core · Conventions](content/docs/core/conventions.mdx)。
 
-## OpenAPI
+- 每个分区是 `content/docs/` 下的一个目录。侧边栏的顺序由各目录的 `meta.json` 决定，`---标题---` 添加分组标题，`...目录` 展开一个目录。
+- [content/docs/api/openapi.json](content/docs/api/openapi.json) 是 HTTP 契约，直接编辑。接口页由它生成，地址是 `/api/<operationId>`。
+- 代码块可以在语言后写标题和行高亮，例如 ` ```json title="POST /versions" {3,5} `。
+- 页面历史从 Git 读取，未提交的改动和浅克隆都没有历史。
 
-[content/docs/api/openapi.json](content/docs/api/openapi.json) 是 HTTP 契约的权威来源，维护者直接编辑这个文件，见 [ADR · 设计层与变更流程](content/docs/adr/documentation-authority.mdx)。
+### 模型关系图
 
-- `lib/openapi.ts` 读取契约，`lib/source.ts` 用 `staticSource({ baseDir: 'api' })` 生成接口页，与 MDX 页面合并。
-- 接口页地址是 `/api/<operationId>`。没有 `operationId` 时，使用路径和 HTTP 方法。
-- 接口页使用 `components/api-page.tsx` 中的 `OpenAPIPage`。复制和导出提供原始 OpenAPI JSON。
-- Playground 只在开发服务器上启用，使用相对服务地址 `/api`。通过 Aspire 访问时，3000 端口的 `/api/entities/…` 由 NGINX 转给后端，所以请求与文档站同源。
+`<ModelRelations />` 读取 `content/docs/core/model/relations.json`，`<ObserverStructure node="…" />` 读取 `content/docs/observers/relations.json`。
 
-## Markdown 导出
+- 节点 ID 使用完整的模型名，例如 `Observation`；成员节点使用“类型_成员名”，例如 `Observation_StartAt`。
+- 每个节点的 `path` 指向模型页或规则锚点。修改 Core 页面路径或规则编号时，同步修改 `path`。
+- Observers 的图复用 Core 节点的名称和链接。草案字段在标签中标明“草案”。
 
-每个页面都有 Markdown 版本，响应类型是 `text/markdown; charset=utf-8`。
+### 测试 Case 与报告
+
+Case 页面在 `content/docs/testing/` 中，每页导出 `caseId` 并传给 `<TestCaseResults caseId={caseId} />`，测试用 `[Property("caseId", "…")]` 关联同一个 ID。
+
+页面读取仓库根目录 `TestResults/` 中最新的 `Orisumi.Integration.Tests-*.tunit-report.json`，`ORISUMI_TEST_REPORTS_DIR` 可以换一个目录。页面不运行测试：先运行集成测试，开发服务器刷新即可，`pnpm build` 则把这一次的报告固定在产物中。完整报告在 `/testing/reports/integration`。
+
+### Markdown 导出
 
 | 地址 | 内容 |
 | --- | --- |
-| `/llms.mdx/<页面路径>/content.md` | 单个页面 |
-| `/<页面路径>.md` | 同上。开发服务器由 `next.config.mjs` 改写到上一行的地址，构建时由 `scripts/finish-export.mjs` 生成文件 |
+| `/<页面路径>.md` | 单个页面 |
 | `/llms.txt` | 页面索引 |
 | `/llms-full.txt` | 全站内容 |
 
-页面地址只返回 HTML。接口页的 Markdown 地址返回 OpenAPI JSON。路由定义在 `lib/routes.ts`，导出内容由 `lib/llms.ts` 生成。
-
-- 指向文档页面的链接改写为页面的 Markdown 地址，例如 `../../adr/entity-model.mdx#context` 导出为 `/adr/entity-model.md#context`。页内锚点和外部链接保持原样。改写逻辑在 `lib/markdown-links.ts`。
-- 正文按 Fumadocs 的 `output: 'function'` 生成：Markdown 原样保留，组件由 `components/markdown.tsx` 中的组件渲染。组件在 `asMarkdown()` 为真时返回 Markdown。
-- `Callout` 导出为引用块，`Cards` 导出为链接列表。`ModelRelations` 导出关系列表，`ObserverStructure` 导出实现的接口和字段，`DocumentationGraph` 导出页面和引用清单。
-- 测试报告组件不在 `components/markdown.tsx` 中，导出保留 MDX 标签。新增的组件需要 Markdown 形式时，在组件中处理 `asMarkdown()`，并加入 `getMarkdownComponents()`。
-
-## 搜索
-
-搜索索引由 `app/api/search/route.ts` 在构建时导出为 `/api/search`。浏览器下载索引，用 Fumadocs 的 Orama 静态客户端在本地查询。每个页面的索引带有所在分区的标签，取页面路径的第一段，例如 `core`、`adr`。
-
-搜索框底部按侧栏分区筛选结果，再点一次取消筛选。分区列表在 `app/layout.tsx` 中从页面树生成，搜索框在 `components/search-dialog.tsx`。Fumadocs 默认的搜索框把底栏渲染在弹窗之外，筛选按钮会被遮罩挡住，所以这里把底栏放在弹窗内容中。
-
-## 模型关系图
-
-| 组件 | 数据 | 用法 |
-| --- | --- | --- |
-| `components/model-relations.tsx` | `content/docs/core/model/relations.json` | `<ModelRelations />` 显示全部关系，`<ModelRelations node="Observation" />` 只显示与一个节点直接相连的关系 |
-| `components/observer-structure.tsx` | `content/docs/observers/relations.json` | `<ObserverStructure node="APPLICATION_CONTENT" />` 左侧显示实现的接口，右侧显示实体自己的字段 |
-
-`relations.json` 的约定：
-
-- 节点 ID 使用完整的模型名，例如 `Entity`、`Observation`、`BusinessEntity`。成员节点使用“类型_成员名”，例如 `Observation_StartAt`。
-- 每个节点的 `path` 指向模型页或规则锚点。修改 Core 页面路径或规则编号时，同步修改 `path`。
-- Observers 的图复用 Core 节点的名称和链接。字段只在 `observers/relations.json` 中维护一次。草案字段在标签中标明“草案”。
-- 概览图使用 Dagre 布局。组件中有一条不可见的连线，只用来对齐两个分组，不表示模型关系。
-
-所有 Mermaid 图由 `components/mermaid.tsx` 渲染。
-
-## 测试 Case 与报告
-
-Case 页面在 `content/docs/testing/` 中，每页导出 `caseId` 并传给 `<TestCaseResults caseId={caseId} />`。测试用 `[Property("caseId", "…")]` 关联同一个 ID。
-
-- 组件读取最新的报告，只显示 `caseId` 精确匹配的结果，并单独计算这个 Case 的统计。
-- 每条结果链接到 `?test=<测试 ID>`，在完整报告中打开详情。
-- 没有报告或没有匹配结果时，页面显示没有执行证据。
-
-完整报告页是 `/testing/reports/integration`，使用 `fumadocs-test-reports@0.1.2`。
-
-报告目录由 `ORISUMI_TEST_REPORTS_DIR` 指定，没有设置时读取仓库根目录的 `TestResults`。组件选择修改时间最新的 `Orisumi.Integration.Tests-*.tunit-report.json`。文件不存在时，页面显示报告尚未生成。格式错误时，页面显示错误。报告没有提交 SHA 时，使用环境变量 `GITHUB_SHA`。
-
-- 开发服务器每次请求都重新读取报告。页面不运行测试，先运行集成测试，再刷新页面。
-- `pnpm build` 读取一次报告，结果固定在产物中。公开站点的报告由发布工作流运行集成测试生成，见[发布](#发布)。
-
-## 页面历史
-
-MDX 页面末尾用 [`fumadocs-page-history@0.4.2`](https://github.com/shenxianovo/fumadocs-page-history) 显示贡献者和提交历史。插件在 `source.config.ts` 中注册，中文翻译在 `lib/translations.ts` 中注册。
-
-- 历史在构建时从 Git 读取，支持文件改名。未提交的文件没有历史。浅克隆需要先运行 `git fetch --unshallow`。
-- 新的提交需要重新构建才会显示。开发期间只有 Git 记录变化时，需要重启文档站。
-- `authorMappings` 把 Git 作者 `shenxianovo` 关联到同名 GitHub 账号，提供头像和主页链接。不请求 GitHub API。
-- 日期在服务端按 UTC 渲染，浏览器加载后按读者的本地时区显示。
-- `workspaceChanges` 当前为 `false`，正文不标记未提交的变化。
-- 发布工作流用完整的 Git 历史检出，见[发布](#发布)。
-- OpenAPI 生成的接口页没有页面历史。
-
-## 布局
-
-- 页面使用 Fumadocs 的 [Spacious 布局](https://www.fumadocs.dev/docs/ui/layouts/spacious)，样式在 `app/global.css` 中引入。
-- 右侧页内目录使用 `clerk` 样式，配置在 `app/(docs)/[[...slug]]/page.tsx`。
-- 站点名称和 Git 仓库信息在 `lib/site-config.ts`。编辑链接指向 `main` 分支。
-
-### 搜索引擎与站点图标
-
-页面通过 Next.js Metadata API 生成浏览器标题、canonical 和分享信息。浏览器标题按 Fumadocs 页面树补上所属分组与分区，用来区分各分区的 Overview 等同名页面；导航和正文标题仍取页面的 `title`。Introduction 的浏览器标题说明 Orisumi 的用途。公开地址由 `lib/site-config.ts` 的 `siteUrl` 定义，canonical 以 `/` 结尾。
-
-`app/sitemap.ts` 和 `app/robots.ts` 使用 Next.js 原生约定，构建时导出 `/sitemap.xml` 和 `/robots.txt`。sitemap 包含 Fumadocs 页面源中的全部文档页和生成的 API 页，使用与 canonical 相同的地址。robots.txt 允许抓取全站，并声明 sitemap 地址。
-
-公开站点通过 `public/analytics.js` 接入 GA4（`G-WKHX52M7JW`），只在 `https://docs.orisumi.dev` 采集，本地与预览地址跳过，广告信号关闭。
-Search Console 已通过 Cloudflare 中 `docs.orisumi.dev` 的 TXT 记录验证并关联 GA4；保留该记录，发布后检查并提交 `https://docs.orisumi.dev/sitemap.xml`。
-
-站标和 favicon 共用 `lib/platform-icon.ts` 的系统判断：macOS 使用 `icon-macos.png` 对应的吉祥物，其他系统使用 `icon-windows.png` 对应的吉祥物。`public/favicon-macos.png` 和 `public/favicon-windows.png` 是原图的 48 × 48 像素版本。`components/site-icon.tsx` 中的 `SiteFavicon` 用 React 的 `<link>` 输出 favicon，浏览器加载后按系统选择；静态 HTML 和根地址的跳转页提供 Windows 版本作为默认图标。
-
-### 正文组件
-
-- Introduction 用 `Cards` 和 `Card` 按任务组织阅读链接，用 `Callout` 提示重写状态。这些组件来自默认 MDX 组件。
-- Walkthrough 和 Integration Guide 的编号标题由 `source.config.ts` 中的 `remarkSteps` 渲染为 Steps。标题继续使用 `## 1. 名称 [#anchor]`，原有锚点和导出中的编号保持不变。
-- Steps 在 Markdown 导出中保留编号标题。Cards 和 Callout 的导出形式见 [Markdown 导出](#markdown-导出)。
-- 代码块可以在语言后写标题和行高亮，例如 ` ```json title="POST /versions" {3,5} `。行号从代码块的第一行算起。行高亮由 `source.config.ts` 中的 `transformerMetaHighlight` 处理，JSON 示例不需要写注释，仍能通过 `json` 检查。
+新增的组件需要 Markdown 形式时，在组件中处理 `asMarkdown()`，并加入 `components/markdown.tsx` 的 `getMarkdownComponents()`。
 
 ### Graph
 
-Start 分区的 `/start/graph` 展示 Core、ADR 和 Observers 的页面引用。节点按分区着色，箭头指向被引用的页面。点击节点打开文档；下方的页面列表提供普通链接。
-
-- `lib/source.ts` 开启 `extractLinkReferences`，使用 Fumadocs 的链接解析按来源页面的目录处理相对路径。图只包含选定分区的页面，章节引用归到所在页面，重复的同向引用合并，页内引用忽略。
-- 收录哪些分区由 `lib/build-graph.ts` 的 `graphSections` 决定，按侧栏分区路径的第一段填写，顺序就是图例的顺序。分区名称取侧栏标题，颜色按顺序从同一文件的色板分配，图例、节点颜色、悬停说明和页面列表都由此生成。写错的分区名会在构建时报错。
-- `graphExcludedPages` 列出不进图的页面，按 URL 前缀匹配，当前排除 Document Template 的示例页。
-- `lib/build-graph.ts` 整理节点、引用和 Markdown 清单。`components/documentation-graph.tsx` 在服务端生成图数据和页面列表。
-- `components/graph-view.tsx` 改编自 [Fumadocs Graph View](https://github.com/fuma-nama/fumadocs/blob/main/apps/docs/components/graph-view.tsx)，保留其 MIT 许可。图形库在浏览器中加载，画布跟随容器尺寸变化，支持拖动、缩放和适应画布。节点按被引用的页面数决定大小：被引用最多的页面取最大半径，没有被引用的页面取最小半径，其余按引用数的平方根插值，面积大致与引用数成正比。最大和最小半径是 `components/graph-view.tsx` 中的 `maxRadius` 和 `minRadius`，页面增多时视觉比例不变。悬停时显示被引用和引用的页面数。
-- Graph 页的 Markdown 导出包含每个页面的链接及其引用清单，由 `DocumentationGraph` 在导出时输出。单页和全站导出使用同一份图数据。
+`/start/graph` 展示页面之间的引用。收录哪些分区由 `lib/build-graph.ts` 的 `graphSections` 决定，`graphExcludedPages` 列出不进图的页面。
 
 ## 镜像
 
@@ -222,6 +118,4 @@ Start 分区的 `/start/graph` 展示 Core、ADR 和 Observers 的页面引用�
 docker build -f src/Docs/Orisumi.Docs/Dockerfile -t orisumi-docs:local .
 ```
 
-- 构建阶段通过 BuildKit 只读挂载 `.git`，用于生成页面历史，然后运行 `pnpm build`。
-- 运行阶段用 nginx 提供 `out/`，配置在 `nginx.conf`，监听 3000 端口，以非 root 用户运行。
-- 构建上下文不包含 `TestResults`，所以镜像中的报告页显示报告尚未生成。
+镜像用 nginx 在 3000 端口提供 `out/`。构建上下文不包含 `TestResults`，镜像中的报告页显示报告尚未生成。
