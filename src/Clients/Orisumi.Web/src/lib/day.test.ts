@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Observation, Version } from "@/api/types";
-import { summarize, tickStep, ticks, type Experience } from "./day";
+import { groupThings, summarize, tickStep, ticks, type Experience } from "./day";
 
 const MIN = 60_000;
 const from = Date.parse("2026-10-29T00:00:00Z");
@@ -60,6 +60,29 @@ describe("summarize", () => {
     const day = summarize([experience("a", from - 30 * MIN, from + 30 * MIN, chrome)], [], from, to);
     expect(day.things[0]!.total).toBe(30 * MIN);
     expect(day.things[0]!.segments[0]!.start).toBe(from);
+  });
+});
+
+describe("groupThings", () => {
+  it("两台设备上的同一款软件合成一行，时长相加，彼此之间不算切换", () => {
+    const macA = version("qq-mac-a", {});
+    const macB = version("qq-mac-b", {});
+    const qq = version("qq", {});
+    const grouped = groupThings(
+      [
+        experience("a", from, from + 10 * MIN, macA),
+        experience("b", from + 10 * MIN, from + 15 * MIN, macB),
+        experience("c", from + 15 * MIN, from + 20 * MIN, chrome),
+      ],
+      (thing) =>
+        thing.version === macA || thing.version === macB ? { version: qq, title: "QQ", typeName: "应用" } : null,
+    );
+    const day = summarize(grouped, [], from, to);
+    expect(day.things.map((row) => [row.key, row.total / MIN])).toEqual([
+      ["qq", 15],
+      ["chrome", 5],
+    ]);
+    expect(day.switches).toBe(1);
   });
 });
 

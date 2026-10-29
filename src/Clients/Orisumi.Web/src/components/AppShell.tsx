@@ -11,6 +11,7 @@ import { Segmented } from "./ui";
 
 const NAV = [
   { to: "/", label: "日", exact: true },
+  { to: "/applications", label: "应用", exact: true },
   { to: "/entities", label: "实体", exact: false },
   { to: "/observers", label: "Observer", exact: true },
 ] as const;

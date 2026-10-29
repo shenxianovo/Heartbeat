@@ -43,6 +43,13 @@ export interface Version<C = unknown> {
   content: C;
 }
 
+/** 提交时的版本：没有 recordedAt。 */
+export type VersionSubmission<C = unknown> = Omit<Version<C>, "recordedAt">;
+
+export interface SubmissionResult {
+  versions: { versionId: string; recordedAt: string }[];
+}
+
 export interface VersionPage {
   versions: Version[];
   next: string | null;

@@ -104,6 +104,17 @@ async function buildIndex(client: QueryClient, source: OrisumiSource): Promise<T
     }
     const entity = sample.versions[0];
     if (!entity) return;
+    // 事实时间未知的陈述不在按时间取的样本里，例如应用识别 Observer 和用户本人写的应用产品。
+    // 它们的 Observer 从这种类型的一个实体的引用方认出。
+    if (!observation) {
+      const referrers = await source.listReferrers(entity.entityId, { limit: 20 }).catch(() => ({ referrers: [] }));
+      if (
+        referrers.referrers.some((r) => r.references.some((location) => location.path === "/content/observerVersionId"))
+      ) {
+        observerTypes.add(resourceName);
+        edge("observation", resourceName, "observerVersionId");
+      }
+    }
     for (const reference of outgoingReferences(entity, schema.content.fields)) {
       const target = await typeOf(reference.versionId);
       if (target) edge(resourceName, target, reference.path.replace(/\[\d+\]/g, "[]"));

@@ -3,6 +3,8 @@ import { roleOf, ROLE_NAMES, thingColor, type Role } from "@/lib/roles";
 import { clock, parseTime } from "@/lib/time";
 import { businessTitle } from "@/lib/titles";
 import { CATEGORY_NAMES } from "@/lib/versions";
+import { LOCAL_APPLICATIONS } from "@/lib/applications";
+import { useCatalog } from "./useApplications";
 import { useVersion } from "./queries";
 import { useTypes } from "./useTypes";
 
@@ -29,6 +31,8 @@ export function describeVersion(
   if (isObservation(version)) title = timeLabel(version.content.startAt, version.content.endAt);
   else if (isInputSet(version)) title = `${version.content.members.length} 个输入`;
   else if (isEntitySchema(version)) title = version.content.displayName;
+  // Observer 用类型的名字，例如“前台状态 Observer”；它的内容多是平台和版本。
+  else if (role === "source") title = typeName;
   else title = businessTitle(version.content, schema?.content.fields, schema?.content.resourceName)?.text ?? typeName;
   return { roleName: ROLE_NAMES[role], title, typeName, color: role === "thing" ? thingColor(title) : null };
 }
@@ -50,13 +54,19 @@ export function useEntityInfo(versionId: string | null | undefined) {
 export function useDescribe(version: Version | undefined, pending = false, failed = false) {
   const schema = useVersion(version?.category === "business" ? version.schemaVersionId : null);
   const types = useTypes();
+  const catalog = useCatalog();
   if (!version) return { info: null, pending, unreadable: failed };
   const schemaVersion = schema.data && isEntitySchema(schema.data) ? schema.data : null;
   const role = types.data
     ? roleOf(version, schemaVersion?.content.resourceName, types.data)
     : roleOf(version, null, EMPTY);
+  const described = describeVersion(version, schemaVersion, role);
+  // 本机应用归到产品后，用产品的名字。
+  const product =
+    schemaVersion?.content.resourceName === LOCAL_APPLICATIONS ? catalog.data?.productOf(version) : undefined;
+  if (product) Object.assign(described, { title: product.name, color: thingColor(product.name) });
   return {
-    info: { version, schema: schemaVersion, role, ...describeVersion(version, schemaVersion, role) } as EntityInfo,
+    info: { version, schema: schemaVersion, role, ...described } as EntityInfo,
     pending: false,
     unreadable: false,
   };

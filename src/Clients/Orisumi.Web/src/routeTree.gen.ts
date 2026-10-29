@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApplicationsRouteImport } from './routes/applications'
 import { Route as ObserversRouteImport } from './routes/observers'
 import { Route as EntitiesIndexRouteImport } from './routes/entities.index'
 import { Route as EntitiesEntityIdRouteImport } from './routes/entities.$entityId'
@@ -18,6 +19,11 @@ import { Route as VersionsVersionIdRouteImport } from './routes/versions.$versio
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApplicationsRoute = ApplicationsRouteImport.update({
+  id: '/applications',
+  path: '/applications',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ObserversRoute = ObserversRouteImport.update({
@@ -43,6 +49,7 @@ const VersionsVersionIdRoute = VersionsVersionIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/applications': typeof ApplicationsRoute
   '/observers': typeof ObserversRoute
   '/entities/$entityId': typeof EntitiesEntityIdRoute
   '/versions/$versionId': typeof VersionsVersionIdRoute
@@ -50,6 +57,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/applications': typeof ApplicationsRoute
   '/observers': typeof ObserversRoute
   '/entities/$entityId': typeof EntitiesEntityIdRoute
   '/versions/$versionId': typeof VersionsVersionIdRoute
@@ -58,6 +66,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/applications': typeof ApplicationsRoute
   '/observers': typeof ObserversRoute
   '/entities/$entityId': typeof EntitiesEntityIdRoute
   '/versions/$versionId': typeof VersionsVersionIdRoute
@@ -67,6 +76,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/applications'
     | '/observers'
     | '/entities/$entityId'
     | '/versions/$versionId'
@@ -74,6 +84,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/applications'
     | '/observers'
     | '/entities/$entityId'
     | '/versions/$versionId'
@@ -81,6 +92,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/applications'
     | '/observers'
     | '/entities/$entityId'
     | '/versions/$versionId'
@@ -89,6 +101,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApplicationsRoute: typeof ApplicationsRoute
   ObserversRoute: typeof ObserversRoute
   EntitiesEntityIdRoute: typeof EntitiesEntityIdRoute
   VersionsVersionIdRoute: typeof VersionsVersionIdRoute
@@ -102,6 +115,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/applications': {
+      id: '/applications'
+      path: '/applications'
+      fullPath: '/applications'
+      preLoaderRoute: typeof ApplicationsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/observers': {
@@ -137,6 +157,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApplicationsRoute: ApplicationsRoute,
   ObserversRoute: ObserversRoute,
   EntitiesEntityIdRoute: EntitiesEntityIdRoute,
   VersionsVersionIdRoute: VersionsVersionIdRoute,

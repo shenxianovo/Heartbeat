@@ -162,6 +162,13 @@
   }
 }
 
+@keyframes pop {
+  from {
+    transform: translateY(-4px) scale(0.98);
+    opacity: 0;
+  }
+}
+
 @layer components {
   .panel-enter {
     animation: panel-in 220ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -169,6 +176,11 @@
 
   .rise {
     animation: rise 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  /* 弹出层和拖动时的落点从触发它的位置浮现。 */
+  .pop {
+    animation: pop 160ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 }
 

@@ -5,9 +5,10 @@ import { Timeline } from "@/components/day/Timeline";
 import { useHighlight, useStack } from "@/components/token/context";
 import { Token } from "@/components/token/Token";
 import { Card, Message } from "@/components/ui";
+import { productGroup, useCatalog } from "@/hooks/useApplications";
 import { useDay } from "@/hooks/useDay";
 import { useNow } from "@/hooks/useNow";
-import { summarize, type Experience, type Row } from "@/lib/day";
+import { groupThings, summarize, type Experience, type Row } from "@/lib/day";
 import { differences } from "@/lib/roles";
 import { dayOf, dayRange, dayTitle, duration, MINUTE } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -33,14 +34,16 @@ function DayPage() {
   const todayKey = dayRange(now).key;
   const key = search.date ?? todayKey;
   const day = useDay(key);
+  const catalog = useCatalog();
   const { range, today } = day;
 
   const experiences = useMemo<Experience[]>(() => {
-    const list = day.data?.experiences ?? [];
+    // 各设备上的同一款软件按应用产品合并成一行。
+    const list = catalog.data ? groupThings(day.data?.experiences ?? [], productGroup(catalog.data)) : [];
     if (!today) return list;
     // 今天还在延长的时段画到现在，最后一段跟着时间慢慢变长。
     return list.map((e) => (now - e.end < ONGOING && e.end <= now ? { ...e, end: now } : e));
-  }, [day.data, today, now]);
+  }, [day.data, catalog.data, today, now]);
   const summary = useMemo(
     () => summarize(experiences, day.data?.points ?? [], range.start, range.end),
     [experiences, day.data, range.start, range.end],
@@ -128,9 +131,9 @@ function DayPage() {
         )}
       </header>
 
-      {day.error && !day.data ? (
-        <Message title="读不到这一天" detail={(day.error as Error).message} mascot />
-      ) : day.loading && !day.data ? (
+      {(day.error && !day.data) || (catalog.error && !catalog.data) ? (
+        <Message title="读不到这一天" detail={((day.error ?? catalog.error) as Error).message} mascot />
+      ) : (day.loading && !day.data) || !catalog.data ? (
         <Message title="正在读取这一天" />
       ) : !summary.things.length && !summary.lanes.length && !summary.points.length ? (
         <Message title={today ? "今天还没有记录" : "这一天没有记录"} mascot />

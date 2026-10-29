@@ -4,13 +4,16 @@ import type {
   ListReferrersQuery,
   ProblemDetails,
   ReferrerPage,
+  SubmissionResult,
   Version,
   VersionList,
   VersionPage,
+  VersionSubmission,
 } from "./types";
 
-/** 控制台读取数据的接口，HTTP 实现读后端。 */
+/** 控制台读写数据的接口，HTTP 实现读写后端。 */
 export interface OrisumiSource {
+  submitVersions(versions: VersionSubmission[]): Promise<SubmissionResult>;
   getVersion(versionId: string): Promise<Version>;
   getEntity(entityId: string): Promise<Version>;
   listEntities(query: ListEntitiesQuery): Promise<VersionPage>;
@@ -69,6 +72,12 @@ export function createHttpSource(base = "/api"): OrisumiSource {
   }
 
   return {
+    submitVersions: (versions) =>
+      request("/versions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ versions }),
+      }),
     getVersion: (versionId) => request(`/versions/${encodeURIComponent(versionId)}`),
     getEntity: (entityId) => request(`/entities/${encodeURIComponent(entityId)}`),
     listEntities: (params) => request(`/entities${query(params)}`),

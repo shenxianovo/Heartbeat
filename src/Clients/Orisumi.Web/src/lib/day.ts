@@ -127,6 +127,24 @@ export function summarize(
   };
 }
 
+type Thing = Experience["things"][number];
+
+/** 事物换成什么，例如本机应用换成它所属的应用产品；返回 null 时保持原样。 */
+export type ThingGroup = (thing: Thing) => Thing | null;
+
+/** 把经历引用的事物换成它们的合并对象，例如两台 Mac 上的 QQ 都换成 QQ 这个产品。同一份经历里重复的只留一个。 */
+export function groupThings(experiences: readonly Experience[], group: ThingGroup): Experience[] {
+  return experiences.map((experience) => {
+    if (!experience.things.length) return experience;
+    const things = new Map<string, Thing>();
+    for (const thing of experience.things) {
+      const target = group(thing) ?? thing;
+      if (!things.has(target.version.entityId)) things.set(target.version.entityId, target);
+    }
+    return { ...experience, things: [...things.values()] };
+  });
+}
+
 const TICK_STEPS = [1, 5, 10, 15, 30, 60, 120, 180, 360].map((minutes) => minutes * 60_000);
 
 /** 刻度的间隔：让 [from, to) 里大约有 target 个刻度。 */

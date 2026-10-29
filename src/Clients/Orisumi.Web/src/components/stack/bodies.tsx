@@ -15,16 +15,20 @@ import {
 import { Blueprint } from "@/components/entity/Content";
 import { Mono } from "@/components/ui";
 import { useEntityVersions, useReferrers, useVersion } from "@/hooks/queries";
+import { productGroup, useCatalog } from "@/hooks/useApplications";
 import { useDay } from "@/hooks/useDay";
 import { describeVersion, type EntityInfo } from "@/hooks/useEntityInfo";
 import { useNow } from "@/hooks/useNow";
 import { useTypes } from "@/hooks/useTypes";
-import { summarize, type Segment } from "@/lib/day";
+import { LOCAL_APPLICATIONS, PRODUCTS } from "@/lib/applications";
+import { groupThings, summarize, type Segment } from "@/lib/day";
 import { outgoingReferences } from "@/lib/references";
 import { differences } from "@/lib/roles";
 import { ago, clock, dayRange, dayTitle, duration, parseTime } from "@/lib/time";
 import { CATEGORY_NAMES } from "@/lib/versions";
+import { cn } from "@/lib/utils";
 import { Token } from "../token/Token";
+import { Membership, ProductSections } from "./application";
 
 export function PanelBody({ info }: { info: EntityInfo }) {
   return (
@@ -68,20 +72,30 @@ function useDateKey(): string {
 function ThingBody({ info }: { info: EntityInfo }) {
   const key = useDateKey();
   const day = useDay(key);
+  const catalog = useCatalog();
+  const resourceName = info.schema?.content.resourceName;
+  const isProduct = resourceName === PRODUCTS;
+  // 产品的用量是归到它的各个本机应用的合计。
+  const experiences = useMemo(
+    () =>
+      isProduct && catalog.data
+        ? groupThings(day.data?.experiences ?? [], productGroup(catalog.data))
+        : (day.data?.experiences ?? []),
+    [isProduct, catalog.data, day.data],
+  );
   const summary = useMemo(
-    () => (day.data ? summarize(day.data.experiences, [], day.range.start, day.range.end) : null),
-    [day.data, day.range.start, day.range.end],
+    () => (day.data ? summarize(experiences, [], day.range.start, day.range.end) : null),
+    [day.data, experiences, day.range.start, day.range.end],
   );
   const row = summary?.things.find((r) => r.key === info.version.entityId);
   const seenBy = useMemo(() => {
     const ids = new Set(
-      day.data?.experiences
+      experiences
         .filter((e) => e.things.some((t) => t.version.entityId === info.version.entityId))
         .map((e) => e.observation.content.observerVersionId),
     );
     return [...ids];
-  }, [day.data, info.version.entityId]);
-  const experiences = day.data?.experiences ?? [];
+  }, [experiences, info.version.entityId]);
 
   return (
     <>
@@ -121,8 +135,15 @@ function ThingBody({ info }: { info: EntityInfo }) {
           </>
         )}
       </Section>
-      <Names entityId={info.version.entityId} />
-      <Siblings info={info} />
+      {isProduct ? (
+        <ProductSections product={info.version} />
+      ) : (
+        <>
+          {resourceName === LOCAL_APPLICATIONS && <Membership install={info.version} />}
+          <Names entityId={info.version.entityId} />
+          <Siblings info={info} />
+        </>
+      )}
       <Section title="内容">
         <Fields version={info.version} schema={info.schema} />
       </Section>
@@ -145,16 +166,19 @@ export function DayStrip({
   from,
   to,
   color,
+  compact,
 }: {
   segments: readonly Pick<Segment, "start" | "end">[];
   from: number;
   to: number;
   color: string;
+  /** 只画细条，不写时刻。 */
+  compact?: boolean;
 }) {
   const span = to - from;
   return (
     <div className="mt-2">
-      <div className="bg-panel relative h-2 overflow-hidden rounded-full">
+      <div className={cn("bg-panel relative overflow-hidden rounded-full", compact ? "h-1" : "h-2")}>
         {segments.map((segment, i) => (
           <span
             key={i}
@@ -167,7 +191,7 @@ export function DayStrip({
           />
         ))}
       </div>
-      <div className="text-fg-3 mt-0.5 flex justify-between text-[10px] tabular-nums">
+      <div className={cn("text-fg-3 mt-0.5 flex justify-between text-[10px] tabular-nums", compact && "hidden")}>
         <span>0</span>
         <span>6</span>
         <span>12</span>
