@@ -20,7 +20,17 @@ function Tiles({ children }: { children: ReactNode }) {
 }
 
 /** 一个字段一格：上面是字段名，下面是值。长的值占满一行。 */
-function Tile({ name, hint, wide, children }: { name: string; hint?: string; wide?: boolean; children: ReactNode }) {
+function Tile({
+  name,
+  hint,
+  wide,
+  children,
+}: {
+  name: string;
+  hint?: string | undefined;
+  wide?: boolean;
+  children: ReactNode;
+}) {
   return (
     <div className={cn("bg-panel/55 min-w-0 rounded-xl px-3 py-2.5", wide && "sm:col-span-2")}>
       <dt className="text-fg-3 truncate text-xs" title={hint}>

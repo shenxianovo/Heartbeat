@@ -94,7 +94,7 @@ export function Token({
   version?: Version;
   size?: "sm" | "md";
   /** 名字后面的补充，例如安装路径里不同的那一段。 */
-  detail?: string | null;
+  detail?: string | null | undefined;
   className?: string;
 }) {
   const byId = useEntityInfo(version ? null : versionId);

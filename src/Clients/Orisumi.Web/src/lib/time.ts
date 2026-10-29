@@ -17,11 +17,6 @@ export function dayRange(now: number): Range & { key: string; start: number; end
   return { key, start, end, from: new Date(start).toISOString(), to: new Date(end).toISOString() };
 }
 
-/** “现在”轮询的范围 [now - 2 分钟, now + 1 分钟)。 */
-export function liveRange(now: number): Range {
-  return { from: new Date(now - 2 * MINUTE).toISOString(), to: new Date(now + MINUTE).toISOString() };
-}
-
 export function parseTime(value: string | null | undefined): number | null {
   if (!value) return null;
   const time = Date.parse(value);

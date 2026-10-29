@@ -2,6 +2,7 @@ import type {
   ListEntitiesQuery,
   ListObservationsQuery,
   ListReferrersQuery,
+  ObservationDraftList,
   ProblemDetails,
   ReferrerPage,
   SubmissionResult,
@@ -20,6 +21,7 @@ export interface OrisumiSource {
   listEntityVersions(entityId: string): Promise<VersionList>;
   listReferrers(entityId: string, query: ListReferrersQuery): Promise<ReferrerPage>;
   listObservations(query: ListObservationsQuery): Promise<VersionPage>;
+  listObservationDrafts(): Promise<ObservationDraftList>;
   deleteEntity(entityId: string): Promise<void>;
 }
 
@@ -84,6 +86,7 @@ export function createHttpSource(base = "/api"): OrisumiSource {
     listEntityVersions: (entityId) => request(`/entities/${encodeURIComponent(entityId)}/versions`),
     listReferrers: (entityId, params) => request(`/entities/${encodeURIComponent(entityId)}/referrers${query(params)}`),
     listObservations: (params) => request(`/observations${query(params)}`),
+    listObservationDrafts: () => request("/observation-drafts"),
     deleteEntity: (entityId) => request(`/entities/${encodeURIComponent(entityId)}`, { method: "DELETE" }),
   };
 }

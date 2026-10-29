@@ -91,7 +91,7 @@ function ThingBody({ info }: { info: EntityInfo }) {
     const ids = new Set(
       experiences
         .filter((e) => e.things.some((t) => t.version.entityId === info.version.entityId))
-        .map((e) => e.observation.content.observerVersionId),
+        .map((e) => e.observerVersionId),
     );
     return [...ids];
   }, [experiences, info.version.entityId]);
@@ -117,14 +117,15 @@ function ThingBody({ info }: { info: EntityInfo }) {
                 .slice(-6)
                 .reverse()
                 .map((segment) => {
-                  const experience = experiences.find((e) => e.observation.entityId === segment.observationId);
+                  const experience = experiences.find((e) => e.observationId === segment.observationId);
                   return (
                     <li key={segment.observationId} className="flex items-center gap-2 text-[13px]">
-                      {experience ? (
+                      {experience?.observation ? (
                         <Token version={experience.observation} size="sm" />
                       ) : (
-                        <span>{clock(segment.start)}</span>
+                        <span className="tabular-nums">{clock(segment.start)}</span>
                       )}
+                      {segment.ongoing && <span className="text-accent text-xs">进行中</span>}
                       <span className="flex-1" />
                       <span className="text-fg-3 text-xs tabular-nums">{duration(segment.end - segment.start)}</span>
                     </li>
@@ -296,7 +297,7 @@ function Siblings({ info }: { info: EntityInfo }) {
 
 function ExperienceBody({ info }: { info: EntityInfo }) {
   const direct = isObservation(info.version) ? info.version : null;
-  const { observation, pending } = useObservationOf(info);
+  const { observation, draft, pending } = useObservationOf(info);
   const contentQuery = useVersion(direct ? direct.content.contentVersionId : null);
   const content = direct ? (contentQuery.data ?? null) : info.version;
   const contentSchema = useVersion(content?.category === "business" ? content.schemaVersionId : null);
@@ -304,13 +305,15 @@ function ExperienceBody({ info }: { info: EntityInfo }) {
     contentSchema.data && isEntitySchema(contentSchema.data) ? contentSchema.data.content.fields : undefined;
   const now = useNow(1000);
 
-  const start = parseTime(observation?.content.startAt);
-  const end = parseTime(observation?.content.endAt);
+  // 进行中的经历：草稿接在已保存的版本之后，是较新的陈述。
+  const statement = draft?.content ?? observation?.content ?? null;
+  const start = parseTime(statement?.startAt);
+  const end = parseTime(statement?.endAt);
   const references = content ? outgoingReferences(content, fields) : [];
 
   return (
     <>
-      {observation ? (
+      {statement ? (
         <Section title={start !== null ? dayTitle(start) : "事实时间"}>
           <p className="text-[22px] leading-tight font-medium tabular-nums">
             {start !== null && end !== null && end > start
@@ -322,7 +325,7 @@ function ExperienceBody({ info }: { info: EntityInfo }) {
           {start !== null && end !== null && end > start && (
             <p className="text-fg-2 mt-0.5 text-[13px]">
               {duration(end - start)}
-              {now - end < 30_000 && <span className="text-accent"> · 还在继续</span>}
+              {draft && <span className="text-accent"> · 进行中</span>}
             </p>
           )}
         </Section>
@@ -346,6 +349,15 @@ function ExperienceBody({ info }: { info: EntityInfo }) {
             </div>
           )}
           <Fields version={content} schema={null} fields={fields} skipReferences />
+        </Section>
+      )}
+
+      {draft && !observation && (
+        <Section title="由谁记下">
+          <div className="flex flex-wrap items-center gap-1.5 text-[13px]">
+            <Token versionId={draft.content.observerVersionId} />
+            <span className="text-fg-3 text-xs">草稿 · {ago(now - Date.parse(draft.updatedAt))}更新，还没有保存</span>
+          </div>
         </Section>
       )}
 
@@ -423,7 +435,8 @@ function SourceBody({ info }: { info: EntityInfo }) {
   const now = useNow(5000);
   const written = (day.data?.experiences ?? []).filter((e) => e.observerEntityId === info.version.entityId);
   const points = (day.data?.points ?? []).find((p) => p.key === info.version.entityId);
-  const latest = Math.max(...written.map((e) => Date.parse(e.observation.recordedAt)), ...(points?.times ?? []), 0);
+  const saved = written.filter((e) => e.observation).length;
+  const latest = Math.max(...written.map((e) => e.writtenAt), ...(points?.times ?? []), 0);
   return (
     <>
       <Section title="内容">
@@ -437,7 +450,7 @@ function SourceBody({ info }: { info: EntityInfo }) {
         ) : (
           <>
             <p className="text-[22px] leading-tight font-medium tabular-nums">
-              {written.length + (points?.times.length ?? 0)}
+              {saved + (points?.times.length ?? 0)}
               <span className="text-fg-2 ml-1 text-[13px] font-normal">份 Observation</span>
             </p>
             {latest > 0 && <p className="text-fg-3 mt-0.5 text-xs">最近一次 {ago(now - latest)}</p>}
@@ -576,7 +589,7 @@ function FieldValue({
 }: {
   value: unknown;
   definition: FieldDefinition | undefined;
-  compact?: boolean;
+  compact?: boolean | undefined;
 }) {
   if (value === null) return <span className="text-fg-3">null</span>;
   if (definition?.type === "reference" && typeof value === "string") return <Token versionId={value} size="sm" />;

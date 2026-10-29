@@ -22,6 +22,8 @@ export interface TypeEdge {
 }
 
 export interface TypeIndex extends RoleIndex {
+  /** 写有事实时间的 Observation 的 Observer 类型。其余 Observer 类型只写事实时间未知的陈述。 */
+  timedObserverTypes: ReadonlySet<string>;
   nodes: TypeNode[];
   edges: TypeEdge[];
   byResourceName: ReadonlyMap<string, Version<EntitySchema>>;
@@ -64,6 +66,7 @@ async function buildIndex(client: QueryClient, source: OrisumiSource): Promise<T
   const byResourceName = new Map(schemas.map((s) => [s.content.resourceName, s]));
   const contentTypes = new Set<string>();
   const observerTypes = new Set<string>();
+  const timedObserverTypes = new Set<string>();
   const edges = new Map<string, TypeEdge>();
   const edge = (from: string, to: string, label: string) => edges.set(`${from}>${to}>${label}`, { from, to, label });
 
@@ -98,6 +101,7 @@ async function buildIndex(client: QueryClient, source: OrisumiSource): Promise<T
       const observerType = await typeOf(content.observerVersionId);
       if (observerType) {
         observerTypes.add(observerType);
+        timedObserverTypes.add(observerType);
         edge("observation", observerType, "observerVersionId");
       }
       if (content.inputSetVersionId) edge("observation", "input_set", "inputSetVersionId");
@@ -132,7 +136,7 @@ async function buildIndex(client: QueryClient, source: OrisumiSource): Promise<T
       schema,
     })),
   ];
-  return { contentTypes, observerTypes, nodes, edges: [...edges.values()], byResourceName };
+  return { contentTypes, observerTypes, timedObserverTypes, nodes, edges: [...edges.values()], byResourceName };
 }
 
 export function useTypes() {

@@ -1,7 +1,7 @@
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext } from "@playwright/test";
 import { uuidv7 } from "../../src/lib/uuid";
 
-// 经本地环境的 Web 入口验证：页面、同源 API、Vite HMR WebSocket，以及真实数据在日页面、面板、类型图、三种视图和实体页中的展示。
+// 经本地环境的 Web 入口验证：页面、同源 API、Vite HMR WebSocket，以及真实数据在日页面、面板、类型图、Observer 页面和实体页中的展示。
 // 运行前先 `orisumi env up web`，入口地址取自 `orisumi env status --json`，默认是主检出目录的 8081。
 const BASE = process.env.WEB_URL ?? "http://localhost:8081";
 
@@ -70,22 +70,6 @@ async function seed(request: APIRequestContext): Promise<Seed> {
   };
 }
 
-/** 视图里的元素每帧都会替换，直接在元素上派发 pointerdown（视图按它判断点中了谁）。 */
-async function press(page: Page, selector: string) {
-  await expect
-    .poll(() =>
-      page
-        .locator(selector)
-        .first()
-        .dispatchEvent("pointerdown", { button: 0 }, { timeout: 1000 })
-        .then(
-          () => true,
-          () => false,
-        ),
-    )
-    .toBe(true);
-}
-
 test("web edge: page loads, same-origin API works, HMR websocket opens", async ({ page }) => {
   const wsUrls: string[] = [];
   const consoleErrors: string[] = [];
@@ -95,7 +79,7 @@ test("web edge: page loads, same-origin API works, HMR websocket opens", async (
   });
 
   await page.goto(`${BASE}/observers`, { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("button", { name: "气泡", exact: true })).toBeVisible();
+  await expect(page.getByLabel("现在的状态")).toBeVisible();
 
   await expect.poll(() => wsUrls.length, { timeout: 10_000 }).toBeGreaterThan(0);
   expect(wsUrls.some((u) => u.startsWith(BASE.replace(/^http/, "ws")))).toBe(true);
@@ -110,28 +94,19 @@ test("web edge: page loads, same-origin API works, HMR websocket opens", async (
   expect(viteWsErrors).toEqual([]);
 });
 
-test("web edge: a submitted Observation appears in all three views and opens its Observer", async ({
+test("web edge: a submitted Observation gets a row on the Observer page and opens its Observer", async ({
   page,
   request,
 }) => {
   const data = await seed(request);
   try {
-    for (const view of ["strip", "bubble", "ring"]) {
-      await page.goto(`${BASE}/observers?view=${view}`);
-      const mark = page.locator(`svg[data-view="${view}"] [data-key="${data.observerEntityId}"]`);
-      if (view === "strip") await expect(page.locator("svg [data-more], svg [data-key]").first()).toBeAttached();
-      if (view === "strip" && !(await mark.count())) await press(page, "svg [data-more]");
-      await expect(mark).toBeAttached();
-      await expect(mark.locator("title")).toHaveText(data.name);
-    }
-
-    await page.goto(`${BASE}/observers?view=strip`);
-    const lane = `svg[data-view="strip"] [data-key="${data.observerEntityId}"] rect`;
-    // 等视图画出来再数：没画出来时数到 0，会去点不存在的“另外 N 个”。
-    await expect(page.locator("svg [data-more], svg [data-key]").first()).toBeAttached();
-    if (!(await page.locator(lane).count())) await press(page, "svg [data-more]");
-    await press(page, lane);
-    await page.locator("footer").getByRole("link", { name: "打开实体" }).click();
+    await page.goto(`${BASE}/observers`);
+    const row = page.getByRole("listitem").filter({ hasText: data.name });
+    await expect(row).toContainText("今天 1 份");
+    await row.getByRole("button").click();
+    const panel = page.getByRole("region", { name: new RegExp(data.name) });
+    await expect(panel.getByRole("heading", { name: data.name })).toBeVisible();
+    await panel.getByRole("link", { name: "在检查器中打开 →" }).click();
     await expect(page.getByRole("heading", { name: data.name })).toBeVisible();
     await expect(page.getByRole("list", { name: "被引用" }).getByRole("link")).toHaveCount(1);
   } finally {

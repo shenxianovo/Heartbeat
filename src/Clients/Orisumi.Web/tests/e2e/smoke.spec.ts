@@ -14,6 +14,7 @@ async function emptyApi(page: Page) {
       if (pathname === "/api/observations" || pathname === "/api/entities") {
         return route.fulfill({ json: EMPTY_PAGE });
       }
+      if (pathname === "/api/observation-drafts") return route.fulfill({ json: { drafts: [] } });
       return route.fulfill({ status: 404, json: { title: "Not Found", status: 404 } });
     },
   );
@@ -52,9 +53,9 @@ test.describe("空状态", () => {
     await expect(page.getByText("今天还没有记录")).toBeVisible();
   });
 
-  test("Observer 页面今天没有 Observation", async ({ page }) => {
+  test("Observer 页面还没有 Observer", async ({ page }) => {
     await page.goto("/observers");
-    await expect(page.getByText("今天还没有记录")).toBeVisible();
+    await expect(page.getByText("还没有 Observer")).toBeVisible();
     await expect(page.getByText("0 个 Observer，0 个正在写入")).toBeVisible();
   });
 });

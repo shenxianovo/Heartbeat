@@ -6,7 +6,15 @@ import { thingColor } from "./roles";
 
 /** 解析过的一份经历。things 是内容引用的事物（例如本机应用）。 */
 export interface Experience {
-  observation: Version<Observation>;
+  /** Observation 的 EntityId。 */
+  observationId: string;
+  /** 已保存的当前版本。进行中、还没有保存过的时段只有草稿，这里为 null。 */
+  observation: Version<Observation> | null;
+  observerVersionId: string;
+  /** 进行中的时段：草稿最近一次更新的时刻。 */
+  draftAt: number | null;
+  /** 最近一次写入：草稿的更新时刻，或者保存时间。 */
+  writtenAt: number;
   content: Version | null;
   contentType: string;
   contentTypeName: string;
@@ -29,6 +37,8 @@ export interface Segment {
   observationId: string;
   contentEntityId: string | null;
   label: string;
+  /** 来自草稿，还在延长。 */
+  ongoing: boolean;
 }
 
 export interface Row {
@@ -76,9 +86,10 @@ export function summarize(
     const segment = (label: string): Segment => ({
       start: range[0],
       end: range[1],
-      observationId: experience.observation.entityId,
+      observationId: experience.observationId,
       contentEntityId: experience.content?.entityId ?? null,
       label,
+      ongoing: experience.draftAt !== null,
     });
     if (experience.things.length) {
       for (const { version, title, typeName } of experience.things) {
@@ -125,6 +136,20 @@ export function summarize(
     switches,
     thingTypes: [...new Set(thingRows.map((row) => row.typeName).filter(Boolean))],
   };
+}
+
+/**
+ * 组合已保存的经历和草稿：同一份 Observation 两者都有时，草稿接在当前版本之后，是较新的陈述，
+ * 取代它的时段，保留已保存的版本。
+ */
+export function withDrafts(saved: readonly Experience[], drafts: readonly Experience[]): Experience[] {
+  const byId = new Map(saved.map((e) => [e.observationId, e]));
+  const ongoing = drafts.map((draft) => {
+    const version = byId.get(draft.observationId)?.observation ?? null;
+    return version ? { ...draft, observation: version } : draft;
+  });
+  const replaced = new Set(drafts.map((d) => d.observationId));
+  return [...saved.filter((e) => !replaced.has(e.observationId)), ...ongoing];
 }
 
 type Thing = Experience["things"][number];

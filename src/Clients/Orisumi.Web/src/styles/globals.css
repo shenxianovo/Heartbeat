@@ -146,6 +146,7 @@
 
 /*
   动效只用在说明空间关系的地方：面板从右边滑入，内容从下方浮现。时长 150–250ms，只用 ease-out。
+  唯一的循环动画是正在写入的 Observer 末尾的心跳。
   系统开启“减少动态效果”时全部关掉。
 */
 @keyframes panel-in {
@@ -169,6 +170,19 @@
   }
 }
 
+/* 正在写入的 Observer，时间轴末尾的点像心跳一样跳动。 */
+@keyframes beat {
+  0%,
+  100% {
+    scale: 1;
+    opacity: 1;
+  }
+  50% {
+    scale: 1.6;
+    opacity: 0.35;
+  }
+}
+
 @layer components {
   .panel-enter {
     animation: panel-in 220ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -181,6 +195,12 @@
   /* 弹出层和拖动时的落点从触发它的位置浮现。 */
   .pop {
     animation: pop 160ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .beat {
+    animation: beat 1s ease-in-out infinite;
   }
 }
 

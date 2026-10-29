@@ -8,6 +8,7 @@ import { Card, Message } from "@/components/ui";
 import { productGroup, useCatalog } from "@/hooks/useApplications";
 import { useDay } from "@/hooks/useDay";
 import { useNow } from "@/hooks/useNow";
+import { ACTIVE_WINDOW } from "@/lib/activity";
 import { groupThings, summarize, type Experience, type Row } from "@/lib/day";
 import { differences } from "@/lib/roles";
 import { dayOf, dayRange, dayTitle, duration, MINUTE } from "@/lib/time";
@@ -23,9 +24,6 @@ export const Route = createFileRoute("/")({
   component: DayPage,
 });
 
-/** 一个仍在延长的时段，最后一次写入在这么久以内时画到现在。 */
-const ONGOING = 20_000;
-
 /** 日：那一天在用什么、用了多久。左边是排行，右边是时间线；点任何东西都在右边推出它的面板。 */
 function DayPage() {
   const search = Route.useSearch();
@@ -39,11 +37,8 @@ function DayPage() {
 
   const experiences = useMemo<Experience[]>(() => {
     // 各设备上的同一款软件按应用产品合并成一行。
-    const list = catalog.data ? groupThings(day.data?.experiences ?? [], productGroup(catalog.data)) : [];
-    if (!today) return list;
-    // 今天还在延长的时段画到现在，最后一段跟着时间慢慢变长。
-    return list.map((e) => (now - e.end < ONGOING && e.end <= now ? { ...e, end: now } : e));
-  }, [day.data, catalog.data, today, now]);
+    return catalog.data ? groupThings(day.data?.experiences ?? [], productGroup(catalog.data)) : [];
+  }, [day.data, catalog.data]);
   const summary = useMemo(
     () => summarize(experiences, day.data?.points ?? [], range.start, range.end),
     [experiences, day.data, range.start, range.end],
@@ -67,13 +62,11 @@ function DayPage() {
 
   const total = summary.things.reduce((sum, row) => sum + row.total, 0);
   const current = today
-    ? summary.things.find((row) => row.segments.some((s) => s.end >= now - 1000 && s.start <= now))
+    ? summary.things.find((row) => row.segments.some((s) => s.ongoing && now - s.end < ACTIVE_WINDOW))
     : undefined;
   const writing = today
     ? new Set(
-        (day.data?.experiences ?? [])
-          .filter((e) => now - Date.parse(e.observation.recordedAt) < 60_000)
-          .map((e) => e.observerEntityId),
+        (day.data?.experiences ?? []).filter((e) => now - e.writtenAt < ACTIVE_WINDOW).map((e) => e.observerEntityId),
       ).size
     : 0;
 

@@ -45,6 +45,19 @@ export function useReferrers(entityId: string | null) {
   });
 }
 
+export const DRAFT_INTERVAL = 2_000;
+
+/** 后端暂存的全部观测草稿，每 2 秒刷新。日页面、面板和 Observer 页面共用。 */
+export function useDrafts(enabled = true) {
+  const source = useSource();
+  return useQuery({
+    queryKey: ["observation-drafts"],
+    queryFn: () => source.listObservationDrafts().then((list) => list.drafts),
+    refetchInterval: DRAFT_INTERVAL,
+    enabled,
+  });
+}
+
 export type EntityFilter = Pick<ListEntitiesQuery, "category" | "resourceName">;
 
 export const COUNT_LIMIT = 100;

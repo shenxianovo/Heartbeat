@@ -1,83 +1,145 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import type { ObservationDraft } from "@/api/types";
 import { observation } from "@/test/fixtures";
-import { ActivityStore, hourly, isActive, type ObserverActivity, type Segment } from "./activity";
-import type { ObserverIdentity } from "./observers";
-import { HOUR, SECOND } from "./time";
+import { isActive, observerRows, union, type ActivityInput } from "./activity";
+import { observerIdentity, UNREADABLE_IDENTITY, type ObserverIdentity } from "./observers";
+import { MINUTE, SECOND } from "./time";
 
 const now = Date.parse("2026-10-25T06:00:00.000Z");
 const at = (offset: number) => new Date(now + offset).toISOString();
 
-function store(): ActivityStore {
-  return new ActivityStore(async (versionId): Promise<ObserverIdentity> => ({
-    key: versionId === "b-v1" ? "b" : "a",
-    entityId: versionId === "b-v1" ? "b" : "a",
-    typeName: versionId === "b-v1" ? "设备状态" : "前台状态",
-    resourceName: "foreground-state-observers",
-    category: "desktop",
-  }));
+const foreground = observerIdentity("fg", "前台状态 Observer", "foreground-state-observers");
+const identity = observerIdentity("id", "应用识别 Observer", "application-identity-observers");
+const versions: Record<string, ObserverIdentity> = {
+  "fg-v1": foreground,
+  "fg-v2": foreground,
+  "id-v1": identity,
+  gone: UNREADABLE_IDENTITY,
+};
+
+function input(overrides: Partial<ActivityInput> = {}): ActivityInput {
+  return {
+    observers: [foreground, identity],
+    timedTypes: new Set(["foreground-state-observers"]),
+    identityOf: (versionId) => versions[versionId],
+    timed: [],
+    recorded: [],
+    drafts: [],
+    now,
+    ...overrides,
+  };
 }
 
-describe("ActivityStore", () => {
-  it("按 Observer 实体归并 Observation 和写入，同一实体的不同版本算一个 Observer", async () => {
-    const activity = store();
-    activity.ingestToday(
-      [
-        observation({ recordedAt: at(-5 * SECOND), content: { observerVersionId: "a-v1" } }),
-        observation({ recordedAt: at(-2 * 3600 * SECOND), content: { observerVersionId: "a-v2" } }),
-        observation({ recordedAt: at(-30 * SECOND), content: { observerVersionId: "b-v1" } }),
-      ],
-      now,
-    );
-    await vi.waitFor(() => expect(activity.snapshot(now).observers).toHaveLength(2));
+function draft(observerVersionId: string, startAt: string, endAt: string, updatedAt: string): ObservationDraft {
+  const { entityId, content } = observation({ content: { observerVersionId, startAt, endAt } });
+  return { entityId, previousVersionId: null, sequence: 1, updatedAt, content };
+}
 
-    const snapshot = activity.snapshot(now);
-    const a = snapshot.observers.find((o) => o.key === "a")!;
-    expect(a.name).toBe("前台状态");
-    expect(a.observationCount).toBe(2);
-    expect(a.writes).toEqual([now - 5 * SECOND]);
-    expect(a.lastActivityAt).toBe(now - 5 * SECOND);
-    expect(snapshot.observationCount).toBe(3);
+describe("observerRows", () => {
+  it("列出的 Observer 今天没有写入也有一行", () => {
+    const rows = observerRows(input());
+    expect(rows.map((r) => [r.name, r.count, r.lastAt])).toEqual([
+      ["前台状态 Observer", 0, 0],
+      ["应用识别 Observer", 0, 0],
+    ]);
   });
 
-  it("“现在”的结果合并进今天的数据，并记下新的写入", async () => {
-    const activity = store();
-    const first = observation({ recordedAt: at(-90 * SECOND), content: { observerVersionId: "a-v1" } });
-    activity.ingestToday([first], now);
-    activity.ingestLive([{ ...first, versionId: "next", recordedAt: at(-1 * SECOND) }], now);
-    await vi.waitFor(() => expect(activity.snapshot(now + 1).observers).toHaveLength(1));
+  it("写有事实时间的 Observer 按事实时间画，结束未知的时段画到现在；同一实体的不同版本算一个 Observer", () => {
+    const rows = observerRows(
+      input({
+        timed: [
+          observation({
+            recordedAt: at(-30 * MINUTE),
+            content: { observerVersionId: "fg-v1", startAt: at(-60 * MINUTE), endAt: at(-30 * MINUTE) },
+          }),
+          observation({
+            recordedAt: at(-5 * MINUTE),
+            content: { observerVersionId: "fg-v2", startAt: at(-5 * MINUTE), endAt: null },
+          }),
+        ],
+      }),
+    );
+    const row = rows.find((r) => r.key === "fg")!;
+    expect(row.basis).toBe("fact");
+    expect(row.count).toBe(2);
+    expect(row.spans).toEqual([
+      { start: now - 60 * MINUTE, end: now - 30 * MINUTE },
+      { start: now - 5 * MINUTE, end: now },
+    ]);
+    expect(row.ticks).toEqual([]);
+    expect(row.lastAt).toBe(now - 5 * MINUTE);
+  });
 
-    const a = activity.snapshot(now + 2 * SECOND).observers[0]!;
-    expect(a.observationCount).toBe(1);
-    expect(a.writes).toEqual([now - 90 * SECOND, now - 1 * SECOND]);
-    expect(a.seen.at(-1)).toBe(now);
-    expect(isActive(a, now)).toBe(true);
-    expect(isActive(a, now + 61 * SECOND)).toBe(false);
+  it("只知道一个边界的 Observation 是一道刻度", () => {
+    const rows = observerRows(
+      input({
+        timed: [observation({ content: { observerVersionId: "fg-v1", startAt: null, endAt: at(-MINUTE) } })],
+      }),
+    );
+    expect(rows.find((r) => r.key === "fg")!.ticks).toEqual([now - MINUTE]);
+  });
+
+  it("只写事实时间未知的陈述的 Observer 按保存时间画，Observation 来自引用方", () => {
+    const rows = observerRows(
+      input({
+        recorded: [
+          observation({
+            recordedAt: at(-18 * MINUTE),
+            content: { observerVersionId: "id-v1", startAt: null, endAt: null },
+          }),
+        ],
+      }),
+    );
+    const row = rows.find((r) => r.key === "id")!;
+    expect(row.basis).toBe("recorded");
+    expect(row.ticks).toEqual([now - 18 * MINUTE]);
+    expect(row.count).toBe(1);
+  });
+
+  it("草稿接在后面，最近 60 秒内更新过的 Observer 算正在写入，排在前面", () => {
+    const rows = observerRows(
+      input({
+        recorded: [observation({ recordedAt: at(-MINUTE * 2), content: { observerVersionId: "id-v1" } })],
+        drafts: [draft("fg-v1", at(-9 * MINUTE), at(-SECOND), at(-SECOND))],
+      }),
+    );
+    expect(rows[0]!.key).toBe("fg");
+    expect(rows[0]!.draft).toMatchObject({ start: now - 9 * MINUTE, end: now - SECOND, updatedAt: now - SECOND });
+    expect(isActive(rows[0]!, now)).toBe(true);
+    expect(isActive(rows[0]!, now + 61 * SECOND)).toBe(false);
+    expect(isActive(rows[1]!, now)).toBe(false);
+  });
+
+  it("读不到 Observer 版本的 Observation 合成一行不可读取；还没解析的暂不计入", () => {
+    const rows = observerRows(
+      input({
+        timed: [
+          observation({ content: { observerVersionId: "gone" } }),
+          observation({ content: { observerVersionId: "gone" } }),
+          observation({ content: { observerVersionId: "pending" } }),
+        ],
+      }),
+    );
+    expect(rows.map((r) => [r.name, r.count])).toContainEqual(["不可读取", 2]);
+    expect(rows).toHaveLength(3);
   });
 });
 
-describe("hourly", () => {
-  const dayStart = Date.parse("2026-10-24T16:00:00.000Z");
-  const segment = (start: number | null, end: number | null): Segment => ({
-    entityId: "o",
-    start: start === null ? null : dayStart + start,
-    end: end === null ? null : dayStart + end,
-    recordedAt: dayStart,
-  });
-  const withSegments = (segments: Segment[]) => [{ segments } as ObserverActivity];
-
-  it("跨小时的 Observation 在经过的每个小时各算一次，正好结束在整点的不算下一小时", () => {
-    const hours = hourly(withSegments([segment(1.5 * HOUR, 3 * HOUR)]), dayStart);
-    expect(hours.slice(0, 4)).toEqual([0, 1, 1, 0]);
-  });
-
-  it("只知道一个边界的算在那个小时，超出今天的截到首尾", () => {
-    const hours = hourly(
-      withSegments([segment(null, 5.2 * HOUR), segment(-2 * HOUR, 0.5 * HOUR), segment(23.5 * HOUR, 26 * HOUR)]),
-      dayStart,
-    );
-    expect(hours[5]).toBe(1);
-    expect(hours[0]).toBe(1);
-    expect(hours[23]).toBe(1);
-    expect(hours.reduce((a, b) => a + b, 0)).toBe(3);
+describe("union", () => {
+  it("合并重叠和间隔不超过 gap 的时段", () => {
+    expect(
+      union(
+        [
+          { start: 10, end: 20 },
+          { start: 0, end: 12 },
+          { start: 21, end: 30 },
+          { start: 40, end: 50 },
+        ],
+        1,
+      ),
+    ).toEqual([
+      { start: 0, end: 30 },
+      { start: 40, end: 50 },
+    ]);
   });
 });

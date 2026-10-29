@@ -9,7 +9,7 @@ Orisumi.Web 是 Orisumi 的 Web 控制台，只在本机使用。页面和视图
 | `/?date=`                      | [日](../../Docs/Orisumi.Docs/content/docs/clients/web.mdx#day)                                |
 | `/entities?type=`              | [实体](../../Docs/Orisumi.Docs/content/docs/clients/web.mdx#entities)：类型图和每个类型的实体 |
 | `/entities/$entityId?version=` | 实体页：内容、引用、版本和删除                                                                |
-| `/observers?view=`             | [Observer](../../Docs/Orisumi.Docs/content/docs/clients/web.mdx#observers)                    |
+| `/observers`                   | [Observer](../../Docs/Orisumi.Docs/content/docs/clients/web.mdx#observers)                    |
 | `/applications`                | [应用](../../Docs/Orisumi.Docs/content/docs/clients/web.mdx#applications)                     |
 | `/versions/$versionId`         | 读取版本后跳到所属实体，并选中这个版本                                                        |
 
@@ -69,7 +69,7 @@ npm run test:e2e    # Playwright，自动启动开发服务器，用路由拦截
 `npm run test:e2e:edge` 经本地环境的 Web 入口用真实数据检查页面：
 
 - 页面、同源 `/api` 和 HMR WebSocket。
-- 提交一个 Observer 和一份 Observation，确认它出现在 Observer 页面的三种视图中，并能打开它的 Observer。
+- 提交一个 Observer 和一份 Observation，确认它在 Observer 页面有一行，点这一行能打开它的面板。
 - 写入一个事物和引用它的时段，检查日页面的排行、两层面板、Esc 和类型图。
 
 结束后删除这些实体。先运行 `orisumi env up web`；用 `--temp` 时测试数据留在临时卷中。入口不是 8081 时，用 `WEB_URL` 指定。

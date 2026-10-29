@@ -1,175 +1,156 @@
-import type { Observation, Version } from "@/api/types";
-import type { CategoryKey } from "./categories";
+import type { Observation, ObservationDraft, Version } from "@/api/types";
 import { nameObservers, type ObserverIdentity } from "./observers";
-import { HOUR, MINUTE, parseTime, SECOND } from "./time";
-import { detectWrites, pruneWrites, type WriteEvent } from "./writes";
+import { MINUTE, parseTime } from "./time";
 
+/** 最近 60 秒内保存过 Observation 或更新过草稿的 Observer 算正在写入。 */
 export const ACTIVE_WINDOW = MINUTE;
+/** 时间轴末尾放大的一段。 */
+export const LENS = 10 * MINUTE;
 
-/** 表盘上的一段：一份 Observation 的已知边界。 */
-export interface Segment {
+/** 一行按哪种时间画：写有事实时间的 Observer 按事实时间，只写事实时间未知的陈述的按保存时间。 */
+export type TimeBasis = "fact" | "recorded";
+
+export interface Span {
+  start: number;
+  end: number;
+}
+
+/** 一份草稿的事实边界。只知道一个边界时 start 和 end 相同。 */
+export interface DraftSpan extends Span {
   entityId: string;
-  start: number | null;
-  end: number | null;
-  recordedAt: number;
+  contentVersionId: string;
+  updatedAt: number;
 }
 
-export interface ObserverActivity {
+export interface ObserverRow {
+  identity: ObserverIdentity;
   key: string;
-  entityId: string | null;
   name: string;
-  category: CategoryKey;
-  /** 最近 10 分钟的写入时刻，升序。 */
-  writes: number[];
-  /** 与 writes 一一对应的发现时刻。 */
-  seen: number[];
-  lastSeenAt: number;
-  lastActivityAt: number;
-  observationCount: number;
-  segments: Segment[];
+  basis: TimeBasis;
+  /** 按事实时间的时段。 */
+  spans: Span[];
+  /** 按事实时间的时间点，或者按保存时间的每份 Observation。 */
+  ticks: number[];
+  draft: DraftSpan | null;
+  /** 今天的 Observation 数。 */
+  count: number;
+  /** 最近一次保存 Observation 或更新草稿的时刻，今天没有写入时为 0。 */
+  lastAt: number;
 }
 
-export interface ActivitySnapshot {
-  revision: number;
-  observers: ObserverActivity[];
-  observationCount: number;
+export interface ActivityInput {
+  /** 列出的全部 Observer 实体。 */
+  observers: ObserverIdentity[];
+  timedTypes: ReadonlySet<string>;
+  /** Observer 版本解析出的 Observer。还没解析的返回 undefined，这些 Observation 暂不计入。 */
+  identityOf: (observerVersionId: string) => ObserverIdentity | undefined;
+  /** 事实时间在今天的 Observation。 */
+  timed: Version<Observation>[];
+  /** 只写事实时间未知的陈述的 Observer 今天保存的 Observation。 */
+  recorded: Version<Observation>[];
+  drafts: ObservationDraft[];
+  now: number;
 }
 
-export function isActive(observer: ObserverActivity, now: number): boolean {
-  return now - observer.lastActivityAt < ACTIVE_WINDOW;
-}
-
-/**
- * 汇总今天的 Observation 和最近 10 分钟的写入。
- * 轮询结果交给 ingestToday / ingestLive，视图每帧读 snapshot()。
- */
-export class ActivityStore {
-  private readonly today = new Map<string, Version<Observation>>();
-  private readonly known = new Map<string, string>();
-  private writes: WriteEvent[] = [];
-  private readonly identities = new Map<string, ObserverIdentity>();
-  private readonly pending = new Set<string>();
-  private readonly listeners = new Set<() => void>();
-  private cached: ActivitySnapshot | null = null;
-  private cachedAt = 0;
-  /** 今天的数据第一次读到之前，发现的写入都算打开页面前已有的写入。 */
-  private seeded = false;
-  private revision = 0;
-  private readonly resolve: (versionId: string) => Promise<ObserverIdentity>;
-
-  constructor(resolve: (versionId: string) => Promise<ObserverIdentity>) {
-    this.resolve = resolve;
+/** 合并重叠或间隔不超过 gap 的时段，画出来是连续的一段。 */
+export function union(spans: Span[], gap = 0): Span[] {
+  const sorted = [...spans].sort((a, b) => a.start - b.start);
+  const merged: Span[] = [];
+  for (const span of sorted) {
+    const last = merged.at(-1);
+    if (last && span.start - last.end <= gap) last.end = Math.max(last.end, span.end);
+    else merged.push({ ...span });
   }
+  return merged;
+}
 
-  subscribe = (listener: () => void): (() => void) => {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
+export function isActive(row: ObserverRow, now: number): boolean {
+  return row.lastAt > 0 && now - row.lastAt < ACTIVE_WINDOW;
+}
+
+function basisOf(identity: ObserverIdentity, timedTypes: ReadonlySet<string>): TimeBasis {
+  if (!identity.entityId) return "fact";
+  return identity.resourceName && timedTypes.has(identity.resourceName) ? "fact" : "recorded";
+}
+
+/** 每个 Observer 一行。正在写入的排在前面，其余按最近一次写入排列。 */
+export function observerRows(input: ActivityInput): ObserverRow[] {
+  const { now } = input;
+  const rows = new Map<string, Omit<ObserverRow, "name">>();
+  const row = (identity: ObserverIdentity) => {
+    let entry = rows.get(identity.key);
+    if (!entry) {
+      entry = {
+        identity,
+        key: identity.key,
+        basis: basisOf(identity, input.timedTypes),
+        spans: [],
+        ticks: [],
+        draft: null,
+        count: 0,
+        lastAt: 0,
+      };
+      rows.set(identity.key, entry);
+    }
+    return entry;
+  };
+  const saved = (entry: Omit<ObserverRow, "name">, observation: Version<Observation>) => {
+    entry.count += 1;
+    entry.lastAt = Math.max(entry.lastAt, Math.min(parseTime(observation.recordedAt) ?? now, now));
   };
 
-  getRevision = (): number => this.revision;
+  for (const identity of input.observers) row(identity);
 
-  /** 今天的完整结果：替换今天的数据。 */
-  ingestToday(versions: Version<Observation>[], now: number): void {
-    this.today.clear();
-    for (const version of versions) this.today.set(version.entityId, version);
-    this.record(versions, now);
-    this.seeded = true;
+  for (const observation of input.timed) {
+    const identity = input.identityOf(observation.content.observerVersionId);
+    if (!identity) continue;
+    const entry = row(identity);
+    // 按保存时间画的 Observer，Observation 全部从引用方读出。
+    if (entry.basis !== "fact") continue;
+    saved(entry, observation);
+    const start = parseTime(observation.content.startAt);
+    const end = parseTime(observation.content.endAt);
+    if (start !== null && (end === null || end > start)) entry.spans.push({ start, end: end ?? now });
+    else if (start !== null || end !== null) entry.ticks.push((start ?? end)!);
   }
 
-  /** “现在”窗口的结果：合并进今天的数据。 */
-  ingestLive(versions: Version<Observation>[], now: number): void {
-    for (const version of versions) this.today.set(version.entityId, version);
-    this.record(versions, now);
+  for (const observation of input.recorded) {
+    const identity = input.identityOf(observation.content.observerVersionId);
+    if (!identity) continue;
+    const entry = row(identity);
+    if (entry.basis !== "recorded") continue;
+    saved(entry, observation);
+    entry.ticks.push(Math.min(parseTime(observation.recordedAt) ?? now, now));
   }
 
-  snapshot(now: number): ActivitySnapshot {
-    // 没有新数据时每秒重算一次，让超过 10 分钟的写入移出。
-    if (this.cached && this.cached.revision === this.revision && now - this.cachedAt < SECOND) return this.cached;
-    this.cachedAt = now;
-    this.writes = pruneWrites(this.writes, now);
-
-    const groups = new Map<
-      string,
-      { identity: ObserverIdentity; versions: Version<Observation>[]; writes: WriteEvent[] }
-    >();
-    const group = (observerVersionId: string) => {
-      const identity = this.identities.get(observerVersionId);
-      if (!identity) return null;
-      let entry = groups.get(identity.key);
-      if (!entry) {
-        entry = { identity, versions: [], writes: [] };
-        groups.set(identity.key, entry);
-      }
-      return entry;
+  for (const draft of input.drafts) {
+    const identity = input.identityOf(draft.content.observerVersionId);
+    if (!identity) continue;
+    const entry = row(identity);
+    const updatedAt = Math.min(parseTime(draft.updatedAt) ?? now, now);
+    if (entry.draft && entry.draft.updatedAt >= updatedAt) continue;
+    const start = parseTime(draft.content.startAt);
+    const end = parseTime(draft.content.endAt);
+    const from = start ?? end ?? updatedAt;
+    entry.draft = {
+      entityId: draft.entityId,
+      contentVersionId: draft.content.contentVersionId,
+      start: from,
+      end: Math.max(from, end ?? (start !== null ? updatedAt : from)),
+      updatedAt,
     };
-    for (const version of this.today.values()) group(version.content.observerVersionId)?.versions.push(version);
-    for (const write of this.writes) group(write.observerVersionId)?.writes.push(write);
-
-    const names = nameObservers([...groups.values()].map((g) => g.identity));
-    const observers = [...groups.values()].map(({ identity, versions, writes }): ObserverActivity => {
-      const segments = versions.map((v) => ({
-        entityId: v.entityId,
-        start: parseTime(v.content.startAt),
-        end: parseTime(v.content.endAt),
-        recordedAt: Math.min(parseTime(v.recordedAt) ?? now, now),
-      }));
-      writes.sort((a, b) => a.at - b.at);
-      return {
-        key: identity.key,
-        entityId: identity.entityId,
-        name: names.get(identity.key) ?? identity.key,
-        category: identity.category,
-        writes: writes.map((w) => w.at),
-        seen: writes.map((w) => w.seenAt),
-        lastSeenAt: Math.max(0, ...writes.map((w) => w.seenAt)),
-        lastActivityAt: Math.max(0, writes.at(-1)?.at ?? 0, ...segments.map((s) => s.recordedAt)),
-        observationCount: versions.length,
-        segments,
-      };
-    });
-
-    this.cached = { revision: this.revision, observers, observationCount: this.today.size };
-    return this.cached;
+    entry.lastAt = Math.max(entry.lastAt, updatedAt);
   }
 
-  private record(versions: Version<Observation>[], now: number): void {
-    const writes = detectWrites(this.known, versions, now, !this.seeded);
-    if (writes.length) this.writes = pruneWrites([...this.writes, ...writes], now).sort((a, b) => a.at - b.at);
-    for (const version of versions) this.ensureIdentity(version.content.observerVersionId);
-    this.changed();
-  }
-
-  private ensureIdentity(versionId: string): void {
-    if (this.identities.has(versionId) || this.pending.has(versionId)) return;
-    this.pending.add(versionId);
-    this.resolve(versionId)
-      .then((identity) => {
-        this.identities.set(versionId, identity);
-        this.changed();
-      })
-      .catch(() => {
-        // 网络错误时留到下一次轮询再试。
-      })
-      .finally(() => this.pending.delete(versionId));
-  }
-
-  private changed(): void {
-    this.revision += 1;
-    for (const listener of this.listeners) listener();
-  }
-}
-
-/** 今天每个小时内有多少份 Observation，按事实时间。只知道一个边界的算在那个时刻所在的小时。 */
-export function hourly(observers: ObserverActivity[], dayStart: number): number[] {
-  const hours = Array.from({ length: 24 }, () => 0);
-  for (const observer of observers) {
-    for (const segment of observer.segments) {
-      const start = segment.start ?? segment.end!;
-      const end = segment.end ?? segment.start!;
-      const first = Math.max(0, Math.floor((start - dayStart) / HOUR));
-      const last = Math.min(23, Math.floor((Math.max(start, end - 1) - dayStart) / HOUR));
-      for (let hour = first; hour <= last; hour++) hours[hour]! += 1;
-    }
-  }
-  return hours;
+  const list = [...rows.values()];
+  const names = nameObservers(list.map((r) => r.identity));
+  return list
+    .map((r) => ({ ...r, name: names.get(r.key) ?? r.key }))
+    .sort(
+      (a, b) =>
+        Number(isActive(b, now)) - Number(isActive(a, now)) ||
+        b.lastAt - a.lastAt ||
+        a.name.localeCompare(b.name, "zh") ||
+        a.key.localeCompare(b.key),
+    );
 }

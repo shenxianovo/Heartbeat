@@ -82,7 +82,7 @@ export function Button({
   onClick?: () => void;
   danger?: boolean;
   type?: "button" | "submit";
-  disabled?: boolean;
+  disabled?: boolean | undefined;
 }) {
   return (
     <button

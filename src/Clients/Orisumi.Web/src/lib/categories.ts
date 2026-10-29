@@ -20,6 +20,8 @@ export const CATEGORIES: readonly CategoryInfo[] = [
 /** 接入新的 Observer 时在这里加一行。 */
 const BY_RESOURCE_NAME: Record<string, CategoryKey> = {
   "foreground-state-observers": "desktop",
+  "application-identity-observers": "inference",
+  users: "you",
 };
 
 export function categoryOf(resourceName: string | null | undefined): CategoryKey {
