@@ -33,6 +33,11 @@ flowchart LR
   O2 -->|本地交接| R
   R -->|提交| B[后端]
   R -->|读取| B
+  click C "/clients/macos"
+  click R "/clients/runtime"
+  click O1 "/observers/foreground-state"
+  click O2 "/observers"
+  click B "/api"
 ```
 
 ### 安装与卸载 [#install]
@@ -90,4 +95,5 @@ API 不可用时，客户端显示本地的数据，并标明可能不完整。
 - 官方目录和安装包的托管位置；各平台的签名与分发验证。
 - 后端删除或修复数据后，本地的数据怎样显示。
 - 系统权限的引导、用户登录、本地数据的清理。
+- 设置里换了 API 地址、数据目录不变时，数据目录里待发送的版本怎样处理。
 - Android 上 Observer 怎样安装、在后台运行、与客户端通信。

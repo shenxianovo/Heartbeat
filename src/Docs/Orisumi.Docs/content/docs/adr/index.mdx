@@ -51,6 +51,7 @@ ADR 用英文 slug 命名，例如 `entity-model.mdx`，没有编号。引用时
 | Backend | [实体存储](./entity-storage.mdx) | 所有版本以 jsonb 保存在一张表中，查询走以类型开头的索引，删除留下墓碑，所有操作串行执行 |
 | Clients | [Runtime 与进程托管](./observer-runtime.mdx) | 客户端启动一个 Runtime，Runtime 启动各 Observer 的进程，经标准输入输出双向通信；实例身份和本地数据由 Runtime 保管，与程序文件分开 |
 | Clients | [设备端客户端](./device-client.mdx) | 原生客户端通过 Runtime 托管本机的 Observer：从官方目录单独安装 ZIP 包，启停、更新和有限重启；专用视图原生实现，随客户端发布；陈述由各 Observer 负责 |
+| Observers | [应用识别](./application-identity.mdx) | 应用产品按跨设备线索聚合各设备上的本机应用；服务端的应用识别 Observer 用模型认出新线索，用户在 Web 中修改 |
 | Verification | [开发验证与测试证据](./verification.mdx) | Orisumi.Dev 组织验证并保存证据，原生测试报告是测试结果的权威来源 |
 | Verification | [开发环境的启动与隔离](./development-environment.mdx) | Orisumi.Dev 是启动环境的统一入口，每个检出目录运行一套环境，数据卷可选，服务按需启动 |
 | Verification | [文档站的发布](./documentation-publishing.mdx) | 文档站构建为静态文件，GitHub Actions 从 main 构建并发布到 GitHub Pages，测试报告随发布固定 |

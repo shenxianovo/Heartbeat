@@ -28,7 +28,9 @@ export function ObserverStructure({ node }: { node: NodeId }) {
   const chart = [
     'flowchart LR',
     `SELF["${current.label}"]:::entity`,
+    `click SELF "${current.path}"`,
   ];
+  const schemaPath = 'schemaPath' in current ? current.schemaPath : undefined;
 
   for (const id of current.interfaces) {
     const contract = contracts.nodes[id as ContractId];
@@ -41,6 +43,7 @@ export function ObserverStructure({ node }: { node: NodeId }) {
   for (const id of current.fields) {
     const field = model.fields[id as FieldId];
     chart.push(`F_${id}["${field.label}"]:::field`, `SELF --- F_${id}`);
+    if (schemaPath) chart.push(`click F_${id} "${schemaPath}"`);
   }
   chart.push(
     'classDef capability fill:#E8F1FF,stroke:#376BB0,color:#183A64',

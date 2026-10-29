@@ -1,0 +1,73 @@
+---
+title: "Application Product"
+description: "用户认知中的一款软件，以及属于它的跨设备线索"
+---
+
+应用产品表示用户认知中的一款软件，例如 QQ。各设备、各平台上的 QQ 安装都是本机应用，它们按跨设备线索归到 QQ 这个产品，规则见 [Application Identity · 归属](./index.mdx#membership)。
+
+应用产品由应用识别 Observer 或用户本人写入，每个版本由一份 Observation 陈述，见 [Application Identity · 写入](./index.mdx#writes)。
+
+<ObserverStructure node="APPLICATION_PRODUCT" />
+
+## 粒度 [#granularity]
+
+一个实体对应一款软件。应用识别 Observer 把下面的标准交给模型，用户修改时也按它判断：
+
+| 情况 | 产品 |
+| --- | --- |
+| 同一款软件在不同平台上的版本，例如 macOS 和 Android 上的 QQ | 同一个 |
+| 版本升级、不同的 CPU 架构、商店版和官网版 | 同一个 |
+| 软件改名后仍是原来那款 | 同一个，产品改名 |
+| 名称相同、出自同一家公司或功能相近 | 按实际是不是同一款软件判断 |
+| 轻量版、国际版、分叉版本 | 按实际关系判断 |
+
+## 身份 [#identity]
+
+| 变化 | 身份 |
+| --- | --- |
+| 应用识别 Observer 认出一款新的软件 | 新建 |
+| 用户把线索移到一个新产品 | 新建 |
+| 产品加入或移出一条线索 | 沿用，形成新版本 |
+| 产品改名 | 沿用，形成新版本 |
+| 用户合并两个产品 | 保留一个，把另一个的线索移过来，再删除另一个 |
+
+名称不参与身份，EntityId 由写入方生成。
+
+## 引用 [#references]
+
+应用产品没有引用。本机应用按线索的值归属到它，见 [Application Identity · 归属](./index.mdx#membership)。
+
+## 事实时间 [#fact-time]
+
+陈述应用产品的 Observation 的 `startAt`、`endAt` 和 `timeZone` 都是 `null`，见 [Application Identity · 写入](./index.mdx#writes)。
+
+## EntitySchema [#schema]
+
+| 项目 | 值 |
+| --- | --- |
+| SchemaId | `019e1bbb-ec00-7000-8000-000000000004` |
+| 显示名称 | 应用产品 |
+| 说明 | 表示用户认知中的一款软件，保存它的名称和属于它的跨设备线索；本机应用的跨设备线索出现在哪个产品中，就属于哪个产品。 |
+| 资源名 | `application-products` |
+
+| 字段 | 类型 | 必填 | 可空 | description |
+| --- | --- | --- | --- | --- |
+| `name` | `string` | 是 | 否 | 产品的名称 |
+| `identifiers` | `array` | 是 | 否 | 属于这个产品的跨设备线索，顺序无意义；没有线索时为 `[]` |
+| `identifiers[]` | `object` | 不适用 | 否 | 一项跨设备线索，由 scheme 和 value 共同解释，与本机应用的标识线索相同 |
+| `identifiers[].scheme` | `string` | 是 | 否 | 线索的种类，例如 macos.bundle-id |
+| `identifiers[].value` | `string` | 是 | 否 | 线索的原始值 |
+
+## 示例 [#example]
+
+QQ 在 macOS 和 Android 上各有一条线索：
+
+```json
+{
+  "name": "QQ",
+  "identifiers": [
+    { "scheme": "macos.bundle-id", "value": "com.tencent.qq" },
+    { "scheme": "android.package-name", "value": "com.tencent.mobileqq" }
+  ]
+}
+```

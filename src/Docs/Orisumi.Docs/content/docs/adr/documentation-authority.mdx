@@ -148,6 +148,17 @@ flowchart TD
   MT[模型测试] -.->|依据| CORE
   CASE[Case 与集成测试] -.->|依据| L2
   CHK[存储测试与构建] -.->|依据| IMPL
+
+  click CORE "/core"
+  click GLO "/core/glossary"
+  click OAS "/api"
+  click APIDOC "/api"
+  click STO "/storage"
+  click OBS "/observers"
+  click CLI "/clients"
+  click MT "/testing#model"
+  click CASE "/testing#cases"
+  click CHK "/testing"
 ```
 
 实线是设计约束，虚线是检查与它依据的要求。ADR 按决定的内容分布在三层中，图中没有单独画出。
@@ -161,6 +172,11 @@ flowchart LR
   D -- 否 --> P
   P --> V[验证并收口]
   P -. 做法不成立 .-> D
+  click G "#forward"
+  click S "#forward"
+  click A "#confirmation"
+  click P "#forward"
+  click V "#verification"
 ```
 
 ## 理由 [#rationale]

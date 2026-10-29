@@ -1,0 +1,7 @@
+{
+  "title": "Application Identity",
+  "defaultOpen": false,
+  "collapsible": true,
+  "pagesIndex": "index",
+  "pages": ["---Business Types---", "application-identity-observer", "application-product"]
+}

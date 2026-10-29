@@ -65,7 +65,7 @@ description: "接入新来源时，依次确定事实、Observer、实体、Enti
 
 在 Observer 页写明用的是哪个 SDK、哪种策略，并链接 [Submission](./submission/index.mdx)。SDK 负责本地保存、发送、确认和恢复；事实判断、业务对象的身份和历史保留由 Observer 的业务代码负责。
 
-在设备上运行的 Observer 由设备端客户端托管。为每个支持的平台构建一个安装包，见 [Clients · Packages](../clients/packages.mdx)；进程怎样启动、停止和恢复，见 [Runtime · 进程](../clients/runtime.mdx#process)。
+在设备上运行的 Observer 由设备端客户端托管。在服务端依据全部已保存数据形成观测的 Observer 直接调用 API，例如[应用识别 Observer](./application-identity/index.mdx)，理由见 [ADR · 应用识别](../adr/application-identity.mdx#rationale)。为每个支持的平台构建一个安装包，见 [Clients · Packages](../clients/packages.mdx)；进程怎样启动、停止和恢复，见 [Runtime · 进程](../clients/runtime.mdx#process)。
 
 ## 9. 读回 [#read-back]
 

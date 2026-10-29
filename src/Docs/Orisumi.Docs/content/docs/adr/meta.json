@@ -22,6 +22,8 @@
     "---Clients---",
     "observer-runtime",
     "device-client",
+    "---Observers---",
+    "application-identity",
     "---Verification---",
     "verification",
     "development-environment",

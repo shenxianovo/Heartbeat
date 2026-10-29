@@ -1,0 +1,47 @@
+---
+title: "Application Identity Observer"
+description: "应用识别 Observer 程序实例"
+---
+
+应用识别 Observer 程序实例是一个业务实体。它陈述的每个应用产品版本，都由一份 Observation 通过 `observerVersionId` 引用它的一个版本。
+
+<ObserverStructure node="APPLICATION_IDENTITY" />
+
+## 粒度 [#granularity]
+
+一个实体对应一个程序实例。每个部署运行一个，见 [Application Identity · 程序实例](./index.mdx#instance)。
+
+## 身份 [#identity]
+
+EntityId 保存在数据目录中，重启和升级后沿用，见 [OBSERVER-4](../../core/model/observer.mdx#observer-4)。程序版本或模型型号变化时，形成同一个实体的新版本，之后的 Observation 引用新版本。所以每份 Observation 都能查到当时用的模型。
+
+## 引用 [#references]
+
+程序实例没有引用。
+
+## 事实时间 [#fact-time]
+
+程序实例是 Observer，本身不作为观测内容，没有事实时间。
+
+## EntitySchema [#schema]
+
+| 项目 | 值 |
+| --- | --- |
+| SchemaId | `019e1bbb-ec00-7000-8000-000000000005` |
+| 显示名称 | 应用识别 Observer |
+| 说明 | 表示一个应用识别 Observer 程序实例，保存它的程序版本和调用的模型；它作为 Observer 对它写入的应用产品负责。 |
+| 资源名 | `application-identity-observers` |
+
+| 字段 | 类型 | 必填 | 可空 | description |
+| --- | --- | --- | --- | --- |
+| `programVersion` | `string` | 是 | 否 | 程序的版本 |
+| `model` | `string` | 是 | 否 | 判断时调用的模型，写作供应商和型号，例如 openai/gpt-5-mini |
+
+## 示例 [#example]
+
+```json
+{
+  "programVersion": "0.1.0",
+  "model": "openai/gpt-5-mini"
+}
+```

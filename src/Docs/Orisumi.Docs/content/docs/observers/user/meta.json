@@ -1,0 +1,7 @@
+{
+  "title": "User",
+  "defaultOpen": false,
+  "collapsible": true,
+  "pagesIndex": "index",
+  "pages": ["---Business Types---", "user"]
+}

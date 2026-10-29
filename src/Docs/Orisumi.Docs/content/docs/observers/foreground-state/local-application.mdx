@@ -30,7 +30,7 @@ description: "某台设备上的一个应用安装"
 
 读不到可执行文件路径时，只在前台状态 Observer 本次运行期间，按进程号、进程启动时间和包标识复用一个临时身份；进程或前台状态 Observer 重启后新建。连进程线索也读不到时，每次读数都新建身份。这些进程线索只用于识别，不写入业务实体。
 
-识别时宁可多建身份。名称会随语言和版本变化，两个不同的安装也可能同名；多出来的身份之后可以由业务关联，错误合并的身份却无法拆开。
+识别时宁可多建身份。名称会随语言和版本变化，两个不同的安装也可能同名；多出来的身份按跨设备线索归到同一个[应用产品](../application-identity/application-product.mdx)，错误合并的身份却无法拆开。
 
 ### 登记文件 [#registry]
 
@@ -45,7 +45,7 @@ description: "某台设备上的一个应用安装"
 
 ## 引用 [#references]
 
-本机应用没有引用。不同设备上的本机应用可以关联到同一个跨平台应用，例如两台 Mac 上的 VS Code；目前前台状态 Observer 只维护本机的身份，Device 实体和跨平台应用的归并都还没有定义。
+本机应用没有引用。两台 Mac 上的 VS Code 是两个本机应用，它们的应用包标识相同，所以属于同一个应用产品，见 [Application Identity · 归属](../application-identity/index.mdx#membership)。
 
 ## 事实时间 [#fact-time]
 
@@ -64,15 +64,22 @@ description: "某台设备上的一个应用安装"
 | --- | --- | --- | --- | --- |
 | `identifiers` | `array` | 是 | 否 | 平台标识线索，顺序无意义；没有线索时为 `[]` |
 | `identifiers[]` | `object` | 不适用 | 否 | 一项平台标识线索，由 scheme 和 value 共同解释 |
-| `identifiers[].scheme` | `string` | 是 | 否 | 线索的种类：macos.bundle-id 是应用包标识，macos.executable-path 是可执行文件路径 |
+| `identifiers[].scheme` | `string` | 是 | 否 | 线索的种类：macos.bundle-id 是应用包标识，macos.executable-path 是可执行文件路径，android.package-name 是 Android 应用的包名 |
 | `identifiers[].value` | `string` | 是 | 否 | 线索的原始值 |
 
-| `scheme` | `value` |
-| --- | --- |
-| `macos.bundle-id` | 应用包标识 |
-| `macos.executable-path` | 可执行文件路径 |
-
 应用名称保存在观测内容中，本机应用只保存标识线索。
+
+### 标识线索 [#identifiers]
+
+每项线索由 `scheme` 和 `value` 共同解释。跨设备线索在任何设备上都指同一款软件的同一类安装，应用产品按它们归属；本机线索只在所在的设备上有意义。
+
+| `scheme` | `value` | 作用范围 |
+| --- | --- | --- |
+| `macos.bundle-id` | 应用包标识，例如 `com.tencent.qq` | 跨设备 |
+| `macos.executable-path` | 可执行文件路径 | 本机 |
+| `android.package-name` | Android 应用的包名，例如 `com.tencent.mobileqq` | 跨设备 |
+
+Android 上的前台状态 Observer 尚未实现，`android.package-name` 目前只出现在测试数据中。
 
 ## 示例 [#example]
 
@@ -100,7 +107,3 @@ description: "某台设备上的一个应用安装"
   ]
 }
 ```
-
-## 待定 [#open]
-
-- 跨平台应用的关联由谁维护、依据什么、保存在哪里。

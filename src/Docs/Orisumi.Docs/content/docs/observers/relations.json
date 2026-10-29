@@ -11,48 +11,85 @@
     "TITLE": { "label": "title" },
     "KIND": { "label": "kind" },
     "KEY": { "label": "key" },
-    "STATE": { "label": "state<br/>草案" }
+    "STATE": { "label": "state<br/>草案" },
+    "DISPLAY_NAME": { "label": "name" },
+    "MODEL": { "label": "model" }
   },
   "nodes": {
     "FOREGROUND_STATE": {
+      "path": "/observers/foreground-state/foreground-state-observer",
+      "schemaPath": "/observers/foreground-state/foreground-state-observer#schema",
       "label": "前台状态 Observer",
       "interfaces": ["Entity"],
       "fields": ["PLATFORM", "HOST_NAME", "PROGRAM_VERSION"]
     },
     "INPUT_EVENTS": {
+      "path": "/observers/input-events",
       "label": "输入事件 Observer",
       "interfaces": ["Entity"],
       "fields": ["NAME"]
     },
     "DEVICE_STATE": {
+      "path": "/observers/device-state",
       "label": "设备状态 Observer",
       "interfaces": ["Entity"],
       "fields": ["NAME"]
     },
     "LOCAL_APPLICATION": {
+      "path": "/observers/foreground-state/local-application",
+      "schemaPath": "/observers/foreground-state/local-application#schema",
       "label": "LocalApplication<br/>本机应用",
       "interfaces": ["Entity"],
       "fields": ["IDENTIFIERS"]
     },
     "APPLICATION_CONTENT": {
+      "path": "/observers/foreground-state/foreground-application-period",
+      "schemaPath": "/observers/foreground-state/foreground-application-period#schema",
       "label": "前台应用时段<br/>观测内容",
       "interfaces": ["Entity"],
       "fields": ["LOCAL_APPLICATION_VERSION_ID", "OBSERVED_NAME"]
     },
     "TITLE_CONTENT": {
+      "path": "/observers/foreground-state/foreground-window-title",
+      "schemaPath": "/observers/foreground-state/foreground-window-title#schema",
       "label": "前台窗口标题时段<br/>观测内容",
       "interfaces": ["Entity"],
       "fields": ["FOREGROUND_APPLICATION_PERIOD_VERSION_ID", "TITLE"]
     },
     "INPUT_CONTENT": {
+      "path": "/observers/input-events/input-event",
+      "schemaPath": "/observers/input-events/input-event#schema",
       "label": "键鼠输入事件<br/>观测内容",
       "interfaces": ["Entity"],
       "fields": ["KIND", "KEY"]
     },
     "DEVICE_CONTENT": {
+      "path": "/observers/device-state/sleep-state",
+      "schemaPath": "/observers/device-state/sleep-state#schema",
       "label": "设备休眠与清醒<br/>观测内容",
       "interfaces": ["Entity"],
       "fields": ["STATE"]
+    },
+    "APPLICATION_IDENTITY": {
+      "path": "/observers/application-identity/application-identity-observer",
+      "schemaPath": "/observers/application-identity/application-identity-observer#schema",
+      "label": "应用识别 Observer",
+      "interfaces": ["Entity"],
+      "fields": ["PROGRAM_VERSION", "MODEL"]
+    },
+    "APPLICATION_PRODUCT": {
+      "path": "/observers/application-identity/application-product",
+      "schemaPath": "/observers/application-identity/application-product#schema",
+      "label": "ApplicationProduct<br/>应用产品",
+      "interfaces": ["Entity"],
+      "fields": ["DISPLAY_NAME", "IDENTIFIERS"]
+    },
+    "USER": {
+      "path": "/observers/user/user",
+      "schemaPath": "/observers/user/user#schema",
+      "label": "用户本人",
+      "interfaces": ["Entity"],
+      "fields": ["DISPLAY_NAME"]
     }
   }
 }

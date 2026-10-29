@@ -3,7 +3,7 @@ title: "Submission"
 description: "SDK 的分工、登记、本地交接、版本的状态、提交策略、观测草稿、发送与确认"
 ---
 
-程序实例通过 SDK 把版本交给后端。Observer 的业务代码负责形成事实、识别业务对象和选择提交策略；SDK 负责本地保存、接好版本链、写入观测草稿、发送、确认和恢复。这样分工的理由见 [ADR · 提交与 SDK](../../adr/submission.mdx#decision)。
+在设备上运行的程序实例通过 SDK 把版本交给后端。Observer 的业务代码负责形成事实、识别业务对象和选择提交策略；SDK 负责各 Observer 共用的部分：程序实例的身份、EntitySchema 的登记、本地保存、接好版本链、写入观测草稿、发送、确认和恢复。这样分工的理由见 [ADR · 提交与 SDK](../../adr/submission.mdx#decision)。在服务端直接调用 API 的 Observer 见 [Application Identity](../application-identity/index.mdx)。
 
 ## 分工 [#division]
 

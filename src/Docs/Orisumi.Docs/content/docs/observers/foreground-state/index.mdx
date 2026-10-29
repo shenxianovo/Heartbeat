@@ -28,6 +28,12 @@ flowchart LR
   T[标题时段 Observation] -->|observerVersionId| R
   T -->|contentVersionId| TC[Foreground Window Title]
   TC -->|foregroundApplicationPeriodVersionId| C
+  click O "/core/model/observation"
+  click T "/core/model/observation"
+  click R "/observers/foreground-state/foreground-state-observer"
+  click C "/observers/foreground-state/foreground-application-period"
+  click A "/observers/foreground-state/local-application"
+  click TC "/observers/foreground-state/foreground-window-title"
 ```
 
 ## 程序实例 [#instance]
@@ -92,4 +98,3 @@ macOS 程序在 `src/Observers/Orisumi.Observer.ForegroundState/`，通过 AppKi
 
 - Android 上来源身份、重复查询与 Activity 生命周期的对应关系。
 - 程序实例本身被用户删除后，前台状态 Observer 怎样继续。
-- 跨平台应用的身份，见 [Local Application · 待定](./local-application.mdx#open)。

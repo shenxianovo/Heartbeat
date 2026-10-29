@@ -1,0 +1,51 @@
+---
+title: "Application Identity"
+description: "应用识别 Observer 只为新线索调用模型，按回答写入应用产品"
+---
+
+export const caseId = 'application-identity';
+
+## 为什么验证 [#why]
+
+[应用识别 Observer](../../observers/application-identity/index.mdx) 的判断直接生效，所以要确认：已认出的线索不再花钱调用模型；模型的回答准确地变成应用产品的版本；失败时不留下错误的产品；判断的依据可以追溯。
+
+## 前置条件 [#setup]
+
+API 通过 `WebApplicationFactory` 启动，连接独立的测试数据库。模型由测试替身代替，按每一步给定的回答返回，并记下调用次数和请求内容。应用识别 Observer 使用独立的数据目录。本机应用和前台时段由测试直接提交，Android 的本机应用使用 `android.package-name` 线索。
+
+## 操作与预期结果 [#steps]
+
+| 操作 | 预期结果 |
+| --- | --- |
+| Mac A 和 Mac B 各有一个本机应用，`macos.bundle-id` 都是 `com.tencent.qq`；目录为空，模型回答新产品 QQ | 模型调用一次；创建一个 QQ 产品，包含这条线索；两个本机应用都属于 QQ，仍是两个实体 |
+| 再运行一轮 | 不调用模型，不提交 |
+| 出现 `android.package-name` 为 `com.tencent.mobileqq` 的本机应用，模型回答属于 QQ | QQ 形成新版本，包含两条线索；产品总数不变 |
+| 出现同一 `macos.bundle-id`、不同可执行文件路径的本机应用 | 直接属于 QQ，不调用模型 |
+| 名称同为 QQ、线索不同的应用，模型回答新产品 | 创建另一个产品，两个同名产品并存 |
+| 发给模型的请求 | 包含平台、待识别的线索、本机应用的全部标识线索、名称和产品目录 |
+| 提交的批次 | InputSet 列出拥有线索的本机应用、读到名称的前台时段和目录中各产品的当前版本；Observation 引用程序实例的当前版本、产品版本和这个 InputSet，`startAt`、`endAt`、`timeZone` 都是 `null` |
+| 模型回答未知 | 不提交；下一轮不调用模型 |
+| 未知的线索出现新的本机应用或新的名称 | 再次调用模型 |
+| 模型请求超时，或回答指向目录中没有的产品 | 不提交，不创建产品；下一轮重试这条线索 |
+| 没有配置 API Key | 不调用模型，不提交，报告诊断 |
+| 提交的响应丢失后重发 | 沿用原来的 VersionId，后端只有一个产品 |
+| 用户把一条线索移出 QQ | 下一轮重新判断这条线索 |
+| 应用识别 Observer 基于旧版本提交时，用户已经修改了产品 | 提交被拒绝；重新读取后再处理，结果保留用户的修改 |
+| 更换模型型号后重启 | 程序实例形成新版本；已经在产品中的线索不重新判断 |
+| 产品形成新版本之后 | 之前的 Observation 和 InputSet 保持原样，仍指向原来的版本 |
+
+## 测试实现 [#implementation]
+
+以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
+
+- 两台 Mac 和 Android 的 QQ 归入一个产品，再运行一轮或出现同一应用包标识、不同路径的本机应用时不调用模型，同名的不同软件分开、批次中的 InputSet 和 Observation、产品更新后旧的 Observation 不变：`ApplicationIdentityTests.RecognizesOnceAcrossDevicesAndPlatformsAndPreservesEvidence`。
+- 未知在重启后保留，只在出现新的本机应用或名称时重试：`ApplicationIdentityTests.UnknownSurvivesRestartAndRetriesOnlyOnNewNamesOrApplications`。
+- 模型超时和指向目录外的产品不写入，下一轮重试：`ApplicationIdentityTests.ModelFailuresAndInvalidTargetsRetryWithoutCreatingProducts`。
+- 没有 Key 时不写入；更换模型后程序实例形成新版本，已在产品中的线索不重新判断：`ApplicationIdentityTests.MissingKeyDoesNotWriteAndModelChangesVersionTheSameObserver`。
+- 响应丢失后重启，用相同的 VersionId 重发：`ApplicationIdentityTests.LostSubmissionResponseReplaysTheSameBatchAfterRestart`。
+- 基于旧版本的提交被拒绝后重新读取；线索移出产品后重新判断：`ApplicationIdentityTests.StaleProductIsRereadAndRemovedIdentifiersAreRecognizedAgain`。
+- 请求包含线索、全部标识线索、名称和目录，不带外部工具；正常回答的解析：`ApplicationModelTests.SendsStructuredInputWithoutToolsAndReadsTheDecision`。无效或未完成的回答作为失败：`ApplicationModelTests.InvalidOrIncompleteResponseIsADiagnosticFailure`，参数是缺少字段的回答和未完成的回答。
+
+## 执行结果 [#results]
+
+<TestCaseResults caseId={caseId} />

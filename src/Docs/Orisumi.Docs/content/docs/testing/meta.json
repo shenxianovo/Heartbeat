@@ -28,12 +28,14 @@
     "observers/application-period-boundaries",
     "observers/foreground-submission",
     "observers/foreground-rejections",
+    "observers/application-identity",
     "---Clients---",
     "clients/observer-installation",
     "clients/observer-updates",
     "clients/observer-lifecycle",
     "clients/hosted-sending",
     "clients/native-views",
+    "clients/application-products",
     "---Reports---",
     "reports/integration"
   ]
