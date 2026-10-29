@@ -5,7 +5,7 @@ namespace Orisumi.Model.Tests;
 
 public sealed class SchemaTests
 {
-    // ENTITY-3, VERSION-3, SCHEMA-1, SCHEMA-2, SCHEMA-3, SCHEMA-11, SCHEMA-12, SCHEMA-17
+    // ENTITY-3, VERSION-3, SCHEMA-1, SCHEMA-2, SCHEMA-3, SCHEMA-11, SCHEMA-12
     [Test]
     public async Task TypeIsStableAndEachBusinessVersionUsesItsOwnSavedSchema()
     {

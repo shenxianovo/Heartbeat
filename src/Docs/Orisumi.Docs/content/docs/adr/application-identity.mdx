@@ -14,7 +14,7 @@ description: "应用产品按跨设备线索聚合各设备上的本机应用；
 - 应用产品是一种业务类型，表示用户认知中的一款软件。它的 `identifiers` 列出属于它的跨设备线索，例如 macOS 的应用包标识。
 - 本机应用的跨设备线索出现在哪个应用产品的当前版本中，它就属于哪个应用产品。归属由线索的值决定，产品和本机应用之间没有引用。
 - 应用产品的当前版本是归属的权威来源。本机应用和前台时段保持原样。
-- 应用识别 Observer 是在服务端运行的程序实例，只运行一个。它直接调用 HTTP API 读取和提交，自己保存程序实例的身份；[ADR · 提交与 SDK](./submission.mdx) 中由 SDK 承担的职责，它自己完成。
+- 应用识别 Observer 是在服务端运行的程序实例，只运行一个，由服务端托管运行，见 [ADR · 服务端托管](./server-observer-hosting.mdx)。
 - 应用识别 Observer 只处理还没有归入任何应用产品的线索：交给 OpenAI 的模型判断，结果直接写成应用产品的新版本或新的应用产品。
 - 用户在 Web 控制台中修改应用产品，这些修改的 Observer 是用户本人。修改和模型的判断一样，直接形成应用产品的新版本。
 - 每个应用产品版本由一份 Observation 陈述，Observation 说明谁负责，InputSet 列出判断时读到的版本。
@@ -25,7 +25,7 @@ description: "应用产品按跨设备线索聚合各设备上的本机应用；
 
 线索写在应用产品中，一个产品的全部认识都在它自己的版本链里：读当前版本就知道它现在包含哪些线索，沿版本链看到它怎样变化，沿引用它的 Observation 看到每次变化由谁负责、依据什么。模型和用户写的是同一个实体，后保存的版本就是当前的结果。
 
-应用识别 Observer 需要读取全部设备的数据，并保持一份全局一致的产品目录，所以它和后端运行在一起，而且只有一个。它判断下一条线索之前必须读到上一次的结果，否则同一款软件的两条线索会各建一个产品。直接调用 API 时，提交返回就代表已保存，下一次读取一定能读到。经过 Runtime 时，提交只完成本地保存，发送是异步的，读取可能还读不到刚写的产品。它与 API 在同一处运行，没有离线的情况；需要恢复的状态都可以从后端重新读取，所以直接调用 API 就够了。
+应用识别 Observer 需要读取全部设备的数据，并保持一份全局一致的产品目录，所以它在服务端运行，而且只有一个。它判断下一条线索之前必须读到上一次的结果，否则同一款软件的两条线索会各建一个产品。服务端托管等后端保存后才交还结果，下一次读取一定能读到。
 
 模型的判断直接生效。错误由用户在 Web 中改正，改正的成本是一次操作。逐条审核会让每个新应用都等待用户处理。
 
@@ -35,7 +35,6 @@ description: "应用产品按跨设备线索聚合各设备上的本机应用；
 - **为每个本机应用保存一个归属的关系实体。** 每台设备的每个安装都要写一次，两台 Mac 上的同一个应用也要分别写；用户的一次改正要改很多实体。线索的值已经足以决定归属。
 - **人工修改优先于模型，或者为每次判断保留候选和置信度。** 需要定义锁定、优先级和裁决规则。模型只处理没有归属的线索，已经归入产品的线索由用户调整，两者处理的线索互不重叠。
 - **作为设备上的 Observer 由客户端托管。** 读取全部设备的数据需要扩展 Runtime 的协议；客户端不运行时不识别；装在两台设备上会各建一份产品。
-- **作为后端进程中的后台服务。** 后端只检查结构，事实判断由 Observer 负责，见 [Core · 谁决定什么](../core/index.mdx#responsibility)。模型的凭证和失败也会进入后端。
 - **允许模型联网查资料。** 要保存查到的外部资料作为依据，费用也更高。常见软件模型已经认识，不认识的保持未归属，由用户处理。
 
 ## 代价 [#costs]
@@ -45,10 +44,11 @@ description: "应用产品按跨设备线索聚合各设备上的本机应用；
 - 没有跨设备线索的本机应用不属于任何产品，例如只读到可执行文件路径的安装。
 - 应用识别 Observer 依赖 OpenAI：需要 API Key 并产生费用，未配置时不识别新线索。
 - 本机应用的名称、标识线索（包括可执行文件路径）和产品目录会发送给 OpenAI，发送的内容见 [Application Identity · 模型](../observers/application-identity/index.mdx#model)。
-- 部署时多一个常驻的服务。它只能运行一个，扩展时需要另行设计。
+- 只能运行一个应用识别 Observer，扩展时需要另行设计。
 
 ## 规则位置 [#details]
 
+- [ADR · 服务端托管](./server-observer-hosting.mdx)
 - [Application Identity](../observers/application-identity/index.mdx)、[Application Product](../observers/application-identity/application-product.mdx)、[Application Identity Observer](../observers/application-identity/application-identity-observer.mdx)
 - [Local Application · 标识线索](../observers/foreground-state/local-application.mdx#identifiers)
 - [User Statements](../observers/user/index.mdx)

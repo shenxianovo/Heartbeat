@@ -1,17 +1,17 @@
 ---
-title: "SDK Confirmation"
-description: "SDK 按响应确认版本，并在失败后原样重发"
+title: "Runtime Confirmation"
+description: "Runtime 按响应确认版本，并在失败后原样重发"
 ---
 
-export const caseId = 'sdk-confirmation';
+export const caseId = 'runtime-confirmation';
 
 ## 为什么验证 [#why]
 
-SDK 只靠响应判断哪些版本已保存，不读回数据。每种响应都要对应确定的处理：确认、拒绝、拆批、重发或停止。约定见 [Submission · 确认](../../observers/submission/index.mdx#confirmation) 和 [重试](../../observers/submission/index.mdx#idempotency)。
+Runtime 只靠响应判断哪些版本已保存，不读回数据。每种响应都要对应确定的处理：确认、拒绝、拆批、重发或停止。约定见 [Submission · 确认](../../observers/submission/index.mdx#confirmation) 和 [重试](../../observers/submission/index.mdx#idempotency)。
 
 ## 前置条件 [#setup]
 
-SDK 使用独立的 SQLite 文件，后端是记录每次请求、按每行的需要返回响应的 HTTP 处理器。
+Runtime 的本地保存使用独立的 SQLite 文件，后端是记录每次请求、按每行的需要返回响应的 HTTP 处理器。
 
 ## 操作与预期结果 [#steps]
 
@@ -21,7 +21,7 @@ SDK 使用独立的 SQLite 文件，后端是记录每次请求、按每行的�
 | `409`，`index` 为 `1` | 第一个版本确认为已保存，第二个版本被拒绝，之后的版本仍待发送 |
 | `400`，不带 `index` | 停止发送，发送状态中报告错误 |
 | 一批有两个版本时返回 `413`，一个版本时返回 `200` | 拆成每批一个版本重新发送，两个版本都确认 |
-| 第一次请求的响应丢失；重启 SDK 后再发送 | 第二次请求的内容与第一次相同，版本得到确认 |
+| 第一次请求的响应丢失；重启 Runtime 后再发送 | 第二次请求的内容与第一次相同，版本得到确认 |
 
 ## 测试实现 [#implementation]
 

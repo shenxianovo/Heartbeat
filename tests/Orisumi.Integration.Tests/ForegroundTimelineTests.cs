@@ -12,7 +12,7 @@ public sealed class ForegroundTimelineTests
     [Property("caseId", "foreground-application-period-boundaries")]
     public async Task ContinuousConfirmationExtendsSamePeriodAndSwitchClosesAtNewConfirmation()
     {
-        var timeline = new ForegroundTimeline(EntityId.New(), TimeSpan.FromSeconds(3));
+        var timeline = new ForegroundTimeline(TimeSpan.FromSeconds(3));
         var app = new LocalApplication(EntityId.New(), []);
         var first = timeline.Accept(app, Reading(0)).Single();
         var extended = timeline.Accept(app, Reading(1)).Single();
@@ -31,13 +31,13 @@ public sealed class ForegroundTimelineTests
     [Property("caseId", "foreground-application-period-boundaries")]
     public async Task RenameAndTimeZoneChangeSplitContentWithoutReplacingApplicationIdentity()
     {
-        var timeline = new ForegroundTimeline(EntityId.New(), TimeSpan.FromSeconds(3));
+        var timeline = new ForegroundTimeline(TimeSpan.FromSeconds(3));
         var app = new LocalApplication(EntityId.New(), []);
         var first = timeline.Accept(app, Reading(0)).Single();
         var renamed = timeline.Accept(app, Reading(1) with { Name = null });
         var zoneChanged = timeline.Accept(app, Reading(2) with { Name = null, TimeZone = "Etc/UTC" });
         await Assert.That(renamed.Count).IsEqualTo(2);
-        await Assert.That(renamed[1].Content.LocalApplicationId).IsEqualTo(app.Id);
+        await Assert.That(renamed[1].Application.Id).IsEqualTo(app.Id);
         await Assert.That(renamed[1].Content.Name).IsNull();
         await Assert.That(first.Content.Name).IsEqualTo("App");
         await Assert.That(zoneChanged.Count).IsEqualTo(2);
@@ -54,7 +54,7 @@ public sealed class ForegroundTimelineTests
     [Property("caseId", "foreground-application-period-boundaries")]
     public async Task InterruptionsStartNewPeriodWithoutFillingTheGap(string interruption)
     {
-        var timeline = new ForegroundTimeline(EntityId.New(), TimeSpan.FromSeconds(3));
+        var timeline = new ForegroundTimeline(TimeSpan.FromSeconds(3));
         var app = new LocalApplication(EntityId.New(), []);
         timeline.Accept(app, Reading(0));
         var previous = timeline.Accept(app, Reading(1)).Single();

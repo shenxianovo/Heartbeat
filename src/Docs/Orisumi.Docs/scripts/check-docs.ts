@@ -1,14 +1,14 @@
 // Checks that the project's documents are consistent: links, anchors, Core rule numbers and actors,
 // deprecated terms, ADR sections, JSON examples and sidebar entries. Project documents are the
 // docs site content, every README.md and AGENTS.md, and the agent skills under .agents/.
-// C# sources under src/ and tests/ are checked only for references to Core rules that do not exist.
+// Application sources under src/ and tests/ are checked for Core rules that do not exist and for deprecated terms.
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { basename, dirname, join, normalize, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  adrStructure, anchorsOf, citesRules, deprecatedTerms, findTerm, frontmatter, jsonBlocks, lineAt, linksOf,
-  ruleHeadings, rulePrefixes, ruleReferences, type Finding, type Rule,
+  adrIndexRows, adrStructure, anchorsOf, deprecatedTerms, findTerm, frontmatter, jsonBlocks, lineAt, linksOf,
+  isCheckedSource, ruleHeadings, rulePrefixes, ruleReferences, type Finding, type Rule,
 } from '../lib/docs-check.ts';
 
 const root = execFileSync('git', ['rev-parse', '--show-toplevel'], {
@@ -23,7 +23,7 @@ const tracked = execFileSync('git', ['-c', 'core.quotepath=off', 'ls-files', '-c
 }).split('\n').filter((file) => file && !file.includes('node_modules/') && existsSync(join(root, file)));
 const files = tracked.filter((file) => /\.mdx?$/.test(file) || file === `${docs}/api/openapi.json`)
   .filter(isProjectDocument);
-const sources = tracked.filter(citesRules);
+const sources = tracked.filter(isCheckedSource);
 
 const texts = new Map(files.map((file) => [file, readFileSync(join(root, file), 'utf8')]));
 const read = (file: string) => texts.get(file) ?? readFileSync(join(root, file), 'utf8');
@@ -107,11 +107,29 @@ for (const [file, text] of texts) {
   }
 }
 
+// The ADR index repeats each ADR's description, so the two must stay identical.
+const adrIndex = `${docs}/adr/index.mdx`;
+for (const row of adrIndexRows(read(adrIndex))) {
+  const page = `${docs}/adr/${row.slug}.mdx`;
+  if (!existsSync(join(root, page))) continue;
+  const description = frontmatter(read(page))?.description;
+  if (description !== row.description) {
+    findings.push({ file: adrIndex, line: lineAt(read(adrIndex), row.index), check: 'adr-index',
+      message: `${row.slug}: the decision column must equal the ADR's description` });
+  }
+}
+
 for (const file of sources) {
   const text = readFileSync(join(root, file), 'utf8');
   for (const reference of ruleReferences(text, new Set(prefixes.keys()))) {
     if (!rules.has(reference.id)) {
       findings.push({ file, line: lineAt(text, reference.index), check: 'rule-reference', message: `${reference.id} does not exist` });
+    }
+  }
+  // A term with a space is prose; in code it would match a type followed by a name, such as `Observation Content`.
+  for (const term of deprecated.terms.filter((candidate) => !/\s/.test(candidate))) {
+    for (const index of findTerm(text, term)) {
+      findings.push({ file, line: lineAt(text, index), check: 'deprecated-term', message: `"${term}" is no longer used; see the Glossary` });
     }
   }
 }
@@ -153,6 +171,6 @@ for (const file of docFiles.filter((path) => path.endsWith('.mdx'))) {
 }
 
 for (const finding of findings) console.log(`${finding.file}:${finding.line}: [${finding.check}] ${finding.message}`);
-const checked = `${files.length} documents and ${sources.length} C# sources`;
+const checked = `${files.length} documents and ${sources.length} sources`;
 console.log(findings.length ? `\n${findings.length} problem(s) in ${checked}.` : `Checked ${checked}.`);
 process.exitCode = findings.length ? 1 : 0;

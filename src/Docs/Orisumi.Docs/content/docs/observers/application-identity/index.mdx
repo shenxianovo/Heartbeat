@@ -3,7 +3,7 @@ title: "Application Identity"
 description: "把各设备上的本机应用归到应用产品"
 ---
 
-应用识别 Observer 把各设备、各平台上的本机应用归到用户认知中的同一款软件，也就是应用产品。例如两台 Mac 和一部 Android 手机上的 QQ，都归到 QQ 这个产品。它在服务端运行，读取后端已保存的本机应用和前台时段，遇到还没有认出的线索时交给模型判断，再把结果写成应用产品的版本。
+应用识别 Observer 把各设备、各平台上的本机应用归到用户认知中的同一款软件，也就是应用产品。例如两台 Mac 和一部 Android 手机上的 QQ，都归到 QQ 这个产品。它由[服务端托管](../submission/index.mdx#server)运行，读取后端已保存的本机应用和前台时段，遇到还没有认出的线索时交给模型判断，再把结果写成应用产品的版本。
 
 为什么这样分工，见 [ADR · 应用识别](../../adr/application-identity.mdx)。
 
@@ -51,9 +51,9 @@ Mac A 和 Mac B 上的 QQ 是两个本机应用，它们的应用包标识都是
 ## 程序实例 [#instance]
 
 - 每个部署运行一个应用识别 Observer。它逐条处理线索，判断每条线索时都能读到前面的结果。
-- 程序实例的 EntityId 第一次启动时生成，保存在数据目录中，之后一直沿用，见 [OBSERVER-4](../../core/model/observer.mdx#observer-4)。
+- 程序实例的 EntityId 由服务端托管保存，第一次运行时生成，之后一直沿用，见 [OBSERVER-4](../../core/model/observer.mdx#observer-4)。
 - 每轮识别前，它确保两种业务类型的 EntitySchema 已保存。程序版本或模型型号与后端的当前版本不同时，它为程序实例形成新版本，之后的 Observation 引用新版本。
-- 在本地环境中，它作为一个服务随环境启动。
+- 它随 API 启动，每一轮由服务端托管开始。
 
 ## 识别 [#identification]
 
@@ -102,7 +102,7 @@ Observation 的 `startAt`、`endAt` 和 `timeZone` 都是 `null`：这款软件�
 
 例如 Android 上第一次出现 QQ：线索 `android.package-name`、`com.tencent.mobileqq` 不在对照中，模型回答属于 QQ。批次中是 InputSet、QQ 的新版本（`identifiers` 多了这条线索）和一份 Observation。
 
-结果为未知时，应用识别 Observer 不提交，在数据目录中记下这条线索，以及当时拥有它的本机应用和收集到的名称。之后的轮次中，这两项都没有变化时跳过这条线索；出现新的本机应用或新的名称时，重新交给模型。线索归入某个产品后，这条记录随之删除。
+结果为未知时，应用识别 Observer 不提交，记下这条线索，以及当时拥有它的本机应用和收集到的名称。这份记录是它的业务状态，由服务端托管保存在 PostgreSQL 中，重启后仍在。之后的轮次中，这两项都没有变化时跳过这条线索；出现新的本机应用或新的名称时，重新交给模型。线索归入某个产品后，这条记录随之删除。
 
 ### 用户的修改 [#edits]
 
@@ -120,8 +120,8 @@ Observation 的 `startAt`、`endAt` 和 `timeZone` 都是 `null`：这款软件�
 | --- | --- |
 | 没有配置 API Key | 不调用模型，每轮报告诊断 |
 | 模型的请求失败或超时；回答不符合格式，或指向目录中没有的产品 | 这条线索不写入，下一轮重试 |
-| API 暂时不可用 | 结束这一轮，下一轮重试 |
-| 提交的请求没有得到响应 | 用相同的 VersionId 重发，见 [VERSION-7](../../core/model/version.mdx#version-7) |
+| 读取或保存时数据库不可用 | 结束这一轮，下一轮重试 |
+| 保存的结果不确定 | 服务端托管用相同的 VersionId 重发，见 [VERSION-7](../../core/model/version.mdx#version-7) |
 | 产品的新版本因 [VERSION-6](../../core/model/version.mdx#version-6) 被拒绝 | 重新读取产品，再处理这条线索 |
 | 提交因其他规则被拒绝 | 报告诊断，跳过这条线索，下一轮重试 |
 
@@ -129,17 +129,17 @@ Observation 的 `startAt`、`endAt` 和 `timeZone` 都是 `null`：这款软件�
 
 ## 配置 [#configuration]
 
+配置随服务端的配置给出。
+
 | 配置 | 含义 |
 | --- | --- |
-| API 地址 | 后端 API 的根地址，包括 `/api/` |
-| 数据目录 | 保存程序实例的 EntityId 和未知线索的记录 |
 | `OPENAI_API_KEY` | OpenAI 的 API Key，从环境变量读取 |
 | 模型型号 | 调用的 OpenAI 模型 |
 | 轮询间隔 | 两轮之间的间隔，默认 60 秒 |
 
 ## 实现 [#implementation]
 
-程序在 `src/Observers/Orisumi.Observer.ApplicationIdentity/`，用 .NET 编写，调用 OpenAI 的 Responses API，默认模型是 `gpt-6.1-terra`。启动参数、数据目录和本地环境中的配置见该目录的 README。
+识别的业务代码在 `src/Observers/Orisumi.Observer.ApplicationIdentity/`，用 .NET 编写，由服务端托管组合运行。它调用 OpenAI 的 Responses API，默认模型是 `gpt-6.1-terra`。
 
 测试 Case：[应用识别](../../testing/observers/application-identity.mdx)。
 

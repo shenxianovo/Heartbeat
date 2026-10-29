@@ -104,9 +104,18 @@ export function findTerm(text: string, term: string): number[] {
   return [...text.matchAll(new RegExp(before + escaped + after, 'g'))].map((match) => match.index!);
 }
 
-/** C# sources under src/ and tests/ cite Core rules by number, so their references must exist too. */
-export function citesRules(file: string): boolean {
-  return /^(src|tests)\//.test(file) && file.endsWith('.cs');
+/**
+ * Application sources under src/ and tests/ cite Core rules by number and must not keep deprecated terms.
+ * The docs site's own code is left out: its tests quote deprecated terms as fixtures.
+ */
+export function isCheckedSource(file: string): boolean {
+  return /^(src|tests)\//.test(file) && !file.startsWith('src/Docs/') && /\.(cs|ts|tsx|swift)$/.test(file);
+}
+
+/** Rows of the ADR index table: the linked slug and the decision column, which repeats the ADR's description. */
+export function adrIndexRows(text: string): { slug: string; description: string; index: number }[] {
+  return [...text.matchAll(/^\| [^|\n]+ \| \[[^\]]+\]\(\.\/([a-z0-9-]+)\.mdx\) \| ([^|\n]+) \|$/gm)]
+    .map((match) => ({ slug: match[1], description: match[2].trim(), index: match.index! }));
 }
 
 export function ruleReferences(text: string, prefixes: Set<string>): { id: string; index: number }[] {

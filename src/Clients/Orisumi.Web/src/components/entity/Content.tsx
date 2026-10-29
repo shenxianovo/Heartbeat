@@ -33,7 +33,7 @@ function Tile({ name, hint, wide, children }: { name: string; hint?: string; wid
 }
 
 export function Content({ version }: { version: Version }) {
-  if (isObservation(version)) return <ObservationContent version={version} />;
+  if (isObservation(version)) return <ObservationMembers version={version} />;
   if (isInputSet(version)) return <InputSetContent version={version} />;
   if (isEntitySchema(version)) {
     const schema = version.content;
@@ -55,7 +55,7 @@ export function Content({ version }: { version: Version }) {
   return <BusinessContent version={version} />;
 }
 
-function ObservationContent({ version }: { version: Version<Observation> }) {
+function ObservationMembers({ version }: { version: Version<Observation> }) {
   const content = version.content;
   return (
     <Tiles>

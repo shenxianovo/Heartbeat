@@ -27,7 +27,7 @@ public sealed class QualityObservationTests
     {
         var scan = new CloneScan("production", false, "scanner unavailable", null, 0, 0, 0, 0, [], []);
         var complexity = new ComplexityQualityReport(false, false, "analysis failed", 0, 0, null);
-        var failures = QualityCommand.Failures(new(scan, scan), complexity);
+        var failures = QualityCommand.Failures(new(scan, scan, scan), complexity);
         await Assert.That(failures.Contains("analysis failed")).IsTrue();
         await Assert.That(failures.Contains("scanner unavailable")).IsTrue();
     }

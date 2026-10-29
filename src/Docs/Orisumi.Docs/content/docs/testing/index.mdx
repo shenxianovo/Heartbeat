@@ -3,28 +3,31 @@ title: "Overview"
 description: "测试的分工、框架、Case 与报告"
 ---
 
-Orisumi 的测试分三类，都用 TUnit 执行。本页说明每类测试验证什么、用到哪些公共工具，以及 Case 页和测试报告怎样对应。
+本页说明每类测试验证什么、用到哪些公共工具，以及 Case 页和测试报告怎样对应。
 
 ## 测试分工 [#kinds]
 
-| 类型 | 验证什么 | 数据库 |
-| --- | --- | --- |
-| 单元测试 | 独立的规则和转换逻辑 | 不启动 |
-| 集成测试 | Observer、后端组件和 PostgreSQL 的协作 | 需要数据库的用例，每个用例一个独立的测试数据库 |
-| 端到端测试 | 完整的用户操作流程 | 需要数据库的用例使用独立的测试数据库 |
+| 类型 | 验证什么 | 框架 | 数据库 |
+| --- | --- | --- | --- |
+| [模型测试](#model) | Core 的规则 | TUnit | 不启动，存储用内存实现 |
+| [集成测试](#integration) | Observer、后端组件和 PostgreSQL 的协作 | TUnit | 需要数据库的用例，每个用例一个独立的测试数据库 |
+| Web 控制台的测试 | 页面的逻辑和用户操作 | Vitest、Playwright | 后端由路由拦截模拟；`test:e2e:edge` 连接本地环境 |
+| macOS 客户端的测试 | 客户端与 Runtime 的交互 | `swift test` | 单元测试用替身代替 Runtime；`RuntimeIntegrationTests` 连接真实的 Runtime 和 API |
+
+Web 控制台和 macOS 客户端的测试怎样运行，见 `src/Clients/Orisumi.Web/README.md` 和 `src/Clients/Orisumi.Mac/README.md`；它们的结果不进入 TUnit 报告，对应的 Case 在各自的“测试实现”中说明。
 
 ## 框架与公共工具 [#tools]
 
-TUnit 通过 Microsoft.Testing.Platform 运行，版本 `1.72.16` 由 `Directory.Packages.props` 管理。
+.NET 的测试用 TUnit，通过 Microsoft.Testing.Platform 运行，版本 `1.72.16` 由 `Directory.Packages.props` 管理。
 
-`tests/Orisumi.Testing` 为集成测试和端到端测试提供数据库工具。它使用 `Orisumi.Testing` 命名空间，每个类型一个文件，依赖 Infrastructure、EF Core、Npgsql 和 Testcontainers.PostgreSql，版本同样由 `Directory.Packages.props` 管理。
+`tests/Orisumi.Testing` 为集成测试提供数据库工具。它使用 `Orisumi.Testing` 命名空间，每个类型一个文件，依赖 Infrastructure、EF Core、Npgsql 和 Testcontainers.PostgreSql，版本同样由 `Directory.Packages.props` 管理。
 
 | 类型 | 职责 |
 | --- | --- |
 | `PostgresTestInstance` | 启动和销毁 PostgreSQL 容器，创建用例数据库 |
 | `TestDatabase` | 提供连接字符串，释放时删除用例数据库 |
 
-集成测试和端到端测试各自创建自己的容器，细节见 [Database](./database.mdx)。
+集成测试的容器和用例数据库见 [Database](./database.mdx)。
 
 ## 模型测试 [#model]
 
@@ -39,7 +42,7 @@ dotnet test --project tests/Orisumi.Model.Tests/Orisumi.Model.Tests.csproj
 `tests/Orisumi.Integration.Tests` 按 Case 组织，覆盖六部分：
 
 - API 与 PostgreSQL 存储：通过 `WebApplicationFactory` 启动 API，每个用例连接自己的测试数据库。Case 见 [Submission](./api/submission.mdx)、[Reading](./api/reading.mdx)、[Lists](./api/lists.mdx)、[Referrers](./api/referrers.mdx)、[Drafts](./api/drafts.mdx)、[Deletion](./api/deletion.mdx)、[Errors](./api/errors.mdx) 和 [Transactions](./storage/transactions.mdx)。
-- .NET SDK 的提交：SDK 使用独立的 SQLite 文件，后端是模拟的 HTTP 处理器或真实的 API。Case 见 [Registration](./observers/sdk-registration.mdx)、[Local Versions](./observers/sdk-local-versions.mdx)、[Confirmation](./observers/sdk-confirmation.mdx) 和 [Rejections](./observers/sdk-rejections.mdx)；本地交接和多语言接入见 [Handoff](./observers/sdk-handoff.mdx) 和 [Languages](./observers/sdk-languages.mdx)。
+- Runtime 的提交：本地保存使用独立的 SQLite 文件，后端是模拟的 HTTP 处理器或真实的 API。Case 见 [Registration](./observers/runtime-registration.mdx)、[Local Versions](./observers/runtime-local-versions.mdx)、[Confirmation](./observers/runtime-confirmation.mdx) 和 [Rejections](./observers/runtime-rejections.mdx)；本地交接和多语言接入见 [Handoff](./observers/runtime-handoff.mdx) 和 [Languages](./observers/sdk-languages.mdx)。
 - Runtime 的托管：Runtime 使用独立的数据目录，运行由测试控制的 Observer。Case 见 [Installation](./clients/observer-installation.mdx)、[Updates](./clients/observer-updates.mdx)、[Lifecycle](./clients/observer-lifecycle.mdx)、[Hosted Sending](./clients/hosted-sending.mdx) 和 [Native Views](./clients/native-views.mdx)。
 - 前台状态 Observer：使用模拟的读数。Case 见 [本机应用身份](./observers/local-application-identity.mdx)、[时段边界](./observers/application-period-boundaries.mdx)、[提交与恢复](./observers/foreground-submission.mdx) 和 [被拒绝的版本](./observers/foreground-rejections.mdx)。另有登记文件的复用与损坏保留测试。
 - 应用识别 Observer：模型由测试替身代替。Case 见 [应用识别](./observers/application-identity.mdx)。
@@ -49,11 +52,9 @@ dotnet test --project tests/Orisumi.Model.Tests/Orisumi.Model.Tests.csproj
 
 ## Case [#cases]
 
-字段说明和两阶段拒绝的验证定义见 [Schema Fields](./api/schema-fields.mdx)，页面单独列出尚未覆盖的预期。
-
 每个 Case 一页，写为什么验证、前置条件、操作和预期结果。预期依据 Core 规则，或 API、Storage、Observers、Clients 中的具体约定，并链接到对应位置。预期描述要求，执行结果描述某次检查发生了什么。这样设计的理由见 [ADR · 开发验证与测试证据](../adr/verification.mdx)。
 
-Case ID 稳定，与测试方法名无关；测试用 `[Property("caseId", "…")]` 引用它。页面的“测试实现”逐项说明哪些预期由哪个测试方法检查；一个方法可以检查多项预期，参数化测试还要说明参数范围。没有自动测试的预期，写明可重复的手动步骤或标为“未覆盖”。测试方法重命名时，同步更新这份对应说明，报告仍通过 `caseId` 关联。
+Case ID 稳定，与测试方法名无关；测试用 `[Property("caseId", "…")]` 引用它。页面的“测试实现”逐项说明哪些预期由哪个测试方法检查；一个方法可以检查多项预期，参数化测试还要说明参数范围。没有自动测试的预期，写明可重复的手动步骤或标为“未覆盖”。例如 [Schema Fields](./api/schema-fields.mdx) 单独列出尚未覆盖的预期。测试方法重命名时，同步更新这份对应说明，报告仍通过 `caseId` 关联。
 
 评审覆盖范围时，核对测试的输入和断言。例如分页用例在翻页期间没有写入，只能验证静态数据的分页。涉及重试、删除和引用等规则的组合时，按风险选择组合场景；分别检查单条规则不能代替组合检查。尚未决定的行为先回到相应的规则页讨论。
 

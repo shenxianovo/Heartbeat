@@ -92,13 +92,6 @@ public sealed class LocalTransaction
         return latest.Version.VersionId;
     }
 
-    public void DiscardDraft(EntityId entityId)
-    {
-        var latest = Latest(entityId) ?? throw new InvalidOperationException("Unknown local entity.");
-        if (latest.State != SubmissionState.Draft) throw new InvalidOperationException("Only a draft can be discarded.");
-        Remove(latest.Version.VersionId);
-    }
-
     public void Complete(EntityId entityId) => Freeze((Latest(entityId) ?? throw new InvalidOperationException("Unknown local entity.")).Version.VersionId);
     public void Freeze(VersionId id) => Freeze(id, []);
 
@@ -151,16 +144,6 @@ public sealed class LocalTransaction
                     changed |= dependencies.Add(version.Version.VersionId);
         }
         return new(rejected, versions.Where(version => version != rejected && dependencies.Contains(version.Version.VersionId)).ToArray());
-    }
-
-    public void RewriteDependent(VersionId id, VersionContent content, VersionId? schemaVersionId = null)
-    {
-        var local = Rejection()?.Dependents.SingleOrDefault(version => version.Version.VersionId == id)
-            ?? throw new InvalidOperationException("Only a rejected version's unsaved dependents can be rewritten.");
-        var replacement = VersionTime.Normalize(local.Version with { Content = content, SchemaVersionId = schemaVersionId });
-        FreezeReferences(replacement, []);
-        Put(replacement, local.State, local.Strategy, local.FreezeOrder);
-        ReorderFrozen();
     }
 
     public void DiscardRejected()

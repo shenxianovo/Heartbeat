@@ -7,7 +7,7 @@ description: "何时沿用实体、何时形成新版本、何时新建实体"
 
 | 情况 | EntityId | VersionId |
 | --- | --- | --- |
-| 重试或重放已提交的版本 | 沿用 | 沿用 |
+| 重试或重放已提交的版本，见 [VERSION-7](../model/version.mdx#version-7) | 沿用 | 沿用 |
 | 按业务规则认出已有实体，内容有变化 | 沿用 | 新建 |
 | 补全或纠正同一件事实 | 沿用 | 新建 |
 | 新的独立观测 | 新建 | 新建 |
@@ -42,21 +42,15 @@ description: "何时沿用实体、何时形成新版本、何时新建实体"
 
 补全或纠正同一件事实时，形成原 Observation 的新版本。例如前台时段随每次确认延长，或者纠正填错的时区；从时间点补全为时段，也是这种情况。补全不得把几次独立的读数合并为同一份 Observation。
 
-### IDENTITY-5 重试沿用 VersionId [#identity-5]
-
-执行方：写入方
-
-重试或重放已提交的版本时，沿用原来的 VersionId，内容、引用和 Observer 也保持原样。后端怎样处理重复提交，见 [VERSION-7](../model/version.mdx#version-7)。
-
 ## 观测内容 [#content]
 
-### IDENTITY-6 内容的粒度 [#identity-6]
+### IDENTITY-5 内容的粒度 [#identity-5]
 
 执行方：写入方
 
 观测内容的粒度由业务规则决定：内容变化时，是形成内容实体的新版本，还是新建一个实体。
 
-### IDENTITY-7 不补造身份 [#identity-7]
+### IDENTITY-6 不补造身份 [#identity-6]
 
 执行方：写入方
 

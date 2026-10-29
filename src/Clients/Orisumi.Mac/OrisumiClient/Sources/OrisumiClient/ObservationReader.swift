@@ -77,7 +77,7 @@ public final class ForegroundReader {
 
     public func today(instanceId: UUID, day: DateInterval, from reader: RuntimeReading) async throws -> Snapshot<Period> {
         let result = try await readAll(ReadQuery(instanceId: instanceId, during: day, resourceName: Self.resourceName),
-                                       from: reader, as: ObservationContent.self)
+                                       from: reader, as: ObservationMembers.self)
         let contentIds = result.observations.map(\.version.content.contentVersionId)
         let contentError = try await periods.refresh(contentIds, instanceId: instanceId, from: reader)
         let applicationIds = contentIds.compactMap { periods[$0]?.localApplicationVersionId }
@@ -126,7 +126,7 @@ public final class RecentReader {
                        from reader: RuntimeReading) async throws -> Snapshot<RecentObservation> {
         let interval = DateInterval(start: now.addingTimeInterval(-Double(days) * 86_400), end: now)
         let page = try await reader.read(ReadQuery(instanceId: instanceId, during: interval, limit: limit),
-                                         as: ObservationContent.self)
+                                         as: ObservationMembers.self)
         let error = try await contents.refresh(page.observations.map(\.version.content.contentVersionId),
                                                instanceId: instanceId, from: reader)
         let items = page.observations.map { item in

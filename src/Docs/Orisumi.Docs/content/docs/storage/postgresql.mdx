@@ -29,8 +29,9 @@ description: "数据库版本、数据访问、时间保存与诊断配置"
 
 截断在应用层完成。数据库驱动按自己的时间纪元截断，会让 2000 年以前的时间向后进位；应用层的截断与纪元无关，例如 `1999-12-31T23:59:59.9999999Z` 保存为 `1999-12-31T23:59:59.999999Z`，`2026-10-06T09:00:00+08:00` 保存为 `2026-10-06T01:00:00Z`。
 
-- 经过 EF 的读写使用 `Database/Converters/UtcDateTimeOffsetValueConverter.cs`，它作用于所有 `DateTimeOffset` 属性，包括可空的。
-- 不经过 EF 的参数化 SQL，写入时间前调用同一个转换。
+- 换算由 Core 的 `VersionTime.Normalize` 完成。
+- 经过 EF 的读写使用 `Database/Converters/UtcDateTimeOffsetValueConverter.cs`，它对所有 `DateTimeOffset` 属性调用这个换算，包括可空的。
+- 不经过 EF 的参数化 SQL，写入时间前直接调用它。
 
 ## 统计与诊断 [#diagnostics]
 

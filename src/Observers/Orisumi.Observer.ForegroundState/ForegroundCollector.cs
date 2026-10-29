@@ -14,7 +14,7 @@ internal sealed class ForegroundCollector(
     TextWriter progress)
 {
     private readonly object _gate = new();
-    private readonly ForegroundTimeline _timeline = new(observerId, interval * 3);
+    private readonly ForegroundTimeline _timeline = new(interval * 3);
     private bool _sleeping;
     private bool _stopped;
 

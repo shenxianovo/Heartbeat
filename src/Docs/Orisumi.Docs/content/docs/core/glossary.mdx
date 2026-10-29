@@ -60,9 +60,11 @@ Core 类型、Observer 和各种 Id 用英文名，其余概念用中文。Obser
 | --- | --- | --- |
 | 用户 | 拥有数据的人。在模型中是业务实体，可以作为 Observer | [OBSERVER-6](./model/observer.mdx#observer-6) |
 | 程序实例 | 独立运行、有自己 EntityId 的程序，例如前台状态 Observer 或推断 Observer | [OBSERVER-5](./model/observer.mdx#observer-5) |
-| SDK | 程序实例使用的提交组件，负责持久保存实例身份、本地保存，以及按依赖顺序发送。由各语言的 SDK 库和公共的 Runtime 组成 | [Overview · 谁决定什么](./index.mdx#responsibility) |
-| Runtime | 设备端客户端中运行 Observer 进程的公共组件，完成 SDK 的本地保存和发送 | [Clients · Runtime](../clients/runtime.mdx) |
-| 写入方 | 向后端提交版本的软件：Observer 的业务代码、SDK 和用户使用的工具 | [Conventions · 规则的格式](./conventions.mdx#rules) |
+| 托管方 | 运行程序实例、持久保存它的身份并可靠提交它的版本的组件。设备上是 Runtime，服务端是服务端托管 | [Submission · 流程](../observers/submission/index.mdx#flow) |
+| Runtime | 设备上的托管方：设备端客户端中运行 Observer 进程的公共组件，持久保存实例身份，本地保存并按依赖顺序发送 | [Clients · Runtime](../clients/runtime.mdx) |
+| SDK | 设备上的 Observer 的业务代码连接 Runtime 所用的库，每种语言一个，只封装管道中的消息 | [Submission · 分工](../observers/submission/index.mdx#division) |
+| 服务端托管 | API 进程中运行服务端 Observer 的模块，保存实例身份和未决提交，经实体服务直接提交 | [Submission · 服务端托管](../observers/submission/index.mdx#server) |
+| 写入方 | 向后端提交版本的软件：Observer 的业务代码、托管方和用户使用的工具 | [Conventions · 规则的格式](./conventions.mdx#rules) |
 | 读取方 | 读取和追溯数据的软件，例如 Agent 和 Web 控制台 | [Conventions · 规则的格式](./conventions.mdx#rules) |
 | 后端 | 校验并保存版本的服务 | [Overview · 谁决定什么](./index.mdx#responsibility) |
 
@@ -81,14 +83,14 @@ Core 类型、Observer 和各种 Id 用英文名，其余概念用中文。Obser
 | 术语 | 定义 | 详见 |
 | --- | --- | --- |
 | 更新 | 形成同一实体的新版本 | [HISTORY-1](./rules/history.mdx#history-1) |
-| 补全 | 随证据积累更新同一事实，例如延长时段 | [HISTORY-2](./rules/history.mdx#history-2) |
-| 纠正 | 用新版本修正错误的值 | [HISTORY-2](./rules/history.mdx#history-2) |
+| 补全 | 随证据积累更新同一事实，例如延长时段 | [HISTORY-1](./rules/history.mdx#history-1) |
+| 纠正 | 用新版本修正错误的值 | [HISTORY-1](./rules/history.mdx#history-1) |
 | 删除 | 移除选中实体的全部版本，之后不再接受它的新版本 | [HISTORY-6](./rules/history.mdx#history-6) |
 | 原始材料 | 来源提供、尚未按业务规则解释的数据 | [HISTORY-4](./rules/history.mdx#history-4) |
 
 ## 不再使用的术语 [#deprecated]
 
-实现中用过、已从模型中删除的术语。`pnpm docs:check` 会报告文档中出现的这些词。从模型中删除这样的概念时，在这里加一行。
+实现中用过、已从模型中删除的术语。`pnpm docs:check` 会报告文档和代码中出现的这些词。从模型中删除这样的概念时，在这里加一行。
 
 | 术语 | 替代说法 |
 | --- | --- |

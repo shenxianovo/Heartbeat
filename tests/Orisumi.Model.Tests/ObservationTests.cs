@@ -5,7 +5,7 @@ namespace Orisumi.Model.Tests;
 
 public sealed class ObservationTests
 {
-    // OBSERVATION-1, OBSERVATION-3, OBSERVATION-10, VERSION-12, HISTORY-2, EVIDENCE-3
+    // OBSERVATION-1, OBSERVATION-3, OBSERVATION-10, VERSION-12, HISTORY-1, EVIDENCE-3
     [Test]
     public async Task BusinessEntitiesCanShareContentAndOnlyTheSameObserverEntityCanUpdate()
     {

@@ -25,7 +25,7 @@ public sealed class RuntimeReadingTests
         var session = new LocalObserverSession(observer.Sdk);
         var registration = await ForegroundRegistration.RegisterAsync(session, owner);
         var store = new ForegroundStore(session, owner, registration);
-        var capture = ForegroundCapture.Create(owner, new LocalApplication(EntityId.New(), []), ForegroundTimelineTests.Reading(0));
+        var capture = ForegroundCapture.Create(new LocalApplication(EntityId.New(), []), ForegroundTimelineTests.Reading(0));
         store.Checkpoint(capture.Through(capture.EndAt.AddSeconds(2)), null);
         var reader = new RuntimeReader(http);
         var query = JsonLines.Json(new { instanceId = owner.Value, from = capture.StartAt.AddMinutes(-1), to = capture.EndAt.AddMinutes(1), resourceName = "foreground-application-periods" });
@@ -60,8 +60,7 @@ public sealed class RuntimeReadingTests
         var session = new LocalObserverSession(observer.Sdk);
         var registration = await ForegroundRegistration.RegisterAsync(session, owner);
         var store = new ForegroundStore(session, owner, registration);
-        var captures = Enumerable.Range(0, 4).Select(index => ForegroundCapture.Create(owner,
-            new LocalApplication(EntityId.New(), []), ForegroundTimelineTests.Reading(index))).ToArray();
+        var captures = Enumerable.Range(0, 4).Select(index => ForegroundCapture.Create(new LocalApplication(EntityId.New(), []), ForegroundTimelineTests.Reading(index))).ToArray();
         foreach (var capture in captures.Take(3)) { store.Checkpoint(capture, null); store.FinishActive(); }
         var reader = new RuntimeReader(http);
         var from = captures[0].StartAt.AddMinutes(-1);

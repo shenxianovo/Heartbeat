@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { readAllPages } from "@/api/client";
@@ -25,17 +25,32 @@ export const Route = createFileRoute("/entities/")({
 });
 
 /** 列的顺序：来源 ← Observation → 经历 → 事物；InputSet 和 Observation 同列。 */
-const COLUMNS: ((node: TypeNode) => boolean)[] = [
-  (n) => n.role === "source",
-  (n) => n.key === "observation" || n.key === "input_set",
-  (n) => n.role === "experience" && n.key !== "observation",
-  (n) => n.role === "thing",
+const COLUMNS: { label: string; keep: (node: TypeNode) => boolean }[] = [
+  { label: "来源", keep: (n) => n.role === "source" },
+  { label: "观测", keep: (n) => n.key === "observation" || n.key === "input_set" },
+  { label: "经历", keep: (n) => n.role === "experience" && n.key !== "observation" },
+  { label: "事物", keep: (n) => n.role === "thing" },
 ];
 
-const NODE_W = 176;
+/**
+ * 分列的图随卡片宽度伸缩：列距至少放得下最长的连线标签，宽度不够时先收窄节点，
+ * 节点收到最窄还放不下就改成上下排列，不画连线。
+ */
+const MIN_NODE_W = 140;
+const MAX_NODE_W = 176;
 const NODE_H = 40;
-const GAP_X = 108;
 const GAP_Y = 8;
+const MIN_GAP_X = 56;
+const MAX_GAP_X = 160;
+/** 连线标签是 10px 等宽字，每个字符约 6px；标签离节点 6px，另留 6px 给箭头。 */
+const LABEL_CHAR_W = 6;
+const LABEL_PAD = 12;
+const LABEL_STEP = 12;
+
+/** 连线上显示的字段名，去掉 VersionId 后缀。 */
+function edgeLabel(label: string) {
+  return label.replace(/VersionId(\[\])?$/, "$1");
+}
 
 /** 实体：类型之间怎样引用画成一张图，点一个类型在下面展开它的实体。 */
 function EntitiesPage() {
@@ -51,7 +66,7 @@ function EntitiesPage() {
   return (
     <section className="grid gap-4">
       <h1 className="text-[19px] font-medium">实体</h1>
-      <Card className="overflow-x-auto">
+      <Card className="min-w-0">
         <TypeMap
           index={types.data}
           selected={selected?.key ?? null}
@@ -70,6 +85,13 @@ function filterOf(node: TypeNode): EntityFilter {
   return { resourceName: node.key };
 }
 
+/** 节点在分列的图里的位置和宽度。 */
+interface Place {
+  x: number;
+  y: number;
+  w: number;
+}
+
 function TypeMap({
   index,
   selected,
@@ -80,19 +102,112 @@ function TypeMap({
   onSelect: (key: string) => void;
 }) {
   const [hover, setHover] = useState<string | null>(null);
-  const columns = COLUMNS.map((keep) => ({
+  const [box, setBox] = useState<HTMLDivElement | null>(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    if (!box) return;
+    const observer = new ResizeObserver(([entry]) => setWidth(Math.round(entry!.contentRect.width)));
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, [box]);
+
+  const columns = COLUMNS.map(({ label, keep }) => ({
+    label,
     nodes: index.nodes.filter(keep).sort((a, b) => a.name.localeCompare(b.name, "zh")),
   }));
-  const position = new Map<string, { x: number; y: number }>();
-  columns.forEach((column, c) =>
-    column.nodes.forEach((node, r) => position.set(node.key, { x: c * (NODE_W + GAP_X), y: r * (NODE_H + GAP_Y) })),
-  );
-  const width = columns.length * NODE_W + (columns.length - 1) * GAP_X;
-  const height = -GAP_Y + Math.max(...columns.map((c) => c.nodes.length)) * (NODE_H + GAP_Y);
   const focus = hover ?? selected;
   const touches = (edge: TypeEdge) => focus !== null && (edge.from === focus || edge.to === focus);
   const near = new Set(index.edges.filter(touches).flatMap((e) => [e.from, e.to]));
-  const showLabels = index.edges.length <= 8;
+  const renderBox = (node: TypeNode, at?: Place) => (
+    <TypeBox
+      key={node.key}
+      node={node}
+      at={at}
+      selected={selected === node.key}
+      dim={focus !== null && focus !== node.key && !near.has(node.key)}
+      onHover={setHover}
+      onSelect={onSelect}
+    />
+  );
+
+  const n = columns.length;
+  const longest = Math.max(0, ...index.edges.map((edge) => edgeLabel(edge.label).length));
+  const minGap = Math.max(MIN_GAP_X, longest * LABEL_CHAR_W + LABEL_PAD);
+  const nodeW = Math.min(MAX_NODE_W, (width - (n - 1) * minGap) / n);
+  const fits = nodeW >= MIN_NODE_W;
+  return (
+    <div ref={setBox}>
+      {width === 0 ? null : fits ? (
+        <TypeGraph
+          columns={columns}
+          edges={index.edges}
+          nodeW={nodeW}
+          gap={Math.min(MAX_GAP_X, (width - n * nodeW) / (n - 1))}
+          focus={focus}
+          touches={touches}
+          renderBox={renderBox}
+        />
+      ) : (
+        <div className="grid gap-3">
+          {columns
+            .filter((column) => column.nodes.length)
+            .map((column) => (
+              <div key={column.label}>
+                <p className="text-fg-3 mb-1.5 text-xs">{column.label}</p>
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-2">
+                  {column.nodes.map((node) => renderBox(node))}
+                </div>
+              </div>
+            ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 分列的类型图。同一个类型从同一侧连出的同名引用只标一次，标在出发的一端；
+ * 一个类型在同一侧有几种引用时，标签向上错开。
+ */
+function TypeGraph({
+  columns,
+  edges,
+  nodeW,
+  gap,
+  focus,
+  touches,
+  renderBox,
+}: {
+  columns: { nodes: TypeNode[] }[];
+  edges: TypeEdge[];
+  nodeW: number;
+  gap: number;
+  focus: string | null;
+  touches: (edge: TypeEdge) => boolean;
+  renderBox: (node: TypeNode, at: Place) => ReactNode;
+}) {
+  const position = new Map<string, Place>();
+  columns.forEach((column, c) =>
+    column.nodes.forEach((node, r) =>
+      position.set(node.key, { x: c * (nodeW + gap), y: r * (NODE_H + GAP_Y), w: nodeW }),
+    ),
+  );
+  const width = columns.length * nodeW + (columns.length - 1) * gap;
+  const height = -GAP_Y + Math.max(...columns.map((c) => c.nodes.length)) * (NODE_H + GAP_Y);
+
+  const labels = new Map<string, { from: string; right: boolean; label: string; edges: TypeEdge[] }>();
+  for (const edge of edges) {
+    const a = position.get(edge.from);
+    const b = position.get(edge.to);
+    if (!a || !b) continue;
+    const right = b.x >= a.x;
+    const key = `${edge.from}>${right}>${edge.label}`;
+    const group = labels.get(key) ?? { from: edge.from, right, label: edge.label, edges: [] };
+    group.edges.push(edge);
+    labels.set(key, group);
+  }
+  const stacked = new Map<string, number>();
+  const showLabels = labels.size <= 8;
 
   return (
     <div className="relative mx-auto" style={{ width, height }}>
@@ -113,15 +228,15 @@ function TypeMap({
             <path d="M0 0 6 3 0 6Z" fill="var(--accent)" />
           </marker>
         </defs>
-        {index.edges.map((edge) => {
+        {edges.map((edge) => {
           const a = position.get(edge.from);
           const b = position.get(edge.to);
           if (!a || !b) return null;
           const lit = touches(edge);
           const forward = b.x >= a.x;
           const same = b.x === a.x;
-          const x1 = forward ? a.x + NODE_W : a.x;
-          const x2 = same ? b.x + NODE_W : forward ? b.x : b.x + NODE_W;
+          const x1 = forward ? a.x + nodeW : a.x;
+          const x2 = same ? b.x + nodeW : forward ? b.x : b.x + nodeW;
           const y1 = a.y + NODE_H / 2;
           const y2 = b.y + NODE_H / 2;
           const bend = same ? 60 : Math.max(30, Math.abs(x2 - x1) / 2);
@@ -129,66 +244,58 @@ function TypeMap({
           const c2 = same ? x2 + bend : forward ? x2 - bend : x2 + bend;
           const d = `M${x1} ${y1} C${c1} ${y1} ${c2} ${y2} ${x2} ${y2}`;
           return (
-            <g key={`${edge.from}>${edge.to}>${edge.label}`} style={{ transition: "opacity 150ms ease-out" }}>
-              <path
-                d={d}
-                fill="none"
-                stroke={lit ? "var(--accent)" : "var(--line-3)"}
-                strokeOpacity={focus && !lit ? 0.12 : lit ? 0.9 : 0.4}
-                strokeWidth={lit ? 1.5 : 1}
-                markerEnd={lit ? "url(#type-arrow-lit)" : "url(#type-arrow)"}
-              />
-              {(lit || (showLabels && !focus)) && (
-                <text
-                  x={(x1 + x2) / 2}
-                  y={(y1 + y2) / 2 - 4}
-                  textAnchor="middle"
-                  style={{ fontSize: 10, fill: "var(--fg-2)", fontFamily: "var(--font-mono)" }}
-                  stroke="var(--card)"
-                  strokeWidth={3}
-                  paintOrder="stroke"
-                >
-                  {edge.label.replace(/VersionId(\[\])?$/, "$1")}
-                  <title>{edge.label}</title>
-                </text>
-              )}
-            </g>
+            <path
+              key={`${edge.from}>${edge.to}>${edge.label}`}
+              d={d}
+              fill="none"
+              stroke={lit ? "var(--accent)" : "var(--line-3)"}
+              strokeOpacity={focus && !lit ? 0.12 : lit ? 0.9 : 0.4}
+              strokeWidth={lit ? 1.5 : 1}
+              markerEnd={lit ? "url(#type-arrow-lit)" : "url(#type-arrow)"}
+              style={{ transition: "opacity 150ms ease-out" }}
+            />
+          );
+        })}
+        {[...labels.entries()].map(([key, group]) => {
+          const a = position.get(group.from)!;
+          const side = `${group.from}>${group.right}`;
+          const row = stacked.get(side) ?? 0;
+          stacked.set(side, row + 1);
+          const lit = group.edges.some(touches);
+          if (!lit && !(showLabels && !focus)) return null;
+          return (
+            <text
+              key={key}
+              x={group.right ? a.x + nodeW + 6 : a.x - 6}
+              y={a.y + NODE_H / 2 - 4 - row * LABEL_STEP}
+              textAnchor={group.right ? "start" : "end"}
+              style={{ fontSize: 10, fill: "var(--fg-2)", fontFamily: "var(--font-mono)" }}
+              stroke="var(--card)"
+              strokeWidth={3}
+              paintOrder="stroke"
+            >
+              {edgeLabel(group.label)}
+              <title>{group.label}</title>
+            </text>
           );
         })}
       </svg>
-      {columns.flatMap((column) =>
-        column.nodes.map((node) => {
-          const at = position.get(node.key)!;
-          return (
-            <TypeBox
-              key={node.key}
-              node={node}
-              x={at.x}
-              y={at.y}
-              selected={selected === node.key}
-              dim={focus !== null && focus !== node.key && !near.has(node.key)}
-              onHover={setHover}
-              onSelect={onSelect}
-            />
-          );
-        }),
-      )}
+      {columns.flatMap((column) => column.nodes.map((node) => renderBox(node, position.get(node.key)!)))}
     </div>
   );
 }
 
 function TypeBox({
   node,
-  x,
-  y,
+  at,
   selected,
   dim,
   onHover,
   onSelect,
 }: {
   node: TypeNode;
-  x: number;
-  y: number;
+  /** 在分列的图里的位置；不给时随父元素排列。 */
+  at?: Place | undefined;
   selected: boolean;
   dim: boolean;
   onHover: (key: string | null) => void;
@@ -205,12 +312,13 @@ function TypeBox({
       onFocus={() => onHover(node.key)}
       onBlur={() => onHover(null)}
       className={cn(
-        "bg-card absolute flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 text-left",
+        "bg-card flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 text-left",
         "transition-[opacity,border-color,box-shadow] duration-150 ease-out",
+        at ? "absolute" : "w-full",
         selected ? "border-accent ring-accent/25 ring-2" : "border-line-2 hover:border-line-3",
         dim && "opacity-35",
       )}
-      style={{ left: x, top: y, width: NODE_W, height: NODE_H }}
+      style={at ? { left: at.x, top: at.y, width: at.w, height: NODE_H } : { height: NODE_H }}
     >
       <Mark role={node.role} color={null} icon={typeIcon(node.key)} size="md" />
       <span className="min-w-0 flex-1 truncate text-[13px]">{node.name}</span>

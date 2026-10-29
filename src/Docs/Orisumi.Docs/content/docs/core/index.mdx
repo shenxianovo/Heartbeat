@@ -41,7 +41,7 @@ Observation 引用 Observer、观测内容和 InputSet。InputSet 引用它的�
 | --- | --- |
 | 业务规则 | EntitySchema、实体身份、粒度、何时形成新版本、事实时间的取值、结束条件、原始材料的保留、陈述冲突时以谁为准 |
 | Observer | 观测的陈述和它实际用到的输入，以及进行中的观测草稿 |
-| SDK | 程序实例身份的持久保存、本地保存、按依赖顺序发送和重试，以及写入观测草稿 |
+| 托管方 | 程序实例身份的持久保存，版本的可靠提交、重试和恢复 |
 | 后端 | 按 Schema 版本和 Core 的规则校验并保存版本、赋值保存时间、执行删除，以及校验并暂存观测草稿 |
 
-后端只检查结构，事实层面的判断由业务规则和 Observer 负责。SDK 与 Observer 的分工见 [ADR · 提交与 SDK](../adr/submission.mdx)；在设备上，SDK 的这些职责由 Runtime 完成，见 [ADR · Runtime 与进程托管](../adr/observer-runtime.mdx)。
+后端只检查结构，事实层面的判断由业务规则和 Observer 负责。设备上的托管方是 Runtime，程序实例通过 SDK 使用它，见 [ADR · 提交与 Runtime](../adr/submission.mdx)；服务端的托管方是服务端托管，见 [ADR · 服务端托管](../adr/server-observer-hosting.mdx)。两端共同的流程见 [Submission · 流程](../observers/submission/index.mdx#flow)。

@@ -10,8 +10,8 @@ Runtime 用这个类库把程序实例的版本交给后端：草稿和待发送
 using var http = new HttpClient { BaseAddress = new("http://localhost:8080/api/") };
 using var sdk = new ObserverClient(statePath, instanceId, http);
 
-// 登记：先 EntitySchema，再程序实例
-var schema = await sdk.RegisterSchemaAsync(schemaId, entitySchema);
+// 登记：先 EntitySchema，再程序实例。登记只写入本地，发送前再与后端的版本链对齐
+var schema = sdk.RegisterSchemaLocally(schemaId, entitySchema);
 sdk.RegisterInstance(instanceId, observerSchema, instanceContent);
 
 // 形成观测：一次 Execute 是一个本地事务
@@ -53,7 +53,6 @@ Observation 的 `Draft` 传入 `publishDraft: true`，SDK 就把这份草稿写�
 | `AdoptSaved` | 采用后端已保存的、内容相同的版本 |
 | `ReplaceRejected` | 用新的版本替换被拒绝的版本，待发送版本中的引用随之改写 |
 | `ReplaceReferenceAndResume` | 把待发送版本中对某个版本的引用换成另一个版本，再重新发送被拒绝的版本 |
-| `RewriteDependent` | 改写一个依赖被拒绝版本、尚未保存的版本 |
 | `DiscardRejected` | 丢弃被拒绝的版本和依赖它的版本 |
 
 前台状态 Observer 的用法见 `src/Observers/Orisumi.Observer.ForegroundState/ForegroundStore.cs` 和 `ForegroundDelivery.cs`。

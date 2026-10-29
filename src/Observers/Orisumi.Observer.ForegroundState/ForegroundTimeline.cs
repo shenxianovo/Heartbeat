@@ -2,7 +2,7 @@ using Orisumi.Core;
 
 namespace Orisumi.Observers.ForegroundState;
 
-internal sealed class ForegroundTimeline(EntityId observerId, TimeSpan maximumGap)
+internal sealed class ForegroundTimeline(TimeSpan maximumGap)
 {
     private ForegroundCapture? _current;
     private ForegroundApplicationReading? _previous;
@@ -14,7 +14,7 @@ internal sealed class ForegroundTimeline(EntityId observerId, TimeSpan maximumGa
         if (_current is not null && continuous)
         {
             var extended = _current.Through(reading.ObservedAt);
-            if (_current.Content.LocalApplicationId == application.Id && _current.Content.Name == reading.Name
+            if (_current.Application.Id == application.Id && _current.Content.Name == reading.Name
                 && _current.TimeZone == reading.TimeZone)
             {
                 _current = extended;
@@ -24,7 +24,7 @@ internal sealed class ForegroundTimeline(EntityId observerId, TimeSpan maximumGa
             updates.Add(extended);
         }
         if (_current is not null && !continuous) updates.Add(_current);
-        _current = ForegroundCapture.Create(observerId, application, reading);
+        _current = ForegroundCapture.Create(application, reading);
         _previous = reading;
         updates.Add(_current);
         return updates;

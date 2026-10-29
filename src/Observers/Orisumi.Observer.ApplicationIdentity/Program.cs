@@ -22,8 +22,8 @@ internal static class Program
         using var instanceLock = new FileStream(Path.Combine(directory, "instance.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
         using var cancellation = new CancellationTokenSource();
         Console.CancelKeyPress += (_, e) => { e.Cancel = true; cancellation.Cancel(); };
-        using var http = new HttpClient { BaseAddress = new Uri(backend.TrimEnd('/') + "/"), Timeout = TimeSpan.FromSeconds(30) };
-        using var openai = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };
+        using var http = new HttpClient { BaseAddress = new Uri(backend.TrimEnd('/') + "/") };
+        using var openai = new HttpClient();
         var state = new IdentityState(directory);
         var recognizer = new IdentityRecognizer(new(http, state), state,
             new OpenAiApplicationModel(openai, Environment.GetEnvironmentVariable("OPENAI_API_KEY"), modelName),

@@ -39,18 +39,19 @@ ADR 用英文 slug 命名，例如 `entity-model.mdx`，没有编号。引用时
 | 分组 | ADR | 决定 |
 | --- | --- | --- |
 | Foundation | [定位与边界](./positioning.mdx) | Orisumi 保存一个人经历了什么，记录以用户为主体，独立于采集和使用它的软件 |
-| Foundation | [设计层与变更流程](./documentation-authority.mdx) | 文档是唯一权威；设计分为目标与模型、组件与契约、实现三层，变更从最早需要改变的位置开始，沿依赖同步，以验证证据收口 |
+| Foundation | [设计层与变更流程](./documentation-authority.mdx) | 文档是唯一权威；设计分为目标与模型、组件与契约、实现三层，变更从最早需要改变的位置开始，沿依赖同步并删除被取代的部分，以验证证据收口 |
 | Model | [实体模型](./entity-model.mdx) | 实体表达身份，不可变的版本保存完整内容，引用固定到版本，只引用已保存的版本 |
 | Model | [Observer 与输入集](./observers-and-evidence.mdx) | Observer 是对观测负责的实体，按负责的陈述划分；一次处理实际使用的版本由可共享的 InputSet 列出 |
 | Model | [身份、时间与更新](./identity-and-updates.mdx) | 业务规则决定身份和粒度，每个版本有自己的保存时间，更新形成新版本，独立的陈述形成新观测 |
-| Model | [提交与 SDK](./submission.mdx) | 程序实例的身份持久不变，Observer 的业务代码按业务规则形成事实，SDK 本地保存并按依赖顺序可靠提交；各语言的 SDK 共用一个 Runtime |
+| Model | [提交与 Runtime](./submission.mdx) | 程序实例的身份持久不变，Observer 的业务代码按业务规则形成事实，Runtime 本地保存并按依赖顺序可靠提交；各语言的 SDK 只连接 Runtime |
 | Model | [观测草稿](./observation-drafts.mdx) | 进行中的 Observation 以草稿实时可读：Observer 在本地保存草稿并决定何时结束，后端在内存中暂存最新的一份，结束后才保存为版本 |
 | Model | [删除](./deletion.mdx) | 删除以实体为单位，只移除选中实体的全部版本，删除后不可复活 |
 | Backend | [后端运行与本地环境](./backend-runtime.mdx) | 四个后端项目组成一个进程，Aspire 编排本地环境，NGINX 提供同源入口 |
-| Backend | [实体 API](./entity-api.mdx) | 接口按身份寻址，所有类型共用一组路由，一次提交是一组有序的版本，内容按 JSON 的值比较，错误带规则编号 |
-| Backend | [实体存储](./entity-storage.mdx) | 所有版本以 jsonb 保存在一张表中，查询走以类型开头的索引，删除留下墓碑，所有操作串行执行 |
+| Backend | [实体 API](./entity-api.mdx) | 接口按身份寻址，所有类型共用一组路由，一次提交是一组有序的版本，内容按 JSON 的值比较，反查按目标实体列出直接的引用方，错误带规则编号 |
+| Backend | [实体存储](./entity-storage.mdx) | 所有版本以 jsonb 保存在一张表中，查询走以类型开头的索引，引用另存一张推导的反查表，删除留下墓碑，所有操作串行执行 |
 | Clients | [Runtime 与进程托管](./observer-runtime.mdx) | 客户端启动一个 Runtime，Runtime 启动各 Observer 的进程，经标准输入输出双向通信；实例身份和本地数据由 Runtime 保管，与程序文件分开 |
 | Clients | [设备端客户端](./device-client.mdx) | 原生客户端通过 Runtime 托管本机的 Observer：从官方目录单独安装 ZIP 包，启停、更新和有限重启；专用视图原生实现，随客户端发布；陈述由各 Observer 负责 |
+| Observers | [服务端托管](./server-observer-hosting.mdx) | 服务端 Observer 由 API 进程中的服务端托管运行：身份和未决提交保存在 PostgreSQL，经实体服务直接提交，等后端保存后再交还业务代码 |
 | Observers | [应用识别](./application-identity.mdx) | 应用产品按跨设备线索聚合各设备上的本机应用；服务端的应用识别 Observer 用模型认出新线索，用户在 Web 中修改 |
 | Verification | [开发验证与测试证据](./verification.mdx) | Orisumi.Dev 组织验证并保存证据，原生测试报告是测试结果的权威来源 |
 | Verification | [开发环境的启动与隔离](./development-environment.mdx) | Orisumi.Dev 是启动环境的统一入口，每个检出目录运行一套环境，数据卷可选，服务按需启动 |

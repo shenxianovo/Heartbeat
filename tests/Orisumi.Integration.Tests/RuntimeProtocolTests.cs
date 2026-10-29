@@ -11,7 +11,7 @@ namespace Orisumi.Integration.Tests;
 public sealed class RuntimeProtocolTests
 {
     [Test]
-    [Property("caseId", "sdk-handoff")]
+    [Property("caseId", "runtime-handoff")]
     public async Task LostReceiptReplaysAfterRestartAndDifferentPayloadIsRejected()
     {
         var directory = Directory.CreateTempSubdirectory("orisumi-receipt-");
@@ -39,7 +39,7 @@ public sealed class RuntimeProtocolTests
     }
 
     [Test]
-    [Property("caseId", "sdk-handoff")]
+    [Property("caseId", "runtime-handoff")]
     public async Task FailedBatchRollsBackReceiptAndVersionsAndReferencesStayFixed()
     {
         var directory = Directory.CreateTempSubdirectory("orisumi-batch-");
@@ -51,7 +51,7 @@ public sealed class RuntimeProtocolTests
             var session = new LocalObserverSession(sdk);
             var registration = await ForegroundRegistration.RegisterAsync(session, owner);
             var application = new LocalApplication(EntityId.New(), []);
-            var capture = ForegroundCapture.Create(owner, application, ForegroundTimelineTests.Reading(0));
+            var capture = ForegroundCapture.Create(application, ForegroundTimelineTests.Reading(0));
             var store = new ForegroundStore(session, owner, registration);
             store.Checkpoint(capture, null);
             var before = sdk.Execute(local => local.Versions().Count);
@@ -75,7 +75,7 @@ public sealed class RuntimeProtocolTests
     }
 
     [Test]
-    [Property("caseId", "sdk-registration")]
+    [Property("caseId", "runtime-registration")]
     public async Task HostedRegistrationDoesNotWaitForAnOfflineBackend()
     {
         using var local = new ForegroundTestStore(EntityId.New());

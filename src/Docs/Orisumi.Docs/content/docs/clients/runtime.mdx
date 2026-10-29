@@ -5,7 +5,7 @@ description: "Runtime 怎样启动、保存数据、运行 Observer 的进程，
 
 Runtime 是设备端客户端中的公共组件。它安装和运行 Observer 的进程，接收它们交来的数据，本地保存并发送到后端，再把状态和数据提供给客户端的界面。本页写 Runtime 的启动参数、数据目录、进程的生命周期和两条管道的协议。为什么这样分工，见 [ADR · Runtime 与进程托管](../adr/observer-runtime.mdx)。
 
-Runtime 是一个 .NET 程序，代码在 `src/Observers/Orisumi.Observer.Runtime/`。它的本地保存和发送复用 .NET SDK，见 [.NET](../observers/submission/dotnet.mdx)。
+Runtime 是一个 .NET 程序，代码在 `src/Observers/Orisumi.Observer.Runtime/`。本地保存和发送的实现见 [.NET](../observers/submission/dotnet.mdx)。
 
 ## 启动 [#startup]
 
@@ -24,6 +24,8 @@ Orisumi.Observer.Runtime --data-dir <目录> --backend <API 地址> --bundled <�
 
 启动后，Runtime 安装尚未登记过的附带安装包，再运行所有启用的 Observer。
 
+Runtime 对 API 的每个请求最多等待 5 秒，超时按网络失败处理：发送稍后原样重发，见 [Submission · 确认](../observers/submission/index.mdx#confirmation)；读取报告后端不可用，见[读取](#reading)。客户端管道一次只有一个请求未完成，所以后端没有响应时，界面最多等 5 秒就能继续。
+
 ## 数据目录 [#data]
 
 一个数据目录同时只能由一个 Runtime 使用，Runtime 启动时锁定它。
@@ -33,7 +35,7 @@ Orisumi.Observer.Runtime --data-dir <目录> --backend <API 地址> --bundled <�
   registry.json                 安装登记
   packages/<package-id>/<version>/   解压后的安装包，安装后不再改动
   instances/<entity-id>/
-    sdk.sqlite                  SDK 的本地数据
+    sdk.sqlite                  Runtime 为这个实例本地保存的数据
     data/                       业务代码自己的持久数据
   shared/                       这个 Runtime 中各程序实例共用的业务数据
   staging/                      下载和解压中的安装包
@@ -49,7 +51,7 @@ Orisumi.Observer.Runtime --data-dir <目录> --backend <API 地址> --bundled <�
 
 ### 状态 [#states]
 
-Runtime 为每个 Observer 分开报告三种状态：
+Runtime 为每个 Observer 报告托管方的三项状态，见 [Submission · 流程](../observers/submission/index.mdx#flow)：
 
 | 状态 | 含义 | 取值 |
 | --- | --- | --- |
@@ -57,7 +59,7 @@ Runtime 为每个 Observer 分开报告三种状态：
 | 进程 | 进程现在怎样 | `starting`、`running`、`stopping`、`waiting`（等待重启）、`stopped`、`failed`；故障的原因在 `error` |
 | 发送 | 本地数据的发送 | 草稿、待发送、已保存的数量，发送错误和被拒绝的版本 |
 
-进程在运行，只说明进程没有退出。来源读取失败作为采集诊断处理，见 [OBSERVER-8](../core/model/observer.mdx#observer-8)：Observer 把诊断写入标准错误，Runtime 在 `diagnostic` 中报告最近的一条，最长 2048 个字符，进程状态不变。Observer 停用或故障时，发送照常进行。
+来源读取失败作为采集诊断处理，见 [OBSERVER-8](../core/model/observer.mdx#observer-8)：Observer 把诊断写入标准错误，Runtime 在 `diagnostic` 中报告最近的一条，最长 2048 个字符，进程状态不变。
 
 ### 启动与停止 [#lifecycle]
 

@@ -7,7 +7,7 @@ export const caseId = 'api-deletion';
 
 ## 为什么验证 [#why]
 
-用户删除数据后，这些数据不能再被读取，离线的 SDK 补发旧版本也不能让它们复活。仍被业务数据使用的 EntitySchema 不能删除，否则那些数据就无法解释。约定见 [API · 状态码](../../api/index.mdx#status) 和 [Storage · 删除与墓碑](../../storage/index.mdx#tombstones)。
+用户删除数据后，这些数据不能再被读取，离线的 Runtime 补发旧版本也不能让它们复活。仍被业务数据使用的 EntitySchema 不能删除，否则那些数据就无法解释。约定见 [API · 状态码](../../api/index.mdx#status) 和 [Storage · 删除与墓碑](../../storage/index.mdx#tombstones)。
 
 ## 前置条件 [#setup]
 

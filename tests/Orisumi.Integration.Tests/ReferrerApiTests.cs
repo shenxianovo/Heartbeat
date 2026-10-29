@@ -7,7 +7,7 @@ namespace Orisumi.Integration.Tests;
 
 public sealed class ReferrerApiTests
 {
-    // ENTITY-5, ENTITY-7, SCHEMA-9, SCHEMA-17: only declared content references count.
+    // ENTITY-5, ENTITY-7, SCHEMA-2, SCHEMA-9: only declared content references count.
     [Test]
     [Property("caseId", "api-referrers")]
     public async Task NestedReferencesUseSavedSchemaAndRootJsonPointers()

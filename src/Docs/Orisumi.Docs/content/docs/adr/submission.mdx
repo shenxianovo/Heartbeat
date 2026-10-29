@@ -1,6 +1,6 @@
 ---
-title: "提交与 SDK"
-description: "程序实例的身份持久不变，Observer 的业务代码按业务规则形成事实，SDK 本地保存并按依赖顺序可靠提交；各语言的 SDK 共用一个 Runtime"
+title: "提交与 Runtime"
+description: "程序实例的身份持久不变，Observer 的业务代码按业务规则形成事实，Runtime 本地保存并按依赖顺序可靠提交；各语言的 SDK 只连接 Runtime"
 ---
 
 ## 背景 [#context]
@@ -9,48 +9,48 @@ description: "程序实例的身份持久不变，Observer 的业务代码按业
 
 ## 决定 [#decision]
 
-- SDK 解决各 Observer 共用的提交问题：持久保存程序实例的身份，登记 EntitySchema，断网和重启时本地保存，按依赖顺序发送，重试与确认，崩溃后恢复，以及写入观测草稿。
-- 在设备上运行的 Observer 通过 SDK 提交。与 API 运行在一起、全部状态都能从后端重新读取的 Observer 可以直接调用 API，自己完成其中用到的部分。
+- Runtime 解决设备上各 Observer 共用的提交问题：持久保存程序实例的身份，登记 EntitySchema，断网和重启时本地保存，按依赖顺序发送，重试与确认，崩溃后恢复，以及写入观测草稿。
+- 在设备上运行的 Observer 经 Runtime 提交。服务端 Observer 由服务端托管提交，见 [ADR · 服务端托管](./server-observer-hosting.mdx)。
 - 程序实例的身份持久不变。
-- Observer 的业务代码按业务规则形成事实，SDK 负责可靠提交。
-- SDK 分为两部分：业务代码调用所用语言的 SDK 库；各语言共用一个 Runtime，由它本地保存、接好版本链、发送、确认和恢复。SDK 库只把业务操作交给 Runtime，不保存数据。
-- 第一版 Runtime 复用 .NET SDK 的本地保存和发送。
-- 一段事实何时结束，由 Observer 的业务代码判断，再通知 SDK。
+- Observer 的业务代码按业务规则形成事实，Runtime 负责可靠提交。
+- 业务代码通过所用语言的 SDK 与 Runtime 通信。各语言共用一个 Runtime，由它本地保存、接好版本链、发送、确认和恢复；SDK 只把业务操作交给 Runtime，不保存数据。
+- Runtime 用 .NET 编写，复用已有的本地保存和发送实现。
+- 一段事实何时结束，由 Observer 的业务代码判断，再通知 Runtime。
 - 一次业务变化作为一个有序批次交给 Runtime。Runtime 在一个本地事务中提交整批，失败时整批回滚；提交后返回本地回执。
-- SDK 按依赖顺序提交版本，重试沿用原 VersionId。
+- Runtime 按依赖顺序提交版本，重试沿用原 VersionId。
 - 后端按顺序逐个保存一次提交中的版本，遇到被拒绝的版本就停止，之前已保存的保留。
-- SDK 按提交的响应确认版本。错误响应指出被拒绝的版本，它之前的版本已保存，之后的版本没有处理，仍可改写。
+- Runtime 按提交的响应确认版本。错误响应指出被拒绝的版本，它之前的版本已保存，之后的版本没有处理，仍可改写。
 - 版本交给 Runtime 后，发送不再依赖形成它的进程。程序实例停用、崩溃或卸载后，Runtime 继续发送它的版本。
 
 ## 理由 [#rationale]
 
-可靠提交放进 SDK，重试和恢复只实现一次。结束条件属于业务规则，所以由 Observer 的业务代码判断。
+可靠提交放进 Runtime，重试和恢复只实现一次。结束条件属于业务规则，所以由 Observer 的业务代码判断。
 
-SDK 负责本地保存、恢复发送和按依赖顺序发送。只有尚未提交的本地草稿可以合并或丢弃；已经提交、结果不确定或已被引用的版本按原样发送。这套草稿、冻结和版本链的状态机已经在 .NET SDK 中实现并测试过。放进一个公共的 Runtime，每种新语言只需写一层很薄的调用封装，状态机和数据库结构仍只有一份。
+Runtime 负责本地保存、恢复发送和按依赖顺序发送。只有尚未提交的本地草稿可以合并或丢弃；已经提交、结果不确定或已被引用的版本按原样发送。这套草稿、冻结和版本链的状态机已经用 .NET 实现并测试过。放进一个公共的 Runtime，每种新语言只需写一层很薄的 SDK，状态机和数据库结构仍只有一份。
 
 前台状态 Observer 切换应用时，要结束旧时段、识别新应用、形成新时段的内容和 Observation。这些操作必须一起成立：只结束了旧时段而没开始新时段，记录中就会多出一段空白。所以一次业务变化整批交给 Runtime，在一个 SQLite 事务中提交。批内的操作可以引用前面操作的结果，例如新时段引用刚识别出的应用版本，不必为了取得 VersionId 拆成几次交接。
 
 Runtime 提交事务后才返回回执，业务代码收到回执就知道数据已本地保存。回执和数据在同一个事务中保存，请求带着稳定的标识；回执在传回途中丢失时，业务代码重发同一个请求，得到原来的结果，数据不会重复。
 
-本地批次是一个 SQLite 事务，代价很小；后端的逐个保存是另一层契约。重试沿用 VersionId，已保存的版本重发时直接确认，所以一次提交不必整体成功或整体失败：SDK 处理完被拒绝的原因后，原样重发整次提交即可。逐个保存让后端不必为整次提交维护一个可回滚的工作区。
+本地批次是一个 SQLite 事务，代价很小；后端的逐个保存是另一层契约。重试沿用 VersionId，已保存的版本重发时直接确认，所以一次提交不必整体成功或整体失败：Runtime 处理完被拒绝的原因后，原样重发整次提交即可。逐个保存让后端不必为整次提交维护一个可回滚的工作区。
 
-响应已经说明每个版本的结果，SDK 不需要读回确认。被拒绝的版本之后的版本确定没有保存，所以和草稿一样可以改写，例如改为引用另一个程序实例先保存的首版。
+响应已经说明每个版本的结果，Runtime 不需要读回确认。被拒绝的版本之后的版本确定没有保存，所以和草稿一样可以改写，例如改为引用另一个程序实例先保存的首版。
 
 版本交给 Runtime 之后，发送已经和业务判断无关。所以发送跟着 Runtime 运行：程序实例停用、崩溃或卸载后，它形成的版本照常送到后端。Runtime 怎样随客户端运行，见 [ADR · Runtime 与进程托管](./observer-runtime.mdx)。
 
 放弃的方案：
 
 - **每个 Observer 自己实现提交。** 重试、恢复和确认的逻辑会在每个 Observer 中重复，而且各不相同。
-- **每种语言各写一份完整的 SDK。** 草稿、冻结、Schema 对齐和本地数据库的迁移要在每种语言中实现，并保持一致。
+- **每种语言各写一份本地保存和发送。** 草稿、冻结、Schema 对齐和本地数据库的迁移要在每种语言中实现，并保持一致。
 - **各语言的 SDK 写入共同的 SQLite 格式，由公共程序发送。** 数据库结构变成跨语言的公开协议，冻结和版本链的逻辑仍在每种语言中重复。
-- **SDK 库先存入自己的队列，再转交 Runtime。** 两次可靠交接，需要两套恢复逻辑。
+- **SDK 先存入自己的队列，再转交 Runtime。** 两次可靠交接，需要两套恢复逻辑。
 - **一次提交整体成功或整体失败。** 后端要为整次提交维护工作区；有了 VersionId 的重试，这项保证换不来额外的正确性。
 
 ## 代价 [#costs]
 
 - 每次业务变化都要跨进程交接，等 Runtime 提交事务后才能继续。
-- SDK 库能用的操作受 Runtime 限制，新的操作要先加进 Runtime。
-- Runtime 和各语言的 SDK 库之间有一份协议，两边都要按协议版本兼容。
+- SDK 能用的操作受 Runtime 限制，新的操作要先加进 Runtime。
+- Runtime 和各语言的 SDK 之间有一份协议，两边都要按协议版本兼容。
 - 一个进程中的每个程序实例都有自己的身份，由 Runtime 持久保存。
 - Observer 的业务代码必须显式通知事实结束。
 - Runtime 要记住每个版本的依赖和发送状态。
@@ -59,5 +59,5 @@ Runtime 提交事务后才返回回执，业务代码收到回执就知道数据
 ## 规则位置 [#details]
 
 - [VERSION-13](../core/model/version.mdx#version-13)、[OBSERVER-4](../core/model/observer.mdx#observer-4)、[OBSERVER-5](../core/model/observer.mdx#observer-5)、[Core · 谁决定什么](../core/index.mdx#responsibility)
-- [Observers · Submission](../observers/submission/index.mdx)、[本地交接](../observers/submission/index.mdx#handoff)、[.NET](../observers/submission/dotnet.mdx)
+- [Observers · Submission](../observers/submission/index.mdx)、[流程](../observers/submission/index.mdx#flow)、[本地交接](../observers/submission/index.mdx#handoff)、[.NET](../observers/submission/dotnet.mdx)
 - [Clients · Runtime](../clients/runtime.mdx)

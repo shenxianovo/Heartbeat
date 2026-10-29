@@ -29,7 +29,7 @@ public sealed class ObserverDraftTests
                 registration = await ForegroundRegistration.RegisterAsync(new LocalObserverSession(sdk), owner);
                 var registry = new LocalApplicationRegistry(Path.Combine(directory.FullName, "apps"));
                 var reading = ForegroundTimelineTests.Reading(0);
-                capture = ForegroundCapture.Create(owner, registry.Resolve(reading), reading);
+                capture = ForegroundCapture.Create(registry.Resolve(reading), reading);
                 var store = new ForegroundStore(new LocalObserverSession(sdk), owner, registration);
                 store.Checkpoint(capture, null);
                 await sdk.SendAsync();
@@ -68,7 +68,7 @@ public sealed class ObserverDraftTests
     }
 
     [Test]
-    [Property("caseId", "sdk-local-versions")]
+    [Property("caseId", "runtime-local-versions")]
     public async Task VersionConflictStopsPublishingEvenAfterLocalUpdatesAndRestart()
     {
         await using var database = await DatabaseFixture.CreateAsync();
@@ -125,7 +125,7 @@ public sealed class ObserverDraftTests
             var registry = new LocalApplicationRegistry(Path.Combine(directory.FullName, "apps"));
             var reading = ForegroundTimelineTests.Reading(0);
             var application = registry.Resolve(reading);
-            var first = ForegroundCapture.Create(owner, application, reading);
+            var first = ForegroundCapture.Create(application, reading);
             var store = new ForegroundStore(new LocalObserverSession(sdk), owner, registration);
             store.Checkpoint(first, null);
             var titleSchema = EntityApiTests.Schema("test-title-contents", """
@@ -147,7 +147,7 @@ public sealed class ObserverDraftTests
             using var noHistory = await http.GetAsync($"/entities/{first.ObservationId.Value}");
             await Assert.That(noHistory.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
             var secondReading = ForegroundTimelineTests.Reading(3);
-            var second = ForegroundCapture.Create(owner, application, secondReading);
+            var second = ForegroundCapture.Create(application, secondReading);
             await Assert.That(second.Content.Id).IsNotEqualTo(first.Content.Id);
             store.Checkpoint(second, first.Through(secondReading.ObservedAt));
             await sdk.SendAsync();

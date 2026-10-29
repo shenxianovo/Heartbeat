@@ -27,7 +27,7 @@ Runtime 使用独立的数据目录，运行一个由测试控制的 Observer。
 
 以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
 
-- SDK 库在 Runtime 关闭管道前就能结束会话：`RuntimeProtocolTests.SessionDisposalDoesNotWaitForHostToCloseItsPipe`。
+- SDK 在 Runtime 关闭管道前就能结束会话：`RuntimeProtocolTests.SessionDisposalDoesNotWaitForHostToCloseItsPipe`。
 - 停用后版本留在待发送中：见 [SDK Languages](../observers/sdk-languages.mdx) 的测试。
 - 未覆盖：停用、崩溃和卸载后恢复网络、版本全部保存；离线退出 Runtime 后再启动继续发送。
 

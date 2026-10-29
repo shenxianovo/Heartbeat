@@ -21,11 +21,11 @@ description: "业务类型页的章节和每一章写什么"
 | --- | --- |
 | `<角色>VersionId` | 引用的目标及其业务含义 |
 
-字段名以 `VersionId` 结尾，见 [SCHEMA-8](../../../core/model/schema.mdx#schema-8)。没有引用时写“没有引用”。
+字段名以 `VersionId` 结尾，见 [SCHEMA-8](../../../core/model/schema.mdx#schema-8)。没有引用时省略本节。
 
 ## 事实时间 [#fact-time]
 
-写对应的 Observation 是时间点还是时段、边界取自哪里、未知的边界怎样表示、补全时怎样更新。不作为观测内容的业务类型，写“不适用”，以及它的时间由哪些观测表达；不在业务实体上增加事实时间字段。
+写对应的 Observation 是时间点还是时段、边界取自哪里、未知的边界怎样表示、补全时怎样更新。不作为观测内容的业务类型省略本节，它的时间由引用它的 Observation 表达，见 [OBSERVATION-4](../../../core/model/observation.mdx#observation-4)。
 
 ## EntitySchema [#schema]
 

@@ -13,7 +13,7 @@ Observer 是一种角色，就像“作者”。同一个实体可以在一份�
 
 - **承担者**：业务实体
 - **被引用**：Observation 的 `observerVersionId`
-- **决策**：[ADR · Observer 与输入集](../../adr/observers-and-evidence.mdx)、[ADR · 提交与 SDK](../../adr/submission.mdx)
+- **决策**：[ADR · Observer 与输入集](../../adr/observers-and-evidence.mdx)、[ADR · 提交与 Runtime](../../adr/submission.mdx)
 
 ## 责任 [#responsibility]
 
@@ -43,7 +43,7 @@ Observer 按负责的陈述划分。例如前台状态、输入事件和设备�
 
 执行方：写入方
 
-程序实例重启或升级后沿用原来的 EntityId，SDK 必须持久保存它。实例的信息变化时，形成新版本。推断 Observer 更换模型或提示词也属于升级；模型、提示词和参数需要保存时，由业务内容表达。
+程序实例重启或升级后沿用原来的 EntityId，托管方必须持久保存它。实例的信息变化时，形成新版本。推断 Observer 更换模型或提示词也属于升级；模型、提示词和参数需要保存时，由业务内容表达。
 
 ### OBSERVER-5 一个实例一个身份 [#observer-5]
 
@@ -74,7 +74,7 @@ Observer 按负责的陈述划分。例如前台状态、输入事件和设备�
 
 执行方：写入方
 
-确认或否定的对象写在观测内容中。例如用户否定模型的推断：用户这份观测的内容引用被否定的那一版推断，并写出自己的结论；用户参考过的日志列在输入集中。用户补充亲身信息时，同样形成新的 Observation。
+确认或否定的对象写在观测内容中。例如用户否定模型的推断：用户这份观测的内容引用被否定的那一版推断，并写出自己的结论；用户参考过的日志列在输入集中。
 
 ### OBSERVER-8 失败作为诊断 [#observer-8]
 

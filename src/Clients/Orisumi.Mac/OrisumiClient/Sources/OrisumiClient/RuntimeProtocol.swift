@@ -139,8 +139,8 @@ public struct VersionsResult<Content: Decodable & Sendable>: Decodable, Sendable
     public var error: String?
 }
 
-/// The content of an Observation version.
-public struct ObservationContent: Decodable, Sendable {
+/// The members of an Observation version's content.
+public struct ObservationMembers: Decodable, Sendable {
     public var observerVersionId: UUID
     public var contentVersionId: UUID
     public var startAt: Date?

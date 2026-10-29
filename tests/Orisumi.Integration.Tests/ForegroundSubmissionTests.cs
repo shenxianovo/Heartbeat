@@ -13,7 +13,7 @@ public sealed class ForegroundSubmissionTests
     {
         var observer = EntityId.New();
         using var local = new ForegroundTestStore(observer);
-        var capture = Capture(observer).Through(ForegroundTimelineTests.Reading(1).ObservedAt);
+        var capture = Capture().Through(ForegroundTimelineTests.Reading(1).ObservedAt);
         local.Store.Checkpoint(capture, null);
         await Assert.That(local.Pending().Count).IsEqualTo(0);
         using var http = new HttpClient();
@@ -36,8 +36,8 @@ public sealed class ForegroundSubmissionTests
     {
         var observer = EntityId.New();
         using var local = new ForegroundTestStore(observer);
-        var first = Capture(observer);
-        var second = Capture(observer);
+        var first = Capture();
+        var second = Capture();
         local.Store.Checkpoint(first, null);
         // Fail the second write, after the completed period was inserted in the same transaction.
         using (var connection = new SqliteConnection($"Data Source={local.Path};Pooling=False"))
@@ -83,7 +83,6 @@ public sealed class ForegroundSubmissionTests
         await Assert.That(end).IsEqualTo(ForegroundTimelineTests.Reading(0).ObservedAt.AddMilliseconds(200));
     }
 
-    private static ForegroundCapture Capture(EntityId observer) => ForegroundCapture.Create(observer,
-        new LocalApplication(EntityId.New(), []), ForegroundTimelineTests.Reading(0));
+    private static ForegroundCapture Capture() => ForegroundCapture.Create(new LocalApplication(EntityId.New(), []), ForegroundTimelineTests.Reading(0));
 
 }

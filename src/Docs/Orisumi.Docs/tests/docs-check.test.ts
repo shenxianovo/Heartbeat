@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  adrStructure, anchorsOf, citesRules, deprecatedTerms, findTerm, jsonBlocks, linksOf, ruleActorProblem, ruleHeadings, rulePrefixes, ruleReferences,
+  adrIndexRows, adrStructure, anchorsOf, deprecatedTerms, findTerm, isCheckedSource, jsonBlocks, linksOf, ruleActorProblem, ruleHeadings,
+  rulePrefixes, ruleReferences,
   slugify,
 } from '../lib/docs-check.ts';
 
@@ -48,11 +49,18 @@ test('rule references only count known prefixes', () => {
   assert.deepEqual(found.map((reference) => reference.id), ['TIME-4', 'IDENTITY-3']);
 });
 
-test('C# sources under src and tests are checked for rule references', () => {
-  assert.equal(citesRules('src/Core/Orisumi.Core/VersionRules.cs'), true);
-  assert.equal(citesRules('tests/Orisumi.Model.Tests/VersionTests.cs'), true);
-  assert.equal(citesRules('tools/Orisumi.Dev/Program.cs'), false);
-  assert.equal(citesRules('src/Docs/Orisumi.Docs/lib/docs-check.ts'), false);
+test('application sources under src and tests are checked, the docs site is not', () => {
+  assert.equal(isCheckedSource('src/Core/Orisumi.Core/VersionRules.cs'), true);
+  assert.equal(isCheckedSource('tests/Orisumi.Model.Tests/VersionTests.cs'), true);
+  assert.equal(isCheckedSource('src/Clients/Orisumi.Web/src/components/entity/Content.tsx'), true);
+  assert.equal(isCheckedSource('src/Clients/Orisumi.Mac/OrisumiClient/Sources/OrisumiClient/RuntimeProtocol.swift'), true);
+  assert.equal(isCheckedSource('tools/Orisumi.Dev/Program.cs'), false);
+  assert.equal(isCheckedSource('src/Docs/Orisumi.Docs/lib/docs-check.ts'), false);
+});
+
+test('ADR index rows give the slug and the decision column', () => {
+  const rows = adrIndexRows('| 分组 | ADR | 决定 |\n| --- | --- | --- |\n| Model | [实体模型](./entity-model.mdx) | 实体表达身份 |\n');
+  assert.deepEqual(rows.map(({ slug, description }) => ({ slug, description })), [{ slug: 'entity-model', description: '实体表达身份' }]);
 });
 
 test('deprecated terms come from the Glossary table and ASCII terms match whole words', () => {

@@ -23,6 +23,7 @@
     "observer-runtime",
     "device-client",
     "---Observers---",
+    "server-observer-hosting",
     "application-identity",
     "---Verification---",
     "verification",

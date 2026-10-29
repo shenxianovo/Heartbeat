@@ -31,11 +31,11 @@ internal sealed record CloneScan(
     IReadOnlyList<CloneFinding> NewFindings,
     IReadOnlyList<CloneFinding> StockFindings);
 
-internal sealed record CloneQualityReport(CloneScan Production, CloneScan Tests, CloneScan? Tooling = null)
+internal sealed record CloneQualityReport(CloneScan Production, CloneScan Tests, CloneScan Tooling)
 {
     public bool Available => Scans.All(scan => scan.Available);
     public int NewClones => Scans.Sum(scan => scan.NewClones);
-    public IReadOnlyList<CloneScan> Scans => Tooling is null ? [Production, Tests] : [Production, Tests, Tooling];
+    public IReadOnlyList<CloneScan> Scans => [Production, Tests, Tooling];
 
     public string? Unavailable => Scans.FirstOrDefault(scan => !scan.Available)?.Unavailable;
 }

@@ -10,7 +10,7 @@ namespace Orisumi.Integration.Tests;
 public sealed class ObserverSdkTests
 {
     [Test]
-    [Property("caseId", "sdk-local-versions")]
+    [Property("caseId", "runtime-local-versions")]
     public async Task DraftMergesFreezeDependenciesAndRecoverInOrder()
     {
         using var directory = new SdkDirectory();
@@ -49,7 +49,7 @@ public sealed class ObserverSdkTests
     }
 
     [Test]
-    [Property("caseId", "sdk-confirmation")]
+    [Property("caseId", "runtime-confirmation")]
     public async Task LostResponseRetriesIdenticalPayloadAfterRestartAnd413Splits()
     {
         using var directory = new SdkDirectory();
@@ -76,7 +76,7 @@ public sealed class ObserverSdkTests
     }
 
     [Test]
-    [Property("caseId", "sdk-rejections")]
+    [Property("caseId", "runtime-rejections")]
     public async Task PartialRejectionPausesPersistsAndAdoptsEqualSavedVersion()
     {
         using var directory = new SdkDirectory();
@@ -118,7 +118,7 @@ public sealed class ObserverSdkTests
     }
 
     [Test]
-    [Property("caseId", "sdk-registration")]
+    [Property("caseId", "runtime-registration")]
     public async Task SchemaRegistrationReusesHistoricalContentAndOfflineDraftReferencesAreRemapped()
     {
         await using var database = await DatabaseFixture.CreateAsync();
@@ -133,7 +133,7 @@ public sealed class ObserverSdkTests
         var owner = EntityId.New(); var business = EntityId.New();
         using (var sdk = new ObserverClient(directory.Path, owner, offline))
         {
-            var schema = await sdk.RegisterSchemaAsync(first.EntityId, (EntitySchema)first.Content);
+            var schema = sdk.RegisterSchemaLocally(first.EntityId, (EntitySchema)first.Content);
             sdk.Execute(local => local.Draft(business, new BusinessContent(JsonSerializer.Deserialize<JsonElement>("{}")), schema));
             await sdk.SendAsync();
         }
@@ -143,7 +143,7 @@ public sealed class ObserverSdkTests
         await Assert.That(online.Status.Pending).IsEqualTo(0);
         using var read = await http.GetAsync($"/entities/{business.Value}");
         await Assert.That((await EntityApiTests.Json(read)).GetProperty("schemaVersionId").GetGuid()).IsEqualTo(first.VersionId.Value);
-        var selected = await online.RegisterSchemaAsync(first.EntityId, (EntitySchema)first.Content);
+        var selected = online.RegisterSchemaLocally(first.EntityId, (EntitySchema)first.Content);
         await Assert.That(selected).IsEqualTo(first.VersionId);
         using var chain = await http.GetAsync($"/entities/{first.EntityId.Value}/versions");
         await Assert.That((await EntityApiTests.Json(chain)).GetProperty("versions").GetArrayLength()).IsEqualTo(2);
@@ -164,7 +164,7 @@ public sealed class ObserverSdkTests
         var application = registry.Resolve(ForegroundTimelineTests.Reading(0));
         var store = new ForegroundStore(new LocalObserverSession(sdk), owner, registration);
         var delivery = new ForegroundTestDelivery(sdk, registry, registration, TextWriter.Null);
-        var capture = ForegroundCapture.Create(owner, application, ForegroundTimelineTests.Reading(0));
+        var capture = ForegroundCapture.Create(application, ForegroundTimelineTests.Reading(0));
         store.Checkpoint(capture, null);
         store.Checkpoint(capture.Through(ForegroundTimelineTests.Reading(1).ObservedAt), null);
         await delivery.SendAsync(CancellationToken.None);
@@ -197,12 +197,12 @@ public sealed class ObserverSdkTests
         var application = registry.Resolve(ForegroundTimelineTests.Reading(0));
         var store = new ForegroundStore(new LocalObserverSession(sdk), owner, registration);
         var delivery = new ForegroundTestDelivery(sdk, registry, registration, TextWriter.Null);
-        var capture = ForegroundCapture.Create(owner, application, ForegroundTimelineTests.Reading(0));
+        var capture = ForegroundCapture.Create(application, ForegroundTimelineTests.Reading(0));
         store.Checkpoint(capture, null);
         store.FinishActive();
         await delivery.SendAsync(CancellationToken.None);
         using var deleted = await http.DeleteAsync($"/entities/{application.Id.Value}");
-        var next = ForegroundCapture.Create(owner, application, ForegroundTimelineTests.Reading(1));
+        var next = ForegroundCapture.Create(application, ForegroundTimelineTests.Reading(1));
         store.Checkpoint(next, null); store.FinishActive();
         await delivery.SendAsync(CancellationToken.None);
         await Assert.That(sdk.Status.Rejection).IsNull();
@@ -221,7 +221,7 @@ public sealed class ObserverSdkTests
     }
 
     [Test]
-    [Property("caseId", "sdk-local-versions")]
+    [Property("caseId", "runtime-local-versions")]
     public async Task ReferencingDraftFreezesItAndCompletionCreatesSuccessor()
     {
         using var directory = new SdkDirectory();
@@ -244,7 +244,7 @@ public sealed class ObserverSdkTests
     }
 
     [Test]
-    [Property("caseId", "sdk-local-versions")]
+    [Property("caseId", "runtime-local-versions")]
     public async Task FreezingObservationSendsItsDraftContentFirst()
     {
         using var directory = new SdkDirectory();
@@ -272,7 +272,7 @@ public sealed class ObserverSdkTests
     }
 
     [Test]
-    [Property("caseId", "sdk-local-versions")]
+    [Property("caseId", "runtime-local-versions")]
     public async Task ImmediateSubmissionSendsTwoLinkedObservationVersions()
     {
         using var directory = new SdkDirectory();
@@ -301,7 +301,7 @@ public sealed class ObserverSdkTests
     }
 
     [Test]
-    [Property("caseId", "sdk-confirmation")]
+    [Property("caseId", "runtime-confirmation")]
     public async Task SuccessfulResponseConfirmsWholeBatch()
     {
         using var directory = new SdkDirectory();
@@ -316,7 +316,7 @@ public sealed class ObserverSdkTests
     }
 
     [Test]
-    [Property("caseId", "sdk-confirmation")]
+    [Property("caseId", "runtime-confirmation")]
     public async Task IndexedConflictConfirmsPrefixRejectsTargetAndLeavesSuffixPending()
     {
         using var directory = new SdkDirectory();
@@ -332,7 +332,7 @@ public sealed class ObserverSdkTests
     }
 
     [Test]
-    [Property("caseId", "sdk-confirmation")]
+    [Property("caseId", "runtime-confirmation")]
     public async Task ContractErrorWithoutIndexStopsSendingAndReportsError()
     {
         using var directory = new SdkDirectory();
@@ -347,7 +347,7 @@ public sealed class ObserverSdkTests
     }
 
     [Test]
-    [Property("caseId", "sdk-rejections")]
+    [Property("caseId", "runtime-rejections")]
     public async Task DiscardingRejectedVersionDiscardsDependentsAndResumesOthers()
     {
         using var directory = new SdkDirectory();
@@ -367,7 +367,7 @@ public sealed class ObserverSdkTests
     }
 
     [Test]
-    [Property("caseId", "sdk-rejections")]
+    [Property("caseId", "runtime-rejections")]
     public async Task RewritingRejectedVersionUsesReadCurrentVersionAndResendsDependents()
     {
         using var directory = new SdkDirectory();
@@ -395,7 +395,7 @@ public sealed class ObserverSdkTests
     }
 
     [Test]
-    [Property("caseId", "sdk-registration")]
+    [Property("caseId", "runtime-registration")]
     public async Task OfflineRegistrationPrecedesBusinessVersionsWhenConnectionReturns()
     {
         await using var database = await DatabaseFixture.CreateAsync();
@@ -411,7 +411,7 @@ public sealed class ObserverSdkTests
         VersionId schemaVersion, instanceVersion, businessVersion;
         using (var sdk = new ObserverClient(directory.Path, owner, offline))
         {
-            schemaVersion = await sdk.RegisterSchemaAsync(schema.EntityId, (EntitySchema)schema.Content);
+            schemaVersion = sdk.RegisterSchemaLocally(schema.EntityId, (EntitySchema)schema.Content);
             instanceVersion = sdk.RegisterInstance(owner, schemaVersion, new(JsonSerializer.SerializeToElement(new { })));
             businessVersion = sdk.Execute(local => local.Draft(business, new BusinessContent(JsonSerializer.SerializeToElement(new { })), schemaVersion));
             await sdk.SendAsync();
@@ -430,7 +430,7 @@ public sealed class ObserverSdkTests
     }
 
     [Test]
-    [Property("caseId", "sdk-registration")]
+    [Property("caseId", "runtime-registration")]
     public async Task NewSchemaContentExtendsCurrentChainAndBusinessReferencesIt()
     {
         await using var database = await DatabaseFixture.CreateAsync();
@@ -444,7 +444,7 @@ public sealed class ObserverSdkTests
         using var directory = new SdkDirectory();
         using var sdk = new ObserverClient(directory.Path, EntityId.New(), http);
         var content = new EntitySchema("Items", "Third", "items", JsonSerializer.SerializeToElement(new { }));
-        var third = await sdk.RegisterSchemaAsync(first.EntityId, content);
+        var third = sdk.RegisterSchemaLocally(first.EntityId, content);
         var business = EntityId.New();
         sdk.Execute(local => local.Draft(business, new BusinessContent(JsonSerializer.SerializeToElement(new { })), third));
         await sdk.SendAsync();
@@ -458,7 +458,7 @@ public sealed class ObserverSdkTests
     }
 
     [Test]
-    [Property("caseId", "sdk-registration")]
+    [Property("caseId", "runtime-registration")]
     public async Task ChangedInstanceInformationAfterRestartCreatesReferencedSuccessor()
     {
         await using var database = await DatabaseFixture.CreateAsync();
@@ -470,7 +470,7 @@ public sealed class ObserverSdkTests
         VersionId schemaVersion, first;
         using (var sdk = new ObserverClient(directory.Path, owner, http))
         {
-            schemaVersion = await sdk.RegisterSchemaAsync(schema.EntityId, (EntitySchema)schema.Content);
+            schemaVersion = sdk.RegisterSchemaLocally(schema.EntityId, (EntitySchema)schema.Content);
             first = sdk.RegisterInstance(owner, schemaVersion, new(JsonSerializer.SerializeToElement(new { programVersion = "1" })));
             await sdk.SendAsync();
         }
@@ -511,8 +511,8 @@ public sealed class ObserverSdkTests
         await Assert.That(secondApplication.Id).IsEqualTo(firstApplication.Id);
         var firstStore = new ForegroundStore(new LocalObserverSession(first), firstOwner, firstRegistration);
         var secondStore = new ForegroundStore(new LocalObserverSession(second), secondOwner, secondRegistration);
-        var firstCapture = ForegroundCapture.Create(firstOwner, firstApplication, ForegroundTimelineTests.Reading(0));
-        var secondCapture = ForegroundCapture.Create(secondOwner, secondApplication, ForegroundTimelineTests.Reading(0));
+        var firstCapture = ForegroundCapture.Create(firstApplication, ForegroundTimelineTests.Reading(0));
+        var secondCapture = ForegroundCapture.Create(secondApplication, ForegroundTimelineTests.Reading(0));
         firstStore.Checkpoint(firstCapture, null); firstStore.FinishActive();
         secondStore.Checkpoint(secondCapture, null); secondStore.FinishActive();
         var savedApplication = first.Execute(local => local.Latest(firstApplication.Id)!.Version.VersionId);
@@ -544,7 +544,7 @@ public sealed class ObserverSdkTests
         var registration = await ForegroundRegistration.RegisterAsync(new LocalObserverSession(sdk), owner);
         await sdk.SendAsync();
         var registry = new LocalApplicationRegistry(directory.Path + ".apps");
-        var capture = ForegroundCapture.Create(owner, registry.Resolve(ForegroundTimelineTests.Reading(0)), ForegroundTimelineTests.Reading(0));
+        var capture = ForegroundCapture.Create(registry.Resolve(ForegroundTimelineTests.Reading(0)), ForegroundTimelineTests.Reading(0));
         var store = new ForegroundStore(new LocalObserverSession(sdk), owner, registration);
         store.Checkpoint(capture, null);
         // OBSERVATION-6: an invalid interval exercises an unhandled business rejection.

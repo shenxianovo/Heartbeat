@@ -25,7 +25,7 @@ public sealed class ObserverClient : IDisposable
         InstanceId = instanceId;
         path = Path.GetFullPath(path);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        _connectionString = new SqliteConnectionStringBuilder { DataSource = path, Pooling = false, DefaultTimeout = 30 }.ToString();
+        _connectionString = new SqliteConnectionStringBuilder { DataSource = path, Pooling = false }.ToString();
         using var connection = Open();
         using var transaction = connection.BeginTransaction();
         using var command = connection.CreateCommand();
@@ -63,31 +63,6 @@ public sealed class ObserverClient : IDisposable
         }
     }
     public void Execute(Action<LocalTransaction> operation) => Execute(local => { operation(local); return true; });
-
-    public async Task<VersionId> RegisterSchemaAsync(EntityId id, EntitySchema schema, CancellationToken cancellationToken = default)
-    {
-        await _sender.WaitAsync(cancellationToken);
-        try
-        {
-            var chain = await TryReadChainAsync(id, cancellationToken);
-            return Execute(local =>
-            {
-                if (chain is not null)
-                {
-                    foreach (var saved in chain) local.Remember(saved);
-                    var match = chain.FirstOrDefault(saved => SameContent(saved.Submission, schema, null));
-                    if (match is not null) return match.VersionId;
-                }
-                var existing = local.Versions().FirstOrDefault(version => version.Version.EntityId == id && SameContent(version.Version, schema, null));
-                if (existing is not null) return existing.Version.VersionId;
-                var versionId = local.Draft(id, schema);
-                local.Complete(id);
-                local.Metadata("schema:" + versionId.Value, "pending");
-                return versionId;
-            });
-        }
-        finally { _sender.Release(); }
-    }
 
     public VersionId RegisterSchemaLocally(EntityId id, EntitySchema schema) => Execute(local =>
     {

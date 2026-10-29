@@ -40,13 +40,15 @@ flowchart LR
   click B "/api"
 ```
 
+Observer 停下的原因有停用、卸载、更新、崩溃和退出客户端。每一种情况下，程序实例的身份、设置和本地数据都保留，再次运行时沿用。已经交给 Runtime 的版本由 Runtime 发送，发送只取决于 Runtime 是否在运行，见 [Submission · 流程](../observers/submission/index.mdx#flow)。各种情况的区别写在下面各节中。
+
 ### 安装与卸载 [#install]
 
 客户端列出官方目录中适用于本机的 Observer，用户选择后安装。随客户端附带的 Observer 在客户端第一次启动时安装，之后和其他 Observer 一样管理。安装包的格式和安装步骤见 [Packages](./packages.mdx)。
 
 Observer 安装后直接开始采集。
 
-卸载移除 Observer 的程序，保留程序实例的身份、设置和本地数据；后端已保存的记录不受影响，待发送的版本继续发送。用户卸载了附带的 Observer，客户端之后启动或升级时不会把它装回来。重新安装后，Observer 沿用原来的身份和设置，并直接开始采集。
+卸载移除 Observer 的程序，后端已保存的记录不受影响。用户卸载了附带的 Observer，客户端之后启动或升级时不会把它装回来。重新安装后，Observer 直接开始采集。
 
 ### 启用与停用 [#enable]
 
@@ -54,31 +56,29 @@ Observer 安装后直接开始采集。
 
 停用的 Observer 停止采集，程序保留。当前进行中的事实按这个 Observer 停止采集时的规则结束，例如前台时段结束于最后一次确认，见 [Foreground State · 采集](../observers/foreground-state/index.mdx#collection)。停用期间没有读数，记录中是空白。
 
-再次启用时，Observer 沿用原来的身份和设置。启用状态跨客户端重启保持。
+启用状态跨客户端重启保持。
 
 ### 更新 [#updates]
 
 官方目录中有新版本时，客户端提示用户，用户确认后才安装。新包下载并校验完之后，旧版本才停止，切换到新版本。准备新包失败时，旧版本继续运行。
 
-更新保留身份、设置和启用状态：更新前在采集的 Observer，更新后继续采集；停用的保持停用。新版本切换后无法启动时，客户端显示错误，不自动退回旧版本，因为新版本可能已经改写了业务数据。
+更新保留启用状态：更新前在采集的 Observer，更新后继续采集；停用的保持停用。新版本切换后无法启动时，客户端显示错误，不自动退回旧版本，因为新版本可能已经改写了业务数据。
 
 ### 故障恢复 [#recovery]
 
 Observer 意外退出后，Runtime 自动重启它，最多三次。仍然失败时，客户端显示错误，并提供重试的入口。只有用户启用的 Observer 会被重启。次数、间隔和计数的清零见 [Runtime · 重启](./runtime.mdx#restart)。
 
-一个 Observer 的故障不影响其他 Observer，也不影响发送。Runtime 本身意外退出时，客户端重新启动它。
+一个 Observer 的故障只影响它自己。Runtime 本身意外退出时，客户端重新启动它。
 
 ### 发送 [#sending]
 
-发送由 Runtime 完成，见 [Submission · 运行方式](../observers/submission/index.mdx#hosting)。Observer 停用、崩溃或卸载后，它已经交给 Runtime 的数据继续发送。
-
-客户端按 Observer 显示待发送的数量和被拒绝的原因，见 [Submission · 发送状态](../observers/submission/index.mdx#status)。被拒绝的版本由 Observer 的业务代码处理，处理完之前这个实例的发送暂停，其他实例照常发送。Observer 停用或卸载时，被拒绝的版本保留到它再次运行，客户端不会为了处理拒绝而启用它，见 [Submission · 被拒绝的版本](../observers/submission/index.mdx#rejections)。
+客户端按 Observer 显示待发送的数量和被拒绝的原因，见 [Submission · 发送状态](../observers/submission/index.mdx#status)。被拒绝的版本由 Observer 的业务代码在它运行时处理，见 [Submission · 被拒绝的版本](../observers/submission/index.mdx#rejections)；是否启用 Observer 始终由用户决定。
 
 ### 运行与退出 [#lifecycle]
 
 桌面客户端关闭窗口后，继续在菜单栏或系统托盘中运行，采集和发送照常进行。
 
-退出客户端时，Runtime 先让所有 Observer 停止采集，再停止发送，不等网络恢复或全部发送完。待发送的数据留在本地。下次启动时，客户端运行退出前启用的 Observer，并继续发送。
+退出客户端时，Runtime 先让所有 Observer 停止采集，再停止发送，见 [Runtime · 退出](./runtime.mdx#shutdown)。待发送的数据留在本地。下次启动时，客户端运行退出前启用的 Observer，并继续发送。
 
 ### 最近的数据 [#today]
 

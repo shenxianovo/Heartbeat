@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Orisumi.Application.Entities;
 using Orisumi.Core;
-using Orisumi.Infrastructure.Database.Converters;
 using Npgsql;
 using NpgsqlTypes;
 
@@ -53,7 +52,7 @@ internal sealed partial class PostgresEntityTransaction(NpgsqlConnection connect
 
     public Task<IReadOnlyList<EntityVersion>> ListObservationsAsync(ObservationQuery query, CancellationToken cancellationToken)
     {
-        var values = new List<object> { UtcDateTimeOffsetValueConverter.Normalize(query.From), UtcDateTimeOffsetValueConverter.Normalize(query.To) };
+        var values = new List<object> { VersionTime.Normalize(query.From), VersionTime.Normalize(query.To) };
         var filters = new List<string> { "o.fact_range && tstzrange($1, $2, '[)')" };
         if (query.SchemaId is { } schema)
         {
@@ -62,7 +61,7 @@ internal sealed partial class PostgresEntityTransaction(NpgsqlConnection connect
         }
         if (query.After is { } after)
         {
-            values.Add(UtcDateTimeOffsetValueConverter.Normalize(after.Time));
+            values.Add(VersionTime.Normalize(after.Time));
             values.Add(after.EntityId.Value);
             filters.Add($"(lower(o.fact_range), o.entity_id) > (${values.Count - 1}, ${values.Count})");
         }
@@ -87,7 +86,7 @@ internal sealed partial class PostgresEntityTransaction(NpgsqlConnection connect
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             """, cancellationToken, version.VersionId.Value, version.EntityId.Value, ordinal,
             Typed(NpgsqlDbType.Uuid, version.PreviousVersionId?.Value), Typed(NpgsqlDbType.Uuid, version.SchemaVersionId?.Value),
-            version.Category, UtcDateTimeOffsetValueConverter.Normalize(version.RecordedAt),
+            version.Category, VersionTime.Normalize(version.RecordedAt),
             Typed(NpgsqlDbType.Jsonb, VersionJson.Content(version.Content).GetRawText()));
         await SaveReferencesAsync(version.VersionId, references, cancellationToken);
         if (version.Content is not Observation observation) return;
@@ -96,8 +95,8 @@ internal sealed partial class PostgresEntityTransaction(NpgsqlConnection connect
         if ((observation.StartAt ?? observation.EndAt) is { } lower)
         {
             var upper = observation.EndAt ?? lower;
-            lower = UtcDateTimeOffsetValueConverter.Normalize(lower);
-            upper = UtcDateTimeOffsetValueConverter.Normalize(upper);
+            lower = VersionTime.Normalize(lower);
+            upper = VersionTime.Normalize(upper);
             range = new(lower, true, upper, lower == upper);
         }
         await ExecuteAsync("""
@@ -114,7 +113,7 @@ internal sealed partial class PostgresEntityTransaction(NpgsqlConnection connect
         await ExecuteAsync("DELETE FROM current_observations WHERE entity_id = $1", cancellationToken, id.Value);
         await ExecuteAsync("DELETE FROM versions WHERE entity_id = $1", cancellationToken, id.Value);
         await ExecuteAsync("UPDATE entities SET category = NULL, schema_id = NULL, resource_name = NULL, current_version_id = NULL, deleted_at = $2 WHERE entity_id = $1",
-            cancellationToken, id.Value, UtcDateTimeOffsetValueConverter.Normalize(timeProvider.GetUtcNow()));
+            cancellationToken, id.Value, VersionTime.Normalize(timeProvider.GetUtcNow()));
     }
 
     private async Task<IReadOnlyList<EntityVersion>> ReadAsync(string sql, CancellationToken token, params object[] values)

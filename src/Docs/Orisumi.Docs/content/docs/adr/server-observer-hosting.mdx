@@ -1,0 +1,54 @@
+---
+title: "服务端托管"
+description: "服务端 Observer 由 API 进程中的服务端托管运行：身份和未决提交保存在 PostgreSQL，经实体服务直接提交，等后端保存后再交还业务代码"
+---
+
+## 背景 [#context]
+
+有的 Observer 依据全部已保存的数据形成观测，在服务端运行，例如[应用识别 Observer](../observers/application-identity/index.mdx)。它和设备上的 Observer 一样需要托管方：程序实例的身份持久不变，版本可靠地保存到后端，崩溃后能够恢复，见 [Submission · 流程](../observers/submission/index.mdx#flow)。设备上的托管方是 Runtime，它的子进程、管道和本机 SQLite 为设备而设计。服务端需要决定由谁承担托管方的职责，以及这些数据保存在哪里。
+
+## 决定 [#decision]
+
+- 服务端 Observer 由服务端托管运行。服务端托管是 API 进程中的一个模块，负责程序实例的身份、启动与停止、轮次的安排、诊断，以及可靠提交和恢复。
+- Observer 的业务代码在自己的模块中，服务端托管直接组合它。事实判断由业务代码负责，实体服务按 Schema 和 Core 的规则校验并保存，见 [Core · 谁决定什么](../core/index.mdx#responsibility)。
+- 服务端托管在 PostgreSQL 中为每个程序实例保存一条管理记录，按稳定的标识绑定实例的 EntityId，第一次运行时创建。程序实例自身的信息仍是 Observer 业务实体的版本。
+- 服务端托管经实体服务直接提交，与 HTTP API 使用同一份校验和保存实现。
+- 一次业务变化先作为未决提交保存在 PostgreSQL 中，再交给实体服务；后端返回保存的结果后，服务端托管才把结果交还业务代码。
+- 未决提交的结果不确定或进程重启时，服务端托管用原来的 VersionId 和内容重发。
+- 业务代码自己的持久状态保存在 PostgreSQL 中，含义由业务代码定义，例如应用识别的未知线索。
+- 同一个程序实例的轮次依次运行。
+- 服务端托管随 API 启动它托管的全部程序实例，状态写入日志。
+- 一个部署中只有一个 API 副本运行服务端托管。
+- 服务端 Observer 随服务端发布。
+
+## 理由 [#rationale]
+
+托管方的职责在两端相同，实现的条件不同。Runtime 用子进程和管道，是为了接入多种语言、隔离本机的各个程序；用本机 SQLite，是为了断网时不丢数据。服务端 Observer 和 API 用同一种语言，运行在同一台机器上，后端的数据库就在身边。所以服务端托管直接组合 Observer 的模块，调用实体服务，数据放进已有的 PostgreSQL。
+
+服务端没有离线的状态，业务代码可以等到后端保存的最终结果再继续。应用识别 Observer 判断下一条线索之前要读到上一次的结果，等后端保存后再交还，下一次读取就一定能读到。
+
+同一个进程和数据库中仍有崩溃的窗口：进程在保存期间退出，重启后不知道这批版本是否已保存。重新识别要再调用一次模型；如果原来的一批已经创建了新产品，还会再建一个。所以服务端托管先保存未决提交，重启后原样重发，已保存的版本由后端直接确认，见 [VERSION-7](../core/model/version.mdx#version-7)。一批中途被拒绝时，之前的版本已保存，见 [VERSION-13](../core/model/version.mdx#version-13)，业务代码按自己的规则重新读取和处理。
+
+管理记录让服务端托管按稳定的标识找到程序实例的 EntityId。程序升级或重启沿用这个实例，见 [OBSERVER-4](../core/model/observer.mdx#observer-4)；同时运行的不同推断方法各有一条记录，见 [OBSERVER-5](../core/model/observer.mdx#observer-5)。
+
+服务端托管运行在 API 进程中，部署时少一个服务，同一台机器上也省去 HTTP 和 JSON 的封装。
+
+放弃的方案：
+
+- **每个服务端 Observer 作为独立进程，经 HTTP 调用 API。** 每个 Observer 要自己管理入口、身份文件和未决提交；同一台机器上多一层 HTTP 封装。
+- **服务端也用 Runtime。** 子进程和管道为设备上的多语言和隔离而设计；读取全部设备的数据还要扩展 Runtime 的协议。
+- **提取两端共用的托管框架。** 两端共用 Core 模型和托管方的职责，实现差别很大：子进程与进程内的任务，本机 SQLite 与后端的数据库。出现真实的重复时再提取。
+
+## 代价 [#costs]
+
+- 服务端 Observer 与 API 共享进程的资源。Observer 的故障可能影响 API，卡住的一轮只能随进程一起结束。
+- OpenAI 这类外部服务的凭证和调用失败进入 API 进程的配置和日志。
+- 只有一个 API 副本可以运行服务端托管。管理记录的唯一约束保证每个程序实例只有一个 EntityId；两个副本同时运行同一个程序实例时，轮次会重叠。
+- 新增或升级服务端 Observer 要随服务端一起发布。
+- 服务端 Observer 只能随 API 一起启停。单独停用一个程序实例，以及查看状态的界面，留待管理入口一起设计。
+
+## 规则位置 [#details]
+
+- [Submission · 流程](../observers/submission/index.mdx#flow)、[服务端托管](../observers/submission/index.mdx#server)
+- [OBSERVER-4](../core/model/observer.mdx#observer-4)、[OBSERVER-5](../core/model/observer.mdx#observer-5)、[Core · 谁决定什么](../core/index.mdx#responsibility)
+- [Application Identity · 程序实例](../observers/application-identity/index.mdx#instance)
