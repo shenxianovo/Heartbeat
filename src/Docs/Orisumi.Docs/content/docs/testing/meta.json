@@ -12,7 +12,7 @@
     "api/reading",
     "api/lists",
     "api/referrers",
-    "api/drafts",
+    "api/previews",
     "api/deletion",
     "api/errors",
     "---Storage---",

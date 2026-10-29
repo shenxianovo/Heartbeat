@@ -2,7 +2,7 @@ using Orisumi.Core;
 
 namespace Orisumi.Application.Entities;
 
-public sealed class EntityService(IEntityStore store, TimeProvider timeProvider, ObservationDraftCache? drafts = null)
+public sealed class EntityService(IEntityStore store, TimeProvider timeProvider, ObservationPreviewCache? previews = null)
 {
     // VERSION-13: rejection commits the prefix; an unexpected failure rolls back the whole operation.
     public async Task<SubmissionResult> SubmitAsync(IEnumerable<VersionSubmission> versions,
@@ -27,7 +27,7 @@ public sealed class EntityService(IEntityStore store, TimeProvider timeProvider,
             }
             return new SubmissionResult(saved, null);
         }, cancellationToken);
-        foreach (var saved in result.Saved) drafts?.RemovePredecessor(saved);
+        foreach (var saved in result.Saved) previews?.RemovePredecessor(saved);
         return result;
     }
 
@@ -64,7 +64,7 @@ public sealed class EntityService(IEntityStore store, TimeProvider timeProvider,
             await transaction.DeleteAsync(id, token);
             return true;
         }, cancellationToken);
-        if (deleted) drafts?.Remove(id);
+        if (deleted) previews?.Remove(id);
         return deleted;
     }
 

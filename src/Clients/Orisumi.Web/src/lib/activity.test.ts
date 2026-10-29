@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ObservationDraft } from "@/api/types";
+import type { ObservationPreview } from "@/api/types";
 import { observation } from "@/test/fixtures";
 import { isActive, observerRows, union, type ActivityInput } from "./activity";
 import { observerIdentity, UNREADABLE_IDENTITY, type ObserverIdentity } from "./observers";
@@ -24,13 +24,13 @@ function input(overrides: Partial<ActivityInput> = {}): ActivityInput {
     identityOf: (versionId) => versions[versionId],
     timed: [],
     recorded: [],
-    drafts: [],
+    previews: [],
     now,
     ...overrides,
   };
 }
 
-function draft(observerVersionId: string, startAt: string, endAt: string, updatedAt: string): ObservationDraft {
+function preview(observerVersionId: string, startAt: string, endAt: string, updatedAt: string): ObservationPreview {
   const { entityId, content } = observation({ content: { observerVersionId, startAt, endAt } });
   return { entityId, previousVersionId: null, sequence: 1, updatedAt, content };
 }
@@ -96,15 +96,15 @@ describe("observerRows", () => {
     expect(row.count).toBe(1);
   });
 
-  it("草稿接在后面，最近 60 秒内更新过的 Observer 算正在写入，排在前面", () => {
+  it("预览接在后面，最近 60 秒内更新过的 Observer 算正在写入，排在前面", () => {
     const rows = observerRows(
       input({
         recorded: [observation({ recordedAt: at(-MINUTE * 2), content: { observerVersionId: "id-v1" } })],
-        drafts: [draft("fg-v1", at(-9 * MINUTE), at(-SECOND), at(-SECOND))],
+        previews: [preview("fg-v1", at(-9 * MINUTE), at(-SECOND), at(-SECOND))],
       }),
     );
     expect(rows[0]!.key).toBe("fg");
-    expect(rows[0]!.draft).toMatchObject({ start: now - 9 * MINUTE, end: now - SECOND, updatedAt: now - SECOND });
+    expect(rows[0]!.preview).toMatchObject({ start: now - 9 * MINUTE, end: now - SECOND, updatedAt: now - SECOND });
     expect(isActive(rows[0]!, now)).toBe(true);
     expect(isActive(rows[0]!, now + 61 * SECOND)).toBe(false);
     expect(isActive(rows[1]!, now)).toBe(false);

@@ -6,11 +6,11 @@ using Orisumi.Core;
 
 namespace Orisumi.Integration.Tests;
 
-public sealed class ObservationDraftApiTests
+public sealed class ObservationPreviewApiTests
 {
     [Test]
-    [Property("caseId", "api-observation-drafts")]
-    public async Task DraftUpdatesStayTransientAndSavedVersionsRejectLateWrites()
+    [Property("caseId", "api-observation-previews")]
+    public async Task PreviewUpdatesStayTransientAndSavedVersionsRejectLateWrites()
     {
         await using var database = await DatabaseFixture.CreateAsync();
         await using var factory = new OrisumiApiFactory(database.ConnectionString);
@@ -40,7 +40,7 @@ public sealed class ObservationDraftApiTests
         var final = new VersionSubmission(id, VersionId.New(), null, null, observation);
         using var saved = await EntityApiTests.Submit(http, final);
         saved.EnsureSuccessStatusCode();
-        using var removed = await http.GetAsync($"/observation-drafts/{id.Value}");
+        using var removed = await http.GetAsync($"/observation-previews/{id.Value}");
         await Assert.That(removed.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
         using var late = await Put(http, id, null, 4, observation);
         await Rule(late, HttpStatusCode.Conflict, "VERSION-6");
@@ -49,24 +49,24 @@ public sealed class ObservationDraftApiTests
         using var retry = await EntityApiTests.Submit(http, final);
         await Assert.That((await EntityApiTests.Json(retry)).GetProperty("versions")[0].GetProperty("recordedAt").GetString())
             .IsEqualTo((await EntityApiTests.Json(saved)).GetProperty("versions")[0].GetProperty("recordedAt").GetString());
-        using var stillPresent = await http.GetAsync($"/observation-drafts/{id.Value}");
+        using var stillPresent = await http.GetAsync($"/observation-previews/{id.Value}");
         stillPresent.EnsureSuccessStatusCode();
         clock.Now += TimeSpan.FromMinutes(2) + TimeSpan.FromTicks(1);
-        using var expired = await http.GetAsync($"/observation-drafts/{id.Value}");
+        using var expired = await http.GetAsync($"/observation-previews/{id.Value}");
         await Assert.That(expired.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
         using var restored = await Put(http, id, final.VersionId, 6, observation);
         restored.EnsureSuccessStatusCode();
         using var deleted = await http.DeleteAsync($"/entities/{id.Value}");
         deleted.EnsureSuccessStatusCode();
-        using var deletedDraft = await http.GetAsync($"/observation-drafts/{id.Value}");
-        await Assert.That(deletedDraft.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
+        using var deletedPreview = await http.GetAsync($"/observation-previews/{id.Value}");
+        await Assert.That(deletedPreview.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
         using var resurrect = await Put(http, id, final.VersionId, 7, observation);
         await Rule(resurrect, HttpStatusCode.Conflict, "HISTORY-7");
     }
 
     [Test]
-    [Property("caseId", "api-observation-drafts")]
-    public async Task DraftsValidateReferencesAndFilterByContentType()
+    [Property("caseId", "api-observation-previews")]
+    public async Task PreviewsValidateReferencesAndFilterByContentType()
     {
         await using var database = await DatabaseFixture.CreateAsync();
         await using var factory = new OrisumiApiFactory(database.ConnectionString);
@@ -85,10 +85,10 @@ public sealed class ObservationDraftApiTests
         first.EnsureSuccessStatusCode();
         using var second = await Put(http, EntityId.New(), null, 1, observation with { ContentVersionId = two.VersionId });
         second.EnsureSuccessStatusCode();
-        using var filtered = await http.GetAsync("/observation-drafts?resourceName=a");
-        var drafts = (await EntityApiTests.Json(filtered)).GetProperty("drafts");
-        await Assert.That(drafts.GetArrayLength()).IsEqualTo(1);
-        await Assert.That(drafts[0].GetProperty("entityId").GetGuid()).IsEqualTo(id.Value);
+        using var filtered = await http.GetAsync("/observation-previews?resourceName=a");
+        var previews = (await EntityApiTests.Json(filtered)).GetProperty("previews");
+        await Assert.That(previews.GetArrayLength()).IsEqualTo(1);
+        await Assert.That(previews[0].GetProperty("entityId").GetGuid()).IsEqualTo(id.Value);
         using var wrongType = await Put(http, one.EntityId, one.VersionId, 1, observation);
         await Rule(wrongType, HttpStatusCode.BadRequest, "ENTITY-3");
         var saved = new VersionSubmission(id, VersionId.New(), null, null, observation);
@@ -99,7 +99,7 @@ public sealed class ObservationDraftApiTests
     }
 
     internal static Task<HttpResponseMessage> Put(HttpClient http, EntityId id, VersionId? previous, long sequence, Observation content) =>
-        http.PutAsJsonAsync($"/observation-drafts/{id.Value}", new { previousVersionId = previous?.Value, sequence, content = VersionJson.Content(content) });
+        http.PutAsJsonAsync($"/observation-previews/{id.Value}", new { previousVersionId = previous?.Value, sequence, content = VersionJson.Content(content) });
 
     private static async Task Rule(HttpResponseMessage response, HttpStatusCode status, string rule)
     {

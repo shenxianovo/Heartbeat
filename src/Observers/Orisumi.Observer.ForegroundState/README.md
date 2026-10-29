@@ -2,7 +2,7 @@
 
 Orisumi.Observer.ForegroundState 在 macOS 上持续采集前台应用，把本机应用和前台应用时段交给 [Runtime](../../Docs/Orisumi.Docs/content/docs/hosting/runtime.mdx) 保存和发送。业务规则见 [Foreground State](../../Docs/Orisumi.Docs/content/docs/observers/foreground-state/index.mdx)。
 
-时段的 Observation 采用结束后提交，`draft` 请求带 `publishDraft: true`（见 `ForegroundStore.cs`）：时段开始时观测内容先保存，进行中的时段用 `GET /api/observation-drafts/{observationId}` 读到，`endAt` 随每次确认延长；时段结束后保存一个版本，草稿随之移除。
+时段的 Observation 采用结束后提交，`draft` 请求带 `publishPreview: true`（见 `ForegroundStore.cs`）：时段开始时观测内容先保存，进行中的时段用 `GET /api/observation-previews/{observationId}` 读到，`endAt` 随每次确认延长；时段结束后保存一个版本，观测预览随之移除。
 
 它只引用 `Orisumi.Observer.Sdk` 和 Core，通过标准输入和标准输出与 Runtime 通信，自己不打开 SQLite。程序在主线程运行 AppKit 事件循环，持续读取时才能取得更新后的前台应用。
 
@@ -41,7 +41,7 @@ dotnet run --project src/Observers/Orisumi.Observer.Runtime -- \
 
 ## 验证
 
-自动测试覆盖本机应用身份、时段边界、采集事件、休眠边界、本地事务恢复、观测草稿的写入与恢复，以及经 API 上传和本机应用被删除后的恢复。测试通过 `LocalObserverSession` 直接调用本地保存，不调用 macOS 原生接口。Case 见文档站的 Testing 分区。
+自动测试覆盖本机应用身份、时段边界、采集事件、休眠边界、本地事务恢复、观测预览的写入与恢复，以及经 API 上传和本机应用被删除后的恢复。测试通过 `LocalObserverSession` 直接调用本地保存，不调用 macOS 原生接口。Case 见文档站的 Testing 分区。
 
 ```sh
 orisumi verify checks --base HEAD --quality
@@ -49,8 +49,8 @@ orisumi verify checks --base HEAD --quality
 
 原生读取需要在 macOS 上实际运行：按[运行](#运行)的命令启动，切换应用，然后检查：
 
-1. 同一应用连续确认时，`GET /api/observation-drafts/{observationId}` 读到的 `endAt` 随之延长，这份 Observation 还没有版本。
-2. 切换应用后，旧时段的草稿移除，新时段有自己的草稿。
+1. 同一应用连续确认时，`GET /api/observation-previews/{observationId}` 读到的 `endAt` 随之延长，这份 Observation 还没有版本。
+2. 切换应用后，旧时段的观测预览移除，新时段有自己的观测预览。
 3. 已结束的时段可以用 `GET /api/entities/{observationId}` 读到。
 4. 再次运行，程序实例和本机应用的 EntityId 不变，Observation 是新的。
 

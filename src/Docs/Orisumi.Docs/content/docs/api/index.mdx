@@ -12,7 +12,7 @@ Orisumi API 按 [Core](../core/index.mdx) 的实体与版本模型保存、读�
 | 时刻 | 调用方 | 调用 |
 | --- | --- | --- |
 | 14:00 | Runtime | `POST /versions` 提交 VS Code 的前台时段，见 [Writing · 提交](./writing.mdx#submission) |
-| 14:00 起 | Runtime | `PUT /observation-drafts/{entityId}` 写入进行中的 Observation，见 [Drafts](./drafts.mdx) |
+| 14:00 起 | Runtime | `PUT /observation-previews/{entityId}` 写入进行中的 Observation，见 [Previews](./previews.mdx) |
 | 16:00 后 | Runtime | `POST /versions` 提交这一段的 Observation |
 | 晚上 | 推断 Observer | `GET /observations` 读取当天的时段，再 `POST /versions` 提交 InputSet 和推断，见 [Reading · 按事实时间查询](./reading.mdx#observations) |
 | 第二天 | Web 控制台 | `GET /entities/{entityId}/referrers` 从 VS Code 找到相关的数据，见 [Reading · 引用方](./reading.mdx#referrers)；`DELETE /entities/{entityId}` 删除浏览器的时段，见 [Writing · 删除](./writing.mdx#deletion) |
@@ -26,9 +26,9 @@ Orisumi API 按 [Core](../core/index.mdx) 的实体与版本模型保存、读�
 | 写入 | [`POST /versions`](/api/submitVersions)、[`DELETE /entities/{entityId}`](/api/deleteEntity) |
 | 读取 | [`GET /versions/{versionId}`](/api/getVersion)、[`GET /entities/{entityId}`](/api/getEntity)、[`GET /entities/{entityId}/versions`](/api/listEntityVersions) |
 | 列出与查询 | [`GET /entities`](/api/listEntities)、[`GET /observations`](/api/listObservations)、[`GET /entities/{entityId}/referrers`](/api/listReferrers) |
-| 观测草稿 | [`PUT /observation-drafts/{entityId}`](/api/putObservationDraft)、[`GET /observation-drafts/{entityId}`](/api/getObservationDraft)、[`GET /observation-drafts`](/api/listObservationDrafts) |
+| 观测预览 | [`PUT /observation-previews/{entityId}`](/api/putObservationPreview)、[`GET /observation-previews/{entityId}`](/api/getObservationPreview)、[`GET /observation-previews`](/api/listObservationPreviews) |
 
-每个接口一页，由契约生成，给出路径、参数、请求和响应的结构。接口的语义写在本分区的主题页中：[Writing](./writing.mdx)、[Reading](./reading.mdx) 和 [Drafts](./drafts.mdx)。
+每个接口一页，由契约生成，给出路径、参数、请求和响应的结构。接口的语义写在本分区的主题页中：[Writing](./writing.mdx)、[Reading](./reading.mdx) 和 [Previews](./previews.mdx)。
 
 ## 契约 [#contract]
 

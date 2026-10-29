@@ -11,7 +11,7 @@ Observation 是一份陈述，中文叫观测。它说明四件事：哪个 [Obs
 
 - **类别**：Core 类型，`category` 为 `observation`
 - **引用**：`observerVersionId`、`contentVersionId`、`inputSetVersionId`
-- **决策**：[ADR · 实体模型](../../adr/entity-model.mdx)、[ADR · Observer 与输入集](../../adr/observers-and-evidence.mdx)、[ADR · 身份、时间与更新](../../adr/identity-and-updates.mdx)、[ADR · 观测草稿](../../adr/observation-drafts.mdx)
+- **决策**：[ADR · 实体模型](../../adr/entity-model.mdx)、[ADR · Observer 与输入集](../../adr/observers-and-evidence.mdx)、[ADR · 身份、时间与更新](../../adr/identity-and-updates.mdx)、[ADR · 观测预览](../../adr/observation-previews.mdx)
 
 ## 成员 [#members]
 
@@ -28,15 +28,15 @@ Observation 是一份陈述，中文叫观测。它说明四件事：哪个 [Obs
 
 ## 示例 [#example]
 
-VS Code 从 10:00 起在前台，前台状态 Observer 在 10:05 最后一次确认。
+VS Code 从 14:00 起在前台，前台状态 Observer 在 14:05 最后一次确认。
 
 ```json
 {
 	"observerVersionId": "019e1bbb-ec00-7000-8000-0000000000a1",
 	"contentVersionId": "019e1bbb-ec00-7000-8000-0000000000c1",
 	"inputSetVersionId": null,
-	"startAt": "2026-10-06T02:00:00Z",
-	"endAt": "2026-10-06T02:05:00Z",
+	"startAt": "2026-10-06T06:00:00Z",
+	"endAt": "2026-10-06T06:05:00Z",
 	"timeZone": "Asia/Shanghai"
 }
 ```
@@ -122,24 +122,24 @@ VS Code 从 10:00 起在前台，前台状态 Observer 在 10:05 最后一次确
 
 Observation 的后续版本由同一个 Observer 形成：`observerVersionId` 指向同一个 Observer 实体的某个版本。后续版本可以补全或纠正事实时间、时区、观测内容和输入集。其他 Observer 的确认或否定形成新的 Observation，见 [IDENTITY-3](../rules/identity.mdx#identity-3)。
 
-## 草稿 [#drafts]
+## 预览 [#previews]
 
-VS Code 从 14:00 起在前台，前台状态 Observer 每秒确认一次，16:00 切换应用后才保存这份 Observation。这两个小时中，它把最新的陈述作为草稿交给后端，读取方随时能读到“VS Code 从 14:00 起在前台，最近一次确认在 15:12”。
+VS Code 从 14:00 起在前台，前台状态 Observer 每秒确认一次，16:00 切换应用后才保存这份 Observation。这两个小时中，它把最新的陈述作为观测预览交给后端，读取方随时能读到“VS Code 从 14:00 起在前台，最近一次确认在 15:12”。
 
-### OBSERVATION-11 观测草稿 [#observation-11]
+### OBSERVATION-11 观测预览 [#observation-11]
 
 定义
 
-观测草稿是一份 Observation 尚未保存的最新陈述，由它的 Observer 形成，供读取方实时读取。草稿属于这份 Observation 的实体，成员与 Observation 的成员相同。草稿不是版本：它没有 VersionId 和保存时间，不能被引用，也不是实体的当前版本。
+观测预览是一份 Observation 尚未保存的最新陈述，由它的 Observer 形成，供读取方实时读取。观测预览属于这份 Observation 的实体，成员与 Observation 的成员相同。观测预览不是版本：它没有 VersionId 和保存时间，不能被引用，也不是实体的当前版本。
 
-### OBSERVATION-12 草稿的校验 [#observation-12]
-
-执行方：后端
-
-草稿按 Observation 的规则校验，与一个版本相同：引用的目标已保存且未被删除，事实边界有效。实体已有版本时，草稿的 Observer 必须是同一个 Observer 实体，见 [OBSERVATION-10](#observation-10)。实体已被删除时，不接受它的草稿。
-
-### OBSERVATION-13 草稿接在当前版本之后 [#observation-13]
+### OBSERVATION-12 预览的校验 [#observation-12]
 
 执行方：后端
 
-每份 Observation 最多有一份草稿，它接在实体的当前版本之后；实体还没有版本时，草稿接在首版之前。实体保存了新版本时，它的草稿随之移除。基于旧版本的草稿被拒绝。
+观测预览按 Observation 的规则校验，与一个版本相同：引用的目标已保存且未被删除，事实边界有效。实体已有版本时，观测预览的 Observer 必须是同一个 Observer 实体，见 [OBSERVATION-10](#observation-10)。实体已被删除时，不接受它的观测预览。
+
+### OBSERVATION-13 预览接在当前版本之后 [#observation-13]
+
+执行方：后端
+
+每份 Observation 最多有一份观测预览，它接在实体的当前版本之后；实体还没有版本时，观测预览接在首版之前。实体保存了新版本时，它的观测预览随之移除。基于旧版本的观测预览被拒绝。

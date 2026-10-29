@@ -38,7 +38,7 @@ internal sealed class ForegroundStore(IObserverSession session, EntityId observe
             bindings = new Dictionary<string, string> { ["/localApplicationVersionId"] = prefix + "Application" } });
         operations.Add(new { op = "reference", entityId = capture.Content.Id.Value, @as = prefix + "Content" });
         operations.Add(new { op = "reference", entityId = observerId.Value, @as = prefix + "Observer" });
-        operations.Add(new { op = "draft", entityId = capture.ObservationId.Value, category = "observation", strategy = "OnCompletion", publishDraft = true,
+        operations.Add(new { op = "draft", entityId = capture.ObservationId.Value, category = "observation", strategy = "OnCompletion", publishPreview = true,
             content = new { observerVersionId = Guid.Empty, contentVersionId = Guid.Empty, inputSetVersionId = (Guid?)null,
                 capture.StartAt, capture.EndAt, capture.TimeZone },
             bindings = new Dictionary<string, string> { ["/observerVersionId"] = prefix + "Observer", ["/contentVersionId"] = prefix + "Content" } });

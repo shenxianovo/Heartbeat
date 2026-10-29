@@ -61,9 +61,9 @@ description: "应用处于前台的一个时段"
 
 ## 示例 [#example]
 
-VS Code 从 10:00 到 10:20 处于前台。10:00 首次确认时，`POST /versions` 提交观测内容。`localApplicationVersionId` 是本机应用首版的 VersionId：
+VS Code 从 14:00 到 16:00 处于前台。14:00 首次确认时，`POST /versions` 提交观测内容。`localApplicationVersionId` 是本机应用首版的 VersionId：
 
-```json title="10:00 · POST /versions"
+```json title="14:00 · POST /versions"
 {
   "versions": [
     {
@@ -81,9 +81,9 @@ VS Code 从 10:00 到 10:20 处于前台。10:00 首次确认时，`POST /versio
 }
 ```
 
-10:00 到 10:20 之间，Observation 作为观测草稿写入后端，见 [API · 观测草稿](../../api/drafts.mdx)。10:20 时段结束，再提交 Observation。`observerVersionId` 是程序实例的一个版本：
+14:00 到 16:00 之间，Observation 作为观测预览写入后端，见 [API · 观测预览](../../api/previews.mdx)。16:00 时段结束，再提交 Observation。`observerVersionId` 是程序实例的一个版本：
 
-```json title="10:20 · POST /versions"
+```json title="16:00 · POST /versions"
 {
   "versions": [
     {
@@ -96,8 +96,8 @@ VS Code 从 10:00 到 10:20 处于前台。10:00 首次确认时，`POST /versio
         "observerVersionId": "01a12e31-9050-7000-8000-0000000000a1",
         "contentVersionId": "01a12e31-9050-7000-8000-000000000120",
         "inputSetVersionId": null,
-        "startAt": "2026-10-06T02:00:00Z",
-        "endAt": "2026-10-06T02:20:00Z",
+        "startAt": "2026-10-06T06:00:00Z",
+        "endAt": "2026-10-06T08:00:00Z",
         "timeZone": "Asia/Shanghai"
       }
     }

@@ -6,17 +6,17 @@ using Orisumi.Observers.ForegroundState;
 
 namespace Orisumi.Integration.Tests;
 
-public sealed class ObserverDraftTests
+public sealed class ObserverPreviewTests
 {
     [Test]
     [Property("caseId", "foreground-submission")]
-    public async Task LiveDraftRecoversAcrossServerAndStoreRestartsAndCompletesOnce()
+    public async Task LivePreviewRecoversAcrossServerAndStoreRestartsAndCompletesOnce()
     {
         await using var database = await DatabaseFixture.CreateAsync();
         await using var firstFactory = new OrisumiApiFactory(database.ConnectionString);
         using var firstHandler = new RecordingHandler(firstFactory.Server.CreateHandler());
         using var firstHttp = new HttpClient(firstHandler) { BaseAddress = new("http://localhost/") };
-        var directory = Directory.CreateTempSubdirectory("orisumi-live-draft-");
+        var directory = Directory.CreateTempSubdirectory("orisumi-live-preview-");
         try
         {
             var path = Path.Combine(directory.FullName, "state.sqlite");
@@ -35,31 +35,31 @@ public sealed class ObserverDraftTests
                 await runtimeStore.SendAsync();
                 await Assert.That(runtimeStore.Status.Error).IsNull();
                 await ReadEnd(firstHttp, capture, capture.EndAt);
-                firstHandler.FailNextDraft = true;
+                firstHandler.FailNextPreview = true;
                 store.Checkpoint(capture.Through(reading.ObservedAt.AddSeconds(1)), null);
                 await runtimeStore.SendAsync();
                 store.Checkpoint(capture.Through(reading.ObservedAt.AddSeconds(2)), null);
                 await runtimeStore.SendAsync();
                 await ReadEnd(firstHttp, capture, reading.ObservedAt.AddSeconds(2));
-                lastSequence = firstHandler.Drafts[^1].GetProperty("sequence").GetInt64();
+                lastSequence = firstHandler.Previews[^1].GetProperty("sequence").GetInt64();
                 using var noVersions = await firstHttp.GetAsync($"/entities/{capture.ObservationId.Value}/versions");
                 await Assert.That(noVersions.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
             }
             await using var secondFactory = new OrisumiApiFactory(database.ConnectionString);
             using var secondHandler = new RecordingHandler(secondFactory.Server.CreateHandler());
             using var http = new HttpClient(secondHandler) { BaseAddress = new("http://localhost/") };
-            using var absent = await http.GetAsync($"/observation-drafts/{capture.ObservationId.Value}");
+            using var absent = await http.GetAsync($"/observation-previews/{capture.ObservationId.Value}");
             await Assert.That(absent.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
             using var recovered = new ObserverStore(path, owner, http);
             await recovered.SendAsync();
-            await Assert.That(secondHandler.Drafts.Single().GetProperty("sequence").GetInt64()).IsGreaterThan(lastSequence);
+            await Assert.That(secondHandler.Previews.Single().GetProperty("sequence").GetInt64()).IsGreaterThan(lastSequence);
             await ReadEnd(http, capture, capture.EndAt.AddSeconds(2));
             var resumedStore = new ForegroundStore(new LocalObserverSession(recovered), owner, registration);
             resumedStore.FinishActive();
             await recovered.SendAsync();
             await recovered.SendAsync();
-            await Assert.That(secondHandler.Drafts.Count).IsEqualTo(1);
-            using var removed = await http.GetAsync($"/observation-drafts/{capture.ObservationId.Value}");
+            await Assert.That(secondHandler.Previews.Count).IsEqualTo(1);
+            using var removed = await http.GetAsync($"/observation-previews/{capture.ObservationId.Value}");
             await Assert.That(removed.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
             using var history = await http.GetAsync($"/entities/{capture.ObservationId.Value}/versions");
             await Assert.That((await EntityApiTests.Json(history)).GetProperty("versions").GetArrayLength()).IsEqualTo(1);
@@ -75,7 +75,7 @@ public sealed class ObserverDraftTests
         await using var factory = new OrisumiApiFactory(database.ConnectionString);
         using var handler = new RecordingHandler(factory.Server.CreateHandler());
         using var http = new HttpClient(handler) { BaseAddress = new("http://localhost/") };
-        var directory = Directory.CreateTempSubdirectory("orisumi-draft-conflict-");
+        var directory = Directory.CreateTempSubdirectory("orisumi-preview-conflict-");
         try
         {
             var owner = EntityId.New();
@@ -91,7 +91,7 @@ public sealed class ObserverDraftTests
                 runtimeStore.Execute(local =>
                 {
                     local.Remember(new(content, DateTimeOffset.UtcNow));
-                    local.Draft(id, observation, strategy: SubmissionStrategy.OnCompletion, publishDraft: true);
+                    local.Draft(id, observation, strategy: SubmissionStrategy.OnCompletion, publishPreview: true);
                 });
                 await runtimeStore.SendAsync();
                 using var advanced = await EntityApiTests.Submit(http, new VersionSubmission(id, VersionId.New(), null, null, observation));
@@ -100,10 +100,10 @@ public sealed class ObserverDraftTests
             }
             using var restarted = new ObserverStore(path, owner, http);
             restarted.Execute(local => local.Draft(id, observation with { TimeZone = "Asia/Shanghai" },
-                strategy: SubmissionStrategy.OnCompletion, publishDraft: true));
-            var sent = handler.Drafts.Count;
+                strategy: SubmissionStrategy.OnCompletion, publishPreview: true));
+            var sent = handler.Previews.Count;
             await restarted.SendAsync();
-            await Assert.That(handler.Drafts.Count).IsEqualTo(sent);
+            await Assert.That(handler.Previews.Count).IsEqualTo(sent);
             await Assert.That(restarted.Status.Error).IsNull();
         }
         finally { directory.Delete(true); }
@@ -153,7 +153,7 @@ public sealed class ObserverDraftTests
             await runtimeStore.SendAsync();
             using var completed = await http.GetAsync($"/entities/{first.ObservationId.Value}/versions");
             await Assert.That((await EntityApiTests.Json(completed)).GetProperty("versions").GetArrayLength()).IsEqualTo(1);
-            using var removed = await http.GetAsync($"/observation-drafts/{first.ObservationId.Value}");
+            using var removed = await http.GetAsync($"/observation-previews/{first.ObservationId.Value}");
             await Assert.That(removed.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
             await ReadEnd(http, second, secondReading.ObservedAt);
         }
@@ -162,21 +162,21 @@ public sealed class ObserverDraftTests
 
     private static async Task ReadEnd(HttpClient http, ForegroundCapture capture, DateTimeOffset expected)
     {
-        using var response = await http.GetAsync($"/observation-drafts/{capture.ObservationId.Value}");
+        using var response = await http.GetAsync($"/observation-previews/{capture.ObservationId.Value}");
         response.EnsureSuccessStatusCode();
         await Assert.That((await EntityApiTests.Json(response)).GetProperty("content").GetProperty("endAt").GetDateTimeOffset()).IsEqualTo(expected);
     }
 
     private sealed class RecordingHandler(HttpMessageHandler inner) : DelegatingHandler(inner)
     {
-        internal List<JsonElement> Drafts { get; } = [];
-        internal bool FailNextDraft { get; set; }
+        internal List<JsonElement> Previews { get; } = [];
+        internal bool FailNextPreview { get; set; }
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             if (request.Method == HttpMethod.Put)
             {
-                Drafts.Add(JsonSerializer.Deserialize<JsonElement>(await request.Content!.ReadAsStringAsync(cancellationToken)));
-                if (FailNextDraft) { FailNextDraft = false; return new(HttpStatusCode.ServiceUnavailable); }
+                Previews.Add(JsonSerializer.Deserialize<JsonElement>(await request.Content!.ReadAsStringAsync(cancellationToken)));
+                if (FailNextPreview) { FailNextPreview = false; return new(HttpStatusCode.ServiceUnavailable); }
             }
             return await base.SendAsync(request, cancellationToken);
         }

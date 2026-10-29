@@ -5,7 +5,7 @@ description: "实体和版本怎样保存在 PostgreSQL 中：哪些表是权威
 
 实体和它的全部版本保存在 PostgreSQL 中。所有类别、所有业务类型的版本都在同一张 `versions` 表里，它是版本内容的权威位置；其他表记录身份和删除，或者由版本推导出来，供查询使用。这样设计的理由见 [ADR · 实体存储](../adr/entity-storage.mdx)。
 
-观测草稿只暂存在后端进程的内存中，不写入 PostgreSQL，见 [API · Drafts](../api/drafts.mdx)。
+观测预览只暂存在后端进程的内存中，不写入 PostgreSQL，见 [API · Previews](../api/previews.mdx)。
 
 ## 例子 [#example]
 
@@ -24,7 +24,7 @@ description: "实体和版本怎样保存在 PostgreSQL 中：哪些表是权威
 
 | 表 | 每行 | 来源 | 见 |
 | --- | --- | --- | --- |
-| `entities` | 一个实体，包括已删除的 | 权威：身份与删除 | [Versions · entities](./versions.mdx#entities) |
+| `entities` | 一个实体，包括已删除的 | 由版本推导类型和当前版本；删除时刻只记在这里 | [Versions · entities](./versions.mdx#entities) |
 | `versions` | 一个未删除的版本 | 权威：版本内容 | [Versions · versions](./versions.mdx#versions) |
 | `version_tombstones` | 一个已删除的版本 | 权威：删除 | [Versions · 删除](./versions.mdx#deletion) |
 | `current_observations` | 一份未删除的 Observation 的当前版本 | 由版本推导 | [Queries · 事实时间](./queries.mdx#fact-time) |

@@ -144,10 +144,6 @@ Runtime 用同一个 `id` 返回结果或错误：
 
 后端不可用时，Runtime 用最近 32 次读取的结果补充本地数据，这些结果只在 Runtime 运行期间保留。
 
-### 刷新 [#refresh]
-
-界面打开时立即读取，可见期间每 2 秒读取一次，隐藏后停止。
-
 ## Observer 管道 [#observer-pipe]
 
 管道绑定启动它的程序实例，消息中不能指定另一个实例。各语言的 SDK 把业务操作编码成这些消息，自己不保存数据；业务代码通过 SDK 调用。
@@ -212,7 +208,7 @@ Observer 发出的请求如下。批次的语义见 [Submission · 批次](./sub
 
 | 操作 | 字段 |
 | --- | --- |
-| `draft` | `entityId`、`category`、`content`，可选 `schemaVersionId`、`strategy`（`Immediate` 或 `OnCompletion`）、`publishDraft`、`ifAbsent`、`bindings`、`as` |
+| `draft` | `entityId`、`category`、`content`，可选 `schemaVersionId`、`strategy`（`Immediate` 或 `OnCompletion`）、`publishPreview`、`ifAbsent`、`bindings`、`as` |
 | `reference` | `entityId`、`as` |
 | `complete` | `entityId`，可选 `as` |
 

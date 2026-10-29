@@ -8,7 +8,7 @@
     "versions",
     "writing",
     "reading",
-    "drafts",
+    "previews",
     "errors",
     "---Operations---",
     "submitVersions",
@@ -19,9 +19,9 @@
     "listEntities",
     "listObservations",
     "listReferrers",
-    "putObservationDraft",
-    "getObservationDraft",
-    "listObservationDrafts",
+    "putObservationPreview",
+    "getObservationPreview",
+    "listObservationPreviews",
     "..."
   ]
 }

@@ -7,16 +7,16 @@ description: "设备上的 Observer 怎样经 Runtime 把版本交给后端：�
 
 ## 例子 [#example]
 
-前台状态 Observer 采用[结束后提交](#strategies)，并写入[观测草稿](#drafts)。[Walkthrough](../start/walkthrough.mdx) 那一天，它和 Runtime 这样配合：
+前台状态 Observer 采用[结束后提交](#strategies)，并写入[观测预览](#previews)。[Walkthrough](../start/walkthrough.mdx) 那一天，它和 Runtime 这样配合：
 
 | 时刻 | 业务代码 | Runtime |
 | --- | --- | --- |
 | 启动 | 读到自己的 EntityId，交来程序实例的信息和所需的 EntitySchema | [登记](#registration)，先于其他版本发送 |
-| 14:00 | VS Code 在前台。交来一个[批次](#handoff)：引用 VS Code 的本机应用，形成前台时段和 Observation 的草稿 | 本地保存，返回回执。前台时段被 Observation 引用，随即冻结并发送；保存后写入观测草稿 |
-| 14:05 | 再次确认，把 Observation 的结束边界延到 14:05 | 合并进草稿，再写入一次观测草稿 |
-| 15:30 | 网络中断 | 观测草稿写入失败；之后的补全继续合并进本地的草稿 |
+| 14:00 | VS Code 在前台。交来一个[批次](#handoff)：引用 VS Code 的本机应用，形成前台时段和 Observation 的草稿 | 本地保存，返回回执。前台时段被 Observation 引用，随即冻结并发送；保存后写入观测预览 |
+| 14:05 | 再次确认，把 Observation 的结束边界延到 14:05 | 合并进草稿，再写入一次观测预览 |
+| 15:30 | 网络中断 | 观测预览写入失败；之后的补全继续合并进本地的草稿 |
 | 16:00 | 切到浏览器。交来一个批次：通知 VS Code 的时段[结束](#updates)，引用浏览器的本机应用，形成浏览器的时段和 Observation 的草稿 | 冻结 VS Code 的 Observation，排进发送；为浏览器形成新的草稿 |
-| 16:10 | 网络恢复 | 按冻结的顺序补交，确认后为浏览器写入观测草稿 |
+| 16:10 | 网络恢复 | 按冻结的顺序补交，确认后为浏览器写入观测预览 |
 
 后端为 VS Code 这一段保存一个前台时段的版本和一个 Observation 的版本。下面各节依次说明每一步。
 
@@ -96,18 +96,18 @@ Runtime 提交事务后返回本地回执，回执中带着批次形成的版本
 
 发送的时机不影响事实时间。
 
-## 观测草稿 [#drafts]
+## 观测预览 [#previews]
 
-Observation 的草稿可以写入后端，供读取方在事实结束前读到，见 [OBSERVATION-11](../core/model/observation.mdx#observation-11)。业务代码按业务类型决定是否写入观测草稿，两种提交策略都可以写入。
+Observation 的草稿可以作为观测预览写入后端，供读取方在事实结束前读到，见 [OBSERVATION-11](../core/model/observation.mdx#observation-11)。观测预览的内容就是草稿的内容，不带 VersionId。草稿是权威，观测预览丢失后由 Runtime 再写一次。业务代码按业务类型决定是否写入观测预览，两种提交策略都可以写入。
 
-例子中，Runtime 在前台时段保存后，用 `PUT /observation-drafts/{entityId}` 写入 VS Code 的 Observation 的草稿；14:05 草稿合并了新的结束边界，Runtime 再写入一次。16:00 业务代码通知结束，Runtime 停止写入这份草稿，冻结并发送它；后端保存这个版本后，移除对应的草稿。
+例子中，Runtime 在前台时段保存后，用 `PUT /observation-previews/{entityId}` 把 VS Code 的 Observation 的草稿写成观测预览；14:05 草稿合并了新的结束边界，Runtime 再写入一次。16:00 业务代码通知结束，Runtime 停止写入这份观测预览，冻结草稿并发送；后端保存这个版本后，移除对应的观测预览。
 
-- 草稿引用的版本必须已保存，草稿的 `previousVersionId` 也必须已保存。所以写入观测草稿的 Observation，它的观测内容在草稿形成时就冻结并发送。
-- 每次写入发送草稿的完整内容，以及 Runtime 为这份草稿维护的递增 `sequence`。`sequence` 本地保存，重启后继续递增。写入的频率由 Runtime 决定。
-- 写入失败时，Runtime 不重发旧的内容，下一次写入发送最新的草稿。后端重启或草稿过期后，下一次写入恢复它。
-- 写入因 [VERSION-6](../core/model/version.mdx#version-6) 被拒绝时，后端的当前版本已经不是草稿所基于的版本，Runtime 停止写入这份草稿。
+- 观测预览引用的版本必须已保存，它的 `previousVersionId` 也必须已保存。所以写入观测预览的 Observation，它的观测内容在草稿形成时就冻结并发送。
+- 每次写入发送草稿的完整内容，以及 Runtime 为这份观测预览维护的递增 `sequence`。`sequence` 本地保存，重启后继续递增。写入的频率由 Runtime 决定。
+- 写入失败时，Runtime 不重发旧的内容，下一次写入发送草稿最新的内容。后端重启或观测预览过期后，下一次写入恢复它。
+- 写入因 [VERSION-6](../core/model/version.mdx#version-6) 被拒绝时，后端的当前版本已经不是草稿所基于的版本，Runtime 停止写入这份观测预览。
 
-请求和响应见 [API · 观测草稿](../api/drafts.mdx)。
+请求和响应见 [API · 观测预览](../api/previews.mdx)。
 
 ## 发送与确认 [#delivery]
 
@@ -153,6 +153,6 @@ Runtime 向业务代码报告待发送的数量、已确认的数据和被拒绝
 
 停用前，业务代码按自己的规则通知进行中的事实结束，等收到回执后退出，见 [Runtime · 启动与停止](./runtime.mdx#lifecycle)。
 
-程序实例的进程意外退出时，它的草稿保留在本地，Runtime 不替业务代码结束它们，也不再为它写入观测草稿。Runtime 启动时恢复草稿、待发送的版本和待处理的被拒绝版本，已冻结的版本照常发送。
+程序实例的进程意外退出时，它的草稿保留在本地，Runtime 不替业务代码结束它们，也不再为它写入观测预览。Runtime 启动时恢复草稿、待发送的版本和待处理的被拒绝版本，已冻结的版本照常发送。
 
 进程重新启动后，业务代码先读取本地已提交的状态，再按业务规则处理遗留的草稿，例如前台时段结束于最后一次确认。没有收到回执的批次按业务规则重新形成，不用新的标识重放。

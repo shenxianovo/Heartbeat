@@ -2,7 +2,7 @@
   "openapi": "3.1.1",
   "info": {
     "title": "Orisumi API",
-    "description": "Orisumi HTTP 接口契约。维护者直接修改此文件。文档站读取此文件展示接口，后端按契约实现。\n\n接口按 Core 的实体与版本模型定义。接口的语义见文档站 API 分区的 Writing、Reading 和 Drafts 页。",
+    "description": "Orisumi HTTP 接口契约。维护者直接修改此文件。文档站读取此文件展示接口，后端按契约实现。\n\n接口按 Core 的实体与版本模型定义。接口的语义见文档站 API 分区的 Writing、Reading 和 Previews 页。",
     "version": "draft"
   },
   "servers": [
@@ -671,11 +671,11 @@
         }
       }
     },
-    "/observation-drafts/{entityId}": {
+    "/observation-previews/{entityId}": {
       "put": {
-        "operationId": "putObservationDraft",
-        "summary": "写入观测草稿",
-        "description": "写入一份 Observation 尚未保存的最新陈述，见 [Drafts · 写入](/api/drafts#writing)。",
+        "operationId": "putObservationPreview",
+        "summary": "写入观测预览",
+        "description": "写入一份 Observation 尚未保存的最新陈述，见 [Previews · 写入](/api/previews#writing)。",
         "parameters": [
           {
             "name": "entityId",
@@ -692,24 +692,24 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ObservationDraftSubmission"
+                "$ref": "#/components/schemas/ObservationPreviewSubmission"
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "暂存的草稿。",
+            "description": "暂存的观测预览。",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ObservationDraft"
+                  "$ref": "#/components/schemas/ObservationPreview"
                 }
               }
             }
           },
           "400": {
-            "description": "请求体或参数不符合契约，或者草稿违反 Core 规则。违反规则时带 `rule`，见 [OBSERVATION-12](/core/model/observation#observation-12)。",
+            "description": "请求体或参数不符合契约，或者观测预览违反 Core 规则。违反规则时带 `rule`，见 [OBSERVATION-12](/core/model/observation#observation-12)。",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -719,7 +719,7 @@
             }
           },
           "409": {
-            "description": "草稿与已保存的数据冲突，带 `rule`：`previousVersionId` 不是实体的当前版本时为 `VERSION-6`，实体已被删除时为 `HISTORY-7`。",
+            "description": "观测预览与已保存的数据冲突，带 `rule`：`previousVersionId` 不是实体的当前版本时为 `VERSION-6`，实体已被删除时为 `HISTORY-7`。",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -751,9 +751,9 @@
         }
       },
       "get": {
-        "operationId": "getObservationDraft",
-        "summary": "读取观测草稿",
-        "description": "读取一份 Observation 暂存的草稿，见 [Drafts · 读取](/api/drafts#reading)。",
+        "operationId": "getObservationPreview",
+        "summary": "读取观测预览",
+        "description": "读取一份 Observation 暂存的观测预览，见 [Previews · 读取](/api/previews#reading)。",
         "parameters": [
           {
             "name": "entityId",
@@ -767,11 +767,11 @@
         ],
         "responses": {
           "200": {
-            "description": "暂存的草稿。",
+            "description": "暂存的观测预览。",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ObservationDraft"
+                  "$ref": "#/components/schemas/ObservationPreview"
                 }
               }
             }
@@ -787,7 +787,7 @@
             }
           },
           "404": {
-            "description": "这份 Observation 没有暂存的草稿。",
+            "description": "这份 Observation 没有暂存的观测预览。",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -809,17 +809,17 @@
         }
       }
     },
-    "/observation-drafts": {
+    "/observation-previews": {
       "get": {
-        "operationId": "listObservationDrafts",
-        "summary": "列出观测草稿",
-        "description": "按 EntityId 升序列出全部暂存的草稿，不分页，见 [Drafts · 读取](/api/drafts#reading)。",
+        "operationId": "listObservationPreviews",
+        "summary": "列出观测预览",
+        "description": "按 EntityId 升序列出全部暂存的观测预览，不分页，见 [Previews · 读取](/api/previews#reading)。",
         "parameters": [
           {
             "name": "resourceName",
             "in": "query",
             "required": false,
-            "description": "观测内容的资源名。只返回观测内容属于这种业务类型的草稿。",
+            "description": "观测内容的资源名。只返回观测内容属于这种业务类型的观测预览。",
             "schema": {
               "type": "string"
             }
@@ -827,11 +827,11 @@
         ],
         "responses": {
           "200": {
-            "description": "暂存的草稿。",
+            "description": "暂存的观测预览。",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ObservationDraftList"
+                  "$ref": "#/components/schemas/ObservationPreviewList"
                 }
               }
             }
@@ -1510,9 +1510,9 @@
           }
         }
       },
-      "ObservationDraftSubmission": {
+      "ObservationPreviewSubmission": {
         "type": "object",
-        "description": "写入的观测草稿，见 [Drafts](/api/drafts)。",
+        "description": "写入的观测预览，见 [Previews](/api/previews)。",
         "required": [
           "previousVersionId",
           "sequence",
@@ -1535,16 +1535,16 @@
             "type": "integer",
             "format": "int64",
             "minimum": 0,
-            "description": "写入方为这份草稿生成的递增整数。"
+            "description": "写入方为这份观测预览生成的递增整数。"
           },
           "content": {
             "$ref": "#/components/schemas/Observation"
           }
         }
       },
-      "ObservationDraft": {
+      "ObservationPreview": {
         "type": "object",
-        "description": "后端暂存的观测草稿，见 [OBSERVATION-11](/core/model/observation#observation-11)。",
+        "description": "后端暂存的观测预览，见 [OBSERVATION-11](/core/model/observation#observation-11)。",
         "required": [
           "entityId",
           "previousVersionId",
@@ -1571,28 +1571,28 @@
             "type": "integer",
             "format": "int64",
             "minimum": 0,
-            "description": "写入方为这份草稿生成的递增整数。"
+            "description": "写入方为这份观测预览生成的递增整数。"
           },
           "updatedAt": {
             "type": "string",
             "format": "date-time",
-            "description": "后端最近一次接受这份草稿的时刻，以 `Z` 结尾。"
+            "description": "后端最近一次接受这份观测预览的时刻，以 `Z` 结尾。"
           },
           "content": {
             "$ref": "#/components/schemas/Observation"
           }
         }
       },
-      "ObservationDraftList": {
+      "ObservationPreviewList": {
         "type": "object",
         "required": [
-          "drafts"
+          "previews"
         ],
         "properties": {
-          "drafts": {
+          "previews": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/ObservationDraft"
+              "$ref": "#/components/schemas/ObservationPreview"
             }
           }
         }

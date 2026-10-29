@@ -14,7 +14,7 @@ internal static class SubmissionContract
         { throw new JsonException("The request does not match the contract.", exception); }
     }
 
-    internal static (VersionId? Previous, long Sequence, Observation Content) ReadDraft(JsonElement body)
+    internal static (VersionId? Previous, long Sequence, Observation Content) ReadPreview(JsonElement body)
     {
         try
         {
@@ -28,7 +28,7 @@ internal static class SubmissionContract
                 (Observation)VersionJson.ReadContent("observation", body.GetProperty("content")));
         }
         catch (Exception exception) when (exception is InvalidOperationException or FormatException or KeyNotFoundException)
-        { throw new JsonException("The draft does not match the contract.", exception); }
+        { throw new JsonException("The preview does not match the contract.", exception); }
     }
 
     private static List<VersionSubmission> ReadCore(JsonElement body)

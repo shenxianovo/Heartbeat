@@ -2,13 +2,19 @@ import { useMemo } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { readAllPages } from "@/api/client";
 import { useSource } from "@/api/source";
-import { isEntitySchema, type EntitySchema, type Observation, type ObservationDraft, type Version } from "@/api/types";
-import { withDrafts, type Experience, type PointGroup } from "@/lib/day";
+import {
+  isEntitySchema,
+  type EntitySchema,
+  type Observation,
+  type ObservationPreview,
+  type Version,
+} from "@/api/types";
+import { withPreviews, type Experience, type PointGroup } from "@/lib/day";
 import { outgoingReferences } from "@/lib/references";
 import { roleOf } from "@/lib/roles";
 import { dayOf, dayRange, parseTime, SECOND } from "@/lib/time";
 import { businessTitle } from "@/lib/titles";
-import { useDrafts } from "./queries";
+import { usePreviews } from "./queries";
 import { useNow } from "./useNow";
 import { pool, readVersion, useTypes, type TypeIndex } from "./useTypes";
 
@@ -34,18 +40,18 @@ export function useDayObservations(range: ReturnType<typeof dayRange>, today: bo
   });
 }
 
-/** 一份要解析的经历：已保存的 Observation，或者草稿。 */
+/** 一份要解析的经历：已保存的 Observation，或者预览。 */
 interface Pending {
   observationId: string;
   observation: Version<Observation> | null;
   statement: Observation;
-  draftAt: number | null;
+  previewAt: number | null;
   writtenAt: number;
 }
 
 /**
  * 一天的经历：读出这一天的全部 Observation，解析有时段的那些的内容和它们引用的事物。
- * 今天的数据每 5 秒刷新；今天还读草稿，进行中的时段由草稿接上。
+ * 今天的数据每 5 秒刷新；今天还读预览，进行中的时段由预览接上。
  */
 export function useDay(key: string) {
   const source = useSource();
@@ -56,7 +62,7 @@ export function useDay(key: string) {
   const today = range.key === dayRange(now).key;
 
   const observations = useDayObservations(range, today);
-  const drafts = useDrafts(today);
+  const previews = usePreviews(today);
 
   const resolved = useQuery({
     queryKey: ["day", range.key, observations.dataUpdatedAt],
@@ -66,11 +72,11 @@ export function useDay(key: string) {
     staleTime: Infinity,
   });
 
-  // 草稿只有几份，单独解析，不必每 2 秒重解析整天的 Observation。
+  // 预览只有几份，单独解析，不必每 2 秒重解析整天的 Observation。
   const ongoing = useQuery({
-    queryKey: ["day", range.key, "drafts", drafts.dataUpdatedAt],
-    queryFn: () => resolveDrafts(drafts.data!, types.data!),
-    enabled: today && !!drafts.data && !!types.data,
+    queryKey: ["day", range.key, "previews", previews.dataUpdatedAt],
+    queryFn: () => resolvePreviews(previews.data!, types.data!),
+    enabled: today && !!previews.data && !!types.data,
     placeholderData: keepPreviousData,
     staleTime: Infinity,
   });
@@ -103,7 +109,7 @@ export function useDay(key: string) {
       observationId: item.observationId,
       observation: item.observation,
       observerVersionId: item.statement.observerVersionId,
-      draftAt: item.draftAt,
+      previewAt: item.previewAt,
       writtenAt: item.writtenAt,
       content,
       contentType: schema?.content.resourceName ?? "unknown",
@@ -144,7 +150,7 @@ export function useDay(key: string) {
           observationId: observation.entityId,
           observation,
           statement: observation.content,
-          draftAt: null,
+          previewAt: null,
           writtenAt: Math.min(parseTime(observation.recordedAt) ?? now, now),
         },
         index,
@@ -164,18 +170,24 @@ export function useDay(key: string) {
     return { experiences, points, observers: [...unique.values()] };
   }
 
-  async function resolveDrafts(list: ObservationDraft[], index: TypeIndex): Promise<Experience[]> {
+  async function resolvePreviews(list: ObservationPreview[], index: TypeIndex): Promise<Experience[]> {
     const now = Date.now();
-    const periods = list.filter((draft) => {
-      if (!isPeriod(draft.content)) return false;
-      const start = parseTime(draft.content.startAt)!;
-      const end = parseTime(draft.content.endAt) ?? now;
+    const periods = list.filter((preview) => {
+      if (!isPeriod(preview.content)) return false;
+      const start = parseTime(preview.content.startAt)!;
+      const end = parseTime(preview.content.endAt) ?? now;
       return start < range.end && end > range.start;
     });
-    return pool(periods, 4, (draft) => {
-      const at = Math.min(parseTime(draft.updatedAt) ?? now, now);
+    return pool(periods, 4, (preview) => {
+      const at = Math.min(parseTime(preview.updatedAt) ?? now, now);
       return experienceOf(
-        { observationId: draft.entityId, observation: null, statement: draft.content, draftAt: at, writtenAt: at },
+        {
+          observationId: preview.entityId,
+          observation: null,
+          statement: preview.content,
+          previewAt: at,
+          writtenAt: at,
+        },
         index,
         now,
       );
@@ -186,7 +198,7 @@ export function useDay(key: string) {
     () =>
       resolved.data && {
         ...resolved.data,
-        experiences: today ? withDrafts(resolved.data.experiences, ongoing.data ?? []) : resolved.data.experiences,
+        experiences: today ? withPreviews(resolved.data.experiences, ongoing.data ?? []) : resolved.data.experiences,
       },
     [resolved.data, ongoing.data, today],
   );

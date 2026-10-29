@@ -50,7 +50,7 @@ Core 类型、Observer 和各种 Id 用英文名，其余概念用中文。Obser
 | 术语 | 定义 | 详见 |
 | --- | --- | --- |
 | 陈述 | Observation 表达的内容，由观测内容和事实时间组成 | [OBSERVER-1](./model/observer.mdx#observer-1) |
-| 观测草稿 | 一份 Observation 尚未保存的最新陈述，交给后端供实时读取。它不是版本，不能被引用 | [OBSERVATION-11](./model/observation.mdx#observation-11) |
+| 观测预览 | 一份 Observation 尚未保存的最新陈述，交给后端供实时读取。它不是版本，没有 VersionId，不能被引用 | [OBSERVATION-11](./model/observation.mdx#observation-11) |
 | 处理 | 读取已保存的版本、形成观测的一次过程，例如一次模型调用。一次处理可以形成多份 Observation | [EVIDENCE-1](./rules/evidence.mdx#evidence-1) |
 | 采集诊断 | 读取、解析或匹配失败的情况，作为诊断信息处理 | [OBSERVER-8](./model/observer.mdx#observer-8) |
 
@@ -67,6 +67,16 @@ Core 类型、Observer 和各种 Id 用英文名，其余概念用中文。Obser
 | 写入方 | 向后端提交版本的软件：Observer 的业务代码、托管方和用户使用的工具 | [Conventions · 规则的格式](./conventions.mdx#rules) |
 | 读取方 | 读取和追溯数据的软件，例如 Agent 和 Web 控制台 | [Conventions · 规则的格式](./conventions.mdx#rules) |
 | 后端 | 校验并保存版本的服务 | [Overview · 谁决定什么](./index.mdx#responsibility) |
+
+## 提交 [#submission]
+
+| 术语 | 定义 | 详见 |
+| --- | --- | --- |
+| 草稿 | Runtime 本地保存、尚未冻结的版本。它已经有 VersionId，可以合并或丢弃；Observation 的草稿可以写成观测预览 | [Submission · 版本的状态](../hosting/submission.mdx#states) |
+| 冻结 | 草稿被其他版本引用或进入发送后不再改写，之后的变化形成新版本 | [Submission · 版本的状态](../hosting/submission.mdx#states) |
+| 批次 | 业务代码一次交给 Runtime 的一组有序操作，在一个本地事务中执行 | [Submission · 批次](../hosting/submission.mdx#handoff) |
+| 本地回执 | Runtime 提交一个批次后返回的结果，收到时数据已本地保存 | [Submission · 回执](../hosting/submission.mdx#receipts) |
+| 提交策略 | 草稿何时冻结：及时提交在每次发送时冻结，结束后提交在业务代码通知结束时冻结 | [Submission · 提交策略](../hosting/submission.mdx#strategies) |
 
 ## 时间 [#time]
 
@@ -98,3 +108,4 @@ Core 类型、Observer 和各种 Id 用英文名，其余概念用中文。Obser
 | `IEntity` | [Entity](./model/entity.mdx) 和 [Version](./model/version.mdx)：身份属于实体，内容和引用属于版本 |
 | `ObservationContent`、`Observation Content` | 观测内容，业务实体在 Observation 中承担的角色 |
 | `观测时间`、`接收时间` | 形成观测的时刻、后端收到请求的时刻，见 [TIME-1](./rules/time.mdx#time-1) |
+| `观测草稿`、`ObservationDraft`、`observation-drafts`、`publishDraft` | [观测预览](./model/observation.mdx#observation-11)；Runtime 本地的草稿仍叫草稿 |

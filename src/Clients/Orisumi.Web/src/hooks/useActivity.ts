@@ -4,7 +4,7 @@ import { useSource } from "@/api/source";
 import { isEntitySchema, isObservation, type Observation, type Version } from "@/api/types";
 import { observerIdentity, UNREADABLE_IDENTITY, type ObserverIdentity } from "@/lib/observers";
 import { dayRange, parseTime, SECOND } from "@/lib/time";
-import { useDrafts } from "./queries";
+import { usePreviews } from "./queries";
 import { useDayObservations } from "./useDay";
 import { pool, readVersion, useTypes } from "./useTypes";
 
@@ -39,7 +39,7 @@ async function savedBetween(source: OrisumiSource, entityId: string, from: numbe
 
 /**
  * Observer 页面的数据：全部 Observer 实体、事实时间在今天的 Observation、只写事实时间未知的陈述的 Observer
- * 今天保存的 Observation，以及草稿。各行由 observerRows 组合。
+ * 今天保存的 Observation，以及预览。各行由 observerRows 组合。
  */
 export function useActivity(now: number) {
   const source = useSource();
@@ -51,7 +51,7 @@ export function useActivity(now: number) {
 
   const timed = useDayObservations(day, true);
 
-  const drafts = useDrafts();
+  const previews = usePreviews();
 
   const observers = useQuery({
     queryKey: ["observers", observerTypes],
@@ -84,7 +84,7 @@ export function useActivity(now: number) {
       ...(observers.data ?? []).map((o) => o.version.versionId),
       ...(timed.data ?? []).map((o) => o.content.observerVersionId),
       ...(recorded.data ?? []).map((o) => o.content.observerVersionId),
-      ...(drafts.data ?? []).map((d) => d.content.observerVersionId),
+      ...(previews.data ?? []).map((d) => d.content.observerVersionId),
     ]),
   ].sort();
   const identities = useQuery({
@@ -115,7 +115,7 @@ export function useActivity(now: number) {
     identityOf,
     timed: timed.data ?? [],
     recorded: recorded.data ?? [],
-    drafts: drafts.data ?? [],
+    previews: previews.data ?? [],
     loading: types.isPending || timed.isPending || observers.isPending || identities.isPending,
     error: types.error ?? timed.error ?? observers.error ?? recorded.error ?? identities.error,
   };

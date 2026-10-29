@@ -28,7 +28,7 @@ internal sealed class ManagedObserver : IAsyncDisposable
         var directory = packages.InstanceDirectory(registration.InstanceId);
         Directory.CreateDirectory(Path.Combine(directory, "data"));
         Directory.CreateDirectory(Path.Combine(packages.Root, "shared"));
-        Store = new ObserverStore(Path.Combine(directory, "store.sqlite"), new(registration.InstanceId), http) { PublishDrafts = false };
+        Store = new ObserverStore(Path.Combine(directory, "store.sqlite"), new(registration.InstanceId), http) { PublishPreviews = false };
         _session = new(Store);
         _delivery = DeliverAsync(_deliveryStop.Token);
     }
@@ -69,7 +69,7 @@ internal sealed class ManagedObserver : IAsyncDisposable
             try { running = await RunProcessAsync(token); }
             catch (InvalidDataException exception) { _error = exception.Message; incompatible = true; }
             catch (Exception exception) { _error = exception.Message; }
-            finally { Store.PublishDrafts = false; }
+            finally { Store.PublishPreviews = false; }
             if (token.IsCancellationRequested) { _state = "stopped"; return; }
             if (running >= TimeSpan.FromSeconds(60)) failures = 0;
             if (incompatible || failures >= 3) { _state = "failed"; return; }
@@ -119,7 +119,7 @@ internal sealed class ManagedObserver : IAsyncDisposable
                         readyAt = Stopwatch.GetTimestamp();
                         _state = "running";
                         _error = null;
-                        Store.PublishDrafts = true;
+                        Store.PublishPreviews = true;
                         result = JsonLines.Json(new { });
                     }
                     else result = await _session.RequestAsync(method, request.GetProperty("params"), id, connection.Token);
@@ -153,7 +153,7 @@ internal sealed class ManagedObserver : IAsyncDisposable
             if (!process.HasExited)
             {
                 _state = "stopping";
-                Store.PublishDrafts = false;
+                Store.PublishPreviews = false;
                 if (stopping.IsCancellationRequested)
                 {
                     using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -168,7 +168,7 @@ internal sealed class ManagedObserver : IAsyncDisposable
         }
         finally
         {
-            Store.PublishDrafts = false;
+            Store.PublishPreviews = false;
             if (!process.HasExited) process.Kill(entireProcessTree: true);
             await process.WaitForExitAsync(CancellationToken.None);
             await connection.CancelAsync();

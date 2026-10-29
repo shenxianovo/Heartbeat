@@ -45,15 +45,15 @@ export function useReferrers(entityId: string | null) {
   });
 }
 
-export const DRAFT_INTERVAL = 2_000;
+export const PREVIEW_INTERVAL = 2_000;
 
-/** 后端暂存的全部观测草稿，每 2 秒刷新。日页面、面板和 Observer 页面共用。 */
-export function useDrafts(enabled = true) {
+/** 后端暂存的全部观测预览，每 2 秒刷新。日页面、面板和 Observer 页面共用。 */
+export function usePreviews(enabled = true) {
   const source = useSource();
   return useQuery({
-    queryKey: ["observation-drafts"],
-    queryFn: () => source.listObservationDrafts().then((list) => list.drafts),
-    refetchInterval: DRAFT_INTERVAL,
+    queryKey: ["observation-previews"],
+    queryFn: () => source.listObservationPreviews().then((list) => list.previews),
+    refetchInterval: PREVIEW_INTERVAL,
     enabled,
   });
 }

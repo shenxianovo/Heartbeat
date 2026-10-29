@@ -47,13 +47,13 @@ description: "错误响应的格式，各状态码的含义，以及冲突对应
 | `413` | 请求体超过 10 MiB（10,485,760 字节） |
 | `500` | 后端出现意外错误 |
 
-`409` 的版本本身合法，换一个时机或在实体的另一个状态下可能被接受；`400` 的版本本身需要修改。
+`409` 的版本本身合法，换一个时机或在实体的另一个状态下可能保存成功；`400` 的版本本身需要修改。
 
 ## 冲突 [#conflicts]
 
 | 冲突 | `rule` |
 | --- | --- |
-| 版本或观测草稿基于旧版本 | [VERSION-6](../core/model/version.mdx#version-6) |
+| 版本或观测预览基于旧版本 | [VERSION-6](../core/model/version.mdx#version-6) |
 | 重试的 VersionId 已保存了不同的内容 | [VERSION-7](../core/model/version.mdx#version-7) |
 | 资源名已被另一个业务类型使用 | [SCHEMA-5](../core/model/schema.mdx#schema-5) |
 | 实体已被删除 | [HISTORY-7](../core/rules/history.mdx#history-7) |

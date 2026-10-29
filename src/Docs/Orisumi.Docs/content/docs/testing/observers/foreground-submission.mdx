@@ -1,13 +1,13 @@
 ---
 title: "Foreground Submission"
-description: "前台时段进行中以草稿实时可读，结束后保存一个版本，异常退出后从最后一次确认恢复"
+description: "前台时段进行中以观测预览实时可读，结束后保存一个版本，异常退出后从最后一次确认恢复"
 ---
 
 export const caseId = 'foreground-submission';
 
 ## 为什么验证 [#why]
 
-前台状态 Observer 采用结束后提交并写入观测草稿：进行中的时段以草稿实时可读，每个时段只保存一个版本。程序异常退出时，进行中的时段要在下次启动时结束于最后一次确认，停机期间不计入时段。约定见 [Foreground State · 提交](../../observers/foreground-state/index.mdx#submission)。
+前台状态 Observer 采用结束后提交并写入观测预览：进行中的时段以观测预览实时可读，每个时段只保存一个版本。程序异常退出时，进行中的时段要在下次启动时结束于最后一次确认，停机期间不计入时段。约定见 [Foreground State · 提交](../../observers/foreground-state/index.mdx#submission)。
 
 ## 前置条件 [#setup]
 
@@ -18,9 +18,9 @@ Runtime 的本地保存使用独立的 SQLite 文件，读数是模拟的。需�
 | 操作 | 预期结果 |
 | --- | --- |
 | 确认应用在前台并延长当前时段，然后发送 | 后端读到观测内容；读取这份 Observation 返回 `404` |
-| 同一应用连续确认多次 | 读取草稿得到最近一次确认的 `endAt`；这份 Observation 没有版本 |
-| 切换应用 | 旧时段保存一个版本，`endAt` 是切换的时刻；旧时段的草稿被移除，新时段有自己的草稿 |
-| 后端重启，之后继续确认 | 重启后读不到草稿，下一次写入后恢复；本地草稿和已保存的版本不变 |
+| 同一应用连续确认多次 | 读取观测预览得到最近一次确认的 `endAt`；这份 Observation 没有版本 |
+| 切换应用 | 旧时段保存一个版本，`endAt` 是切换的时刻；旧时段的观测预览被移除，新时段有自己的观测预览 |
+| 后端重启，之后继续确认 | 重启后读不到观测预览，下一次写入后恢复；本地草稿和已保存的版本不变 |
 | 结束当前时段，然后发送 | 后端能读到观测内容和 Observation |
 | 延长到第 1 秒后重新打开 SQLite 文件，恢复两次 | 遗留的时段结束于第 1 秒，开始时间不变，只结束一次 |
 | 另一个程序实例打开同一个 SQLite 文件 | 报错，原有的待发送版本保留 |
@@ -32,9 +32,9 @@ Runtime 的本地保存使用独立的 SQLite 文件，读数是模拟的。需�
 
 以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
 
-- 进行中观测内容已保存、草稿可读、Observation 没有版本，结束后读到 Observation：`RuntimeStoreTests.ForegroundUploadsOnlyFinishedPeriods`。
-- 连续确认后草稿的 `endAt` 是最近一次确认，一次写入返回 `503` 后，下一次写入最新的内容；后端和 Runtime 都重启后，下一次写入恢复草稿，`sequence` 继续递增；结束后不再写入草稿，只保存一个版本：`ObserverDraftTests.LiveDraftRecoversAcrossServerAndStoreRestartsAndCompletesOnce`。
-- 切换应用后旧时段保存一个版本、草稿移除，新时段有自己的草稿；标题时段引用应用时段的观测内容，应用时段不因此形成版本；同一应用的两个时段有不同的观测内容：`ObserverDraftTests.ContentReferencesDoNotFreezeTheParentObservationAndSeparateRepeatedPeriods`。标题时段用测试 Schema 形成，检查的是引用方式。
+- 进行中观测内容已保存、观测预览可读、Observation 没有版本，结束后读到 Observation：`RuntimeStoreTests.ForegroundUploadsOnlyFinishedPeriods`。
+- 连续确认后观测预览的 `endAt` 是最近一次确认，一次写入返回 `503` 后，下一次写入最新的内容；后端和 Runtime 都重启后，下一次写入恢复观测预览，`sequence` 继续递增；结束后不再写入观测预览，只保存一个版本：`ObserverPreviewTests.LivePreviewRecoversAcrossServerAndStoreRestartsAndCompletesOnce`。
+- 切换应用后旧时段保存一个版本、观测预览移除，新时段有自己的观测预览；标题时段引用应用时段的观测内容，应用时段不因此形成版本；同一应用的两个时段有不同的观测内容：`ObserverPreviewTests.ContentReferencesDoNotFreezeTheParentObservationAndSeparateRepeatedPeriods`。标题时段用测试 Schema 形成，检查的是引用方式。
 - 重启后按最后确认恢复且只结束一次，以及另一程序实例打开同一文件时报错并保留队列：`ForegroundSubmissionTests.ActivePeriodStaysLocalAndRestartClosesLastCheckpointExactlyOnce`。
 - 切换时写入失败，结束旧时段与新建时段一起回滚：`ForegroundSubmissionTests.FailedTransitionRollsBackBothOldPeriodAndNewCheckpoint`。
 - 未覆盖：切换后旧时段的 `endAt` 是切换的时刻；第二个时段的标题归属；窗口标题的原生采集，它尚未实现。

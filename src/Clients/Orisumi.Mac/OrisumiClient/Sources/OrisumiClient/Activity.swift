@@ -12,7 +12,7 @@ public struct AppIdentifier: Codable, Equatable, Hashable, Sendable {
 }
 
 /// A foreground application period shown in the client, saved or still local.
-/// An active period is an Observation draft; its end is the last confirmation.
+/// An active period is an Observation whose local version is still a draft; its end is the last confirmation.
 public struct Period: Equatable, Identifiable, Sendable {
     /// The Observation's EntityId.
     public var id: UUID

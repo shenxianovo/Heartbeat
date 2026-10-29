@@ -2,7 +2,7 @@ using Orisumi.Core;
 
 namespace Orisumi.Application.Entities;
 
-public sealed class ObservationDraftCache : IDisposable
+public sealed class ObservationPreviewCache : IDisposable
 {
     private readonly Lock _gate = new();
     private readonly Dictionary<EntityId, Entry> _entries = [];
@@ -10,40 +10,40 @@ public sealed class ObservationDraftCache : IDisposable
     private readonly ITimer _expiry;
     private static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(2);
 
-    public ObservationDraftCache(TimeProvider timeProvider)
+    public ObservationPreviewCache(TimeProvider timeProvider)
     {
         _time = timeProvider;
         _expiry = timeProvider.CreateTimer(_ => Prune(), null, Lifetime, Lifetime);
     }
 
-    internal ObservationDraft? Read(EntityId id)
+    internal ObservationPreview? Read(EntityId id)
     {
         lock (_gate)
         {
             Prune();
-            return _entries.GetValueOrDefault(id)?.Draft;
+            return _entries.GetValueOrDefault(id)?.Preview;
         }
     }
 
-    internal IReadOnlyList<ObservationDraft> List(EntityId? schema)
+    internal IReadOnlyList<ObservationPreview> List(EntityId? schema)
     {
         lock (_gate)
         {
             Prune();
             return _entries.Values.Where(entry => schema is null || entry.Schema == schema)
-                .Select(entry => entry.Draft).OrderBy(draft => draft.EntityId.Value).ToArray();
+                .Select(entry => entry.Preview).OrderBy(preview => preview.EntityId.Value).ToArray();
         }
     }
 
-    internal ObservationDraft Put(ObservationDraft draft, EntityId schema)
+    internal ObservationPreview Put(ObservationPreview preview, EntityId schema)
     {
         lock (_gate)
         {
-            var previous = Read(draft.EntityId);
-            if (previous is not null && previous.PreviousVersionId == draft.PreviousVersionId && previous.Sequence >= draft.Sequence)
+            var previous = Read(preview.EntityId);
+            if (previous is not null && previous.PreviousVersionId == preview.PreviousVersionId && previous.Sequence >= preview.Sequence)
                 return previous;
-            _entries[draft.EntityId] = new(draft, schema);
-            return draft;
+            _entries[preview.EntityId] = new(preview, schema);
+            return preview;
         }
     }
 
@@ -55,17 +55,17 @@ public sealed class ObservationDraftCache : IDisposable
     internal void RemovePredecessor(EntityVersion saved)
     {
         lock (_gate)
-            if (_entries.TryGetValue(saved.EntityId, out var entry) && entry.Draft.PreviousVersionId == saved.PreviousVersionId)
+            if (_entries.TryGetValue(saved.EntityId, out var entry) && entry.Preview.PreviousVersionId == saved.PreviousVersionId)
                 _entries.Remove(saved.EntityId);
     }
 
     private void Prune()
     {
         lock (_gate)
-            foreach (var id in _entries.Where(pair => _time.GetUtcNow() - pair.Value.Draft.UpdatedAt > Lifetime).Select(pair => pair.Key).ToArray())
+            foreach (var id in _entries.Where(pair => _time.GetUtcNow() - pair.Value.Preview.UpdatedAt > Lifetime).Select(pair => pair.Key).ToArray())
                 _entries.Remove(id);
     }
 
     public void Dispose() => _expiry.Dispose();
-    private sealed record Entry(ObservationDraft Draft, EntityId Schema);
+    private sealed record Entry(ObservationPreview Preview, EntityId Schema);
 }

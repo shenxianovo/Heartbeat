@@ -297,7 +297,7 @@ function Siblings({ info }: { info: EntityInfo }) {
 
 function ExperienceBody({ info }: { info: EntityInfo }) {
   const direct = isObservation(info.version) ? info.version : null;
-  const { observation, draft, pending } = useObservationOf(info);
+  const { observation, preview, pending } = useObservationOf(info);
   const contentQuery = useVersion(direct ? direct.content.contentVersionId : null);
   const content = direct ? (contentQuery.data ?? null) : info.version;
   const contentSchema = useVersion(content?.category === "business" ? content.schemaVersionId : null);
@@ -305,8 +305,8 @@ function ExperienceBody({ info }: { info: EntityInfo }) {
     contentSchema.data && isEntitySchema(contentSchema.data) ? contentSchema.data.content.fields : undefined;
   const now = useNow(1000);
 
-  // 进行中的经历：草稿接在已保存的版本之后，是较新的陈述。
-  const statement = draft?.content ?? observation?.content ?? null;
+  // 进行中的经历：预览接在已保存的版本之后，是较新的陈述。
+  const statement = preview?.content ?? observation?.content ?? null;
   const start = parseTime(statement?.startAt);
   const end = parseTime(statement?.endAt);
   const references = content ? outgoingReferences(content, fields) : [];
@@ -325,7 +325,7 @@ function ExperienceBody({ info }: { info: EntityInfo }) {
           {start !== null && end !== null && end > start && (
             <p className="text-fg-2 mt-0.5 text-[13px]">
               {duration(end - start)}
-              {draft && <span className="text-accent"> · 进行中</span>}
+              {preview && <span className="text-accent"> · 进行中</span>}
             </p>
           )}
         </Section>
@@ -352,11 +352,11 @@ function ExperienceBody({ info }: { info: EntityInfo }) {
         </Section>
       )}
 
-      {draft && !observation && (
+      {preview && !observation && (
         <Section title="由谁记下">
           <div className="flex flex-wrap items-center gap-1.5 text-[13px]">
-            <Token versionId={draft.content.observerVersionId} />
-            <span className="text-fg-3 text-xs">草稿 · {ago(now - Date.parse(draft.updatedAt))}更新，还没有保存</span>
+            <Token versionId={preview.content.observerVersionId} />
+            <span className="text-fg-3 text-xs">预览 · {ago(now - Date.parse(preview.updatedAt))}更新，还没有保存</span>
           </div>
         </Section>
       )}

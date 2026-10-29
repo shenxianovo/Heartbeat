@@ -1,0 +1,41 @@
+---
+title: "Previews"
+description: "观测预览接在当前版本之后，保存新版本后移除，旧的写入不让它重新出现"
+---
+
+export const caseId = 'api-observation-previews';
+
+## 为什么验证 [#why]
+
+读取方靠观测预览看到进行中的观测。观测预览必须是最新的一份，最终版本保存后必须消失，迟到的旧写入也不能让结束的时段重新显示为进行中。约定见 [API · 观测预览](../../api/previews.mdx) 和 [OBSERVATION-13](../../core/model/observation.mdx#observation-13)。
+
+## 前置条件 [#setup]
+
+通过 `WebApplicationFactory` 启动 API，连接一个独立的测试数据库，见 [Database](../database.mdx)。已保存一个 Observer 版本和一个观测内容。时间由可控的 `TimeProvider` 提供。
+
+## 操作与预期结果 [#steps]
+
+| 操作 | 预期结果 |
+| --- | --- |
+| 为一份还没有版本的 Observation 写入观测预览，`previousVersionId` 为 `null` | `200`，返回观测预览和 `updatedAt`；`GET /observation-previews/{entityId}` 读到它；`GET /entities/{entityId}` 返回 `404` |
+| 用更大的 `sequence` 写入延长后的观测预览 | `200`，读到新的 `endAt` |
+| 用较小的 `sequence` 写入较早的内容 | `200`，返回已暂存的观测预览，内容不变 |
+| 观测预览的 `contentVersionId` 指向未保存的版本 | 被拒绝，`rule` 为 `ENTITY-6`，没有暂存观测预览 |
+| 提交这份 Observation 的首版 | 观测预览被移除，读取观测预览返回 `404` |
+| 首版保存后，再以 `previousVersionId` 为 `null` 写入观测预览 | `409`，`rule` 为 `VERSION-6`，读取观测预览仍返回 `404` |
+| 重发首版 | `200`，`recordedAt` 与首次保存时相同，版本链只有一个版本 |
+| 以首版为 `previousVersionId` 写入观测预览 | `200` |
+| 时间前进超过 2 分钟，期间没有写入 | 读取观测预览返回 `404` |
+| 删除实体后写入观测预览 | `409`，`rule` 为 `HISTORY-7` |
+| 两种业务类型各有一份观测预览，按其中一个 `resourceName` 列出 | 只返回观测内容属于这种业务类型的观测预览 |
+
+## 测试实现 [#implementation]
+
+以下方法位于 `tests/Orisumi.Integration.Tests/ObservationPreviewApiTests.cs`：
+
+- `PreviewUpdatesStayTransientAndSavedVersionsRejectLateWrites`：从首次写入到删除实体的各行。写入观测预览不形成版本，较小的 `sequence` 返回已暂存的观测预览；保存首版后观测预览移除，基于旧版本的写入返回 `VERSION-6`，重发首版的 `recordedAt` 不变；2 分钟没有写入后观测预览过期；删除实体后观测预览移除，再写入返回 `HISTORY-7`。
+- `PreviewsValidateReferencesAndFilterByContentType`：引用未保存的版本返回 `ENTITY-6`，没有暂存观测预览；按 `resourceName` 只列出这种业务类型的观测预览。它还检查两种拒绝：路径中的实体不是 Observation 时为 [ENTITY-3](../../core/model/entity.mdx#entity-3)，观测预览换了 Observer 时为 [OBSERVATION-10](../../core/model/observation.mdx#observation-10)。
+
+## 执行结果 [#results]
+
+<TestCaseResults caseId={caseId} />

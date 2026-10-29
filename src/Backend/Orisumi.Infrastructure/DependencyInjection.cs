@@ -22,8 +22,8 @@ public static class DependencyInjection
         services.AddScoped<IEntityStore, PostgresEntityStore>();
         services.AddScoped<EntityService>();
         services.AddSingleton<IServerObserverStore, PostgresServerObserverStore>();
-        services.AddSingleton<ObservationDraftCache>();
-        services.AddScoped<ObservationDraftService>();
+        services.AddSingleton<ObservationPreviewCache>();
+        services.AddScoped<ObservationPreviewService>();
         return services;
     }
 }

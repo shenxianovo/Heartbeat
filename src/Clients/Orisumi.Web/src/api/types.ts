@@ -55,8 +55,8 @@ export interface VersionPage {
   next: string | null;
 }
 
-/** 后端暂存的观测草稿：一份 Observation 尚未保存的最新陈述（OBSERVATION-11）。 */
-export interface ObservationDraft {
+/** 后端暂存的观测预览：一份 Observation 尚未保存的最新陈述（OBSERVATION-11）。 */
+export interface ObservationPreview {
   entityId: string;
   previousVersionId: string | null;
   sequence: number;
@@ -64,8 +64,8 @@ export interface ObservationDraft {
   content: Observation;
 }
 
-export interface ObservationDraftList {
-  drafts: ObservationDraft[];
+export interface ObservationPreviewList {
+  previews: ObservationPreview[];
 }
 
 export interface VersionList {

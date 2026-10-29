@@ -172,8 +172,8 @@ public sealed class RuntimeStoreTests
         await Assert.That(active.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
         using var activeContent = await http.GetAsync($"/entities/{capture.Content.Id.Value}");
         await Assert.That(activeContent.StatusCode).IsEqualTo(HttpStatusCode.OK);
-        using var draft = await http.GetAsync($"/observation-drafts/{capture.ObservationId.Value}");
-        await Assert.That(draft.StatusCode).IsEqualTo(HttpStatusCode.OK);
+        using var preview = await http.GetAsync($"/observation-previews/{capture.ObservationId.Value}");
+        await Assert.That(preview.StatusCode).IsEqualTo(HttpStatusCode.OK);
         store.FinishActive();
         await delivery.SendAsync(CancellationToken.None);
         using var ended = await http.GetAsync($"/entities/{capture.ObservationId.Value}");

@@ -86,7 +86,7 @@ public sealed class LocalObserverSession(ObserverStore runtimeStore) : IObserver
                             throw new ArgumentException("Bindings must target declared content references.");
                     }
                     result = local.Draft(entity, parsed, schema,
-                        Enum.Parse<SubmissionStrategy>(strategy), operation.TryGetProperty("publishDraft", out var publish) && publish.GetBoolean());
+                        Enum.Parse<SubmissionStrategy>(strategy), operation.TryGetProperty("publishPreview", out var publish) && publish.GetBoolean());
                     break;
                 case "reference": result = local.Reference(entity); break;
                 case "complete": local.Complete(entity); result = local.Latest(entity)!.Version.VersionId; break;

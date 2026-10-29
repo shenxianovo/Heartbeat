@@ -17,7 +17,7 @@ public sealed class ObserverStore : IDisposable
     private bool _disposed;
 
     public EntityId InstanceId { get; }
-    public bool PublishDrafts { get; set; } = true;
+    public bool PublishPreviews { get; set; } = true;
 
     public ObserverStore(string path, EntityId instanceId, HttpClient http)
     {
@@ -37,7 +37,7 @@ public sealed class ObserverStore : IDisposable
                 sequence INTEGER PRIMARY KEY AUTOINCREMENT, version_id TEXT NOT NULL UNIQUE,
                 entity_id TEXT NOT NULL, payload TEXT NOT NULL, state TEXT NOT NULL,
                 strategy TEXT NOT NULL, freeze_order INTEGER, rule TEXT, detail TEXT);
-            CREATE TABLE IF NOT EXISTS observation_drafts(
+            CREATE TABLE IF NOT EXISTS observation_previews(
                 entity_id TEXT PRIMARY KEY, version_id TEXT NOT NULL, sequence INTEGER NOT NULL, stopped INTEGER NOT NULL);
             CREATE INDEX IF NOT EXISTS ix_local_versions_delivery ON local_versions(state,freeze_order);
             INSERT OR IGNORE INTO local_metadata(key,value) VALUES('freeze_order','0');
@@ -128,7 +128,7 @@ public sealed class ObserverStore : IDisposable
             {
                 if (Status is { Rejection: not null } or { Error: not null }) return;
                 if (!await ReconcileSchemasAsync(cancellationToken)) return;
-                if (PublishDrafts && !await SendDraftsAsync(cancellationToken)) return;
+                if (PublishPreviews && !await SendPreviewsAsync(cancellationToken)) return;
                 var batch = Execute(local =>
                 {
                     foreach (var draft in local.Versions().Where(version => version.State == SubmissionState.Draft && version.Strategy == SubmissionStrategy.Immediate))
@@ -183,13 +183,13 @@ public sealed class ObserverStore : IDisposable
         finally { _sender.Release(); }
     }
 
-    private async Task<bool> SendDraftsAsync(CancellationToken token)
+    private async Task<bool> SendPreviewsAsync(CancellationToken token)
     {
-        foreach (var id in Execute(local => local.ObservationDraftIds()))
+        foreach (var id in Execute(local => local.ObservationPreviewIds()))
         {
-            var draft = Execute(local => local.PrepareObservationDraft(id));
-            if (draft is not { } ready) continue;
-            using var response = await _http.PutAsJsonAsync("observation-drafts/" + ready.Version.EntityId.Value, new
+            var preview = Execute(local => local.PrepareObservationPreview(id));
+            if (preview is not { } ready) continue;
+            using var response = await _http.PutAsJsonAsync("observation-previews/" + ready.Version.EntityId.Value, new
             {
                 previousVersionId = ready.Version.PreviousVersionId?.Value,
                 sequence = ready.Sequence, content = VersionJson.Content(ready.Version.Content),
@@ -198,10 +198,10 @@ public sealed class ObserverStore : IDisposable
             using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
             if (response.StatusCode == HttpStatusCode.Conflict && json.RootElement.TryGetProperty("rule", out var rule)
                 && rule.GetString() == "VERSION-6")
-                Execute(local => local.StopObservationDraft(id));
+                Execute(local => local.StopObservationPreview(id));
             else
             {
-                Fail($"Observation draft failed: HTTP {(int)response.StatusCode}: {json.RootElement.GetRawText()}");
+                Fail($"Observation preview failed: HTTP {(int)response.StatusCode}: {json.RootElement.GetRawText()}");
                 return false;
             }
         }

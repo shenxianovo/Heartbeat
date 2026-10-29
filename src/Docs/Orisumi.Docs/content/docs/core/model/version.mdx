@@ -25,7 +25,7 @@ description: "实体一次保存的完整内容，保存后不可改写"
 
 ## 示例 [#example]
 
-一份前台时段的 Observation 每十分钟保存一次：第一版延长到 10:10，第二版延长到 10:20。
+采用[及时提交](../../hosting/submission.mdx#strategies)时，一份前台时段的 Observation 每次发送保存一个版本：第一版延长到 14:10，第二版延长到 14:20。
 
 ```json {21,30}
 [
@@ -35,13 +35,13 @@ description: "实体一次保存的完整内容，保存后不可改写"
 		"previousVersionId": null,
 		"category": "observation",
 		"schemaVersionId": null,
-		"recordedAt": "2026-10-06T02:10:01Z",
+		"recordedAt": "2026-10-06T06:10:01Z",
 		"content": {
 			"observerVersionId": "019e1bbb-ec00-7000-8000-0000000000a1",
 			"contentVersionId": "019e1bbb-ec00-7000-8000-0000000000c1",
 			"inputSetVersionId": null,
-			"startAt": "2026-10-06T02:00:00Z",
-			"endAt": "2026-10-06T02:10:00Z",
+			"startAt": "2026-10-06T06:00:00Z",
+			"endAt": "2026-10-06T06:10:00Z",
 			"timeZone": "Asia/Shanghai"
 		}
 	},
@@ -51,13 +51,13 @@ description: "实体一次保存的完整内容，保存后不可改写"
 		"previousVersionId": "019e1bbb-ec00-7000-8000-000000000101",
 		"category": "observation",
 		"schemaVersionId": null,
-		"recordedAt": "2026-10-06T02:20:01Z",
+		"recordedAt": "2026-10-06T06:20:01Z",
 		"content": {
 			"observerVersionId": "019e1bbb-ec00-7000-8000-0000000000a1",
 			"contentVersionId": "019e1bbb-ec00-7000-8000-0000000000c1",
 			"inputSetVersionId": null,
-			"startAt": "2026-10-06T02:00:00Z",
-			"endAt": "2026-10-06T02:20:00Z",
+			"startAt": "2026-10-06T06:00:00Z",
+			"endAt": "2026-10-06T06:20:00Z",
 			"timeZone": "Asia/Shanghai"
 		}
 	}

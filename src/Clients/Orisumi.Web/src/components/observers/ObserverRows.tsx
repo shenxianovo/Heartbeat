@@ -115,7 +115,7 @@ function Lane({
   const x = (at: number) => ((Math.min(Math.max(at, from), to) - from) / width) * 1000;
   const visible = (span: Span) => span.end >= from && span.start <= to;
   const tick = lens ? 3 : 2;
-  const draft = row.draft && row.basis === "fact" && visible(row.draft) ? row.draft : null;
+  const preview = row.preview && row.basis === "fact" && visible(row.preview) ? row.preview : null;
 
   return (
     <span className="bg-line relative block h-7 overflow-hidden rounded">
@@ -136,8 +136,14 @@ function Lane({
           .map((at, i) => (
             <rect key={`t${i}`} x={x(at) - tick / 2} y={5} width={tick} height={18} fill={color} opacity={0.85} />
           ))}
-        {draft && (
-          <rect x={x(draft.start)} y={8} width={Math.max(2, x(draft.end) - x(draft.start))} height={12} fill={color} />
+        {preview && (
+          <rect
+            x={x(preview.start)}
+            y={8}
+            width={Math.max(2, x(preview.end) - x(preview.start))}
+            height={12}
+            fill={color}
+          />
         )}
         {!lens && now > from && now < to && <rect x={x(now) - 1} y={0} width={2} height={28} fill="var(--fg-3)" />}
       </svg>
@@ -153,13 +159,13 @@ function Lane({
 }
 
 function Status({ row, now, active }: { row: ObserverRow; now: number; active: boolean }) {
-  const draft = active && row.draft && now - row.draft.updatedAt < LENS ? row.draft : null;
+  const preview = active && row.preview && now - row.preview.updatedAt < LENS ? row.preview : null;
   return (
     <span className="min-w-0 text-right">
-      {draft ? (
+      {preview ? (
         <>
-          <span className="block text-[13px] tabular-nums">草稿 · {ago(now - draft.updatedAt)}</span>
-          <DraftTitle contentVersionId={draft.contentVersionId} start={draft.start} />
+          <span className="block text-[13px] tabular-nums">预览 · {ago(now - preview.updatedAt)}</span>
+          <PreviewTitle contentVersionId={preview.contentVersionId} start={preview.start} />
         </>
       ) : (
         <>
@@ -173,8 +179,8 @@ function Status({ row, now, active }: { row: ObserverRow; now: number; active: b
   );
 }
 
-/** 草稿的观测内容和开始时刻，例如“VS Code，从 17:51 起”。 */
-function DraftTitle({ contentVersionId, start }: { contentVersionId: string; start: number }) {
+/** 预览的观测内容和开始时刻，例如“VS Code，从 17:51 起”。 */
+function PreviewTitle({ contentVersionId, start }: { contentVersionId: string; start: number }) {
   const { info } = useEntityInfo(contentVersionId);
   return (
     <span className="text-fg-3 block truncate text-xs">

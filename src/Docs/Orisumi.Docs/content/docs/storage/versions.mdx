@@ -1,9 +1,9 @@
 ---
 title: "Versions"
-description: "实体、版本和墓碑三张权威表：版本链怎样保存，内容怎样表示，删除时留下什么"
+description: "实体、版本和墓碑三张表：版本链怎样保存，内容怎样表示，删除时留下什么"
 ---
 
-`entities`、`versions` 和 `version_tombstones` 是三张权威表：`versions` 保存每个版本的完整内容，`entities` 记着每个实体的当前版本和是否已删除，`version_tombstones` 记住已删除的版本。其他表都可以从它们重建。
+`versions` 保存每个版本的完整内容，是版本内容的权威位置。`entities` 由版本推导出每个实体的类型和当前版本，并记下删除的时刻；`version_tombstones` 记住已删除的版本。
 
 ## entities [#entities]
 
