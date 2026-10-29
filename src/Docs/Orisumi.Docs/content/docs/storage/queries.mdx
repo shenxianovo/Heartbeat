@@ -1,0 +1,71 @@
+---
+title: "Queries"
+description: "由版本推导、供查询使用的两张表：按事实时间查询观测，以及按引用反查"
+---
+
+`current_observations` 和 `version_references` 都由版本推导，保存版本时在同一个保存点中写入，可以随时从 `versions` 重建。前者支持 [API · 按事实时间查询](../api/reading.mdx#observations)，后者支持 [API · 引用方](../api/reading.mdx#referrers)。
+
+## 事实时间 [#fact-time]
+
+晚上推断 Observer 读取当天的前台时段，查询落在 `current_observations` 上。
+
+### current_observations [#current-observations]
+
+每份未删除的 Observation 一行，对应它的当前版本。
+
+| 列 | 类型 | 含义 |
+| --- | --- | --- |
+| `entity_id` | `uuid` | Observation 的 EntityId，主键 `pk_current_observations` |
+| `version_id` | `uuid` | 它的当前版本 |
+| `content_schema_id` | `uuid` | 观测内容的 SchemaId，保存这个版本时从内容实体读取 |
+| `fact_range` | `tstzrange`，可空 | 当前版本的事实时间 |
+
+| 索引 | 内容 | 用途 |
+| --- | --- | --- |
+| `ix_current_observations_content_schema_id_fact_range` | GiST `(content_schema_id, fact_range)` | 按观测内容的类型和事实时间查询 |
+| `ix_current_observations_fact_range` | GiST `(fact_range)` | 不限类型的事实时间查询 |
+
+两个身份列有外键，分别指向 `entities` 和 `versions`。多列 GiST 索引需要 `btree_gist` 扩展，由 Initial migration 创建。
+
+### 换算与查询 [#fact-range]
+
+`fact_range` 由当前版本的 `startAt` 和 `endAt` 换算：
+
+| `startAt` | `endAt` | `fact_range` |
+| --- | --- | --- |
+| `t1` | `t2`，`t1 < t2` | `[t1, t2)` |
+| `t` | `t` | `[t, t]` |
+| `t` | `null` | `[t, t]` |
+| `null` | `t` | `[t, t]` |
+| `null` | `null` | `NULL` |
+
+按事实时间查询 `[from, to)` 时，条件是 `fact_range && tstzrange(from, to, '[)')`，结果与 API 的匹配规则一致。结果按 `lower(fact_range)` 和 `entity_id` 排序，分页游标记录这两个值。
+
+## 引用方 [#references]
+
+从 VS Code 找相关的数据时，查询落在 `version_references` 上。引用只保存在引用方的版本中（[ENTITY-8](../core/model/entity.mdx#entity-8)），权威位置是 `versions.content`；`version_references` 从内容推导出每个引用的位置和目标。
+
+### version_references [#version-references]
+
+每个未删除版本的 `content` 中，每个非空的引用一行。
+
+| 列 | 类型 | 含义 |
+| --- | --- | --- |
+| `version_id` | `uuid` | 引用方的版本 |
+| `path` | `text` | 引用在版本中的位置，是从版本根部写起的 JSON Pointer，例如 `/content/contentVersionId` |
+| `target_version_id` | `uuid` | 引用的目标版本 |
+| `target_entity_id` | `uuid` | 目标版本所属的实体 |
+
+| 约束或索引 | 内容 | 用途 |
+| --- | --- | --- |
+| `pk_version_references` | `(version_id, path)` | 一个位置只有一个引用 |
+| `ix_version_references_target_entity_id_version_id` | `(target_entity_id, version_id)` | 按目标实体列出引用方，按引用方的版本分页 |
+
+`version_id` 的外键指向 `versions`，引用方的版本删除时，它的行随之删除；`target_entity_id` 的外键指向 `entities`。`target_version_id` 没有外键，目标删除后这一行保留，见 [HISTORY-8](../core/rules/history.mdx#history-8)。
+
+### 写入与查询 [#reference-rows]
+
+- 保存一个版本时，后端按 Core 类型的引用成员，或者按它的 Schema 版本中 `type` 为 `reference` 的位置（[SCHEMA-2](../core/model/schema.mdx#schema-2)），找出 `content` 中每个非空的引用，写入一行。数组元素的位置按保存的数组下标，例如 `/content/members/3`。
+- `target_entity_id` 取自目标版本所属的实体。目标保存时一定未被删除（[ENTITY-6](../core/model/entity.mdx#entity-6)），所以写入时总能读到。
+- 列出引用方时按 `target_entity_id` 匹配，所以引用同一实体不同版本的版本一起返回，见 [ENTITY-7](../core/model/entity.mdx#entity-7)。只看当前版本时，再要求 `version_id` 是引用方实体的 `current_version_id`。结果按 `version_id` 排序，分页游标记录最后一个 `version_id`。
+- `previousVersionId` 和 `schemaVersionId` 已经是 `versions` 的列，不写入 `version_references`。

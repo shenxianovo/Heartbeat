@@ -1,94 +1,15 @@
 ---
-title: "Runtime"
-description: "Runtime 怎样启动、保存数据、运行 Observer 的进程，以及客户端和 Observer 怎样通过管道与它通信"
+title: "Protocol"
+description: "客户端和 Observer 的进程经两条管道与 Runtime 通信的消息格式"
 ---
 
-Runtime 是设备端客户端中的公共组件。它安装和运行 Observer 的进程，接收它们交来的数据，本地保存并发送到后端，再把状态和数据提供给客户端的界面。本页写 Runtime 的启动参数、数据目录、进程的生命周期和两条管道的协议。为什么这样分工，见 [ADR · Runtime 与进程托管](../adr/observer-runtime.mdx)。
+客户端和 Observer 的进程都通过标准输入和标准输出与 [Runtime](./runtime.mdx) 通信。客户端管道用于管理 Observer 和读取数据，Observer 管道用于交出版本。本页写两条管道的消息格式；消息的语义见 [Submission](./submission.mdx) 和 [Runtime](./runtime.mdx)。
 
-Runtime 是一个 .NET 程序，代码在 `src/Observers/Orisumi.Observer.Runtime/`。本地保存和发送的实现见 [.NET](../observers/submission/dotnet.mdx)。
+## 格式 [#format]
 
-## 启动 [#startup]
+两条管道中每行是一个 UTF-8 编码的 JSON，标准输出只写协议消息，日志写入标准错误。字段名用 camelCase，UUID 写成字符串。一行最多 16 MiB，超过时 Runtime 断开连接。
 
-客户端启动 Runtime 进程，并通过它的标准输入和标准输出通信：
-
-```sh
-Orisumi.Observer.Runtime --data-dir <目录> --backend <API 地址> --bundled <目录> [--catalog <URL>]
-```
-
-| 参数 | 作用 |
-| --- | --- |
-| `--data-dir` | 数据目录，见[数据目录](#data) |
-| `--backend` | API 的根地址，包括 `/api/` |
-| `--bundled` | 随客户端附带的安装包所在的目录，见 [Packages · 附带的 Observer](./packages.mdx#bundled) |
-| `--catalog` | 官方目录的 HTTPS 地址。省略时只列出附带的安装包 |
-
-启动后，Runtime 安装尚未登记过的附带安装包，再运行所有启用的 Observer。
-
-Runtime 对 API 的每个请求最多等待 5 秒，超时按网络失败处理：发送稍后原样重发，见 [Submission · 确认](../observers/submission/index.mdx#confirmation)；读取报告后端不可用，见[读取](#reading)。客户端管道一次只有一个请求未完成，所以后端没有响应时，界面最多等 5 秒就能继续。
-
-## 数据目录 [#data]
-
-一个数据目录同时只能由一个 Runtime 使用，Runtime 启动时锁定它。
-
-```text
-<data-dir>/
-  registry.json                 安装登记
-  packages/<package-id>/<version>/   解压后的安装包，安装后不再改动
-  instances/<entity-id>/
-    store.sqlite                Runtime 为这个实例本地保存的数据
-    data/                       业务代码自己的持久数据
-  shared/                       这个 Runtime 中各程序实例共用的业务数据
-  staging/                      下载和解压中的安装包
-```
-
-- 安装登记记录每个安装包当前的版本、对应的程序实例、是否已安装、是否启用，以及设置。Runtime 写入新的登记文件后整个替换旧文件，所以登记总是完整的。
-- 实例目录的名字是程序实例的 EntityId，不含包版本。更新、卸载和重装都使用同一个实例目录。
-- `store.sqlite` 只有 Runtime 打开。客户端和各语言的 SDK 都通过管道读取。
-- `data/` 和 `shared/` 中的内容由 Observer 的业务代码解释。`shared/` 供同一设备上的多个程序实例共用，例如前台状态 Observer 的[本机应用登记文件](../observers/foreground-state/local-application.mdx#registry)。
-- 设置是一个 JSON 对象，含义由各 Observer 定义。
-
-## 进程 [#process]
-
-### 状态 [#states]
-
-Runtime 为每个 Observer 报告托管方的三项状态，见 [Submission · 流程](../observers/submission/index.mdx#flow)：
-
-| 状态 | 含义 | 取值 |
-| --- | --- | --- |
-| 启用 | 用户是否要它采集，持久保存 | `enabled` 为 `true` 或 `false` |
-| 进程 | 进程现在怎样 | `starting`、`running`、`stopping`、`waiting`（等待重启）、`stopped`、`failed`；故障的原因在 `error` |
-| 发送 | 本地数据的发送 | 草稿、待发送、已保存的数量，发送错误和被拒绝的版本 |
-
-来源读取失败作为采集诊断处理，见 [OBSERVER-8](../core/model/observer.mdx#observer-8)：Observer 把诊断写入标准错误，Runtime 在 `diagnostic` 中报告最近的一条，最长 2048 个字符，进程状态不变。
-
-### 启动与停止 [#lifecycle]
-
-1. Runtime 启动 Observer 的进程，在管道中发送 `init`：协议版本、程序实例的 EntityId、安装包的版本、业务数据目录、共用数据目录和设置。
-2. Observer 完成本地初始化和恢复后回复 `ready`，然后开始采集。初始化可以登记、读取本地状态和提交批次；`ready` 不等待后端可用，也不等待数据发送完。
-3. 启动后 10 秒内没有 `ready`，视为启动失败，Runtime 结束进程。协议版本不兼容时，Runtime 直接报告故障，不重启。
-4. 停用、卸载、更新或退出时，Runtime 发送 `stop`。Observer 停止读取新的证据，按自己的业务规则结束进行中的事实，等收到本地回执后退出。Runtime 以进程退出确认停止。
-5. 发出 `stop` 后 10 秒内进程没有退出，Runtime 结束它，并显示异常。这时进行中的草稿保留在本地，下次启动时由业务代码按自己的规则恢复。
-6. 管道关闭时，Observer 停止采集并退出。所以 Runtime 退出后，不会留下仍在采集的进程。
-
-### 重启 [#restart]
-
-用户启用的 Observer 意外退出后，Runtime 依次等待 1、2、4 秒重启它，最多三次。第三次重启后仍然失败，进程状态变为 `failed`，启用状态不变，等用户重试。
-
-- 进程在 `ready` 之后连续运行 60 秒，失败计数清零。
-- 用户重试时，开始新一轮的三次。
-- 用户停用、卸载或退出客户端时，取消等待中的重启。正常退出不触发重启。
-
-Runtime 不用心跳判断 Observer 是否卡住，因为事件型的 Observer 可以很久没有新数据。
-
-### 退出 [#shutdown]
-
-客户端发送 `shutdown` 或关闭 Runtime 的标准输入时，Runtime 先停止所有 Observer，再停止发送，然后退出。退出不等网络恢复，也不等待发送的数据全部发完。
-
-## 客户端管道 [#client-pipe]
-
-管道中每行是一个 UTF-8 编码的 JSON，标准输出只写协议消息，日志写入标准错误。字段名用 camelCase，UUID 写成字符串。一行最多 16 MiB，超过时 Runtime 断开连接。
-
-客户端发出请求，一次只有一个请求未完成：
+请求带 `id`、`method` 和 `params`：
 
 ```json
 { "id": "7", "method": "setEnabled", "params": { "packageId": "foreground-state", "enabled": false } }
@@ -112,7 +33,9 @@ Runtime 用同一个 `id` 返回结果或错误：
 | `unavailable` | 暂时无法完成，例如官方目录读取失败 |
 | `internal` | Runtime 的错误 |
 
-客户端在等待响应时继续读取标准输出，直到 Runtime 退出。
+## 客户端管道 [#client-pipe]
+
+客户端一次只有一个请求未完成，等待响应时继续读取标准输出，直到 Runtime 退出。
 
 ### 管理 [#management]
 
@@ -149,7 +72,7 @@ Runtime 用同一个 `id` 返回结果或错误：
 ```
 
 - 已卸载、但还有待发送数据的程序实例也在列表中，`installed` 为 `false`。
-- `rejection` 不为空时是 `{ "rule": "VERSION-6", "detail": "…" }`，说明这个实例的发送因被拒绝的版本暂停，见 [Submission · 被拒绝的版本](../observers/submission/index.mdx#rejections)。
+- `rejection` 不为空时是 `{ "rule": "VERSION-6", "detail": "…" }`，说明这个实例的发送因被拒绝的版本暂停，见 [Submission · 被拒绝的版本](./submission.mdx#rejections)。
 
 `catalog` 合并附带的安装包和官方目录，列出本机可用的每个包：
 
@@ -173,7 +96,7 @@ Runtime 用同一个 `id` 返回结果或错误：
 
 `compatible` 说明本机的 Runtime 能否安装这个包：`target` 是本机平台，`format` 和 `protocol` 是 Runtime 支持的版本。官方目录中省略 `format` 或 `protocol` 时按 `1` 处理。官方目录读取失败时，`catalog` 返回错误，`list` 不受影响。下载地址和摘要只在 Runtime 中使用。
 
-`install` 和 `update` 选择本机平台可用的最高版本。同一个安装包的安装和更新依次进行。安装和重装后 Observer 是启用的；更新保持原来的启用状态。停用的 `setEnabled` 和 `uninstall` 等进程实际退出后返回，最多等 10 秒，见[启动与停止](#lifecycle)。
+`install` 和 `update` 选择本机平台可用的最高版本。同一个安装包的安装和更新依次进行。安装和重装后 Observer 是启用的；更新保持原来的启用状态。停用的 `setEnabled` 和 `uninstall` 等进程实际退出后返回，最多等 10 秒，见 [Runtime · 启动与停止](./runtime.mdx#lifecycle)。
 
 ### 读取 [#reading]
 
@@ -200,7 +123,7 @@ Runtime 用同一个 `id` 返回结果或错误：
 }
 ```
 
-- `version` 是 Observation 的版本，结构和 [API](../api/index.mdx) 中提交的版本相同。
+- `version` 是 Observation 的版本，结构见 [API · Versions](../api/versions.mdx)。
 - `state` 是这份 Observation 在本机的状态：`draft`（草稿）、`pending`（待发送）、`saved`（已保存）或 `rejected`（被拒绝）。
 - 结果按事实时间的起点从晚到早排列，起点相同的按 EntityId 排列。
 - 第一页时，Runtime 生成一份合并的快照，之后的页都从这份快照中读取，翻页时不重复也不遗漏。快照保留 2 分钟，Runtime 最多同时保留 32 份，超出时移除最早的一份。快照过期后，`cursor` 返回 `conflict`，客户端从第一页重新读取。
@@ -227,7 +150,7 @@ Runtime 用同一个 `id` 返回结果或错误：
 
 ## Observer 管道 [#observer-pipe]
 
-Observer 的进程与 Runtime 之间使用同样的逐行 JSON。管道绑定启动它的程序实例，消息中不能指定另一个实例。各语言的 SDK 封装这些消息，业务代码通过 SDK 调用。
+管道绑定启动它的程序实例，消息中不能指定另一个实例。各语言的 SDK 把业务操作编码成这些消息，自己不保存数据；业务代码通过 SDK 调用。
 
 Runtime 启动进程后先发送：
 
@@ -247,12 +170,12 @@ Runtime 启动进程后先发送：
 
 停止时发送 `{ "event": "stop" }`，Observer 不回复它，收尾并收到回执后退出。
 
-Observer 发出的请求和客户端管道的格式相同。批次的语义见 [Submission · 本地交接](../observers/submission/index.mdx#handoff)。
+Observer 发出的请求如下。批次的语义见 [Submission · 批次](./submission.mdx#handoff)。
 
 | 请求 | 参数 | 结果 |
 | --- | --- | --- |
 | `ready` | 无 | 初始化和恢复完成，每次启动一次 |
-| `registerSchema` | `entityId`、`content` | `versionId`。只在本地登记，发送前再与后端对齐，见 [Submission · 登记](../observers/submission/index.mdx#registration) |
+| `registerSchema` | `entityId`、`content` | `versionId`。只在本地登记，发送前再与后端对齐，见 [Submission · 登记](./submission.mdx#registration) |
 | `registerInstance` | `schemaVersionId`、`content` | `versionId`。登记的是管道绑定的程序实例 |
 | `commit` | `operations` | `results`：每个具名操作得到的 VersionId |
 | `local` | 可选的 `entityId`、`versionId`、`draftsOnly`、`category` | 本地的版本及其状态，供恢复和修复使用 |
@@ -293,7 +216,7 @@ Observer 发出的请求和客户端管道的格式相同。批次的语义见 [
 | `reference` | `entityId`、`as` |
 | `complete` | `entityId`，可选 `as` |
 
-- `op` 写明操作的种类，`category` 是版本的类别，与 [API](../api/index.mdx) 中的相同。
+- `op` 写明操作的种类，`category` 是版本的类别，与 [API · Versions](../api/versions.mdx#members) 中的相同。
 - `as` 给操作的结果起名，后面的 `bindings` 和回执中的 `results` 用这个名字。
 - `bindings` 把内容中的一个引用位置（JSON Pointer）绑定到前面 `reference` 的结果，结果是一个确定的版本。
 - `ifAbsent` 为 `true` 时，实体在本地已有版本就沿用当前版本，不写入。
@@ -301,7 +224,7 @@ Observer 发出的请求和客户端管道的格式相同。批次的语义见 [
 
 ### 修复 [#repair]
 
-`repair` 的 `rejectedVersionId` 必须是当前被拒绝的版本，请求的 `id` 和批次一样持久去重。`action` 对应 [Submission · 被拒绝的版本](../observers/submission/index.mdx#rejections) 中的处理：
+`repair` 的 `rejectedVersionId` 必须是当前被拒绝的版本，请求的 `id` 和批次一样持久去重。`action` 对应 [Submission · 被拒绝的版本](./submission.mdx#rejections) 中的处理：
 
 | `action` | 附带的字段 | 作用 |
 | --- | --- | --- |
@@ -310,12 +233,3 @@ Observer 发出的请求和客户端管道的格式相同。批次的语义见 [
 | `replaceReference` | 同上，再加 `oldVersionId` | 在同一个事务中形成替代的实体，并把引用改到它 |
 | `discard` | 无 | 丢弃被拒绝的版本和依赖它的版本 |
 
-## 开发运行 [#development]
-
-开发时不启动客户端，用 `--run` 在命令行中运行一个已安装的 Observer：
-
-```sh
-dotnet run --project src/Observers/Orisumi.Observer.Runtime -- --data-dir <目录> --backend <API 地址> --bundled <目录> --run foreground-state
-```
-
-这时 Runtime 不读取标准输入，按 Ctrl+C 退出。它启动同样的 Observer 进程，用同样的方式保存和发送。为不同的测试指定不同的数据目录，它们就是不同的程序实例，`shared/` 也互不影响。

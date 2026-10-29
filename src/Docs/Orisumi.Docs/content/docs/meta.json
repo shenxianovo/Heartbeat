@@ -4,9 +4,10 @@
     "start",
     "core",
     "adr",
+    "observers",
+    "hosting",
     "api",
     "storage",
-    "observers",
     "clients",
     "testing"
   ]

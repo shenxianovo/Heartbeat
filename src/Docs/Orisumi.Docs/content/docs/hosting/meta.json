@@ -1,0 +1,17 @@
+{
+  "title": "Hosting",
+  "description": "托管方怎样运行 Observer，并把版本可靠地交给后端",
+  "icon": "Server",
+  "root": true,
+  "pages": [
+    "index",
+    "---Device---",
+    "submission",
+    "runtime",
+    "protocol",
+    "---SDKs---",
+    "dotnet",
+    "---Server---",
+    "server"
+  ]
+}

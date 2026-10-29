@@ -1,6 +1,6 @@
 # Orisumi.Observer.Runtime.Store
 
-Runtime 用这个类库把程序实例的版本交给后端：草稿和待发送的版本保存在本地 SQLite 中，按依赖顺序提交，按响应确认。Observer 不直接引用它，而是通过 [Orisumi.Observer.Sdk](../Orisumi.Observer.Sdk/README.md) 连接 Runtime；`LocalObserverSession` 把同样的请求直接交给这个类库，供测试使用。版本的状态、提交策略和确认规则见 [Submission](../../Docs/Orisumi.Docs/content/docs/observers/submission/index.mdx)，本地保存见 [.NET](../../Docs/Orisumi.Docs/content/docs/observers/submission/dotnet.mdx)。
+Runtime 用这个类库把程序实例的版本交给后端：草稿和待发送的版本保存在本地 SQLite 中，按依赖顺序提交，按响应确认。Observer 不直接引用它，而是通过 [Orisumi.Observer.Sdk](../Orisumi.Observer.Sdk/README.md) 连接 Runtime；`LocalObserverSession` 把同样的请求直接交给这个类库，供测试使用。版本的状态、提交策略和确认规则见 [Submission](../../Docs/Orisumi.Docs/content/docs/hosting/submission.mdx)，本地保存见 [Runtime · 实现](../../Docs/Orisumi.Docs/content/docs/hosting/runtime.mdx#implementation)。
 
 ## 用法
 
@@ -37,7 +37,7 @@ await store.RunAsync(TimeSpan.FromSeconds(5), status => Console.Error.WriteLine(
 
 ## 观测草稿
 
-Observation 的 `Draft` 传入 `publishDraft: true`，Runtime 就把这份草稿写入后端，读取方用 `GET /api/observation-drafts/{entityId}` 读到进行中的 Observation。约定见 [Submission · 观测草稿](../../Docs/Orisumi.Docs/content/docs/observers/submission/index.mdx#drafts)。
+Observation 的 `Draft` 传入 `publishDraft: true`，Runtime 就把这份草稿写入后端，读取方用 `GET /api/observation-drafts/{entityId}` 读到进行中的 Observation。约定见 [Submission · 观测草稿](../../Docs/Orisumi.Docs/content/docs/hosting/submission.mdx#drafts)。
 
 - 草稿引用的版本都已保存后，每次 `SendAsync` 先写入草稿最新的内容，再发送待发送的版本。`sequence` 保存在 SQLite 中，重启后继续递增。
 - 写入失败时，下一次发送写入最新的内容。后端返回 `VERSION-6` 时，Runtime 停止写入这份草稿。

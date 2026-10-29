@@ -7,7 +7,7 @@ export const caseId = 'api-submission';
 
 ## 为什么验证 [#why]
 
-写入方靠 `POST /versions` 的响应判断哪些版本已保存。重试必须得到首次保存的确认，被拒绝时必须知道停在哪个版本、因为哪条规则，写入方才能确认前面的版本、处理被拒绝的那一个。约定见 [API · 提交](../../api/index.mdx#submission) 和 [内容相同](../../api/index.mdx#sameness)。
+写入方靠 `POST /versions` 的响应判断哪些版本已保存。重试必须得到首次保存的确认，被拒绝时必须知道停在哪个版本、因为哪条规则，写入方才能确认前面的版本、处理被拒绝的那一个。约定见 [API · 提交](../../api/writing.mdx#submission) 和 [内容相同](../../api/versions.mdx#sameness)。
 
 ## 前置条件 [#setup]
 

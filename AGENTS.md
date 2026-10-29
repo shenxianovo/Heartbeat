@@ -9,7 +9,7 @@
 - 修改协议字段时，在同一次改动中修改生产者和消费者。
 - 代码、测试和文档一起更新。
 - 检查在本地运行。CI 等用户提出后再建。
-- API、Storage、Observers、Testing 和代码中有一部分仍按旧模型编写。它们与 Core 不一致时以 Core 为准，字段名也一样。待同步的内容记录在 `.scratch/` 下的规格中。
+- API、Storage、Observers、Hosting、Testing 和代码中有一部分仍按旧模型编写。它们与 Core 不一致时以 Core 为准，字段名也一样。待同步的内容记录在 `.scratch/` 下的规格中。
 
 ## 文档
 
@@ -24,6 +24,7 @@
 | 架构决定 | `adr/` |
 | HTTP 契约 | `api/openapi.json` |
 | 单个 Observer 的业务规则和实现决定 | `observers/<observer>/` |
+| 托管方的职责、Runtime 的进程与管道协议、服务端托管 | `hosting/` |
 | 模块的运行和操作说明 | 模块目录的 `README.md` |
 
 使用 `grill-with-docs` 或 `domain-modeling` 时，`GLOSSARY.md` 对应 `core/glossary.mdx`，`docs/adr/` 对应 `adr/`。

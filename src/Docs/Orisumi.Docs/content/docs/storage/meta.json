@@ -5,6 +5,9 @@
   "root": true,
   "pages": [
     "index",
+    "versions",
+    "queries",
+    "server",
     "postgresql"
   ]
 }

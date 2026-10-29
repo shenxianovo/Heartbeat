@@ -1,197 +1,44 @@
 ---
 title: "Overview"
-description: "表结构、索引、引用的反查、删除与墓碑、事务、内容的表示、服务端托管的表与命名"
+description: "实体和版本怎样保存在 PostgreSQL 中：哪些表是权威，哪些由版本推导，以及共用的事务和命名"
 ---
 
-实体和它的全部版本保存在 PostgreSQL 中。本页写表结构、索引、引用的反查、删除和事务；数据库的版本、数据访问和时间的保存方式见 [PostgreSQL](./postgresql.mdx)，数据模型见 [Core](../core/index.mdx)。这样设计的理由见 [ADR · 实体存储](../adr/entity-storage.mdx)。
+实体和它的全部版本保存在 PostgreSQL 中。所有类别、所有业务类型的版本都在同一张 `versions` 表里，它是版本内容的权威位置；其他表记录身份和删除，或者由版本推导出来，供查询使用。这样设计的理由见 [ADR · 实体存储](../adr/entity-storage.mdx)。
 
-观测草稿只暂存在后端进程的内存中，不写入 PostgreSQL，见 [API · 观测草稿](../api/index.mdx#drafts)。
+观测草稿只暂存在后端进程的内存中，不写入 PostgreSQL，见 [API · Drafts](../api/drafts.mdx)。
 
-## 表结构 [#tables]
+## 例子 [#example]
 
-所有类别、所有业务类型的版本都保存在 `versions` 中，它是版本内容的权威位置。`entities`、`current_observations` 和 `version_references` 由版本推导，供查询使用；`version_tombstones` 记住已删除的版本。
+16:00 VS Code 的前台时段结束，它和它的 Observation 都已保存：
 
-例如前台状态 Observer 保存了一份 VS Code 的前台时段：时段和它的 Observation 各是 `versions` 中的一行，各有一行 `entities`；这份 Observation 在 `current_observations` 中有一行，记着当前版本的时间范围和观测内容的类型。时段对 VS Code 的引用、Observation 对程序实例和时段的引用，各是 `version_references` 中的一行。
+| 表 | 这一段对应的行 |
+| --- | --- |
+| `versions` | 时段一行，Observation 一行 |
+| `entities` | 时段一行，Observation 一行，各记着自己的当前版本 |
+| `current_observations` | Observation 一行，记着当前版本的事实时间和观测内容的类型 |
+| `version_references` | 时段对 VS Code 的引用一行；Observation 对程序实例和时段的引用各一行 |
 
-### entities [#entities]
+第二天用户删掉浏览器的时段，它的版本从 `versions` 中移除，身份留在 `version_tombstones` 中。
 
-每个实体一行，包括已删除的实体。
+## 表 [#tables]
 
-| 列 | 类型 | 含义 |
-| --- | --- | --- |
-| `entity_id` | `uuid` | 实体的 EntityId |
-| `category` | `text`，可空 | 实体的类别，删除后为 `NULL` |
-| `schema_id` | `uuid`，可空 | 业务实体的 SchemaId；其他类别和删除后为 `NULL` |
-| `resource_name` | `text`，可空 | EntitySchema 当前版本的 `resourceName`；其他类别和删除后为 `NULL` |
-| `current_version_id` | `uuid`，可空 | 当前版本，删除后为 `NULL` |
-| `deleted_at` | `timestamptz`，可空 | 删除的时刻，未删除时为 `NULL` |
+| 表 | 每行 | 来源 | 见 |
+| --- | --- | --- | --- |
+| `entities` | 一个实体，包括已删除的 | 权威：身份与删除 | [Versions · entities](./versions.mdx#entities) |
+| `versions` | 一个未删除的版本 | 权威：版本内容 | [Versions · versions](./versions.mdx#versions) |
+| `version_tombstones` | 一个已删除的版本 | 权威：删除 | [Versions · 删除](./versions.mdx#deletion) |
+| `current_observations` | 一份未删除的 Observation 的当前版本 | 由版本推导 | [Queries · 事实时间](./queries.mdx#fact-time) |
+| `version_references` | 一个版本中的一个引用 | 由版本推导，可以随时重建 | [Queries · 引用方](./queries.mdx#references) |
 
-### versions [#versions]
+按类型的查询都从以类型开头的索引进入，只读取目标类型的行，所以数据量大的类型不影响其他类型的查询。各表的约束和索引写在表所在的页中，名字的写法见[命名](#naming)。
 
-每个未删除的版本一行。
-
-| 列 | 类型 | 含义 |
-| --- | --- | --- |
-| `version_id` | `uuid` | 版本的 VersionId |
-| `entity_id` | `uuid` | 所属的实体 |
-| `ordinal` | `integer` | 在版本链中的序号，首版为 1，之后每版加 1 |
-| `previous_version_id` | `uuid`，可空 | 同一实体的前一版本，首版为 `NULL` |
-| `schema_version_id` | `uuid`，可空 | 业务内容所用的 Schema 版本，Core 类型为 `NULL` |
-| `category` | `text` | 内容的类别 |
-| `recorded_at` | `timestamptz` | 保存时间 |
-| `content` | `jsonb` | 版本的内容，与 API 中的 `content` 相同 |
-
-### version_tombstones [#version-tombstones]
-
-每个已删除的版本一行。
-
-| 列 | 类型 | 含义 |
-| --- | --- | --- |
-| `version_id` | `uuid` | 已删除版本的 VersionId |
-| `entity_id` | `uuid` | 它所属的实体 |
-
-### current_observations [#current-observations]
-
-每份未删除的 Observation 一行，对应它的当前版本。
-
-| 列 | 类型 | 含义 |
-| --- | --- | --- |
-| `entity_id` | `uuid` | Observation 的 EntityId |
-| `version_id` | `uuid` | 它的当前版本 |
-| `content_schema_id` | `uuid` | 观测内容的 SchemaId，保存这个版本时从内容实体读取 |
-| `fact_range` | `tstzrange`，可空 | 当前版本的事实时间，见[事实时间](#fact-time) |
-
-### version_references [#version-references]
-
-每个未删除版本的 `content` 中，每个非空的引用一行，见[引用的反查](#references)。
-
-| 列 | 类型 | 含义 |
-| --- | --- | --- |
-| `version_id` | `uuid` | 引用方的版本 |
-| `path` | `text` | 引用在版本中的位置，是从版本根部写起的 JSON Pointer，例如 `/content/contentVersionId` |
-| `target_version_id` | `uuid` | 引用的目标版本 |
-| `target_entity_id` | `uuid` | 目标版本所属的实体 |
-
-## 约束与索引 [#indexes]
-
-| 名称 | 内容 | 用途 |
-| --- | --- | --- |
-| `pk_entities`、`pk_versions`、`pk_version_tombstones`、`pk_current_observations` | 各表第一列 | 按身份读取 |
-| `pk_version_references` | `version_references (version_id, path)` | 一个位置只有一个引用 |
-| `ux_versions_entity_id_ordinal` | `versions (entity_id, ordinal)` | 每个实体只有一条线性的版本链，见 [VERSION-4](../core/model/version.mdx#version-4)；按链的顺序读取 |
-| `ux_entities_resource_name` | `entities (resource_name)`，只含非空值 | 资源名不重复，见 [SCHEMA-5](../core/model/schema.mdx#schema-5) |
-| `ix_entities_schema_id_entity_id` | `entities (schema_id, entity_id)` | 按业务类型列出实体；删除 EntitySchema 前检查 [HISTORY-9](../core/rules/history.mdx#history-9) |
-| `ix_entities_category_entity_id` | `entities (category, entity_id)` | 按类别列出实体 |
-| `ix_current_observations_content_schema_id_fact_range` | GiST `(content_schema_id, fact_range)` | 按观测内容的类型和事实时间查询 |
-| `ix_current_observations_fact_range` | GiST `(fact_range)` | 不限类型的事实时间查询 |
-| `ix_version_references_target_entity_id_version_id` | `version_references (target_entity_id, version_id)` | 按目标实体列出引用方，按引用方的版本分页 |
-
-- `versions` 的 `entity_id`、`previous_version_id`、`schema_version_id` 都有外键：版本属于已有的实体，前一版本和 Schema 版本仍然存在。
-- `version_tombstones.entity_id` 和 `current_observations` 的两个身份列有外键，分别指向 `entities` 和 `versions`。
-- `version_references.version_id` 的外键指向 `versions`，引用方的版本删除时，它的行随之删除；`target_entity_id` 的外键指向 `entities`。`target_version_id` 没有外键，目标删除后这一行保留，见 [HISTORY-8](../core/rules/history.mdx#history-8)。
-- `entities` 用检查约束保证：`deleted_at` 为 `NULL` 时，`category` 和 `current_version_id` 不为 `NULL`；删除后，除 `entity_id` 和 `deleted_at` 外的列都为 `NULL`。
-- 多列 GiST 索引需要 `btree_gist` 扩展，由 Initial migration 创建。
-
-按类型的查询都从以类型开头的索引进入，只读取目标类型的行，所以数据量大的类型不影响其他类型的查询。
-
-## 事实时间 [#fact-time]
-
-`current_observations.fact_range` 由当前版本的 `startAt` 和 `endAt` 换算：
-
-| `startAt` | `endAt` | `fact_range` |
-| --- | --- | --- |
-| `t1` | `t2`，`t1 < t2` | `[t1, t2)` |
-| `t` | `t` | `[t, t]` |
-| `t` | `null` | `[t, t]` |
-| `null` | `t` | `[t, t]` |
-| `null` | `null` | `NULL` |
-
-按事实时间查询 `[from, to)` 时，条件是 `fact_range && tstzrange(from, to, '[)')`，结果与 [API · 列出与查询](../api/index.mdx#lists) 的匹配规则一致。结果按 `lower(fact_range)` 和 `entity_id` 排序，分页游标记录这两个值。
-
-## 引用的反查 [#references]
-
-引用只保存在引用方的版本中（[ENTITY-8](../core/model/entity.mdx#entity-8)），权威位置是 `versions.content`。`version_references` 从内容推导出每个引用的位置和目标，供 [API · 引用方](../api/index.mdx#referrers) 使用，可以随时从 `versions` 重建。
-
-- 保存一个版本时，后端按 Core 类型的引用成员，或者按它的 Schema 版本中 `type` 为 `reference` 的位置（[SCHEMA-2](../core/model/schema.mdx#schema-2)），找出 `content` 中每个非空的引用，写入一行。数组元素的位置按保存的数组下标，例如 `/content/members/3`。
-- `target_entity_id` 取自目标版本所属的实体。目标保存时一定未被删除（[ENTITY-6](../core/model/entity.mdx#entity-6)），所以写入时总能读到。
-- 列出引用方时按 `target_entity_id` 匹配，所以引用同一实体不同版本的版本一起返回，见 [ENTITY-7](../core/model/entity.mdx#entity-7)。只看当前版本时，再要求 `version_id` 是引用方实体的 `current_version_id`。结果按 `version_id` 排序，分页游标记录最后一个 `version_id`。
-- `previousVersionId` 和 `schemaVersionId` 已经是 `versions` 的列，不写入 `version_references`。
-
-## 删除与墓碑 [#tombstones]
-
-删除一个实体时，在一个事务中：
-
-1. 把它每个版本的 `version_id` 和 `entity_id` 写入 `version_tombstones`。
-2. 删除它在 `current_observations`、`version_references` 和 `versions` 中的行。
-3. 把 `entities` 中这一行除 `entity_id` 外的列置为 `NULL`，`deleted_at` 设为删除的时刻。
-
-墓碑只保存身份和删除时刻，永久保留，每个已删除的版本约占 60 字节。读取时，身份在墓碑中就返回 `410`，都不存在就返回 `404`。其他版本对被删版本的引用留在它们的 `content` 和 `version_references` 中，见 [HISTORY-8](../core/rules/history.mdx#history-8)。
+服务端托管另外有三张表，它们不是 Core 的实体或版本，见 [Server Hosting](./server.mdx)。
 
 ## 事务 [#transactions]
 
 - 每个操作在一个事务中完成，事务开始时取得一个固定键的事务级 advisory lock（`pg_advisory_xact_lock`）。所以多个 API 实例之间，所有读写都串行执行。
 - 一次提交在一个事务中完成，每个版本在自己的保存点中保存。某个版本被拒绝时，回滚到它的保存点，提交此前已保存的版本，再返回错误，见 [VERSION-13](../core/model/version.mdx#version-13)。出现异常或请求取消时，整个事务回滚。
-- 保存一个版本时，`versions` 的新行、`entities` 的当前版本、Observation 的 `current_observations`，以及这个版本的 `version_references`，在同一个保存点中写入。当前版本从 `entities.current_version_id` 读取。
-- 按实体读取全部版本时，按 `ordinal` 从首版到当前版返回。
-
-## 内容的表示 [#content]
-
-- 版本的 `content` 以 `jsonb` 保存，空白和键的顺序不保留。字符串中不能有 `\u0000` 或无效的代理对，否则 API 返回 `400`。
-- 数值以 `jsonb` 的 `numeric` 保存，`integer` 没有 64 位的上限。数值必须在 `numeric` 的范围内（小数点前最多 131,072 位，小数点后最多 16,383 位），超出时 API 返回 `400`。
-- Observation 的时间在 `content` 中保存为以 `Z` 结尾、精确到微秒的字符串，与 API 读回的写法相同。列中的时间见 [PostgreSQL · 时间](./postgresql.mdx#time)。
-
-## 数据量 [#volume]
-
-导入约 230 万条键鼠事件和 25 万条前台时段时，按每条一个观测内容加一份 Observation 估算：
-
-| 项目 | 估算 |
-| --- | --- |
-| 版本 | 约 510 万行 |
-| 实体 | 约 510 万行 |
-| `current_observations` | 约 255 万行 |
-| `version_references` | 约 535 万行：每份 Observation 引用程序实例和观测内容，每个前台时段引用本机应用 |
-| 连同索引的空间 | 约 5 GB，其中 `version_references` 约 1 GB |
-
-单个 Observation 版本的 `content` 约 260 字节，主要是三个以字符串保存的 VersionId 和两个时间。
-
-2026-10-25 在本机实测：API 为 Debug 构建并开启遥测，每次提交 1,000 个键鼠事件规模的版本，保存速度约 275 个版本/秒；10 万个版本连同索引约 79 MiB。按这个速度，导入上表的数据约需 5 小时，空间按同样的比例估算。
-
-## 服务端托管 [#server-observers]
-
-[服务端托管](../observers/submission/index.mdx#server)为它运行的程序实例另外保存三张表。它们不是 Core 的实体或版本，API 不读取它们。例如应用识别 Observer 在 `server_observers` 中有一行，绑定它的程序实例；它正在提交的产品版本在 `server_observer_submissions` 中，模型回答未知的线索在 `server_observer_state` 中。
-
-### server_observers [#server-observers-table]
-
-每个程序实例一行，是它的管理记录，第一次运行时创建。
-
-| 列 | 类型 | 含义 |
-| --- | --- | --- |
-| `entity_id` | `uuid` | 程序实例的 EntityId，主键 |
-| `observer_key` | `text` | 程序实例的稳定标识，例如 `application-identity`，唯一 |
-
-### server_observer_submissions [#server-observer-submissions]
-
-每个程序实例最多一行，是它的未决提交。
-
-| 列 | 类型 | 含义 |
-| --- | --- | --- |
-| `entity_id` | `uuid` | 程序实例的 EntityId，主键，外键指向 `server_observers` |
-| `payload` | `jsonb` | 按顺序排列的版本，每个版本的写法与 API 提交的版本相同 |
-
-写入时已有一行就报错，旧的批次不被覆盖。批次得到明确的结果，全部保存或某个版本被拒绝，这一行随之删除；出现异常或取消时保留，下次用相同的 VersionId 和内容重发。
-
-### server_observer_state [#server-observer-state]
-
-每个程序实例最多一行，是它的业务状态。
-
-| 列 | 类型 | 含义 |
-| --- | --- | --- |
-| `entity_id` | `uuid` | 程序实例的 EntityId，主键，外键指向 `server_observers` |
-| `payload` | `jsonb` | 业务代码定义的状态，每次整体替换 |
-
-应用识别 Observer 在这里保存未知的线索，见 [Application Identity · 识别](../observers/application-identity/index.mdx#identification)。
-
-这三张表的读写不在实体的事务中：未决提交在保存版本之前写入，在结果确认之后删除，所以中途退出时版本可能已保存、未决提交仍在，重发时由 [VERSION-7](../core/model/version.mdx#version-7) 确认。
+- 保存一个版本时，`versions` 的新行、`entities` 的当前版本、Observation 的 `current_observations`，以及这个版本的 `version_references`，在同一个保存点中写入。
 
 ## 命名 [#naming]
 
@@ -212,3 +59,19 @@ description: "表结构、索引、引用的反查、删除与墓碑、事务、
 | 检查 | `ck_<表名>_<内容>` | `ck_entities_deleted_state` |
 | 唯一索引 | `ux_<表名>_<列名>` | `ux_entities_resource_name` |
 | 普通索引 | `ix_<表名>_<列名>` | `ix_entities_schema_id_entity_id` |
+
+## 数据量 [#volume]
+
+导入约 230 万条键鼠事件和 25 万条前台时段时，按每条一个观测内容加一份 Observation 估算：
+
+| 项目 | 估算 |
+| --- | --- |
+| 版本 | 约 510 万行 |
+| 实体 | 约 510 万行 |
+| `current_observations` | 约 255 万行 |
+| `version_references` | 约 535 万行：每份 Observation 引用程序实例和观测内容，每个前台时段引用本机应用 |
+| 连同索引的空间 | 约 5 GB，其中 `version_references` 约 1 GB |
+
+单个 Observation 版本的 `content` 约 260 字节，主要是三个以字符串保存的 VersionId 和两个时间。
+
+2026-10-25 在本机实测：API 为 Debug 构建并开启遥测，每次提交 1,000 个键鼠事件规模的版本，保存速度约 275 个版本/秒；10 万个版本连同索引约 79 MiB。按这个速度，导入上表的数据约需 5 小时，空间按同样的比例估算。

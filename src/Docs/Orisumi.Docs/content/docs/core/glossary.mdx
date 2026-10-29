@@ -60,10 +60,10 @@ Core 类型、Observer 和各种 Id 用英文名，其余概念用中文。Obser
 | --- | --- | --- |
 | 用户 | 拥有数据的人。在模型中是业务实体，可以作为 Observer | [OBSERVER-6](./model/observer.mdx#observer-6) |
 | 程序实例 | 独立运行、有自己 EntityId 的程序，例如前台状态 Observer 或推断 Observer | [OBSERVER-5](./model/observer.mdx#observer-5) |
-| 托管方 | 运行程序实例、持久保存它的身份并可靠提交它的版本的组件。设备上是 Runtime，服务端是服务端托管 | [Submission · 流程](../observers/submission/index.mdx#flow) |
-| Runtime | 设备上的托管方：设备端客户端中运行 Observer 进程的公共组件，持久保存实例身份，本地保存并按依赖顺序发送 | [Clients · Runtime](../clients/runtime.mdx) |
-| SDK | 设备上的 Observer 的业务代码连接 Runtime 所用的库，每种语言一个，只封装管道中的消息 | [Submission · 分工](../observers/submission/index.mdx#division) |
-| 服务端托管 | API 进程中运行服务端 Observer 的模块，保存实例身份和未决提交，经实体服务直接提交 | [Submission · 服务端托管](../observers/submission/index.mdx#server) |
+| 托管方 | 运行程序实例、持久保存它的身份并可靠提交它的版本的组件。设备上是 Runtime，服务端是服务端托管 | [Hosting · 流程](../hosting/index.mdx#flow) |
+| Runtime | 设备上的托管方：设备端客户端中运行 Observer 进程的公共组件，持久保存实例身份，本地保存并按依赖顺序发送 | [Hosting · Runtime](../hosting/runtime.mdx) |
+| SDK | 设备上的 Observer 的业务代码连接 Runtime 所用的库，每种语言一个，只封装管道中的消息 | [Hosting · 分工](../hosting/index.mdx#division) |
+| 服务端托管 | API 进程中运行服务端 Observer 的模块，保存实例身份和未决提交，经实体服务直接提交 | [Server Hosting](../hosting/server.mdx) |
 | 写入方 | 向后端提交版本的软件：Observer 的业务代码、托管方和用户使用的工具 | [Conventions · 规则的格式](./conventions.mdx#rules) |
 | 读取方 | 读取和追溯数据的软件，例如 Agent 和 Web 控制台 | [Conventions · 规则的格式](./conventions.mdx#rules) |
 | 后端 | 校验并保存版本的服务 | [Overview · 谁决定什么](./index.mdx#responsibility) |

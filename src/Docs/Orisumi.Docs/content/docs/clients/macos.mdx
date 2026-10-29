@@ -3,7 +3,7 @@ title: "macOS"
 description: "macOS 客户端附带哪些 Observer、怎样展示它们的数据，以及实现到了哪一步"
 ---
 
-macOS 客户端常驻在菜单栏，通过 [Runtime](./runtime.mdx) 托管这台 Mac 上的 Observer。它遵循[设备端客户端](./index.mdx#device)的托管规则；本页写它附带哪些 Observer、怎样展示数据，以及实现的进度。
+macOS 客户端常驻在菜单栏，通过 [Runtime](../hosting/runtime.mdx) 托管这台 Mac 上的 Observer。它遵循[设备端客户端](./index.mdx#device)的托管规则；本页写它附带哪些 Observer、怎样展示数据，以及实现的进度。
 
 ## 附带的 Observer [#observers]
 
@@ -58,7 +58,7 @@ Observer 组的每一项显示名称、版本、进程状态、发送状态和�
 
 ## 最近的数据 [#recent]
 
-没有专用视图的 Observer，视图中列出最近 7 天的 Observation，最多 50 份：事实时间、本机状态（进行中、待发送、已保存、被拒绝）和观测内容的 JSON。数据经 Runtime 的 `read` 读取，见 [Runtime · 读取](./runtime.mdx#reading)。
+没有专用视图的 Observer，视图中列出最近 7 天的 Observation，最多 50 份：事实时间、本机状态（进行中、待发送、已保存、被拒绝）和观测内容的 JSON。数据经 Runtime 的 `read` 读取，见 [Protocol · 读取](../hosting/protocol.mdx#reading)。
 
 ## 今天的前台应用 [#today]
 

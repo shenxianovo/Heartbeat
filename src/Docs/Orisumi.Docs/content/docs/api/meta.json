@@ -1,10 +1,27 @@
 {
   "title": "API",
   "description": "实体的 HTTP 接口",
+  "icon": "Plug",
   "root": true,
   "pages": [
     "index",
+    "versions",
+    "writing",
+    "reading",
+    "drafts",
+    "errors",
+    "---Operations---",
+    "submitVersions",
+    "deleteEntity",
+    "getVersion",
+    "getEntity",
+    "listEntityVersions",
+    "listEntities",
+    "listObservations",
+    "listReferrers",
+    "putObservationDraft",
+    "getObservationDraft",
+    "listObservationDrafts",
     "..."
-  ],
-  "icon": "Plug"
+  ]
 }

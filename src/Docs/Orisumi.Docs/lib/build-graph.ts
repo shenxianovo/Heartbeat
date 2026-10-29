@@ -1,5 +1,5 @@
 /** The sidebar sections shown in the graph, by the first segment of their URLs. The order is the legend order. */
-export const graphSections = ['core', 'adr', 'observers'];
+export const graphSections = ['core', 'adr', 'observers', 'hosting'];
 
 /** Pages left out of the graph with everything below them: the example pages of the Document Template. */
 export const graphExcludedPages = ['/observers/template/example-observer'];

@@ -2,7 +2,7 @@
   "openapi": "3.1.1",
   "info": {
     "title": "Orisumi API",
-    "description": "Orisumi HTTP 接口契约。维护者直接修改此文件。文档站读取此文件展示接口，后端按契约实现。\n\n接口按 Core 的实体与版本模型定义。共用的约定见 API Overview。",
+    "description": "Orisumi HTTP 接口契约。维护者直接修改此文件。文档站读取此文件展示接口，后端按契约实现。\n\n接口按 Core 的实体与版本模型定义。接口的语义见文档站 API 分区的 Writing、Reading 和 Drafts 页。",
     "version": "draft"
   },
   "servers": [
@@ -15,7 +15,7 @@
       "post": {
         "operationId": "submitVersions",
         "summary": "提交版本",
-        "description": "按数组顺序逐个保存版本，见 [VERSION-13](/core/model/version#version-13)。已保存的 VersionId 再次提交时，内容相同就视为已保存，见 [VERSION-7](/core/model/version#version-7)。某个版本被拒绝时，后面的版本不再处理，前面已保存的版本保留；错误响应的 `index` 和 `versionId` 指出被拒绝的版本。",
+        "description": "按数组顺序逐个保存版本。某个版本被拒绝时，前面已保存的版本保留，后面的版本不再处理。语义见 [Writing · 提交](/api/writing#submission)。",
         "requestBody": {
           "required": true,
           "content": {
@@ -118,7 +118,7 @@
       "get": {
         "operationId": "getVersion",
         "summary": "读取版本",
-        "description": "按 VersionId 读取一个版本，所有类型的版本都用这个接口。",
+        "description": "按 VersionId 读取一个版本，所有类型的版本都用这个接口，见 [Reading · 版本与实体](/api/reading#versions)。",
         "parameters": [
           {
             "name": "versionId",
@@ -188,7 +188,7 @@
       "get": {
         "operationId": "listEntities",
         "summary": "列出实体",
-        "description": "列出实体的当前版本，按 EntityId 升序分页。`category` 和 `resourceName` 都省略时列出全部实体；给出 `resourceName` 时只返回这种业务类型的实体。列出全部 EntitySchema 用 `category=entity_schema`。",
+        "description": "列出实体的当前版本，可以按 `category` 或 `resourceName` 筛选，见 [Reading · 列出实体](/api/reading#lists)。",
         "parameters": [
           {
             "name": "category",
@@ -278,7 +278,7 @@
       "get": {
         "operationId": "getEntity",
         "summary": "读取当前版本",
-        "description": "读取实体的当前版本，见 [VERSION-5](/core/model/version#version-5)。",
+        "description": "读取实体的当前版本，见 [Reading · 版本与实体](/api/reading#versions)。",
         "parameters": [
           {
             "name": "entityId",
@@ -346,7 +346,7 @@
       "delete": {
         "operationId": "deleteEntity",
         "summary": "删除实体",
-        "description": "删除实体的全部版本，见 [HISTORY-6](/core/rules/history#history-6)。删除后实体不再接受新版本，见 [HISTORY-7](/core/rules/history#history-7)。删除已删除的实体也返回 `204`。",
+        "description": "删除实体的全部版本，删除已删除的实体也返回 `204`，见 [Writing · 删除](/api/writing#deletion)。",
         "parameters": [
           {
             "name": "entityId",
@@ -409,7 +409,7 @@
       "get": {
         "operationId": "listEntityVersions",
         "summary": "读取版本链",
-        "description": "读取实体的全部版本，按版本链从首版到当前版排列，不分页。",
+        "description": "读取实体的全部版本，从首版到当前版排列，不分页，见 [Reading · 版本与实体](/api/reading#versions)。",
         "parameters": [
           {
             "name": "entityId",
@@ -479,7 +479,7 @@
       "get": {
         "operationId": "listReferrers",
         "summary": "列出引用方",
-        "description": "列出在 `content` 中引用这个实体的版本，目标按实体匹配，引用它的任何一个版本都算，见 [ENTITY-7](/core/model/entity#entity-7)。只返回直接的引用方，按引用方的 VersionId 升序分页。目标实体已被删除时照常列出，见 [HISTORY-8](/core/rules/history#history-8)。",
+        "description": "列出在 `content` 中引用这个实体的版本，只返回直接的引用方，见 [Reading · 引用方](/api/reading#referrers)。",
         "parameters": [
           {
             "name": "entityId",
@@ -574,7 +574,7 @@
       "get": {
         "operationId": "listObservations",
         "summary": "按事实时间查询观测",
-        "description": "列出事实时间落在 `[from, to)` 中的 Observation 的当前版本。匹配只看已知的边界：时段与范围有重叠即返回；只知道一个边界时，按这一刻的时间点匹配；两个边界都未知的 Observation 不返回。结果按已知的开始边界升序分页，开始未知时用结束边界，相同时按 EntityId 升序。",
+        "description": "列出事实时间与 `[from, to)` 相交的 Observation 的当前版本，见 [Reading · 按事实时间查询](/api/reading#observations)。",
         "parameters": [
           {
             "name": "from",
@@ -675,7 +675,7 @@
       "put": {
         "operationId": "putObservationDraft",
         "summary": "写入观测草稿",
-        "description": "写入一份 Observation 尚未保存的最新陈述，见 [API · 观测草稿](/api#drafts)。`sequence` 不大于已暂存草稿的 `sequence` 时，草稿保持不变，响应返回已暂存的草稿。",
+        "description": "写入一份 Observation 尚未保存的最新陈述，见 [Drafts · 写入](/api/drafts#writing)。",
         "parameters": [
           {
             "name": "entityId",
@@ -753,7 +753,7 @@
       "get": {
         "operationId": "getObservationDraft",
         "summary": "读取观测草稿",
-        "description": "读取一份 Observation 暂存的草稿，见 [API · 观测草稿](/api#drafts)。",
+        "description": "读取一份 Observation 暂存的草稿，见 [Drafts · 读取](/api/drafts#reading)。",
         "parameters": [
           {
             "name": "entityId",
@@ -813,7 +813,7 @@
       "get": {
         "operationId": "listObservationDrafts",
         "summary": "列出观测草稿",
-        "description": "按 EntityId 升序列出全部暂存的草稿，不分页，见 [API · 观测草稿](/api#drafts)。",
+        "description": "按 EntityId 升序列出全部暂存的草稿，不分页，见 [Drafts · 读取](/api/drafts#reading)。",
         "parameters": [
           {
             "name": "resourceName",
@@ -894,7 +894,7 @@
       },
       "VersionSubmission": {
         "type": "object",
-        "description": "提交的一个版本。成员的含义见 [Version](/core/model/version#members)。`recordedAt` 由后端赋值，提交时不得出现，见 [VERSION-10](/core/model/version#version-10)。 请求结构按 category 选择 content。结构通过后仍逐个校验 Core 规则；两阶段的拒绝范围见 [API · 校验阶段](/api#validation)。",
+        "description": "提交的一个版本。成员的含义见 [Version](/core/model/version#members)。`recordedAt` 由后端赋值，提交时不得出现，见 [VERSION-10](/core/model/version#version-10)。 请求结构按 category 选择 content。结构通过后仍逐个校验 Core 规则；两阶段的拒绝范围见 [Writing · 校验阶段](/api/writing#validation)。",
         "required": [
           "entityId",
           "versionId",
@@ -1512,7 +1512,7 @@
       },
       "ObservationDraftSubmission": {
         "type": "object",
-        "description": "写入的观测草稿，见 [API · 观测草稿](/api#drafts)。",
+        "description": "写入的观测草稿，见 [Drafts](/api/drafts)。",
         "required": [
           "previousVersionId",
           "sequence",

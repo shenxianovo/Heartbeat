@@ -1,0 +1,52 @@
+---
+title: "Versions"
+description: "版本在 API 中怎样表示：成员、字段命名、时间的写法，以及怎样判断两份内容相同"
+---
+
+API 收发的都是版本。本页写版本的 JSON 表示，以及所有接口共用的字段写法。
+
+## 成员 [#members]
+
+读取时，版本的 JSON 成员就是 [Version · 成员](../core/model/version.mdx#members) 中的七个，`recordedAt` 一定存在。提交时成员相同，只是没有 `recordedAt`。
+
+- `category` 必须写出，后端按它解释 `content`。
+- `previousVersionId` 和 `schemaVersionId` 必须出现，没有值时为 `null`。
+- Core 类型的 `content` 是该类型的成员，见各类型页；业务版本的 `content` 就是业务字段组成的对象。
+
+读回的内容与提交的值相同，写法可以不同：对象的键不保留原来的顺序，数字可以换成等值的写法，例如提交 `1e2`，读回 `100`。时间的写法见[时间](#time)。
+
+## 字段命名 [#naming]
+
+API 字段使用 `camelCase`，对应 C# 的 `PascalCase` 和数据库的 `snake_case`，见 [Storage · 命名](../storage/index.mdx#naming)。
+
+## 时间 [#time]
+
+API 中的时间精确到 1 微秒，UTC 指协调世界时。事实时间的含义见 [Observation · 事实时间](../core/model/observation.mdx#fact-time)。
+
+例如 VS Code 的时段从北京时间 14:00 开始：
+
+- 提交 `2026-10-06T14:00:00+08:00`，读回 `2026-10-06T06:00:00Z`。
+- 不足一微秒的尾数舍去：提交 `1999-12-31T23:59:59.9999999Z`，读回 `1999-12-31T23:59:59.999999Z`。截断的位置见 [PostgreSQL · 时间](../storage/postgresql.mdx#time)。
+
+| 参与方 | 职责 |
+| --- | --- |
+| Observer | 提交事实时间，字符串以 `Z` 结尾或带明确的 UTC 偏移 |
+| 后端 | 转换为 UTC，向下截断到整微秒后保存；读取时返回以 `Z` 结尾的字符串；首次保存每个版本时赋值 `recordedAt` |
+| 前端 | 按浏览器或系统时区显示时间 |
+
+`timeZone` 非空时，必须是可解析的 IANA 时区 ID。时间或时区校验失败时返回 `400`。
+
+### 保存时间 [#recorded-at]
+
+读取版本时，`recordedAt` 一定存在。它是后端首次保存这个版本的时刻，以 `Z` 结尾，精确到微秒。写入方不得提交 `recordedAt`；重试一个已保存的版本，`recordedAt` 保持不变。见 [VERSION-10](../core/model/version.mdx#version-10) 和 [VERSION-7](../core/model/version.mdx#version-7)。
+
+## 内容相同 [#sameness]
+
+重试一个已保存的 VersionId 时，后端判断提交的内容与已保存的版本是否相同，见 [VERSION-7](../core/model/version.mdx#version-7)。比较按 JSON 的值进行：
+
+- 对象的键的顺序不影响比较。
+- 数字按数学值比较，`1`、`1.0` 和 `1e0` 相同。
+- 字符串逐个字符比较，不做 Unicode 规范化。
+- 数组按顺序比较。InputSet 的 `members` 无序，见 [INPUTSET-4](../core/model/input-set.mdx#inputset-4)。
+- 省略的字段与值为 `null` 的字段不同，见 [SCHEMA-13](../core/model/schema.mdx#schema-13)。
+- Observation 的时间先换算为 UTC、截断到整微秒，再比较。所以 `2026-10-06T14:00:00+08:00` 与 `2026-10-06T06:00:00Z` 相同。

@@ -1,6 +1,6 @@
 # Orisumi.Mac
 
-Orisumi.Mac 是常驻菜单栏的 macOS 客户端。它启动 [Runtime](../../Docs/Orisumi.Docs/content/docs/clients/runtime.mdx)，通过 Runtime 安装和运行本机的 Observer，并展示它们的状态和数据。客户端的责任见 [ADR · 设备端客户端](../../Docs/Orisumi.Docs/content/docs/adr/device-client.mdx)，托管规则见 [Clients · 设备端客户端](../../Docs/Orisumi.Docs/content/docs/clients/index.mdx#device)，界面和实现进度见 [macOS](../../Docs/Orisumi.Docs/content/docs/clients/macos.mdx)。
+Orisumi.Mac 是常驻菜单栏的 macOS 客户端。它启动 [Runtime](../../Docs/Orisumi.Docs/content/docs/hosting/runtime.mdx)，通过 Runtime 安装和运行本机的 Observer，并展示它们的状态和数据。客户端的责任见 [ADR · 设备端客户端](../../Docs/Orisumi.Docs/content/docs/adr/device-client.mdx)，托管规则见 [Clients · 设备端客户端](../../Docs/Orisumi.Docs/content/docs/clients/index.mdx#device)，界面和实现进度见 [macOS](../../Docs/Orisumi.Docs/content/docs/clients/macos.mdx)。
 
 ## 结构
 

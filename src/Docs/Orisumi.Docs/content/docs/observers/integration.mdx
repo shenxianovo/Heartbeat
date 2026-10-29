@@ -17,7 +17,7 @@ description: "接入新来源时，依次确定事实、Observer、实体、Enti
 
 确定谁根据证据形成观测、对判断负责。内部模块只提供证据时，负责的是使用它的 Observer；模块独立形成观测时，它是自己的 Observer；只转发已有的观测时，Observer 保持原样。完整的划分见 [OBSERVER-6](../core/model/observer.mdx#observer-6)。
 
-再说明什么情况算独立的程序实例。程序实例的 EntityId 由托管方保存，重启、更新和重装后沿用：设备上是 Runtime，见 [Runtime · 数据目录](../clients/runtime.mdx#data)；服务端是服务端托管，见 [Submission · 服务端托管](./submission/index.mdx#server)。结论写进 Observer 页的“程序实例”。
+再说明什么情况算独立的程序实例。程序实例的 EntityId 由托管方保存，重启、更新和重装后沿用：设备上是 Runtime，见 [Runtime · 数据目录](../hosting/runtime.mdx#data)；服务端是服务端托管，见 [Server Hosting](../hosting/server.mdx)。结论写进 Observer 页的“程序实例”。
 
 ## 3. 实体 [#entities]
 
@@ -61,11 +61,11 @@ description: "接入新来源时，依次确定事实、Observer、实体、Enti
 
 ## 8. 提交 [#submission]
 
-接入时，用所选语言的 SDK 连接 Runtime，把程序实例的信息和所需的 EntitySchema 交给 Runtime，第一份观测形成前就提交。一次业务变化组织成一个批次，见 [Submission · 本地交接](./submission/index.mdx#handoff)。按业务类型选择及时提交或结束后提交，决定是否写入观测草稿，并说明业务代码何时通知更新、何时通知结束。进行中的事实需要实时可见时，写入观测草稿，见 [Submission · 观测草稿](./submission/index.mdx#drafts)。
+接入时，用所选语言的 SDK 连接 Runtime，把程序实例的信息和所需的 EntitySchema 交给 Runtime，第一份观测形成前就提交。一次业务变化组织成一个批次，见 [Submission · 批次](../hosting/submission.mdx#handoff)。按业务类型选择及时提交或结束后提交，决定是否写入观测草稿，并说明业务代码何时通知更新、何时通知结束。进行中的事实需要实时可见时，写入观测草稿，见 [Submission · 观测草稿](../hosting/submission.mdx#drafts)。
 
-在 Observer 页写明用的是哪个 SDK、哪种策略，并链接 [Submission](./submission/index.mdx)。Runtime 负责本地保存、发送、确认和恢复；事实判断、业务对象的身份和历史保留由 Observer 的业务代码负责。
+在 Observer 页写明用的是哪个 SDK、哪种策略，并链接 [Submission](../hosting/submission.mdx)。业务代码和 Runtime 的分工见 [Hosting · 分工](../hosting/index.mdx#division)。
 
-在设备上运行的 Observer 由设备端客户端托管。在服务端依据全部已保存数据形成观测的 Observer 由服务端托管运行，随服务端发布，例如[应用识别 Observer](./application-identity/index.mdx)，见 [Submission · 服务端托管](./submission/index.mdx#server)。设备上的 Observer 为每个支持的平台构建一个安装包，见 [Clients · Packages](../clients/packages.mdx)；进程怎样启动、停止和恢复，见 [Runtime · 进程](../clients/runtime.mdx#process)。
+在设备上运行的 Observer 由设备端客户端托管。在服务端依据全部已保存数据形成观测的 Observer 由服务端托管运行，随服务端发布，例如[应用识别 Observer](./application-identity/index.mdx)，见 [Server Hosting](../hosting/server.mdx)。设备上的 Observer 为每个支持的平台构建一个安装包，见 [Clients · Packages](../clients/packages.mdx)；进程怎样启动、停止和恢复，见 [Runtime · 进程](../hosting/runtime.mdx#process)。
 
 ## 9. 读回 [#read-back]
 

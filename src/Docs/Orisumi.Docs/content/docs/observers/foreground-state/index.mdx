@@ -39,7 +39,7 @@ flowchart LR
 ## 程序实例 [#instance]
 
 - 一个程序实例对应本机上运行的一个前台状态 Observer，另一台设备上的是另一个程序实例。
-- 程序版本取 Runtime 在 `init` 中交来的安装包版本，见 [Runtime · Observer 管道](../../clients/runtime.mdx#observer-pipe)。
+- 程序版本取 Runtime 在 `init` 中交来的安装包版本，见 [Protocol · Observer 管道](../../hosting/protocol.mdx#observer-pipe)。
 - 本机应用的身份保存在单独的登记文件中，见 [Local Application · 登记文件](./local-application.mdx#registry)。
 
 ## 采集 [#collection]
@@ -56,7 +56,7 @@ macOS 唤醒后立即重新读取。休眠、读取失败等情况下时段怎�
 
 ## 提交 [#submission]
 
-前台状态 Observer 使用 [.NET](../submission/dotnet.mdx) 的 SDK，采用[结束后提交](../submission/index.mdx#strategies)，并写入[观测草稿](../submission/index.mdx#drafts)：进行中的时段在本地补全，同时作为草稿写入后端，读取方能实时读到；时段结束时才冻结 Observation 并安排发送，所以后端为每个时段保存一个版本。业务事件对应的操作如下：
+前台状态 Observer 使用 [.NET](../../hosting/dotnet.mdx) 的 SDK，采用[结束后提交](../../hosting/submission.mdx#strategies)，并写入[观测草稿](../../hosting/submission.mdx#drafts)：进行中的时段在本地补全，同时作为草稿写入后端，读取方能实时读到；时段结束时才冻结 Observation 并安排发送，所以后端为每个时段保存一个版本。业务事件对应的操作如下：
 
 | 业务事件 | 交给 Runtime 的操作 |
 | --- | --- |
@@ -65,7 +65,7 @@ macOS 唤醒后立即重新读取。休眠、读取失败等情况下时段怎�
 | 切换应用，或应用名称、时区变化 | 通知当前时段结束；为新状态形成新的草稿 |
 | 读取失败、停止采集或其他中断 | 当前时段结束于最后一次确认，通知结束；恢复后形成新的草稿 |
 
-观测内容形成后随即冻结并安排发送，它引用的本机应用版本也一样；Runtime 在它们保存之后才写入草稿。结束当前时段和开始新的时段在同一个批次中提交，见 [Submission · 本地交接](../submission/index.mdx#handoff)。
+观测内容形成后随即冻结并安排发送，它引用的本机应用版本也一样；Runtime 在它们保存之后才写入草稿。结束当前时段和开始新的时段在同一个批次中提交，见 [Submission · 批次](../../hosting/submission.mdx#handoff)。
 
 程序异常退出或停止超时被结束后，下次启动时，Runtime 恢复遗留的草稿，业务代码通知它结束于本地保存的最后一次确认。程序实例的身份不变，停机期间不计入时段，新的读数开始新的时段。
 

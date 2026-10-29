@@ -5,7 +5,7 @@ description: "服务端 Observer 由 API 进程中的服务端托管运行：身
 
 ## 背景 [#context]
 
-有的 Observer 依据全部已保存的数据形成观测，在服务端运行，例如[应用识别 Observer](../observers/application-identity/index.mdx)。它和设备上的 Observer 一样需要托管方：程序实例的身份持久不变，版本可靠地保存到后端，崩溃后能够恢复，见 [Submission · 流程](../observers/submission/index.mdx#flow)。设备上的托管方是 Runtime，它的子进程、管道和本机 SQLite 为设备而设计。服务端需要决定由谁承担托管方的职责，以及这些数据保存在哪里。
+有的 Observer 依据全部已保存的数据形成观测，在服务端运行，例如[应用识别 Observer](../observers/application-identity/index.mdx)。它和设备上的 Observer 一样需要托管方：程序实例的身份持久不变，版本可靠地保存到后端，崩溃后能够恢复，见 [Hosting · 流程](../hosting/index.mdx#flow)。设备上的托管方是 Runtime，它的子进程、管道和本机 SQLite 为设备而设计。服务端需要决定由谁承担托管方的职责，以及这些数据保存在哪里。
 
 ## 决定 [#decision]
 
@@ -49,6 +49,6 @@ description: "服务端 Observer 由 API 进程中的服务端托管运行：身
 
 ## 规则位置 [#details]
 
-- [Submission · 流程](../observers/submission/index.mdx#flow)、[服务端托管](../observers/submission/index.mdx#server)
+- [Hosting · 流程](../hosting/index.mdx#flow)、[服务端托管](../hosting/server.mdx)
 - [OBSERVER-4](../core/model/observer.mdx#observer-4)、[OBSERVER-5](../core/model/observer.mdx#observer-5)、[Core · 谁决定什么](../core/index.mdx#responsibility)
 - [Application Identity · 程序实例](../observers/application-identity/index.mdx#instance)

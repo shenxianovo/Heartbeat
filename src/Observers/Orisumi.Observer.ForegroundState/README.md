@@ -1,6 +1,6 @@
 # Orisumi.Observer.ForegroundState
 
-Orisumi.Observer.ForegroundState 在 macOS 上持续采集前台应用，把本机应用和前台应用时段交给 [Runtime](../../Docs/Orisumi.Docs/content/docs/clients/runtime.mdx) 保存和发送。业务规则见 [Foreground State](../../Docs/Orisumi.Docs/content/docs/observers/foreground-state/index.mdx)。
+Orisumi.Observer.ForegroundState 在 macOS 上持续采集前台应用，把本机应用和前台应用时段交给 [Runtime](../../Docs/Orisumi.Docs/content/docs/hosting/runtime.mdx) 保存和发送。业务规则见 [Foreground State](../../Docs/Orisumi.Docs/content/docs/observers/foreground-state/index.mdx)。
 
 时段的 Observation 采用结束后提交，`draft` 请求带 `publishDraft: true`（见 `ForegroundStore.cs`）：时段开始时观测内容先保存，进行中的时段用 `GET /api/observation-drafts/{observationId}` 读到，`endAt` 随每次确认延长；时段结束后保存一个版本，草稿随之移除。
 

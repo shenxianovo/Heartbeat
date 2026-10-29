@@ -8,8 +8,7 @@
     "---Platforms---",
     "web",
     "macos",
-    "---Device Hosting---",
-    "runtime",
+    "---Distribution---",
     "packages"
   ]
 }

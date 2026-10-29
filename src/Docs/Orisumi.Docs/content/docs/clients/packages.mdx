@@ -3,7 +3,7 @@ title: "Packages"
 description: "Observer 安装包的结构、清单和官方目录，以及安装、更新和卸载的步骤"
 ---
 
-每个 Observer 以安装包发布，设备端客户端通过 [Runtime](./runtime.mdx) 安装它。本页写安装包里有什么、官方目录怎样列出它们，以及 Runtime 怎样安装、更新和卸载。为什么用这种方式，见 [ADR · 设备端客户端](../adr/device-client.mdx)。
+每个 Observer 以安装包发布，设备端客户端通过 [Runtime](../hosting/runtime.mdx) 安装它。本页写安装包里有什么、官方目录怎样列出它们，以及 Runtime 怎样安装、更新和卸载。为什么用这种方式，见 [ADR · 设备端客户端](../adr/device-client.mdx)。
 
 ## 安装包 [#package]
 
@@ -44,7 +44,7 @@ foreground-state-0.1.0-osx-arm64.zip
 | `name` | 显示的名称 |
 | `version` | 包的版本，三段数字，例如 `0.1.0` |
 | `target` | 目标操作系统和架构，用 .NET 的 RID 表示，例如 `osx-arm64`、`osx-x64` |
-| `protocol` | 入口使用的 [Observer 管道](./runtime.mdx#observer-pipe)协议版本，目前是 `1` |
+| `protocol` | 入口使用的 [Observer 管道](../hosting/protocol.mdx#observer-pipe)协议版本，目前是 `1` |
 | `entry` | 入口在包中的相对路径。Runtime 直接执行它 |
 
 Runtime 只安装 `format` 和 `protocol` 都是它支持的版本、`target` 是本机平台的包。

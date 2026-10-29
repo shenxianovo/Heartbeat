@@ -145,6 +145,9 @@ function walk(directory: string): string[] {
   });
 }
 const docFiles = walk(docs);
+// The API section also lists the pages generated from the contract, one per operationId.
+const operationPages = new Set(Object.values(JSON.parse(read(`${docs}/api/openapi.json`)).paths as Record<string, Record<string, { operationId?: string }>>)
+  .flatMap((operations) => Object.values(operations).map((operation) => `${docs}/api/${operation.operationId}`)));
 for (const metaFile of docFiles.filter((file) => basename(file) === 'meta.json')) {
   const directory = dirname(metaFile);
   metaDirs.add(directory);
@@ -153,7 +156,7 @@ for (const metaFile of docFiles.filter((file) => basename(file) === 'meta.json')
     if (entry === '...' || entry === 'z...a') { wildcard.add(directory); continue; }
     if (/^---.*---$/.test(entry) || entry.startsWith('!') || entry.startsWith('[')) continue;
     const target = normalize(join(directory, entry));
-    if (!existsSync(join(root, `${target}.mdx`)) && !existsSync(join(root, target))) {
+    if (!existsSync(join(root, `${target}.mdx`)) && !existsSync(join(root, target)) && !operationPages.has(target)) {
       findings.push({ file: metaFile, line: 1, check: 'sidebar', message: `"${entry}" does not exist` });
     }
     listed.add(target);

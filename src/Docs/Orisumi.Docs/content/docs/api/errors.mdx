@@ -1,0 +1,61 @@
+---
+title: "Errors"
+description: "错误响应的格式，各状态码的含义，以及冲突对应的规则"
+---
+
+请求被拒绝时，后端返回一个错误响应。调用方按状态码和 `rule` 判断原因，`detail` 供人阅读。
+
+例如提交的第二个版本基于 VS Code 的旧版本：
+
+```json
+{
+  "type": "about:blank",
+  "title": "Conflict",
+  "status": 409,
+  "detail": "The entity already has a version newer than the submitted predecessor.",
+  "rule": "VERSION-6",
+  "index": 1,
+  "versionId": "01a12e31-9050-7000-8000-000000000121"
+}
+```
+
+## 格式 [#format]
+
+错误响应的 `Content-Type` 是 `application/problem+json`，结构遵循 [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457.html)。
+
+| 必填字段 | 内容 |
+| --- | --- |
+| `type` | 固定为 `about:blank` |
+| `title` | HTTP 状态的简短名称 |
+| `status` | 实际的 HTTP 状态码 |
+| `detail` | 这次错误的具体说明 |
+
+| 扩展字段 | 出现的时机 | 内容 |
+| --- | --- | --- |
+| `rule` | 请求被某条 Core 规则拒绝 | 规则编号，例如 `VERSION-6` |
+| `index` | 提交中的某个版本被拒绝 | 这个版本在 `versions` 中的位置，从 0 开始 |
+| `versionId` | 提交中的某个版本被拒绝 | 这个版本的 VersionId |
+
+## 状态码 [#status]
+
+| 状态码 | 含义 |
+| --- | --- |
+| `400` | 请求本身有错：请求体或参数不符合契约，路径中的 ID 不是 UUID，或者版本违反 Core 规则。违反规则时带 `rule` |
+| `404` | 路径中的身份从未出现过，或者没有 EntitySchema 使用参数中的 `resourceName` |
+| `409` | 请求与已保存的数据冲突，带 `rule`，见[冲突](#conflicts) |
+| `410` | 读取的实体或版本已被删除，读取方把它列为不可读取，见 [HISTORY-8](../core/rules/history.mdx#history-8) |
+| `413` | 请求体超过 10 MiB（10,485,760 字节） |
+| `500` | 后端出现意外错误 |
+
+`409` 的版本本身合法，换一个时机或在实体的另一个状态下可能被接受；`400` 的版本本身需要修改。
+
+## 冲突 [#conflicts]
+
+| 冲突 | `rule` |
+| --- | --- |
+| 版本或观测草稿基于旧版本 | [VERSION-6](../core/model/version.mdx#version-6) |
+| 重试的 VersionId 已保存了不同的内容 | [VERSION-7](../core/model/version.mdx#version-7) |
+| 资源名已被另一个业务类型使用 | [SCHEMA-5](../core/model/schema.mdx#schema-5) |
+| 实体已被删除 | [HISTORY-7](../core/rules/history.mdx#history-7) |
+| VersionId 属于已删除的实体 | [VERSION-9](../core/model/version.mdx#version-9) |
+| 删除仍有业务版本使用的 EntitySchema | [HISTORY-9](../core/rules/history.mdx#history-9) |
