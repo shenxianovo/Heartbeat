@@ -39,6 +39,15 @@ public sealed class LocalObserverSession(ObserverStore runtimeStore) : IObserver
             case "entityStatus":
                 using (var response = await runtimeStore.GetEntityResponseAsync(Entity(parameters, "entityId"), cancellationToken))
                     return JsonLines.Json(new { status = (int)response.StatusCode });
+            case "outcome": return await OutcomeAsync(parameters, cancellationToken);
+            case "versions": return await runtimeStore.ReadVersionsAsync(parameters.GetProperty("versionIds").EnumerateArray()
+                .Select(value => new VersionId(value.GetGuid())), cancellationToken);
+            case "listEntities": case "listReferrers":
+                var path = method == "listEntities" ? "entities" : $"entities/{Entity(parameters, "entityId").Value}/referrers";
+                var allowed = method == "listEntities" ? new[] { "category", "resourceName", "after", "limit" } : new[] { "versions", "after", "limit" };
+                var query = parameters.EnumerateObject().Where(field => field.Value.ValueKind != JsonValueKind.Null && allowed.Contains(field.Name, StringComparer.Ordinal))
+                    .Select(field => field.Name + "=" + Uri.EscapeDataString(field.Value.ToString()));
+                return await runtimeStore.ReadPageAsync(path + "?" + string.Join("&", query), cancellationToken);
             case "repair": return Repair(parameters, requestId ?? throw new ArgumentException("repair requires a request id."));
             default: throw new ArgumentException("Unknown Observer method: " + method);
         }
@@ -61,6 +70,7 @@ public sealed class LocalObserverSession(ObserverStore runtimeStore) : IObserver
         if (operations.GetArrayLength() is < 1 or > 512) throw new ArgumentException("A batch requires 1 through 512 operations.");
         var results = new Dictionary<string, Guid>(StringComparer.Ordinal);
         var references = new Dictionary<string, Guid>(StringComparer.Ordinal);
+        var versions = new HashSet<Guid>();
         foreach (var operation in operations.EnumerateArray())
         {
             var entity = Entity(operation, "entityId");
@@ -86,20 +96,47 @@ public sealed class LocalObserverSession(ObserverStore runtimeStore) : IObserver
                             throw new ArgumentException("Bindings must target declared content references.");
                     }
                     result = local.Draft(entity, parsed, schema,
-                        Enum.Parse<SubmissionStrategy>(strategy), operation.TryGetProperty("publishPreview", out var publish) && publish.GetBoolean());
+                        Enum.Parse<SubmissionStrategy>(strategy), operation.TryGetProperty("publishPreview", out var publish) && publish.GetBoolean(),
+                        operation.TryGetProperty("previousVersionId", out var previous) && previous.ValueKind != JsonValueKind.Null ? new VersionId(previous.GetGuid()) : null);
                     break;
                 case "reference": result = local.Reference(entity); break;
                 case "complete": local.Complete(entity); result = local.Latest(entity)!.Version.VersionId; break;
                 default: throw new ArgumentException("Unknown batch operation.");
             }
+            versions.Add(result.Value.Value);
             if (operation.TryGetProperty("as", out var name))
             {
                 if (!results.TryAdd(name.GetString()!, result.Value.Value)) throw new ArgumentException("Batch result names must be unique.");
                 if (operation.GetProperty("op").GetString() == "reference") references.Add(name.GetString()!, result.Value.Value);
             }
         }
+        local.Metadata("batch:" + requestId, JsonSerializer.Serialize(versions));
         return JsonLines.Json(new { results });
     }));
+
+    private async Task<JsonElement> OutcomeAsync(JsonElement parameters, CancellationToken token)
+    {
+        var batchId = parameters.GetProperty("batchId").GetString()!;
+        var wait = parameters.TryGetProperty("wait", out var value) ? value.GetInt32() : 0;
+        if (wait is < 0 or > 30) throw new ArgumentException("wait must be between 0 and 30 seconds.");
+        var end = DateTimeOffset.UtcNow.AddSeconds(wait);
+        do
+        {
+            var outcome = runtimeStore.Execute(local =>
+            {
+                var payload = local.Metadata("batch:" + batchId) ?? throw new KeyNotFoundException("Unknown batch.");
+                var ids = JsonSerializer.Deserialize<Guid[]>(payload)!.Select(id => new VersionId(id)).ToHashSet();
+                var versions = ids.Select(local.Find).ToArray();
+                if (versions.Any(version => version is null)) return JsonLines.Json(new { state = "discarded" });
+                var rejected = local.Rejection();
+                if (rejected is not null && rejected.Dependents.Append(rejected.Version).Any(version => ids.Contains(version.Version.VersionId)))
+                    return JsonLines.Json(new { state = "rejected", versionId = rejected.Version.Version.VersionId.Value, rejected.Version.Rule, rejected.Version.Detail });
+                return JsonLines.Json(new { state = versions.All(version => version!.State == SubmissionState.Saved) ? "saved" : "pending" });
+            });
+            if (outcome.GetProperty("state").GetString() != "pending" || DateTimeOffset.UtcNow >= end) return outcome;
+            await Task.Delay(TimeSpan.FromMilliseconds(50), token);
+        } while (true);
+    }
 
     private static JsonElement BindContent(JsonElement operation, Dictionary<string, Guid> results)
     {

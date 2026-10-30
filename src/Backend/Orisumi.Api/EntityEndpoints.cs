@@ -1,3 +1,4 @@
+using Orisumi.Application.Management;
 using System.Globalization;
 using System.Text.Json;
 using Orisumi.Application.Entities;
@@ -26,8 +27,12 @@ internal static class EntityEndpoints
             return versions.Count == 0 ? ApiProblem.Create(404, "This EntityId has never been saved.")
                 : Results.Json(new { versions = versions.Select(VersionJson.Saved) });
         }).WithName("listEntityVersions");
-        app.MapDelete("/entities/{entityId}", async (string entityId, EntityService service, CancellationToken token) =>
-            await service.DeleteAsync(new(Id(entityId)), token) ? Results.NoContent() : ApiProblem.Create(404, "This EntityId has never been saved."))
+        app.MapDelete("/entities/{entityId}", async (string entityId, EntityService service, RuntimeCoordinator coordinator, CancellationToken token) =>
+        {
+            var deleted = await service.DeleteAsync(new(Id(entityId)), token);
+            coordinator.Notify();
+            return deleted ? Results.NoContent() : ApiProblem.Create(404, "This EntityId has never been saved.");
+        })
             .WithName("deleteEntity");
         app.MapGet("/entities", ListEntitiesAsync).WithName("listEntities");
         app.MapGet("/observations", ListObservationsAsync).WithName("listObservations");

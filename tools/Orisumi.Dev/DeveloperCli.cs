@@ -17,6 +17,7 @@ internal sealed class DeveloperCli(
             new VersionOption(),
             new EnvironmentCommand(repository, runner, output).CreateCommand(),
             new MacCommand(repository, runner, output).CreateCommand(),
+            new ObserversCommand(repository, runner, output).CreateCommand(),
             new VerificationCommand(repository, runner, output, error).CreateCommand(),
             Group("analyze", "Analyze code structure and size",
                 new QualityCommand(repository, runner, output).CreateCommand(),

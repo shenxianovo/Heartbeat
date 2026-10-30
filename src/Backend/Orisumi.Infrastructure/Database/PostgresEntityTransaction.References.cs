@@ -10,45 +10,75 @@ internal sealed partial class PostgresEntityTransaction
     {
         if (references.Count == 0) return;
         await ExecuteAsync("""
-            INSERT INTO version_references(version_id, path, target_version_id, target_entity_id)
-            SELECT * FROM unnest($1::uuid[], $2::text[], $3::uuid[], $4::uuid[])
-            """, token, references.Select(_ => versionId.Value).ToArray(),
-            references.Select(reference => reference.Position).ToArray(),
-            references.Select(reference => reference.TargetVersionId.Value).ToArray(),
-            references.Select(reference => reference.TargetEntityId.Value).ToArray());
+            INSERT INTO version_references(target_entity_id, version_id)
+            SELECT DISTINCT unnest($1::uuid[]), $2
+            """, token, references.Select(reference => reference.TargetEntityId.Value).ToArray(), versionId.Value);
     }
 
     public async Task<IReadOnlyList<Referrer>> ListReferrersAsync(ReferrerQuery query, CancellationToken cancellationToken)
     {
-        // Limit the distinct versions first, then read every matching position in those versions.
         var current = query.AllVersions ? "" : "AND v.version_id = e.current_version_id";
-        await using var command = Command($"""
-            WITH page AS (
-                SELECT DISTINCT r.version_id
-                FROM version_references r
-                JOIN versions v ON v.version_id = r.version_id
-                JOIN entities e ON e.entity_id = v.entity_id
-                WHERE r.target_entity_id = $1 AND ($2::uuid IS NULL OR r.version_id > $2) {current}
-                ORDER BY r.version_id LIMIT $3
-            )
-            SELECT {Columns}, r.path, r.target_version_id
-            FROM page p
-            JOIN versions v ON v.version_id = p.version_id
-            JOIN version_references r ON r.version_id = p.version_id AND r.target_entity_id = $1
-            ORDER BY v.version_id
-            """, [query.Target.Value, Typed(NpgsqlDbType.Uuid, query.After?.Value), query.Limit + 1]);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        var result = new List<Referrer>();
-        List<VersionReference>? references = null;
-        while (await reader.ReadAsync(cancellationToken))
+        var versions = await ReadAsync($"""
+            SELECT {Columns} FROM version_references r
+            JOIN versions v ON v.version_id = r.version_id
+            JOIN entities e ON e.entity_id = v.entity_id
+            WHERE r.target_entity_id = $1 AND ($2::uuid IS NULL OR r.version_id > $2) {current}
+            ORDER BY r.version_id LIMIT $3
+            """, cancellationToken, query.Target.Value, Typed(NpgsqlDbType.Uuid, query.After?.Value), query.Limit + 1);
+        var references = await ResolveReferencesAsync(versions, cancellationToken);
+        return versions.Select(version => new Referrer(version, references[version.VersionId]
+            .Where(reference => reference.TargetEntityId == query.Target)
+            .Select(reference => new VersionReference(reference.Position, reference.TargetVersionId)).ToArray())).ToArray();
+    }
+
+    private async Task<Dictionary<VersionId, ResolvedReference[]>> ResolveReferencesAsync(
+        IReadOnlyList<EntityVersion> versions, CancellationToken token)
+    {
+        var schemaIds = versions.Where(version => version.SchemaVersionId is not null)
+            .Select(version => version.SchemaVersionId!.Value.Value).Distinct().ToArray();
+        var schemas = schemaIds.Length == 0 ? [] : await ReadAsync($"SELECT {Columns} FROM versions v WHERE version_id = ANY($1)", token, schemaIds);
+        var definitions = schemas.ToDictionary(version => version.VersionId, version => (EntitySchema)version.Content);
+        var references = versions.ToDictionary(version => version.VersionId, version => VersionRules.GetReferences(version.Submission,
+            version.SchemaVersionId is { } id ? definitions[id] : null)
+            .Where(reference => reference.Position is not ("/previousVersionId" or "/schemaVersionId")).ToArray());
+        var targets = references.Values.SelectMany(items => items).Select(reference => reference.Target.Value).Distinct().ToArray();
+        var owners = new Dictionary<Guid, EntityId>();
+        if (targets.Length > 0)
         {
-            if (result.Count == 0 || result[^1].Version.VersionId.Value != reader.GetGuid(1))
-            {
-                references = [];
-                result.Add(new(ReadVersion(reader), references));
-            }
-            references!.Add(new(reader.GetString(7), new(reader.GetGuid(8))));
+            await using var command = Command("""
+                SELECT version_id, entity_id FROM versions WHERE version_id = ANY($1)
+                UNION ALL SELECT version_id, entity_id FROM deleted_versions WHERE version_id = ANY($1)
+                """, [targets]);
+            await using var reader = await command.ExecuteReaderAsync(token);
+            while (await reader.ReadAsync(token)) owners.Add(reader.GetGuid(0), new(reader.GetGuid(1)));
         }
-        return result;
+        return references.ToDictionary(pair => pair.Key, pair => pair.Value.Select(reference =>
+            new ResolvedReference(reference.Position, reference.Target, owners[reference.Target.Value])).ToArray());
+    }
+
+    internal async Task RebuildProjectionsAsync(CancellationToken token)
+    {
+        // Only projections are replaced; immutable versions and deletion identities are untouched.
+        var versions = await ReadAsync($"SELECT {Columns} FROM versions v ORDER BY ordinal, entity_id", token);
+        var references = await ResolveReferencesAsync(versions, token);
+        await ExecuteAsync("DELETE FROM version_references; DELETE FROM observations; DELETE FROM schemas; DELETE FROM entities", token);
+        await ExecuteAsync("""
+            INSERT INTO entities(entity_id, category, schema_id, current_version_id)
+            SELECT DISTINCT ON (v.entity_id) v.entity_id, v.category, s.entity_id, v.version_id
+            FROM versions v LEFT JOIN versions s ON s.version_id = v.schema_version_id
+            ORDER BY v.entity_id, v.ordinal DESC
+            """, token);
+        await ExecuteAsync("""
+            INSERT INTO schemas(entity_id, resource_name)
+            SELECT e.entity_id, v.content->>'resourceName' FROM entities e
+            JOIN versions v ON v.version_id = e.current_version_id WHERE e.category = 'entity_schema'
+            """, token);
+        foreach (var version in versions) await SaveReferencesAsync(version.VersionId, references[version.VersionId], token);
+        var current = await ReadAsync($"SELECT {Columns} FROM versions v JOIN entities e ON e.current_version_id = v.version_id WHERE v.category = 'observation'", token);
+        foreach (var version in current)
+        {
+            // Reuse the ordinary projection conversion, without rewriting the version or duplicating its edges.
+            await SaveProjectionsAsync(version, null, [], token);
+        }
     }
 }

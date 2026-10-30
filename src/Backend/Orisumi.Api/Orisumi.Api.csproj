@@ -14,7 +14,6 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Orisumi.Integration.Tests" />
-    <ProjectReference Include="../../Observers/Orisumi.Observer.ApplicationIdentity/Orisumi.Observer.ApplicationIdentity.csproj" />
     <ProjectReference Include="../Orisumi.Application/Orisumi.Application.csproj" />
     <ProjectReference Include="../Orisumi.Infrastructure/Orisumi.Infrastructure.csproj" />
   </ItemGroup>

@@ -17,18 +17,18 @@ internal sealed class ManagedObserver : IAsyncDisposable
     private string? _error;
     public InstalledObserver Registration { get; private set; }
     public ObserverStore Store { get; }
-    public string State => _state;
-    public string? Error => _error;
+    public string State => Registration.SyncError is not null && Registration.Scope == "deployment" && Registration.Revision == 0 ? "failed" : _state;
+    public string? Error => _error ?? (Registration.Scope == "deployment" && Registration.Revision == 0 ? Registration.SyncError ?? "Waiting for registration." : null);
     public string? Diagnostic { get; private set; }
 
-    public ManagedObserver(PackageStore packages, InstalledObserver registration, HttpClient http)
+    public ManagedObserver(PackageStore packages, InstalledObserver registration, HttpClient http, Func<bool>? canSend = null)
     {
         _packages = packages;
         Registration = registration;
         var directory = packages.InstanceDirectory(registration.InstanceId);
         Directory.CreateDirectory(Path.Combine(directory, "data"));
         Directory.CreateDirectory(Path.Combine(packages.Root, "shared"));
-        Store = new ObserverStore(Path.Combine(directory, "store.sqlite"), new(registration.InstanceId), http) { PublishPreviews = false };
+        Store = new ObserverStore(Path.Combine(directory, "store.sqlite"), new(registration.InstanceId), http) { PublishPreviews = false, CanSend = canSend ?? (() => true) };
         _session = new(Store);
         _delivery = DeliverAsync(_deliveryStop.Token);
     }
@@ -42,7 +42,7 @@ internal sealed class ManagedObserver : IAsyncDisposable
 
     public void Start()
     {
-        if (!Registration.Installed || !Registration.Enabled || _run is { IsCompleted: false }) return;
+        if (Registration.Removed || (Registration.Scope == "deployment" && Registration.Revision == 0) || !Registration.Installed || !Registration.Enabled || _run is { IsCompleted: false }) return;
         _runStop?.Dispose();
         _runStop = new();
         _error = null;
@@ -127,7 +127,7 @@ internal sealed class ManagedObserver : IAsyncDisposable
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException || !connection.IsCancellationRequested)
                 {
-                    await WriteAsync(new { id, error = new { code = exception is HttpRequestException or OperationCanceledException ? "unavailable" : "invalid_request", message = exception.Message } }, connection.Token);
+                    await WriteAsync(new { id, error = new { code = exception is KeyNotFoundException ? "not_found" : exception is HttpRequestException or OperationCanceledException ? "unavailable" : "invalid_request", message = exception.Message } }, connection.Token);
                 }
             }
         }, CancellationToken.None);

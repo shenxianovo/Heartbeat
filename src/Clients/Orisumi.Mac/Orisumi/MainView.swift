@@ -2,37 +2,49 @@ import AppKit
 import OrisumiClient
 import SwiftUI
 
-/// The main window: one view of data for each installed Observer. Managing Observers is in Settings.
+/// The main window: each Observer's data, and the Observers on this Mac and the other devices, to use and manage.
+/// How Orisumi behaves by default is in Settings.
 struct MainView: View {
     static let windowId = "main"
     let model: RuntimeModel
+    let management: ManagementModel
     @Bindable var navigation: Navigation
-    @Environment(\.openSettings) private var openSettings
+    @State private var pairing = false
 
     var body: some View {
         NavigationSplitView {
-            Sidebar(model: model, selection: $navigation.selection) { settings(.general) }
-                .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 280)
+            Sidebar(model: model, management: management, selection: $navigation.selection, pair: { pairing = true })
+                .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 300)
         } detail: {
-            if let packageId = navigation.selection, let observer = model.observer(packageId), observer.installed {
-                ObserverPage(model: model, observer: observer, openSettings: settings)
+            switch navigation.selection {
+            case .view(let packageId):
+                if let observer = model.observer(packageId), observer.installed {
+                    ObserverPage(model: model, observer: observer) {
+                        navigation.managed = packageId
+                        navigation.selection = .thisMac
+                    }
                     .id(packageId)
-            } else if model.installed.isEmpty {
-                ContentUnavailableView {
-                    Label("还没有在记录的数据", systemImage: "puzzlepiece.extension")
-                } description: {
-                    Text("添加一个 Observer，它会直接开始记录。")
-                } actions: {
-                    Button("添加 Observer…") { settings(.observers, adding: true) }
+                } else {
+                    ContentUnavailableView("这个 Observer 已卸载", systemImage: "puzzlepiece.extension")
                 }
-            } else {
-                ContentUnavailableView("选择一个视图", systemImage: "sidebar.left")
+            case .host(let hostId):
+                if let host = management.hosts.first(where: { $0.id == hostId }) {
+                    RemoteHostPage(host: host, management: management, navigation: navigation).id(hostId)
+                } else {
+                    ContentUnavailableView("读不到这台机器", systemImage: "network.slash",
+                                           description: management.error.map { Text($0) })
+                }
+            case .thisMac, nil:
+                ThisMacPage(model: model, management: management, navigation: navigation)
             }
         }
-        .frame(minWidth: 860, minHeight: 600)
+        .frame(minWidth: 900, minHeight: 600)
+        .sheet(isPresented: $pairing) { PairingSheet(host: nil, management: management) }
         .onAppear {
             navigation.windowVisible = true
-            selectFirst()
+            if navigation.selection == nil {
+                navigation.selection = model.installed.first.map { .view($0.packageId) } ?? .thisMac
+            }
             Task {
                 await model.refresh()
                 await model.refreshCatalog()
@@ -40,41 +52,76 @@ struct MainView: View {
             NSApp.activate()
         }
         .onDisappear { navigation.windowVisible = false }
-        .onChange(of: model.installed.map(\.packageId)) { selectFirst() }
-    }
-
-    private var settings: SettingsOpener { SettingsOpener(navigation: navigation, openSettings: openSettings) }
-
-    /// Keeps a view selected while there is one.
-    private func selectFirst() {
-        if let selection = navigation.selection, model.installed.contains(where: { $0.packageId == selection }) { return }
-        navigation.selection = model.installed.first?.packageId
+        .task {
+            while !Task.isCancelled {
+                await management.refresh()
+                try? await Task.sleep(for: .seconds(5))
+            }
+        }
     }
 }
 
 struct Sidebar: View {
     let model: RuntimeModel
-    @Binding var selection: String?
-    let openSettings: () -> Void
+    let management: ManagementModel
+    @Binding var selection: Navigation.Destination?
+    let pair: () -> Void
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         List(selection: $selection) {
-            ForEach(model.installed) { observer in
-                SidebarRow(observer: observer).tag(observer.packageId)
+            if !model.installed.isEmpty {
+                Section("记录") {
+                    ForEach(model.installed) { observer in
+                        SidebarRow(observer: observer).tag(Navigation.Destination.view(observer.packageId))
+                    }
+                }
+            }
+            Section("设备") {
+                HStack {
+                    Label("这台 Mac", systemImage: "laptopcomputer")
+                    Spacer(minLength: 4)
+                    if ObserverText.hasFailure(model) {
+                        Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.red)
+                    }
+                }
+                .tag(Navigation.Destination.thisMac)
+                ForEach(remoteHosts) { host in
+                    HStack {
+                        Label(host.name, systemImage: host.kind == "server" ? "server.rack" : "laptopcomputer")
+                            .foregroundStyle(host.revoked ? .secondary : .primary)
+                        Spacer(minLength: 4)
+                        if host.revoked {
+                            Text("已移除").font(.caption).foregroundStyle(.secondary)
+                        } else if !host.connected {
+                            Text("离线").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    .tag(Navigation.Destination.host(host.id))
+                }
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            Button(action: openSettings) {
-                Label("设置", systemImage: "gearshape")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
+            HStack {
+                Button(action: pair) {
+                    Label("接入设备", systemImage: "plus")
+                }
+                .help("签发配对码，接入一台设备或服务器")
+                Spacer()
+                Button("设置", systemImage: "gearshape") { openSettings() }
+                    .labelStyle(.iconOnly)
+                    .help("外观、登录时启动和连接（⌘,）")
             }
             .buttonStyle(.borderless)
             .foregroundStyle(.secondary)
-            .help("Observer 的管理、外观和连接（⌘,）")
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
         }
+    }
+
+    /// Hosts other than this Mac's own Runtime; removed ones go last.
+    private var remoteHosts: [ManagedHost] {
+        management.hosts.filter { $0.id != model.host?.hostId }.sorted { !$0.revoked && $1.revoked }
     }
 }
 

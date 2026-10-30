@@ -27,13 +27,176 @@ namespace Orisumi.Infrastructure.Database.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "btree_gist");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("Orisumi.Infrastructure.Database.CurrentObservation", b =>
+            modelBuilder.Entity("Orisumi.Infrastructure.Database.DeletedVersion", b =>
+                {
+                    b.Property<Guid>("VersionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("version_id");
+
+                    b.Property<Guid>("EntityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("entity_id");
+
+                    b.HasKey("VersionId")
+                        .HasName("pk_deleted_versions");
+
+                    b.HasIndex("EntityId")
+                        .HasDatabaseName("ix_deleted_versions_entity_id");
+
+                    b.ToTable("deleted_versions", (string)null);
+                });
+
+            modelBuilder.Entity("Orisumi.Infrastructure.Database.StoredEntity", b =>
+                {
+                    b.Property<Guid>("EntityId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("entity_id");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("category");
+
+                    b.Property<Guid>("CurrentVersionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("current_version_id");
+
+                    b.Property<Guid?>("SchemaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("schema_id");
+
+                    b.HasKey("EntityId")
+                        .HasName("pk_entities");
+
+                    b.HasIndex("CurrentVersionId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_entities_current_version_id");
+
+                    b.HasIndex("Category", "EntityId")
+                        .HasDatabaseName("ix_entities_category_entity_id");
+
+                    b.HasIndex("SchemaId", "EntityId")
+                        .HasDatabaseName("ix_entities_schema_id_entity_id");
+
+                    b.ToTable("entities", (string)null);
+                });
+
+            modelBuilder.Entity("Orisumi.Infrastructure.Database.StoredHost", b =>
+                {
+                    b.Property<Guid>("HostId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("host_id");
+
+                    b.Property<string>("CredentialHash")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("credential_hash");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("kind");
+
+                    b.Property<DateTimeOffset?>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_seen_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<bool>("Revoked")
+                        .HasColumnType("boolean")
+                        .HasColumnName("revoked");
+
+                    b.HasKey("HostId")
+                        .HasName("pk_observer_hosts");
+
+                    b.ToTable("observer_hosts", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_observer_hosts_kind", "kind IN ('device', 'server')");
+                        });
+                });
+
+            modelBuilder.Entity("Orisumi.Infrastructure.Database.StoredInstance", b =>
+                {
+                    b.Property<Guid>("EntityId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("entity_id");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<Guid>("HostId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("host_id");
+
+                    b.Property<string>("InstanceKey")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("instance_key");
+
+                    b.Property<long>("LastLocalSequence")
+                        .HasColumnType("bigint")
+                        .HasColumnName("last_local_sequence");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<bool>("Removed")
+                        .HasColumnType("boolean")
+                        .HasColumnName("removed");
+
+                    b.Property<DateTimeOffset?>("ReportedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reported_at");
+
+                    b.Property<long>("Revision")
+                        .HasColumnType("bigint")
+                        .HasColumnName("revision");
+
+                    b.Property<string>("Settings")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("settings");
+
+                    b.Property<string>("Status")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("status");
+
+                    b.HasKey("EntityId")
+                        .HasName("pk_observer_instances");
+
+                    b.HasIndex("InstanceKey")
+                        .HasDatabaseName("ix_observer_instances_instance_key")
+                        .HasFilter("removed = false");
+
+                    b.HasIndex("HostId", "InstanceKey")
+                        .IsUnique()
+                        .HasDatabaseName("ux_observer_instances_host_id_instance_key")
+                        .HasFilter("removed = false");
+
+                    b.ToTable("observer_instances", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_observer_instances_settings", "jsonb_typeof(settings) = 'object'");
+                        });
+                });
+
+            modelBuilder.Entity("Orisumi.Infrastructure.Database.StoredObservation", b =>
                 {
                     b.Property<Guid>("EntityId")
                         .HasColumnType("uuid")
                         .HasColumnName("entity_id");
 
-                    b.Property<Guid>("ContentSchemaId")
+                    b.Property<Guid?>("ContentSchemaId")
                         .HasColumnType("uuid")
                         .HasColumnName("content_schema_id");
 
@@ -46,125 +209,44 @@ namespace Orisumi.Infrastructure.Database.Migrations
                         .HasColumnName("version_id");
 
                     b.HasKey("EntityId")
-                        .HasName("pk_current_observations");
+                        .HasName("pk_observations");
 
                     b.HasIndex("FactRange")
-                        .HasDatabaseName("ix_current_observations_fact_range");
+                        .HasDatabaseName("ix_observations_fact_range");
 
                     NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("FactRange"), "gist");
 
                     b.HasIndex("VersionId")
-                        .HasDatabaseName("ix_current_observations_version_id");
+                        .IsUnique()
+                        .HasDatabaseName("ux_observations_version_id");
 
                     b.HasIndex("ContentSchemaId", "FactRange")
-                        .HasDatabaseName("ix_current_observations_content_schema_id_fact_range");
+                        .HasDatabaseName("ix_observations_content_schema_id_fact_range");
 
                     NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("ContentSchemaId", "FactRange"), "gist");
 
-                    b.ToTable("current_observations", (string)null);
+                    b.ToTable("observations", (string)null);
                 });
 
-            modelBuilder.Entity("Orisumi.Infrastructure.Database.ServerObserverRegistration", b =>
-                {
-                    b.Property<Guid>("EntityId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("entity_id");
-
-                    b.Property<string>("ObserverKey")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("observer_key");
-
-                    b.HasKey("EntityId")
-                        .HasName("pk_server_observers");
-
-                    b.HasIndex("ObserverKey")
-                        .IsUnique()
-                        .HasDatabaseName("ux_server_observers_observer_key");
-
-                    b.ToTable("server_observers", (string)null);
-                });
-
-            modelBuilder.Entity("Orisumi.Infrastructure.Database.ServerObserverState", b =>
+            modelBuilder.Entity("Orisumi.Infrastructure.Database.StoredSchema", b =>
                 {
                     b.Property<Guid>("EntityId")
                         .HasColumnType("uuid")
                         .HasColumnName("entity_id");
-
-                    b.Property<string>("Payload")
-                        .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("payload");
-
-                    b.HasKey("EntityId")
-                        .HasName("pk_server_observer_state");
-
-                    b.ToTable("server_observer_state", (string)null);
-                });
-
-            modelBuilder.Entity("Orisumi.Infrastructure.Database.ServerObserverSubmission", b =>
-                {
-                    b.Property<Guid>("EntityId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("entity_id");
-
-                    b.Property<string>("Payload")
-                        .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("payload");
-
-                    b.HasKey("EntityId")
-                        .HasName("pk_server_observer_submissions");
-
-                    b.ToTable("server_observer_submissions", (string)null);
-                });
-
-            modelBuilder.Entity("Orisumi.Infrastructure.Database.StoredEntity", b =>
-                {
-                    b.Property<Guid>("EntityId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("entity_id");
-
-                    b.Property<string>("Category")
-                        .HasColumnType("text")
-                        .HasColumnName("category");
-
-                    b.Property<Guid?>("CurrentVersionId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("current_version_id");
-
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("deleted_at");
 
                     b.Property<string>("ResourceName")
+                        .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("resource_name");
 
-                    b.Property<Guid?>("SchemaId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("schema_id");
-
                     b.HasKey("EntityId")
-                        .HasName("pk_entities");
+                        .HasName("pk_schemas");
 
                     b.HasIndex("ResourceName")
                         .IsUnique()
-                        .HasDatabaseName("ux_entities_resource_name")
-                        .HasFilter("resource_name IS NOT NULL");
+                        .HasDatabaseName("ux_schemas_resource_name");
 
-                    b.HasIndex("Category", "EntityId")
-                        .HasDatabaseName("ix_entities_category_entity_id");
-
-                    b.HasIndex("SchemaId", "EntityId")
-                        .HasDatabaseName("ix_entities_schema_id_entity_id");
-
-                    b.ToTable("entities", null, t =>
-                        {
-                            t.HasCheckConstraint("ck_entities_deleted_state", "(deleted_at IS NULL AND category IS NOT NULL AND current_version_id IS NOT NULL)\nOR (deleted_at IS NOT NULL AND category IS NULL AND schema_id IS NULL\n    AND resource_name IS NULL AND current_version_id IS NULL)");
-                        });
+                    b.ToTable("schemas", (string)null);
                 });
 
             modelBuilder.Entity("Orisumi.Infrastructure.Database.StoredVersion", b =>
@@ -188,8 +270,8 @@ namespace Orisumi.Infrastructure.Database.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("entity_id");
 
-                    b.Property<int>("Ordinal")
-                        .HasColumnType("integer")
+                    b.Property<long>("Ordinal")
+                        .HasColumnType("bigint")
                         .HasColumnName("ordinal");
 
                     b.Property<Guid?>("PreviousVersionId")
@@ -207,8 +289,15 @@ namespace Orisumi.Infrastructure.Database.Migrations
                     b.HasKey("VersionId")
                         .HasName("pk_versions");
 
+                    b.HasIndex("EntityId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_versions_entity_id")
+                        .HasFilter("previous_version_id IS NULL");
+
                     b.HasIndex("PreviousVersionId")
-                        .HasDatabaseName("ix_versions_previous_version_id");
+                        .IsUnique()
+                        .HasDatabaseName("ux_versions_previous_version_id")
+                        .HasFilter("previous_version_id IS NOT NULL");
 
                     b.HasIndex("SchemaVersionId")
                         .HasDatabaseName("ix_versions_schema_version_id");
@@ -222,97 +311,72 @@ namespace Orisumi.Infrastructure.Database.Migrations
 
             modelBuilder.Entity("Orisumi.Infrastructure.Database.StoredVersionReference", b =>
                 {
-                    b.Property<Guid>("VersionId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("version_id");
-
-                    b.Property<string>("Path")
-                        .HasColumnType("text")
-                        .HasColumnName("path");
-
                     b.Property<Guid>("TargetEntityId")
                         .HasColumnType("uuid")
                         .HasColumnName("target_entity_id");
 
-                    b.Property<Guid>("TargetVersionId")
+                    b.Property<Guid>("VersionId")
                         .HasColumnType("uuid")
-                        .HasColumnName("target_version_id");
+                        .HasColumnName("version_id");
 
-                    b.HasKey("VersionId", "Path")
+                    b.HasKey("TargetEntityId", "VersionId")
                         .HasName("pk_version_references");
 
-                    b.HasIndex("TargetEntityId", "VersionId")
-                        .HasDatabaseName("ix_version_references_target_entity_id_version_id");
+                    b.HasIndex("VersionId")
+                        .HasDatabaseName("ix_version_references_version_id");
 
                     b.ToTable("version_references", (string)null);
                 });
 
-            modelBuilder.Entity("Orisumi.Infrastructure.Database.VersionTombstone", b =>
+            modelBuilder.Entity("Orisumi.Infrastructure.Database.StoredEntity", b =>
                 {
-                    b.Property<Guid>("VersionId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("version_id");
-
-                    b.Property<Guid>("EntityId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("entity_id");
-
-                    b.HasKey("VersionId")
-                        .HasName("pk_version_tombstones");
-
-                    b.HasIndex("EntityId")
-                        .HasDatabaseName("ix_version_tombstones_entity_id");
-
-                    b.ToTable("version_tombstones", (string)null);
+                    b.HasOne("Orisumi.Infrastructure.Database.StoredVersion", null)
+                        .WithMany()
+                        .HasForeignKey("CurrentVersionId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_entities_versions_current_version_id");
                 });
 
-            modelBuilder.Entity("Orisumi.Infrastructure.Database.CurrentObservation", b =>
+            modelBuilder.Entity("Orisumi.Infrastructure.Database.StoredInstance", b =>
+                {
+                    b.HasOne("Orisumi.Infrastructure.Database.StoredHost", null)
+                        .WithMany()
+                        .HasForeignKey("HostId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_observer_instances_observer_hosts_host_id");
+                });
+
+            modelBuilder.Entity("Orisumi.Infrastructure.Database.StoredObservation", b =>
                 {
                     b.HasOne("Orisumi.Infrastructure.Database.StoredEntity", null)
                         .WithMany()
                         .HasForeignKey("EntityId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
-                        .HasConstraintName("fk_current_observations_entities_entity_id");
+                        .HasConstraintName("fk_observations_entities_entity_id");
 
                     b.HasOne("Orisumi.Infrastructure.Database.StoredVersion", null)
                         .WithMany()
                         .HasForeignKey("VersionId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
-                        .HasConstraintName("fk_current_observations_versions_version_id");
+                        .HasConstraintName("fk_observations_versions_version_id");
                 });
 
-            modelBuilder.Entity("Orisumi.Infrastructure.Database.ServerObserverState", b =>
-                {
-                    b.HasOne("Orisumi.Infrastructure.Database.ServerObserverRegistration", null)
-                        .WithMany()
-                        .HasForeignKey("EntityId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_server_observer_state_server_observers_entity_id");
-                });
-
-            modelBuilder.Entity("Orisumi.Infrastructure.Database.ServerObserverSubmission", b =>
-                {
-                    b.HasOne("Orisumi.Infrastructure.Database.ServerObserverRegistration", null)
-                        .WithMany()
-                        .HasForeignKey("EntityId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_server_observer_submissions_server_observers_entity_id");
-                });
-
-            modelBuilder.Entity("Orisumi.Infrastructure.Database.StoredVersion", b =>
+            modelBuilder.Entity("Orisumi.Infrastructure.Database.StoredSchema", b =>
                 {
                     b.HasOne("Orisumi.Infrastructure.Database.StoredEntity", null)
                         .WithMany()
                         .HasForeignKey("EntityId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired()
-                        .HasConstraintName("fk_versions_entities_entity_id");
+                        .HasConstraintName("fk_schemas_entities_entity_id");
+                });
 
+            modelBuilder.Entity("Orisumi.Infrastructure.Database.StoredVersion", b =>
+                {
                     b.HasOne("Orisumi.Infrastructure.Database.StoredVersion", null)
                         .WithMany()
                         .HasForeignKey("PreviousVersionId")
@@ -328,29 +392,12 @@ namespace Orisumi.Infrastructure.Database.Migrations
 
             modelBuilder.Entity("Orisumi.Infrastructure.Database.StoredVersionReference", b =>
                 {
-                    b.HasOne("Orisumi.Infrastructure.Database.StoredEntity", null)
-                        .WithMany()
-                        .HasForeignKey("TargetEntityId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
-                        .HasConstraintName("fk_version_references_entities_target_entity_id");
-
                     b.HasOne("Orisumi.Infrastructure.Database.StoredVersion", null)
                         .WithMany()
                         .HasForeignKey("VersionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_version_references_versions_version_id");
-                });
-
-            modelBuilder.Entity("Orisumi.Infrastructure.Database.VersionTombstone", b =>
-                {
-                    b.HasOne("Orisumi.Infrastructure.Database.StoredEntity", null)
-                        .WithMany()
-                        .HasForeignKey("EntityId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
-                        .HasConstraintName("fk_version_tombstones_entities_entity_id");
                 });
 #pragma warning restore 612, 618
         }

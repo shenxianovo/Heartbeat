@@ -15,6 +15,7 @@ public final class RuntimeModel {
     }
 
     public private(set) var state: State = .stopped
+    public private(set) var host: RuntimeHostStatus?
     public private(set) var observers: [ObserverStatus] = []
     public private(set) var catalog: [CatalogPackage] = []
     public private(set) var catalogError: String?
@@ -39,11 +40,11 @@ public final class RuntimeModel {
         transport.onExit = { [weak self] exit in self?.exited(exit) }
     }
 
-    public var installed: [ObserverStatus] { observers.filter(\.installed) }
-    public var uninstalled: [ObserverStatus] { observers.filter { !$0.installed } }
+    public var installed: [ObserverStatus] { observers.filter { $0.installed && !$0.removed } }
+    public var uninstalled: [ObserverStatus] { observers.filter { !$0.installed || $0.removed } }
 
     public func observer(_ packageId: String) -> ObserverStatus? {
-        observers.first { $0.packageId == packageId }
+        observers.first { $0.packageId == packageId && !$0.removed } ?? observers.last { $0.packageId == packageId }
     }
 
     public func update(for packageId: String) -> CatalogPackage? {
@@ -122,6 +123,7 @@ public final class RuntimeModel {
         do {
             let list: ObserverList = try await call("list", Empty())
             observers = list.observers
+            host = list.host
             if state == .starting { state = .running }
         } catch {
             if transport.isRunning { state = .failed(error.localizedDescription) }
@@ -139,8 +141,8 @@ public final class RuntimeModel {
         }
     }
 
-    public func install(_ packageId: String) async {
-        await manage(packageId) { try await self.send("install", PackageRequest(packageId: packageId)) }
+    public func install(_ packageId: String, newInstance: Bool = false) async {
+        await manage(packageId) { try await self.send("install", InstallRequest(packageId: packageId, newInstance: newInstance)) }
     }
 
     public func updatePackage(_ packageId: String) async {
@@ -161,6 +163,12 @@ public final class RuntimeModel {
         }
     }
 
+    public func pair(code: String, name: String) async {
+        await manage("pairing") { try await self.send("pair", PairRequest(code: code, name: name)) }
+    }
+    public func setSettings(_ packageId: String, settings: JSONValue) async {
+        await manage(packageId) { try await self.send("setSettings", SettingsRequest(packageId: packageId, settings: settings)) }
+    }
     private func manage(_ packageId: String, _ operation: @escaping () async throws -> Void) async {
         guard !busy.contains(packageId) else { return }
         busy.insert(packageId)
@@ -186,9 +194,12 @@ public final class RuntimeModel {
 
     private struct Empty: Encodable {}
     private struct Ignored: Decodable { init(from decoder: any Decoder) {} }
+    private struct PairRequest: Encodable { var code: String; var name: String }
+    private struct SettingsRequest: Encodable { var packageId: String; var settings: JSONValue }
+    private struct InstallRequest: Encodable { var packageId: String; var newInstance: Bool }
     private struct PackageRequest: Encodable { var packageId: String }
     private struct EnableRequest: Encodable { var packageId: String; var enabled: Bool }
-    private struct ObserverList: Decodable { var observers: [ObserverStatus] }
+    private struct ObserverList: Decodable { var host: RuntimeHostStatus; var observers: [ObserverStatus] }
     private struct CatalogList: Decodable { var packages: [CatalogPackage] }
     private struct VersionsRequest: Encodable { var instanceId: UUID; var versionIds: [UUID] }
 }
@@ -237,6 +248,7 @@ public enum CatalogAction: Equatable, Sendable {
     case install
     /// Uninstalled earlier; installing again reuses the program instance.
     case reinstall
+    case newInstance
     case update(to: String)
     /// Installed and current: the sheet opens it in the window.
     case open
@@ -247,6 +259,7 @@ public enum CatalogAction: Equatable, Sendable {
 extension RuntimeModel {
     public func action(for package: CatalogPackage) -> CatalogAction {
         guard package.compatible else { return .unavailable }
+        if observer(package.id)?.removed == true { return .newInstance }
         if package.hasUpdate { return .update(to: package.version) }
         if package.installedVersion != nil { return .open }
         return observer(package.id) == nil ? .install : .reinstall
@@ -256,7 +269,7 @@ extension RuntimeModel {
     public var catalogByAction: [CatalogPackage] {
         func rank(_ package: CatalogPackage) -> Int {
             switch action(for: package) {
-            case .install, .reinstall, .update: 0
+            case .install, .reinstall, .newInstance, .update: 0
             case .open: 1
             case .unavailable: 2
             }

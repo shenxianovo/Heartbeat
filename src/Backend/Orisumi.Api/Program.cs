@@ -1,3 +1,4 @@
+using Orisumi.Application.Management;
 using System.Text.Json;
 using Orisumi.Api;
 using Orisumi.Application.Entities;
@@ -16,7 +17,7 @@ if (string.IsNullOrWhiteSpace(connectionString))
 }
 
 builder.Services.AddOrisumiInfrastructure(connectionString);
-builder.Services.AddServerObservers(builder.Configuration);
+builder.Services.AddSingleton<RuntimeCoordinator>();
 builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = true);
 
 builder.Services.ConfigureHttpJsonOptions(options =>
@@ -34,6 +35,7 @@ app.UseExceptionHandler(handler => handler.Run(async context =>
     {
         BadHttpRequestException { StatusCode: StatusCodes.Status413PayloadTooLarge } =>
             ApiProblem.Create(413, "The request body must not exceed 10 MiB."),
+        ManagementException management => ApiProblem.Management(management),
         EntityDeletedException => ApiProblem.Create(410, exception.Message),
         ResourceNotFoundException => ApiProblem.Create(404, exception.Message),
         ModelViolationException violation => ApiProblem.Create(ApiProblem.RuleStatus(violation.Rule), violation.Message, violation.Rule),
@@ -52,6 +54,8 @@ app.UseStatusCodePages(async context =>
     }
 });
 
+app.UseHostCredentials();
+app.MapManagement();
 app.MapEntities();
 app.MapObservationPreviews();
 app.Run();

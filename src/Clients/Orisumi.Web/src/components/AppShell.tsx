@@ -14,6 +14,7 @@ const NAV = [
   { to: "/applications", label: "应用", exact: true },
   { to: "/entities", label: "实体", exact: false },
   { to: "/observers", label: "Observer", exact: true },
+  { to: "/hosts", label: "托管", exact: true },
 ] as const;
 
 export function AppShell() {

@@ -31,7 +31,11 @@ export const caseId = 'storage-projections';
 
 ## 测试实现 [#implementation]
 
-尚无测试。本页的预期由实现任务按新的表结构补齐。
+以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
+
+- 删除观测内容后，不限类型的时间查询仍返回 Observation，原内容类型的查询不再返回，引用方照常列出：`ProjectionTests.DeletingContentRemovesItsTypeFromTimeQueriesButKeepsObservationAndReferences`。
+- 清空四张投影后从权威表重建，历史版本、指向已删除目标的引用和全部查询结果与重建前相同：`ProjectionTests.RebuildPreservesHistoryDeletedTargetsAndAllQueryResults`。
+- 未覆盖：`VERSION-4` 指向其他实体的前驱；重建期间权威表不被写入的检查；EntitySchema 删除后资源名复用由 [Deletion](../api/deletion.mdx) 覆盖。
 
 ## 执行结果 [#results]
 

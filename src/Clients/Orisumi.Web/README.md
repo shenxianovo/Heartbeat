@@ -11,6 +11,7 @@ Orisumi.Web 是 Orisumi 的 Web 控制台，只在本机使用。页面和视图
 | `/entities/$entityId?version=` | 实体页：内容、引用、版本和删除                                                                |
 | `/observers`                   | [Observer](../../Docs/Orisumi.Docs/content/docs/clients/web.mdx#observers)                    |
 | `/applications`                | [应用](../../Docs/Orisumi.Docs/content/docs/clients/web.mdx#applications)                     |
+| `/hosts`                       | [托管](../../Docs/Orisumi.Docs/content/docs/clients/web.mdx#hosts)                            |
 | `/versions/$versionId`         | 读取版本后跳到所属实体，并选中这个版本                                                        |
 
 根路由读 `stack` 参数，所以任何页面都可以打开右侧的面板。
@@ -25,6 +26,7 @@ Orisumi.Web 是 Orisumi 的 Web 控制台，只在本机使用。页面和视图
 | 时间线     | `src/components/day/Timeline.tsx`                                                         |
 | 实体的名字 | `src/lib/titles.ts`                                                                       |
 | 应用产品   | `src/lib/applications.ts`、`src/hooks/useApplications.ts`、`src/components/applications/` |
+| 托管       | `src/api/management.ts`、`src/hooks/useManagement.ts`、`src/components/hosts/`            |
 
 主题存在 localStorage 的 `orisumi.theme`，写到 `<html data-theme>`；基调存在 `orisumi.tone`，写到 `<html data-tone>`。吉祥物出现在空状态、读取和读不到的提示里，顶栏和标签页图标用 `public/mascots/macos-128.png`。
 

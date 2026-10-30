@@ -7,9 +7,32 @@ using Orisumi.Core;
 
 namespace Orisumi.Observer.Runtime;
 
-internal sealed record PackageManifest(int Format, string Id, string Name, string Version, string Target, int Protocol, string Entry);
-internal sealed record CatalogPackage(string Id, string Name, string Description, string Version, string Target, string Url, string Sha256, int Protocol = 1, int Format = 1);
-internal sealed record InstalledObserver(string PackageId, string Name, string Version, Guid InstanceId, bool Installed, bool Enabled, JsonElement Settings);
+internal sealed record PackageManifest(int Format, string Id, string Name, string Version, string Target, int Protocol, string Entry, string Scope = "host");
+internal sealed record CatalogPackage(string Id, string Name, string Description, string Version, string Target, string Url, string Sha256, int Protocol = 1, int Format = 1, string Scope = "host");
+internal sealed record InstalledObserver(string PackageId, string Name, string Version, Guid InstanceId, bool Installed, bool Enabled, JsonElement Settings,
+    string Scope = "host", long Revision = 0, long NextSequence = 1, bool Removed = false,
+    bool? ServerEnabled = null, JsonElement? ServerSettings = null, LocalChange[]? Changes = null, string? SyncError = null)
+{
+    [System.Text.Json.Serialization.JsonIgnore]
+    public LocalChange[] Pending => Changes ?? [];
+    public InstalledObserver Change(bool? enabled = null, JsonElement? settings = null) => this with
+    {
+        Enabled = enabled ?? Enabled, Settings = settings ?? Settings, NextSequence = NextSequence + 1,
+        Changes = [.. Pending, new(NextSequence, enabled, settings)], SyncError = null,
+    };
+    public InstalledObserver Merge(InstanceConfiguration config)
+    {
+        if (config.Revision < Revision || Removed && !config.Removed) return this;
+        var pending = config.Removed ? [] : Pending.Where(change => change.Sequence > config.LastLocalSequence).ToArray();
+        var enabled = config.Enabled;
+        var settings = config.Settings;
+        foreach (var change in pending) { enabled = change.Enabled ?? enabled; settings = change.Settings ?? settings; }
+        return this with { Enabled = enabled, Settings = settings, ServerEnabled = config.Enabled, ServerSettings = config.Settings,
+            Revision = config.Revision, Removed = config.Removed, Changes = pending, SyncError = null };
+    }
+}
+internal sealed record LocalChange(long Sequence, bool? Enabled, JsonElement? Settings);
+internal sealed record InstanceConfiguration(Guid EntityId, bool Enabled, JsonElement Settings, long Revision, long LastLocalSequence, bool Removed);
 
 internal sealed partial class PackageStore : IDisposable
 {
@@ -19,7 +42,7 @@ internal sealed partial class PackageStore : IDisposable
     private readonly string? _bundled;
     private readonly Uri? _catalog;
     private readonly HttpClient _http;
-    private readonly Dictionary<string, InstalledObserver> _observers;
+    private readonly Dictionary<Guid, InstalledObserver> _observers;
     public string Root { get; }
     public static string Target => RuntimeInformation.RuntimeIdentifier;
     public IReadOnlyList<InstalledObserver> Observers => _observers.Values.ToArray();
@@ -37,7 +60,7 @@ internal sealed partial class PackageStore : IDisposable
             _http = http;
             if (catalog is not null && catalog.Scheme != "https") throw new ArgumentException("The catalog requires HTTPS.");
             _observers = (File.Exists(_registry) ? JsonSerializer.Deserialize<InstalledObserver[]>(File.ReadAllText(_registry), Json)! : [])
-                .ToDictionary(item => item.PackageId, StringComparer.Ordinal);
+                .ToDictionary(item => item.InstanceId);
             // A process interruption before registry replacement leaves only an unused staged package.
             var staging = Path.Combine(Root, "staging");
             if (Directory.Exists(staging)) Directory.Delete(staging, true);
@@ -46,7 +69,7 @@ internal sealed partial class PackageStore : IDisposable
         catch { _lock.Dispose(); throw; }
     }
 
-    public InstalledObserver Find(string packageId) => _observers.GetValueOrDefault(packageId)
+    public InstalledObserver Find(string packageId) => _observers.Values.LastOrDefault(item => item.PackageId == packageId && !item.Removed) ?? _observers.Values.LastOrDefault(item => item.PackageId == packageId)
         ?? throw new KeyNotFoundException("Observer is not installed.");
     public string InstanceDirectory(Guid instance) => Path.Combine(Root, "instances", instance.ToString());
     public string PackageDirectory(string id, string version) => Path.Combine(Root, "packages", id, version);
@@ -54,7 +77,7 @@ internal sealed partial class PackageStore : IDisposable
 
     public void Save(InstalledObserver observer)
     {
-        var next = new Dictionary<string, InstalledObserver>(_observers, StringComparer.Ordinal) { [observer.PackageId] = observer };
+        var next = new Dictionary<Guid, InstalledObserver>(_observers) { [observer.InstanceId] = observer };
         var temporary = _registry + ".tmp";
         using (var file = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None))
         {
@@ -62,7 +85,7 @@ internal sealed partial class PackageStore : IDisposable
             file.Flush(true);
         }
         File.Move(temporary, _registry, true);
-        _observers[observer.PackageId] = observer;
+        _observers[observer.InstanceId] = observer;
     }
 
     public IReadOnlyList<CatalogPackage> Bundled()
@@ -75,7 +98,7 @@ internal sealed partial class PackageStore : IDisposable
             var manifest = ReadManifest(reader.ReadToEnd());
             using var stream = File.OpenRead(path);
             return new CatalogPackage(manifest.Id, manifest.Name, "", manifest.Version, manifest.Target, new Uri(Path.GetFullPath(path)).AbsoluteUri,
-                Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant(), manifest.Protocol, manifest.Format);
+                Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant(), manifest.Protocol, manifest.Format, manifest.Scope);
         }).Where(package => package.Target == Target).ToArray();
     }
 
@@ -178,11 +201,15 @@ internal sealed partial class PackageStore : IDisposable
         finally { Directory.Delete(stage, true); }
     }
 
-    public InstalledObserver Register(PackageManifest manifest, bool enabled)
+    public InstalledObserver Register(PackageManifest manifest, bool enabled, bool newInstance = false, bool updating = false)
     {
-        var observer = _observers.TryGetValue(manifest.Id, out var existing)
-            ? existing with { Name = manifest.Name, Version = manifest.Version, Installed = true, Enabled = enabled }
-            : new(manifest.Id, manifest.Name, manifest.Version, EntityId.New().Value, true, enabled, JsonSerializer.SerializeToElement(new { }));
+        var existing = _observers.Values.LastOrDefault(item => item.PackageId == manifest.Id && !item.Removed)
+            ?? _observers.Values.LastOrDefault(item => item.PackageId == manifest.Id);
+        if (existing?.Removed == true && !newInstance) throw new InvalidOperationException("The previous instance was deleted; explicitly create a new instance.");
+        var observer = existing is { Removed: false }
+            ? existing with { Name = manifest.Name, Version = manifest.Version, Installed = true, Scope = manifest.Scope }
+            : new(manifest.Id, manifest.Name, manifest.Version, EntityId.New().Value, true, enabled, JsonSerializer.SerializeToElement(new { }), manifest.Scope);
+        if (!updating) observer = observer.Change(enabled: enabled);
         Save(observer);
         return observer;
     }
@@ -190,6 +217,7 @@ internal sealed partial class PackageStore : IDisposable
     {
         var manifest = JsonSerializer.Deserialize<PackageManifest>(json, Json) ?? throw new InvalidDataException("Invalid package manifest.");
         ValidateIdentity(manifest.Id, manifest.Version);
+        if (manifest.Scope is not ("host" or "deployment")) throw new InvalidDataException("Invalid package scope.");
         if (string.IsNullOrWhiteSpace(manifest.Name) || string.IsNullOrWhiteSpace(manifest.Target)) throw new InvalidDataException("Package name and target are required.");
         return manifest;
     }

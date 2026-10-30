@@ -20,11 +20,23 @@ public struct ObserverStatus: Decodable, Equatable, Identifiable, Sendable {
     public var diagnostic: String?
     public var delivery: Delivery
 
-    public var id: String { packageId }
+    public var removed: Bool
+    public var settings: JSONValue
+    public var sync: Synchronization
+    public struct Synchronization: Decodable, Equatable, Sendable {
+        public var revision: Int64
+        public var pendingChanges: Int
+        public var error: String?
+        public init(revision: Int64 = 0, pendingChanges: Int = 0, error: String? = nil) {
+            self.revision = revision; self.pendingChanges = pendingChanges; self.error = error
+        }
+    }
+    public var id: UUID { instanceId }
 
     public init(packageId: String, name: String, version: String?, instanceId: UUID, installed: Bool = true,
                 enabled: Bool = true, state: State = .running, error: String? = nil, diagnostic: String? = nil,
-                delivery: Delivery = Delivery(pending: 0, drafts: 0, saved: 0)) {
+                delivery: Delivery = Delivery(pending: 0, drafts: 0, saved: 0), removed: Bool = false,
+                settings: JSONValue = .object([:]), sync: Synchronization = .init()) {
         self.packageId = packageId
         self.name = name
         self.version = version
@@ -35,6 +47,7 @@ public struct ObserverStatus: Decodable, Equatable, Identifiable, Sendable {
         self.error = error
         self.diagnostic = diagnostic
         self.delivery = delivery
+        self.removed = removed; self.settings = settings; self.sync = sync
     }
 }
 

@@ -18,6 +18,7 @@ public sealed class ObserverStore : IDisposable
 
     public EntityId InstanceId { get; }
     public bool PublishPreviews { get; set; } = true;
+    public Func<bool> CanSend { get; set; } = () => true;
 
     public ObserverStore(string path, EntityId instanceId, HttpClient http)
     {
@@ -86,18 +87,59 @@ public sealed class ObserverStore : IDisposable
     });
 
     public Task<HttpResponseMessage> GetEntityResponseAsync(EntityId id, CancellationToken cancellationToken = default) =>
-        _http.GetAsync("entities/" + id.Value, cancellationToken);
+        CanSend() ? _http.GetAsync("entities/" + id.Value, cancellationToken) : throw new HttpRequestException("Runtime is not connected.");
 
     public Task<EntityVersion?> ReadCurrentAsync(EntityId id, CancellationToken cancellationToken = default) => ReadAsync("entities/" + id.Value, cancellationToken);
     public Task<EntityVersion?> ReadVersionAsync(VersionId id, CancellationToken cancellationToken = default) => ReadAsync("versions/" + id.Value, cancellationToken);
 
     private async Task<EntityVersion?> ReadAsync(string path, CancellationToken token)
     {
+        if (!CanSend()) throw new HttpRequestException("Runtime is not connected.");
         using var response = await _http.GetAsync(path, token);
         if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Gone) return null;
         response.EnsureSuccessStatusCode();
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
         return VersionJson.ReadSaved(json.RootElement);
+    }
+
+    public async Task<JsonElement> ReadPageAsync(string path, CancellationToken token)
+    {
+        if (!CanSend()) throw new HttpRequestException("Runtime is not connected.");
+        using var response = await _http.GetAsync(path, token);
+        if (response.StatusCode == HttpStatusCode.NotFound) return JsonSerializer.SerializeToElement(new { versions = Array.Empty<object>(), referrers = Array.Empty<object>(), next = (string?)null });
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<JsonElement>(token);
+    }
+
+    public async Task<JsonElement> ReadVersionsAsync(IEnumerable<VersionId> requested, CancellationToken token)
+    {
+        var ids = requested.ToArray();
+        if (ids.Length > 256) throw new ArgumentException("At most 256 version ids are allowed.");
+        var versions = new List<JsonElement>();
+        var missing = new List<Guid>();
+        string? error = null;
+        foreach (var id in ids.Distinct())
+        {
+            if (Execute(transaction => transaction.IsKnownMissing(id)
+                || transaction.Find(id) is { } known && transaction.IsKnownDeleted(known.Version.EntityId)))
+            { missing.Add(id.Value); continue; }
+            var local = Execute(transaction => transaction.Find(id));
+            VersionSubmission? version;
+            if (local is { State: not SubmissionState.Saved }) version = local.Version;
+            else
+            {
+                try
+                {
+                    version = (await ReadVersionAsync(id, token))?.Submission;
+                    if (version is null && local?.State == SubmissionState.Saved)
+                        Execute(transaction => transaction.RememberMissing(id));
+                }
+                catch (Exception exception) when (exception is HttpRequestException || exception is OperationCanceledException && !token.IsCancellationRequested)
+                { error = exception.Message; version = local?.Version; }
+            }
+            if (version is null) missing.Add(id.Value); else versions.Add(VersionJson.Submission(version));
+        }
+        return JsonSerializer.SerializeToElement(new { versions, missing, error });
     }
 
     public DeliveryStatus Status => Execute(local =>
@@ -126,6 +168,7 @@ public sealed class ObserverStore : IDisposable
         {
             while (true)
             {
+                if (!CanSend()) return;
                 if (Status is { Rejection: not null } or { Error: not null }) return;
                 if (!await ReconcileSchemasAsync(cancellationToken)) return;
                 if (PublishPreviews && !await SendPreviewsAsync(cancellationToken)) return;
@@ -146,7 +189,7 @@ public sealed class ObserverStore : IDisposable
                     _batchLimit = Math.Max(1, batch.Count / 2);
                     continue;
                 }
-                if ((int)response.StatusCode >= 500) return;
+                if (response.StatusCode == HttpStatusCode.Unauthorized || (int)response.StatusCode >= 500) return;
                 using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken));
                 if (response.StatusCode == HttpStatusCode.OK)
                 {
@@ -194,6 +237,7 @@ public sealed class ObserverStore : IDisposable
                 previousVersionId = ready.Version.PreviousVersionId?.Value,
                 sequence = ready.Sequence, content = VersionJson.Content(ready.Version.Content),
             }, token);
+            if (response.StatusCode == HttpStatusCode.Unauthorized) return false;
             if (response.IsSuccessStatusCode || (int)response.StatusCode >= 500) continue;
             using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
             if (response.StatusCode == HttpStatusCode.Conflict && json.RootElement.TryGetProperty("rule", out var rule)

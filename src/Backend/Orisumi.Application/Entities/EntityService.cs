@@ -58,8 +58,8 @@ public sealed class EntityService(IEntityStore store, TimeProvider timeProvider,
         {
             if (await transaction.IsEntityDeletedAsync(id, token)) return true;
             var current = await transaction.ReadCurrentAsync(id, token);
-            if (current is null) return false;
-            if (current.Content is EntitySchema)
+            if (current is null && !await transaction.EntityExistsAsync(id, token)) return false;
+            if (current?.Content is EntitySchema)
                 VersionRules.Require(!await transaction.HasBusinessVersionsAsync(id, token), "HISTORY-9", "Business versions still use this Schema.");
             await transaction.DeleteAsync(id, token);
             return true;

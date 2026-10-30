@@ -13,7 +13,7 @@ struct OrisumiApp: App {
             Image(nsImage: MenuBarIcon.image(for: delegate.model))
         }
         Window("Orisumi", id: MainView.windowId) {
-            MainView(model: delegate.model, navigation: delegate.navigation)
+            MainView(model: delegate.model, management: delegate.management, navigation: delegate.navigation)
         }
         .defaultSize(width: 1080, height: 760)
         .defaultLaunchBehavior(UserDefaults.standard.bool(forKey: "showWindow") ? .presented : .suppressed)
@@ -27,6 +27,7 @@ struct OrisumiApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let model = RuntimeModel(transport: RuntimeConnection(configuration: Preferences.runtimeConfiguration))
     let navigation = Navigation()
+    let management = ManagementModel(address: Preferences.backend)
     private var termination: DispatchSourceSignal?
     private var polling: Task<Void, Never>?
 
@@ -77,15 +78,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @MainActor
 @Observable
 final class Navigation {
-    enum SettingsTab: Hashable {
-        case general, observers, advanced
+    /// What the main window shows: an Observer's data, this Mac's Observers, or another host's.
+    enum Destination: Hashable {
+        case view(String)
+        case thisMac
+        case host(UUID)
     }
 
-    /// The package whose view the main window shows.
-    var selection: String?
-    var settingsTab: SettingsTab = .general
-    /// Settings opens the add sheet when it next shows the Observer tab.
+    enum SettingsTab: Hashable {
+        case general, connection
+    }
+
+    var selection: Destination?
+    /// The Observer selected on this Mac's page, shown in the inspector.
+    var managed: String?
     var addingObserver = false
+    var settingsTab: SettingsTab = .general
     var windowVisible = false { didSet { updateActivation() } }
     var settingsVisible = false { didSet { updateActivation() } }
 

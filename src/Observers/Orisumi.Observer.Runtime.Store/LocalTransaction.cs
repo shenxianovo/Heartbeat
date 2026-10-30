@@ -30,14 +30,17 @@ public sealed class LocalTransaction
         """, ("$id", id.Value.ToString())).SingleOrDefault();
 
     public VersionId Draft(EntityId entityId, VersionContent content, VersionId? schemaVersionId = null,
-        SubmissionStrategy strategy = SubmissionStrategy.Immediate, bool publishPreview = false)
+        SubmissionStrategy strategy = SubmissionStrategy.Immediate, bool publishPreview = false, VersionId? previousVersionId = null)
     {
         if (publishPreview && content is not Observation) throw new ArgumentException("Only Observations have observation previews.", nameof(publishPreview));
         schemaVersionId = schemaVersionId is { } schema ? Resolve(schema) : null;
         var latest = Latest(entityId);
+        if (previousVersionId is { } predecessor && Versions().Any(item => item.Version.EntityId == entityId && item.State != SubmissionState.Saved)
+            && latest?.Version.VersionId != predecessor)
+            throw new InvalidOperationException("previousVersionId must be the latest local version while unsaved versions exist.");
         var version = latest?.State == SubmissionState.Draft
             ? latest.Version with { Content = content, SchemaVersionId = schemaVersionId }
-            : new VersionSubmission(entityId, VersionId.New(), latest?.Version.VersionId, schemaVersionId, content);
+            : new VersionSubmission(entityId, VersionId.New(), previousVersionId ?? latest?.Version.VersionId, schemaVersionId, content);
         version = VersionTime.Normalize(version);
         FreezeReferences(version, []);
         Put(version, SubmissionState.Draft, strategy, null);

@@ -34,6 +34,7 @@ dotnet run --project tools/Orisumi.Dev -- tool install
 | --- | --- |
 | `env` | 本检出目录的环境，以及本机的数据卷 |
 | `mac` | 构建和运行 macOS 客户端 |
+| `observers` | 构建 Runtime 和 Observer 的安装包 |
 | `verify` | 构建与自动化检查、冒烟场景 |
 | `analyze` | 质量扫描和行数统计 |
 | `runs` | 验证与质量扫描的运行记录 |
@@ -103,6 +104,18 @@ NGINX 总是启动，提供固定的入口端口。各入口在不同服务组�
 - `mac run` 要求环境运行中、API 已启动；客户端已在运行时报错，先运行 `mac stop`。
 - 每个数据卷对应一个 Runtime 数据目录 `.artifacts/mac/instances/<卷名>/`，其中有安装的 Observer、各程序实例的身份和本地数据。所以本地待发送的版本只会发往它所属的后端。删除卷之后，可以一并删除对应的目录。
 - 日常使用的客户端从 `/Applications` 启动，使用默认的数据目录，与这里的互不影响。
+
+## Observer 安装包
+
+`orisumi observers pack` 为一个平台发布 Runtime，并构建给出的 Observer 的安装包。macOS 客户端的构建和服务器的镜像都用它的输出。
+
+| 命令 | 作用 |
+| --- | --- |
+| `observers pack <id...> --target <RID> --output <目录> [--sign <身份>]` | 把 Runtime 发布为单文件，放进 `<目录>/runtime/`；为每个安装包写出清单并打成 ZIP，放进 `<目录>/bundled/`。`--sign` 在 macOS 上用 `codesign` 签名 Runtime 和包中的可执行文件，`-` 是临时签名 |
+
+- 安装包按 `src/Observers/` 下项目的 `ObserverPackageId` 找到，清单的名称和部署范围取自 `ObserverName` 和 `ObserverScope`，格式见 [Packages · 清单](../../src/Docs/Orisumi.Docs/content/docs/clients/packages.mdx#manifest)。
+- .NET 的构建输出在 `.artifacts/observers/build/`。
+- 步骤和容器镜像见 [Runtime README](../../src/Observers/Orisumi.Observer.Runtime/README.md)。
 
 ## 验证
 

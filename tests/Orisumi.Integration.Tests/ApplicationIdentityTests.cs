@@ -4,7 +4,8 @@ using Microsoft.Extensions.Hosting;
 using System.Text.Json;
 using Orisumi.Api;
 using Orisumi.Application.Entities;
-using Orisumi.Application.Observers;
+using Orisumi.Observer.Runtime.Store;
+using Orisumi.Observer.Sdk;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Orisumi.Core;
@@ -114,80 +115,26 @@ public sealed class ApplicationIdentityTests
     [Test, Property("caseId", "application-identity")]
     [Arguments(false)]
     [Arguments(true)]
-    public async Task ProcessExitDuringSaveReplaysTheSameBatchAfterRestart(bool saved)
+    public async Task ProcessExitDuringDeliveryReplaysTheSameBatchBeforeCheckingTheModel(bool saved)
     {
         await using var fixture = await Fixture.CreateAsync();
         await fixture.ApplicationAsync("com.tencent.qq", "/QQ", "QQ");
         fixture.Model.Decide = _ => new("new", Name: "QQ");
-        var persistence = fixture.Persistence;
-        var crash = new CrashStore(persistence, saved);
-        fixture.Model.Before = _ => { crash.Armed = true; return Task.CompletedTask; };
-        await Assert.That(async () => await fixture.RunAsync(persistence: crash)).Throws<SimulatedProcessExit>();
-        var id = await persistence.GetOrCreateAsync("application-identity", Token);
-        var pending = (await persistence.ReadPendingAsync(id, Token))!;
-        using var batch = JsonDocument.Parse(pending);
-        var product = batch.RootElement[1].GetProperty("versionId").GetGuid();
-        fixture.Model.Before = null;
+        fixture.Model.Before = _ => { fixture.Session.Crash = saved ? "after" : "before"; return Task.CompletedTask; };
+        await Assert.That(async () => await fixture.RunAsync()).Throws<SimulatedProcessExit>();
+        var pending = Path.Combine(fixture.Directory, "pending.json");
+        await Assert.That(File.Exists(pending)).IsTrue();
+        var payloads = fixture.Store.Execute(local => local.Versions().Select(item => VersionJson.Submission(item.Version)).ToArray());
+        fixture.Session.Crash = null; fixture.Model.Before = null; fixture.Model.IsConfigured = false;
         await fixture.RunAsync();
-        await Assert.That(await persistence.ReadPendingAsync(id, Token)).IsNull();
-        await Assert.That((await fixture.ProductsAsync()).Single().VersionId.Value).IsEqualTo(product);
-        foreach (var expected in batch.RootElement.EnumerateArray())
-        {
-            var savedVersion = await fixture.ReadVersionAsync(new(expected.GetProperty("versionId").GetGuid()));
-            await Assert.That(JsonElement.DeepEquals(expected, VersionJson.Submission(savedVersion.Submission))).IsTrue();
-        }
-        await Assert.That(fixture.Model.Inputs.Count).IsEqualTo(1);
-        await Assert.That(await persistence.GetOrCreateAsync("application-identity", Token)).IsEqualTo(id);
-    }
-
-    [Test, Property("caseId", "application-identity")]
-    public async Task ApiStartupRecoversPendingBeforeCheckingTheModelKey()
-    {
-        await using var fixture = await Fixture.CreateAsync();
-        await fixture.ApplicationAsync("com.tencent.qq", "/QQ", "QQ");
-        var crash = new CrashStore(fixture.Persistence, saved: false);
-        fixture.Model.Decide = _ => new("new", Name: "QQ");
-        fixture.Model.Before = _ => { crash.Armed = true; return Task.CompletedTask; };
-        await Assert.That(async () => await fixture.RunAsync(persistence: crash)).Throws<SimulatedProcessExit>();
-        fixture.Model.IsConfigured = false;
-        var id = await fixture.Persistence.GetOrCreateAsync("application-identity", Token);
-        await using var restarted = new OrisumiApiFactory(fixture.ConnectionString,
-            configureServices: services => services.AddSingleton<IApplicationModel>(fixture.Model));
-        using var http = restarted.CreateClient();
-        for (var attempt = 0; attempt < 200 && await fixture.Persistence.ReadPendingAsync(id, Token) is not null; attempt++)
-            await Task.Delay(10, Token);
-        await Assert.That(await fixture.Persistence.ReadPendingAsync(id, Token)).IsNull();
+        await Assert.That(File.Exists(pending)).IsFalse();
         await Assert.That((await fixture.ProductsAsync()).Count).IsEqualTo(1);
         await Assert.That(fixture.Model.Inputs.Count).IsEqualTo(1);
-    }
-
-    [Test, Property("caseId", "application-identity")]
-    public async Task SlowModelDoesNotOverlapRounds()
-    {
-        await using var fixture = await Fixture.CreateAsync();
-        await fixture.ApplicationAsync("com.tencent.qq", "/QQ", "QQ");
-        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        fixture.Model.Before = async _ => { entered.TrySetResult(); await release.Task.WaitAsync(Token); };
-        fixture.Model.Decide = _ => new("new", Name: "QQ");
-        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
-        { ["ApplicationIdentity:IntervalSeconds"] = "0.01", ["ApplicationIdentity:Model"] = "test-model" }).Build();
-        using var host = new ServerObserverHost(fixture.Services.GetRequiredService<IServiceScopeFactory>(), configuration,
-            NullLogger<ServerObserverHost>.Instance);
-        await host.StartAsync(Token);
-        try
+        foreach (var expected in payloads)
         {
-            await entered.Task.WaitAsync(TimeSpan.FromSeconds(10), Token);
-            await Task.Delay(80, Token);
-            await Assert.That(fixture.Model.Inputs.Count).IsEqualTo(1);
-            release.TrySetResult();
-            for (var attempt = 0; attempt < 200 && (await fixture.ProductsAsync()).Count == 0; attempt++)
-                await Task.Delay(10, Token);
-            await Task.Delay(80, Token);
-            await Assert.That((await fixture.ProductsAsync()).Count).IsEqualTo(1);
-            await Assert.That(fixture.Model.Inputs.Count).IsEqualTo(1);
+            var actual = await fixture.ReadVersionAsync(new(expected.GetProperty("versionId").GetGuid()));
+            await Assert.That(JsonElement.DeepEquals(expected, VersionJson.Submission(actual.Submission))).IsTrue();
         }
-        finally { release.TrySetResult(); await host.StopAsync(CancellationToken.None); }
     }
 
     [Test, Property("caseId", "application-identity")]
@@ -217,16 +164,6 @@ public sealed class ApplicationIdentityTests
         await Assert.That(fixture.Model.Inputs.Count).IsEqualTo(4);
     }
 
-    [Test, Property("caseId", "application-identity")]
-    public async Task ApiHostsApplicationIdentityWithoutASeparateProcess()
-    {
-        await using var database = await DatabaseFixture.CreateAsync();
-        await using var factory = new OrisumiApiFactory(database.ConnectionString);
-        using var http = factory.CreateClient();
-        await Assert.That(factory.Services.GetServices<IHostedService>()
-            .Any(service => service.GetType().Name == "ServerObserverHost")).IsTrue();
-    }
-
     private sealed class FakeModel : IApplicationModel
     {
         public bool IsConfigured { get; set; } = true;
@@ -243,20 +180,21 @@ public sealed class ApplicationIdentityTests
 
     private sealed class SimulatedProcessExit : Exception;
 
-    private sealed class CrashStore(IServerObserverStore inner, bool saved) : IServerObserverStore
+    private sealed class DeliveringSession(ObserverStore store) : IObserverSession
     {
-        internal bool Armed { get; set; }
-        public Task<EntityId> GetOrCreateAsync(string key, CancellationToken token) => inner.GetOrCreateAsync(key, token);
-        public Task<string?> ReadPendingAsync(EntityId id, CancellationToken token) => inner.ReadPendingAsync(id, token);
-        public Task<string?> ReadStateAsync(EntityId id, CancellationToken token) => inner.ReadStateAsync(id, token);
-        public Task SaveStateAsync(EntityId id, string payload, CancellationToken token) => inner.SaveStateAsync(id, payload, token);
-        public async Task SavePendingAsync(EntityId id, string payload, CancellationToken token)
+        private readonly LocalObserverSession local = new(store);
+        public string? Crash { get; set; }
+        public async Task<JsonElement> RequestAsync(string method, JsonElement parameters, string? requestId = null, CancellationToken cancellationToken = default)
         {
-            await inner.SavePendingAsync(id, payload, token);
-            if (Armed && !saved) throw new SimulatedProcessExit();
+            var result = await local.RequestAsync(method, parameters, requestId ?? Guid.NewGuid().ToString(), cancellationToken);
+            if (method == "commit")
+            {
+                if (Crash == "before") throw new SimulatedProcessExit();
+                await store.SendAsync(cancellationToken);
+                if (Crash == "after") throw new SimulatedProcessExit();
+            }
+            return result;
         }
-        public Task ClearPendingAsync(EntityId id, CancellationToken token) =>
-            Armed && saved ? throw new SimulatedProcessExit() : inner.ClearPendingAsync(id, token);
     }
 
     private sealed class Fixture : IAsyncDisposable
@@ -267,7 +205,9 @@ public sealed class ApplicationIdentityTests
         internal List<string> Diagnostics { get; } = [];
         internal string ConnectionString => database.ConnectionString;
         internal IServiceProvider Services => factory.Services;
-        internal IServerObserverStore Persistence => Services.GetRequiredService<IServerObserverStore>();
+        internal string Directory { get; } = System.IO.Directory.CreateTempSubdirectory("orisumi-identity-").FullName;
+        internal ObserverStore Store { get; }
+        internal DeliveringSession Session { get; }
         internal HttpClient Http { get; }
         private VersionSubmission appSchema = null!;
         private VersionSubmission periodSchema = null!;
@@ -275,13 +215,10 @@ public sealed class ApplicationIdentityTests
         private Fixture(Orisumi.Testing.TestDatabase database)
         {
             this.database = database;
-            factory = new(database.ConnectionString, configureServices: services =>
-            {
-                foreach (var descriptor in services.Where(d => d.ServiceType == typeof(IHostedService)
-                    && d.ImplementationType == typeof(ServerObserverHost)).ToArray()) services.Remove(descriptor);
-                services.AddSingleton<IApplicationModel>(Model);
-            });
+            factory = new(database.ConnectionString);
             Http = factory.CreateClient();
+            Store = new(Path.Combine(Directory, "store.sqlite"), EntityId.New(), Http);
+            Session = new(Store);
         }
         internal static async Task<Fixture> CreateAsync()
         {
@@ -323,18 +260,16 @@ public sealed class ApplicationIdentityTests
             var result = await response.Content.ReadFromJsonAsync<JsonElement>(Token);
             return result.GetProperty("versions").EnumerateArray().Select(VersionJson.ReadSaved).ToList();
         }
-        internal async Task RunAsync(string model = "test-model", IServerObserverStore? persistence = null)
+        internal async Task RunAsync(string model = "test-model")
         {
-            persistence ??= Persistence;
-            await using var scope = Services.CreateAsyncScope();
-            var entities = scope.ServiceProvider.GetRequiredService<EntityService>();
-            var id = await persistence.GetOrCreateAsync("application-identity", Token);
-            var session = new ServerObserverSession(id, entities, persistence);
-            await session.ResumeAsync(Token);
-            await new IdentityRecognizer(new(entities, session), session, persistence, Model, model, "test", Diagnostics.Add).RunOnceAsync(Token);
+            var work = new IdentityWork(Session, Store.InstanceId, Directory);
+            await work.ResumeAsync(Token);
+            await new IdentityRecognizer(new(Session, work), work, Model, model, "test", message => { Diagnostics.Add(message); Console.WriteLine("DIAGNOSTIC: " + message); }).RunOnceAsync(Token);
         }
         public async ValueTask DisposeAsync()
         {
+            Store.Dispose();
+            System.IO.Directory.Delete(Directory, true);
             Http.Dispose();
             await factory.DisposeAsync();
             await database.DisposeAsync();

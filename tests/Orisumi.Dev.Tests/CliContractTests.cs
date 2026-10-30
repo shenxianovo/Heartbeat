@@ -28,6 +28,7 @@ public sealed class CliContractTests
     [Arguments("env telemetry")]
     [Arguments("env volumes")]
     [Arguments("mac")]
+    [Arguments("observers")]
     [Arguments("verify")]
     [Arguments("analyze")]
     [Arguments("runs")]

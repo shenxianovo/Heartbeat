@@ -6,13 +6,14 @@ import SwiftUI
 struct ObserverPage: View {
     let model: RuntimeModel
     let observer: ObserverStatus
-    let openSettings: SettingsOpener
+    /// Opens the Observer on this Mac's page.
+    let manage: () -> Void
     @Environment(\.openURL) private var openURL
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                StatusBanners(model: model, observer: observer, openSettings: openSettings)
+                StatusBanners(model: model, observer: observer, manage: manage)
                 if observer.packageId == ForegroundToday.packageId {
                     ForegroundToday(model: model, instanceId: observer.instanceId)
                 } else {
@@ -44,7 +45,7 @@ struct ObserverPage: View {
 struct StatusBanners: View {
     let model: RuntimeModel
     let observer: ObserverStatus
-    let openSettings: SettingsOpener
+    let manage: () -> Void
 
     var body: some View {
         let busy = model.busy.contains(observer.packageId)
@@ -59,7 +60,7 @@ struct StatusBanners: View {
             if observer.state == .failed {
                 Banner(tone: .critical, title: "\(observer.name) 停止记录了", message: observer.error) {
                     Button("重试") { Task { await model.retry(observer.packageId) } }.disabled(busy)
-                    Button("设置…") { openSettings(.observers) }
+                    Button("详情…", action: manage)
                 }
             } else if observer.state == .waiting {
                 Banner(tone: .warning, title: "\(observer.name) 意外退出，正在等待重启", message: nil) { EmptyView() }
@@ -70,7 +71,7 @@ struct StatusBanners: View {
             }
             if let rejection = observer.delivery.rejection {
                 Banner(tone: .warning, title: "发送已暂停", message: "\(rejection.rule)，\(rejection.detail)") {
-                    Button("设置…") { openSettings(.observers) }
+                    Button("详情…", action: manage)
                 }
             } else if let error = observer.delivery.error {
                 Banner(tone: .warning, title: "发送出错，新的记录暂时留在本机", message: error) { EmptyView() }

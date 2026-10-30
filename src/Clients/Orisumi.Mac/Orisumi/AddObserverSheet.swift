@@ -118,6 +118,8 @@ struct CatalogRow: View {
         return package.id == ForegroundToday.packageId ? "记录哪个应用在前台，以及持续了多久" : nil
     }
 
+    @State private var confirmingNewInstance = false
+
     @ViewBuilder private var action: some View {
         if model.busy.contains(package.id) {
             ProgressView().controlSize(.small)
@@ -130,6 +132,11 @@ struct CatalogRow: View {
                 Button("重新安装") { Task { await model.install(package.id) } }
                     .buttonStyle(.borderedProminent)
                     .help("沿用卸载前的身份和设置")
+            case .newInstance:
+                Button("新建实例") { confirmingNewInstance = true }
+                    .confirmationDialog("创建新的程序实例？", isPresented: $confirmingNewInstance) {
+                        Button("新建并安装") { Task { await model.install(package.id, newInstance: true) } }
+                    } message: { Text("原来的实例已删除，新实例使用新的身份和数据目录。") }
             case .update(let version):
                 Button("更新到 \(version)") { Task { await model.updatePackage(package.id) } }
                     .buttonStyle(.borderedProminent)

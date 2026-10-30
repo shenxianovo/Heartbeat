@@ -15,7 +15,7 @@ dotnet run --project src/Backend/Orisumi.Api/Orisumi.Api.csproj
 
 缺少 `ConnectionStrings__Orisumi` 时，API 启动失败。API 不应用迁移。
 
-API 进程不运行 Observer，服务器上的 Observer 由 Runtime 运行，见 [Hosting · Server](../../Docs/Orisumi.Docs/content/docs/hosting/server.mdx)。目前的代码仍在 API 进程中运行应用识别 Observer，迁移尚未实现，见[应用识别 README](../../Observers/Orisumi.Observer.ApplicationIdentity/README.md)。
+API 进程不运行 Observer，服务器上的 Observer 由 Runtime 运行，见 [Runtime README](../../Observers/Orisumi.Observer.Runtime/README.md)。
 
 ## 遥测
 

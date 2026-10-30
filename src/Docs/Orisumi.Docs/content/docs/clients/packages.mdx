@@ -118,6 +118,6 @@ Runtime 在切换登记之前退出时，下次启动读到的仍是旧版本的
 
 ## 发布 [#publishing]
 
-发布方为每个支持的平台构建一个安装包，服务器上的 Observer 也一样，例如应用识别 Observer 的 `linux-x64` 包。.NET 的 Observer 用自包含发布，入口和它依赖的文件一起放进 `bin/`。
+发布方为每个支持的平台构建一个安装包，服务器上的 Observer 也一样，例如应用识别 Observer 的 `linux-x64` 包。.NET 的 Observer 用自包含发布，入口和它依赖的文件一起放进 `bin/`。仓库中的 .NET Observer 由 `orisumi observers pack` 打包，清单的字段写在各自的项目文件中，见 `tools/Orisumi.Dev/README.md`。
 
 macOS 上，包中的可执行文件需要签名才能在其他设备上运行。各平台的签名和分发方式要在正式发布前验证。

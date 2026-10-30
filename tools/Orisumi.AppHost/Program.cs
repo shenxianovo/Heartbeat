@@ -42,8 +42,7 @@ if (services.Contains("api"))
         .WithReference(database)
         .WaitForCompletion(migrate)
         .WithHttpHealthCheck("/entities/019a0d3b-1d20-7000-8000-000000000001", statusCode: 404);
-    foreach (var key in new[] { "OPENAI_API_KEY", "ApplicationIdentity:Model", "ApplicationIdentity:IntervalSeconds" })
-        if (builder.Configuration[key] is { } value) api.WithEnvironment(key.Replace(":", "__", StringComparison.Ordinal), value);
+
 }
 
 if (services.Contains("docs"))

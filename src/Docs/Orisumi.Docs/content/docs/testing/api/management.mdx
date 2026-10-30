@@ -50,7 +50,13 @@ export const caseId = 'api-management';
 
 ## 测试实现 [#implementation]
 
-尚无测试。本页的预期由实现任务补齐。
+以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
+
+- 首次登记的重发、本机修改按序号接受、重复的序号不覆盖之后管理入口的修改、跨字段合并、`sequence_gap`：`ManagementApiTests.LocalChangesAreOrderedAndDuplicateDoesNotOverwriteRemoteChange`。
+- 删除还没有首版的实例后首版按 `HISTORY-7` 被拒绝，登记和同步返回 `410`，删除后仍接受状态报告，同一个登记标识新建实例：`ManagementApiTests.RemovingBeforeFirstVersionReservesIdentityAndStopsLocalChanges`。
+- `deployment_singleton`、`host_mismatch`、`management_only`、移除托管方后凭证全部返回 `401` 并结束正在等待的长轮询、用绑定的配对码重新接入并换掉旧凭证：`ManagementApiTests.CredentialsEnforceOwnershipRevocationAndRePairing`。
+- 离线时 `host_offline`、`expired`、在线操作只交出一次、`unconfirmed`、结束后的结果返回 `404`、API 重启后操作不存在：`ManagementApiTests.OnlineOperationsDeliverOnceExpireAndLoseMemoryOnCoordinatorRestart`。
+- 未覆盖：配对码 10 分钟过期和重启后失效；凭证摘要的存储格式；删除和首版提交并发；长轮询 25 秒超时；跨字段合并中整体替换设置的组合。
 
 ## 执行结果 [#results]
 

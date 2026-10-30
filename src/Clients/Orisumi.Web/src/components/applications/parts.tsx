@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { AppWindow, Boxes, MoreHorizontal, Plus, Undo2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useSource } from "@/api/source";
@@ -20,6 +20,7 @@ import type { Row } from "@/lib/day";
 import { thingColor } from "@/lib/roles";
 import { ago, duration, MINUTE } from "@/lib/time";
 import { cn } from "@/lib/utils";
+import { Anchored, MenuItem, MenuLabel } from "@/components/ui";
 
 /** 正在拖动的线索，以及它现在所在的产品。 */
 export interface Dragging {
@@ -28,85 +29,6 @@ export interface Dragging {
 }
 
 export const DRAG_TYPE = "application/x-orisumi-identifier";
-
-// —— 弹出层 ——
-
-/** 锚在触发按钮下方的弹出层。点外面或按 Esc 关闭；Esc 不会再关掉右侧的面板。 */
-export function Anchored({
-  trigger,
-  open,
-  onClose,
-  children,
-  align = "start",
-}: {
-  trigger: ReactNode;
-  open: boolean;
-  onClose: () => void;
-  children: ReactNode;
-  align?: "start" | "end";
-}) {
-  const ref = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    function down(event: PointerEvent) {
-      if (!ref.current?.contains(event.target as Node)) onClose();
-    }
-    document.addEventListener("pointerdown", down);
-    return () => document.removeEventListener("pointerdown", down);
-  }, [open, onClose]);
-  return (
-    <span ref={ref} className="relative inline-flex min-w-0">
-      {trigger}
-      {open && (
-        <div
-          role="dialog"
-          onKeyDown={(event) => {
-            if (event.key !== "Escape") return;
-            event.preventDefault();
-            onClose();
-          }}
-          className={cn(
-            "pop bg-card border-line absolute top-full z-40 mt-1 w-72 rounded-xl border p-1.5",
-            "shadow-[0_12px_32px_-12px_rgb(0_0_0/0.35)]",
-            align === "end" ? "right-0" : "left-0",
-          )}
-        >
-          {children}
-        </div>
-      )}
-    </span>
-  );
-}
-
-function MenuItem({
-  children,
-  onClick,
-  danger,
-  disabled,
-}: {
-  children: ReactNode;
-  onClick: () => void;
-  danger?: boolean;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={cn(
-        "flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] disabled:cursor-default disabled:opacity-50",
-        danger ? "text-danger hover:bg-danger/10" : "hover:bg-panel",
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
-function MenuLabel({ children }: { children: ReactNode }) {
-  return <p className="text-fg-3 px-2 pt-1 pb-0.5 text-[11px]">{children}</p>;
-}
 
 export function ProductMark({ name, size = "md" }: { name: string; size?: "sm" | "md" | "lg" }) {
   return <Mark role="thing" color={thingColor(name)} icon={Boxes} size={size} />;

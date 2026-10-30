@@ -3,8 +3,15 @@ using Npgsql;
 
 namespace Orisumi.Infrastructure.Database;
 
-public sealed class PostgresEntityStore(NpgsqlDataSource dataSource, TimeProvider timeProvider) : IEntityStore
+public sealed class PostgresEntityStore(NpgsqlDataSource dataSource) : IEntityStore
 {
+    public Task RebuildProjectionsAsync(CancellationToken cancellationToken = default) =>
+        ExecuteAsync(async (transaction, token) =>
+        {
+            await ((PostgresEntityTransaction)transaction).RebuildProjectionsAsync(token);
+            return true;
+        }, cancellationToken);
+
     public async Task<T> ExecuteAsync<T>(Func<IEntityTransaction, CancellationToken, Task<T>> operation,
         CancellationToken cancellationToken = default)
     {
@@ -13,7 +20,7 @@ public sealed class PostgresEntityStore(NpgsqlDataSource dataSource, TimeProvide
         // The lock is shared by reads and writes, including other API processes.
         await using (var command = new NpgsqlCommand("SELECT pg_advisory_xact_lock(724121180221)", connection, transaction))
             await command.ExecuteNonQueryAsync(cancellationToken);
-        var result = await operation(new PostgresEntityTransaction(connection, transaction, timeProvider), cancellationToken);
+        var result = await operation(new PostgresEntityTransaction(connection, transaction), cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         await transaction.CommitAsync(cancellationToken);
         return result;

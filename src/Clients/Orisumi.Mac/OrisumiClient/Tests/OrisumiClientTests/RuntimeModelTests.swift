@@ -40,11 +40,11 @@ final class FakeTransport: RuntimeTransport {
 struct RuntimeModelTests {
     static let instance = "019e1bbb-ec00-7000-8000-0000000000f1"
     static let list = """
-        {"observers":[
+        {"host":{"hostId":null,"connection":"unpaired"},"observers":[
           {"packageId":"foreground-state","name":"Foreground State","version":"0.1.0","instanceId":"\(instance)","installed":true,
-           "enabled":true,"state":"running","error":null,"diagnostic":"Accessibility denied","delivery":{"pending":2,"drafts":1,"saved":5,"error":null,"rejection":null}},
+           "removed":false,"settings":{},"sync":{"revision":0,"pendingChanges":0,"error":null},"enabled":true,"state":"running","error":null,"diagnostic":"Accessibility denied","delivery":{"pending":2,"drafts":1,"saved":5,"error":null,"rejection":null}},
           {"packageId":"old","name":"Old","version":null,"instanceId":"019e1bbb-ec00-7000-8000-0000000000f2","installed":false,
-           "enabled":false,"state":"stopped","error":null,
+           "removed":false,"settings":{},"sync":{"revision":0,"pendingChanges":0,"error":null},"enabled":false,"state":"stopped","error":null,
            "delivery":{"pending":1,"drafts":0,"saved":0,"error":null,"rejection":{"rule":"VERSION-6","detail":"conflict"}}}
         ]}
         """
@@ -81,7 +81,7 @@ struct RuntimeModelTests {
     @Test func reportsAFailedRequestWithoutStoppingRuntime() async {
         let transport = FakeTransport()
         transport.responses["install"] = .failure(.remote(code: "unavailable", message: "catalog unavailable"))
-        transport.responses["list"] = .success(#"{"observers":[]}"#)
+        transport.responses["list"] = .success(#"{"host":{"hostId":null,"connection":"unpaired"},"observers":[]}"#)
         let model = RuntimeModel(transport: transport)
         model.start()
         await model.install("example")
@@ -91,7 +91,7 @@ struct RuntimeModelTests {
 
     @Test func restartsRuntimeAfterUnexpectedExitsThenStops() async throws {
         let transport = FakeTransport()
-        transport.responses["list"] = .success(#"{"observers":[]}"#)
+        transport.responses["list"] = .success(#"{"host":{"hostId":null,"connection":"unpaired"},"observers":[]}"#)
         let model = RuntimeModel(transport: transport, restartDelays: [.milliseconds(1), .milliseconds(1)])
         model.start()
         for _ in 0..<2 {

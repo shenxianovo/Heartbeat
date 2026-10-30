@@ -80,6 +80,29 @@ public sealed class RuntimeReadingTests
         await Assert.That(ids.Contains(captures[3].ObservationId.Value)).IsFalse();
     }
 
+    [Test, Property("caseId", "native-views")]
+    public async Task OfflineFactQueriesTreatOneEndpointAsAPointAndExcludeUnknownTime()
+    {
+        using var directory = new RuntimeHostingTests.RuntimeDirectory();
+        using var http = new HttpClient(new RuntimeProtocolTests.OfflineHandler()) { BaseAddress = new("http://localhost/") };
+        using var packages = new PackageStore(directory.Data, null, null, http);
+        var owner = EntityId.New();
+        await using var observer = new ManagedObserver(packages, new("example", "Example", "1.0.0", owner.Value, false, false, JsonLines.Json(new { })), http);
+        var registration = await ForegroundRegistration.RegisterAsync(new LocalObserverSession(observer.Store), owner);
+        observer.Store.Execute(local =>
+        {
+            var content = local.Draft(EntityId.New(), new BusinessContent(JsonLines.Json(new { identifiers = Array.Empty<object>() })), registration.ApplicationSchema);
+            var source = local.Latest(owner)!.Version.VersionId;
+            var origin = DateTimeOffset.UnixEpoch;
+            foreach (var (start, end) in new (DateTimeOffset?, DateTimeOffset?)[] {
+                (null, null), (origin, null), (null, origin.AddHours(3)), (origin.AddHours(1), null), (null, origin.AddHours(1.5)) })
+                local.Draft(EntityId.New(), new Observation(source, content, null, start, end, null), strategy: SubmissionStrategy.OnCompletion);
+        });
+        var page = await new RuntimeReader(http).ReadAsync(observer, JsonLines.Json(new {
+            from = DateTimeOffset.UnixEpoch.AddHours(1), to = DateTimeOffset.UnixEpoch.AddHours(2) }), CancellationToken.None);
+        await Assert.That(page.GetProperty("observations").GetArrayLength()).IsEqualTo(2);
+    }
+
     private sealed class BackendGate(HttpMessageHandler inner) : DelegatingHandler(inner)
     {
         public bool Writes { get; set; }

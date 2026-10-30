@@ -1,9 +1,19 @@
+using Orisumi.Application.Management;
 using Microsoft.AspNetCore.WebUtilities;
 
 namespace Orisumi.Api;
 
 internal static class ApiProblem
 {
+    internal static IResult Management(ManagementException error)
+    {
+        var extensions = new Dictionary<string, object?>();
+        if (error.Code is { } code) extensions["code"] = code;
+        if (error.LastLocalSequence is { } sequence) extensions["lastLocalSequence"] = sequence;
+        return Results.Problem(type: Type, title: ReasonPhrases.GetReasonPhrase(error.Status),
+            statusCode: error.Status, detail: error.Message, extensions: extensions);
+    }
+
     internal const string Type = "about:blank";
 
     internal static int RuleStatus(string rule) => rule is "VERSION-6" or "VERSION-7" or "SCHEMA-5" or "HISTORY-7" or "VERSION-9" or "HISTORY-9" ? 409 : 400;

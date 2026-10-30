@@ -7,7 +7,7 @@ using System.Globalization;
 
 namespace Orisumi.Observer.Runtime;
 
-internal sealed class RuntimeReader(HttpClient http)
+internal sealed class RuntimeReader(HttpClient http, Func<bool>? canRead = null)
 {
     private sealed record Item(VersionSubmission Version, string State);
     private sealed record Snapshot(Guid InstanceId, string Query, Item[] Items, bool Complete, string? Error, DateTimeOffset Created);
@@ -63,6 +63,7 @@ internal sealed class RuntimeReader(HttpClient http)
                 var path = "observations?limit=1000&from=" + Uri.EscapeDataString(VersionTime.Format(from)) + "&to=" + Uri.EscapeDataString(VersionTime.Format(to));
                 if (resource is not null) path += "&resourceName=" + Uri.EscapeDataString(resource);
                 if (after is not null) path += "&after=" + Uri.EscapeDataString(after);
+                if (canRead?.Invoke() == false) throw new HttpRequestException("Runtime is not connected.");
                 using var response = await http.GetAsync(path, token);
                 response.EnsureSuccessStatusCode();
                 using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
@@ -86,6 +87,7 @@ internal sealed class RuntimeReader(HttpClient http)
                         remote[item.Version.EntityId] = new(item.Version, State(item.State));
                     continue;
                 }
+                if (canRead?.Invoke() == false) throw new HttpRequestException("Runtime is not connected.");
                 using var response = await http.GetAsync("entities/" + item.Version.EntityId.Value, token);
                 if (response.StatusCode == HttpStatusCode.Gone)
                 {
@@ -162,39 +164,15 @@ internal sealed class RuntimeReader(HttpClient http)
         }
         return false;
     }
-    private static bool Overlaps(Observation observation, DateTimeOffset from, DateTimeOffset to) =>
-        (observation.StartAt is null || observation.StartAt < to) && (observation.EndAt is null || observation.EndAt > from
-            || observation.StartAt == observation.EndAt && observation.EndAt == from);
+    private static bool Overlaps(Observation observation, DateTimeOffset from, DateTimeOffset to)
+    {
+        if ((observation.StartAt ?? observation.EndAt) is not { } start) return false;
+        var end = observation.EndAt ?? start;
+        return start == end ? start >= from && start < to : start < to && end > from;
+    }
     private static string State(SubmissionState state) => state == SubmissionState.Frozen ? "pending" : state.ToString().ToLowerInvariant();
 
-    public static async Task<JsonElement> VersionsAsync(ManagedObserver observer, JsonElement parameters, CancellationToken token)
-    {
-        var ids = parameters.GetProperty("versionIds").EnumerateArray().Select(item => new VersionId(item.GetGuid())).ToArray();
-        if (ids.Length > 256) throw new ArgumentException("At most 256 version ids are allowed.");
-        var versions = new List<JsonElement>();
-        var missing = new List<Guid>();
-        string? error = null;
-        foreach (var id in ids.Distinct())
-        {
-            if (observer.Store.Execute(transaction => transaction.IsKnownMissing(id)
-                || transaction.Find(id) is { } known && transaction.IsKnownDeleted(known.Version.EntityId)))
-            { missing.Add(id.Value); continue; }
-            var local = observer.Store.Execute(transaction => transaction.Find(id));
-            VersionSubmission? version;
-            if (local is { State: not SubmissionState.Saved }) version = local.Version;
-            else
-            {
-                try
-                {
-                    version = (await observer.Store.ReadVersionAsync(id, token))?.Submission;
-                    if (version is null && local?.State == SubmissionState.Saved)
-                        observer.Store.Execute(transaction => transaction.RememberMissing(id));
-                }
-                catch (Exception exception) when (exception is HttpRequestException || exception is OperationCanceledException && !token.IsCancellationRequested)
-                { error = exception.Message; version = local?.Version; }
-            }
-            if (version is null) missing.Add(id.Value); else versions.Add(VersionJson.Submission(version));
-        }
-        return JsonLines.Json(new { versions, missing, error });
-    }
+    public static Task<JsonElement> VersionsAsync(ManagedObserver observer, JsonElement parameters, CancellationToken token) =>
+        observer.Store.ReadVersionsAsync(parameters.GetProperty("versionIds").EnumerateArray().Select(item => new VersionId(item.GetGuid())), token);
+
 }

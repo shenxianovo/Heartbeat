@@ -5,6 +5,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>Orisumi.Observers.ForegroundState</RootNamespace>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ObserverPackageId>foreground-state</ObserverPackageId>
+    <ObserverName>Foreground State</ObserverName>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Orisumi.Observer.Sdk/Orisumi.Observer.Sdk.csproj" />

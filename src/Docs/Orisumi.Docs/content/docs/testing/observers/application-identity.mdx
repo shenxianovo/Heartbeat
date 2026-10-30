@@ -43,11 +43,17 @@ API 通过 `WebApplicationFactory` 启动，连接独立的测试数据库。应
 
 ## 测试实现 [#implementation]
 
-以下方法位于 `tests/Orisumi.Integration.Tests/`：
+以下方法位于 `tests/Orisumi.Integration.Tests/`，经真实的 Runtime 本地保存和管道，连接独立的 PostgreSQL，模型是替身：
 
-- 请求包含线索、全部标识线索、名称和目录，不带外部工具；正常回答的解析：`ApplicationModelTests.SendsStructuredInputWithoutToolsAndReadsTheDecision`。无效或未完成的回答作为失败：`ApplicationModelTests.InvalidOrIncompleteResponseIsADiagnosticFailure`，参数是缺少字段的回答和未完成的回答。
-- `ApplicationIdentityTests` 按 API 进程中运行的旧实现编写，不检查本页的前置条件。实现任务改为经 Runtime 运行后，在这里逐项写明对应的方法。
-- 未覆盖：杀掉操作系统进程；真实的 OpenAI 调用。
+- 两台 Mac 和 Android 的 QQ 归入一个产品，再运行一轮或出现同一应用包标识、不同路径的本机应用时不调用模型，同名的不同软件分开，批次中的 InputSet 和 Observation，产品更新后旧的 Observation 不变：`ApplicationIdentityTests.RecognizesOnceAcrossDevicesAndPlatformsAndPreservesEvidence`。
+- 未知在重启后保留，只在出现新的本机应用或名称时重试：`ApplicationIdentityTests.UnknownSurvivesRestartAndRetriesOnlyOnNewNamesOrApplications`。
+- 模型超时和指向目录外的产品不写入，下一轮重试：`ApplicationIdentityTests.ModelFailuresAndInvalidTargetsRetryWithoutCreatingProducts`。
+- 没有 Key 时不写入；更换模型后程序实例形成新版本，已在产品中的线索不重新判断：`ApplicationIdentityTests.MissingKeyDoesNotWriteAndModelChangesVersionTheSameObserver`。
+- 进程在交出批次后中断，重启后用同一个批次标识重发、等到已保存才检查模型：`ApplicationIdentityTests.ProcessExitDuringDeliveryReplaysTheSameBatchBeforeCheckingTheModel`。参数 `false` 中断在保存之前，`true` 中断在保存之后、确认之前。中断用故障注入模拟。
+- 基于旧版本的提交被拒绝后丢弃并重新读取；线索移出产品后重新判断：`ApplicationIdentityTests.StaleProductIsRereadAndRemovedIdentifiersAreRecognizedAgain`。
+- 请求包含线索、全部标识线索、名称和目录，不带外部工具；正常回答的解析：`ApplicationModelTests.SendsStructuredInputWithoutToolsAndReadsTheDecision`。无效或未完成的回答作为失败：`ApplicationModelTests.InvalidOrIncompleteResponseIsADiagnosticFailure`。
+- 第二个 Runtime 安装时的 `deployment_singleton` 由 [Management](../api/management.mdx) 的测试覆盖。
+- 未覆盖：杀掉操作系统进程；轮次重叠；后端在等待最终结果时不可用；修改 `intervalSeconds`；真实的 OpenAI 调用。
 
 ## 执行结果 [#results]
 

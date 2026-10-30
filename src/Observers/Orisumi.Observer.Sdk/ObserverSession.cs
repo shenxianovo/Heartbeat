@@ -35,6 +35,8 @@ public sealed class PipeObserverSession : IObserverSession, IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        using var outcomeStop = method == "outcome" ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, Stopping) : null;
+        cancellationToken = outcomeStop?.Token ?? cancellationToken;
         await _requests.WaitAsync(cancellationToken);
         var id = requestId ?? Guid.NewGuid().ToString();
         var completion = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);

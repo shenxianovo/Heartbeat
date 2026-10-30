@@ -2,39 +2,19 @@ using NpgsqlTypes;
 
 namespace Orisumi.Infrastructure.Database;
 
-internal sealed class ServerObserverRegistration
-{
-    public string ObserverKey { get; set; } = null!;
-    public Guid EntityId { get; set; }
-}
-
-internal sealed class ServerObserverSubmission
-{
-    public Guid EntityId { get; set; }
-    public string Payload { get; set; } = null!;
-}
-
-internal sealed class ServerObserverState
-{
-    public Guid EntityId { get; set; }
-    public string Payload { get; set; } = null!;
-}
-
 internal sealed class StoredEntity
 {
     public Guid EntityId { get; set; }
-    public string? Category { get; set; }
+    public string Category { get; set; } = null!;
     public Guid? SchemaId { get; set; }
-    public string? ResourceName { get; set; }
-    public Guid? CurrentVersionId { get; set; }
-    public DateTimeOffset? DeletedAt { get; set; }
+    public Guid CurrentVersionId { get; set; }
 }
 
 internal sealed class StoredVersion
 {
     public Guid VersionId { get; set; }
     public Guid EntityId { get; set; }
-    public int Ordinal { get; set; }
+    public long Ordinal { get; set; }
     public Guid? PreviousVersionId { get; set; }
     public Guid? SchemaVersionId { get; set; }
     public string Category { get; set; } = null!;
@@ -42,7 +22,7 @@ internal sealed class StoredVersion
     public string Content { get; set; } = null!;
 }
 
-internal sealed class VersionTombstone
+internal sealed class DeletedVersion
 {
     public Guid VersionId { get; set; }
     public Guid EntityId { get; set; }
@@ -51,15 +31,44 @@ internal sealed class VersionTombstone
 internal sealed class StoredVersionReference
 {
     public Guid VersionId { get; set; }
-    public string Path { get; set; } = null!;
-    public Guid TargetVersionId { get; set; }
     public Guid TargetEntityId { get; set; }
 }
 
-internal sealed class CurrentObservation
+internal sealed class StoredObservation
 {
     public Guid EntityId { get; set; }
     public Guid VersionId { get; set; }
-    public Guid ContentSchemaId { get; set; }
+    public Guid? ContentSchemaId { get; set; }
     public NpgsqlRange<DateTimeOffset>? FactRange { get; set; }
+}
+
+internal sealed class StoredSchema
+{
+    public Guid EntityId { get; set; }
+    public string ResourceName { get; set; } = null!;
+}
+
+internal sealed class StoredHost
+{
+    public Guid HostId { get; set; }
+    public string Name { get; set; } = null!;
+    public string Kind { get; set; } = null!;
+    public DateTimeOffset? LastSeenAt { get; set; }
+    public string CredentialHash { get; set; } = null!;
+    public bool Revoked { get; set; }
+}
+
+internal sealed class StoredInstance
+{
+    public Guid EntityId { get; set; }
+    public Guid HostId { get; set; }
+    public string InstanceKey { get; set; } = null!;
+    public string Name { get; set; } = null!;
+    public bool Enabled { get; set; }
+    public string Settings { get; set; } = null!;
+    public long Revision { get; set; }
+    public long LastLocalSequence { get; set; }
+    public string? Status { get; set; }
+    public DateTimeOffset? ReportedAt { get; set; }
+    public bool Removed { get; set; }
 }

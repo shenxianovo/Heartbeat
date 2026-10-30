@@ -8,7 +8,7 @@ Orisumi.Mac 是常驻菜单栏的 macOS 客户端。它启动 [Runtime](../../Do
 | --- | --- |
 | `Orisumi/` | SwiftUI 应用：菜单、窗口、设置和应用生命周期 |
 | `OrisumiClient/` | Swift 包：Runtime 的进程和管道、管理与状态、经 Runtime 读取数据。单元测试在这里 |
-| `Scripts/publish-runtime.sh` | Xcode 构建阶段：发布 Runtime，把附带的 Observer 打成安装包，并签名 |
+| `Scripts/publish-runtime.sh` | Xcode 构建阶段：用本检出的 `orisumi observers pack` 构建并签名 Runtime 和附带的 Observer 的安装包，复制进应用 |
 
 `Assets.xcassets` 中的图标由 `src/Clients/Orisumi.Web/public/mascots/macos.png` 缩放而成。Runtime 是自包含的单文件 .NET 程序。前台状态 Observer 的安装包是 `foreground-state-<版本>-<平台>.zip`，格式见 [Packages](../../Docs/Orisumi.Docs/content/docs/clients/packages.mdx)，版本取自它的 csproj。Runtime 第一次启动时安装它，之后和其他 Observer 一样管理。
 

@@ -26,10 +26,14 @@ Orisumi.Observer.Runtime --service --data-dir <目录> --backend <API 地址> [-
 
 服务方式的 Runtime 必须接入后端才能运行：
 
-- 数据目录中有 `host.json` 时，用其中的凭证，`--pairing-code` 被忽略。
-- 没有 `host.json` 时，用 `--pairing-code` 接入，托管方类型为 `server`。接入失败或没有配对码时，Runtime 以非零的退出码退出，错误写入日志。
+| 数据目录 | `--pairing-code` | Runtime 怎样做 |
+| --- | --- | --- |
+| 有 `host.json` | 省略 | 用其中的身份和凭证 |
+| 有 `host.json` | 给出 | 带着原来的 `hostId` 重新接入，换成新的凭证。配对码必须是为这个托管方签发的 |
+| 没有 `host.json` | 给出 | 作为新的托管方接入，类型为 `server` |
+| 没有 `host.json` | 省略 | 以非零的退出码退出 |
 
-配对码 10 分钟内有效，所以签发后即启动服务。重新接入一个已移除的服务器时，签发为它绑定的配对码，用 `--pairing-code` 重新启动；Runtime 带着 `host.json` 中原来的 `hostId` 接入。
+接入失败时，Runtime 同样以非零的退出码退出，错误写入日志。配对码 10 分钟内有效，所以签发后即启动服务；接入成功后，之后的启动省略它。
 
 ## 持久目录 [#data]
 
@@ -43,4 +47,4 @@ API 不在本机时，地址必须是 HTTPS，见 [API · 认证与授权](../ap
 
 ## 实现 [#implementation]
 
-服务方式和远程管理尚未实现。目前 Runtime 只有随客户端运行和 `--run` 两种方式，应用识别 Observer 仍在 API 进程中运行。
+Runtime 和安装包由 `orisumi observers pack` 按平台构建，容器镜像由 `src/Observers/Orisumi.Observer.Runtime/Dockerfile` 从它的输出构建。构建和运行的步骤见 `src/Observers/Orisumi.Observer.Runtime/README.md`。

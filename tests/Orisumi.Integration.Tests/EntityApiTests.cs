@@ -283,8 +283,8 @@ public sealed class EntityApiTests
         await using var database = await DatabaseFixture.CreateAsync();
         await using var data = NpgsqlDataSource.Create(database.ConnectionString);
         var schema = Schema();
-        var one = new EntityService(new PostgresEntityStore(data, TimeProvider.System), TimeProvider.System);
-        var other = new EntityService(new PostgresEntityStore(data, TimeProvider.System), TimeProvider.System);
+        var one = new EntityService(new PostgresEntityStore(data), TimeProvider.System);
+        var other = new EntityService(new PostgresEntityStore(data), TimeProvider.System);
         var writes = await Task.WhenAll(one.SubmitAsync([schema]), other.SubmitAsync([schema with { VersionId = VersionId.New() }]));
         await Assert.That(writes.Count(result => result.Rejection is null)).IsEqualTo(1);
         await Assert.That(writes.Single(result => result.Rejection is not null).Rejection!.Rule).IsEqualTo("VERSION-6");

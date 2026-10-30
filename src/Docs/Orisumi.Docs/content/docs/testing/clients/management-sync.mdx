@@ -37,7 +37,14 @@ Runtime 使用独立的数据目录，运行一个由测试控制的 Observer。
 
 ## 测试实现 [#implementation]
 
-尚无测试。本页的预期由实现任务补齐；界面的显示由 Web 和 macOS 客户端的测试检查。
+以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
+
+- 离线停用先写入登记、重启后保留、联网后同步，收到的设置与本机的启用合并，后端的配置不作为本机修改上传：`RuntimeManagementTests.OfflineLocalChangesSurviveRestartAndMergeWithRemoteFields`。
+- 旧请求的确认只移除它自己的序号，较新的本机修改留下；已删除的实例不会被配置同步恢复：`RuntimeManagementTests.AcknowledgementRebasesNewerLocalChangesAndNeverRevivesRemovedInstance`。
+- 凭证被撤销时待发送的版本留在本地，不记成被拒绝的版本，重新接入后照常发送：`RuntimeManagementTests.CredentialRejectionDoesNotPermanentlyPoisonPendingDelivery`。这个问题先以失败的测试复现，再修复。
+- 离线托管方的旧报告显示为状态未知、启用和设置仍可修改、在线操作不可用、设置必须是 JSON 对象：Web 的 `src/components/management.test.tsx`。
+- 手动：在临时环境中接入一台服务器，在 Web 和 macOS 中停用它的实例，看到等待同步变为已停止；远程重试；移除后重新接入。
+- 未覆盖：同步期间的长时间断网；远程安装执行中结束 Runtime。
 
 ## 执行结果 [#results]
 

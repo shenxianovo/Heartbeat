@@ -35,7 +35,8 @@ export const caseId = 'api-deletion';
 以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
 
 - Schema 删除限制、实体全部版本删除、重复删除、重放、身份占用、资源名复用和未知身份：`EntityApiTests.DeletionRemovesAllVersionsPreventsReplayAndAllowsResourceReuse`。
-- 未覆盖：程序实例的删除与管理登记；删除观测内容后的 Observation。
+- 删除还没有首版的程序实例后首版按 `HISTORY-7` 被拒绝：`ManagementApiTests.RemovingBeforeFirstVersionReservesIdentityAndStopsLocalChanges`。
+- 未覆盖：经 `DELETE /entities/{entityId}` 删除已登记的程序实例；删除观测内容后读取 `contentVersionId` 返回 `410`。
 
 ## 执行结果 [#results]
 

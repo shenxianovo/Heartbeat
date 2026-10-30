@@ -25,6 +25,7 @@ Runtime 使用独立的数据目录，连接通过 `WebApplicationFactory` 启�
 | 用 `versions` 读取一个实体的旧版本，这个实体已有更新的版本 | 返回的是指定的旧版本 |
 | 被引用的版本已在后端删除 | 它出现在 `missing` 中 |
 | 翻页期间有新的数据提交 | 各页不重复也不遗漏第一页时的快照 |
+| 后端不可用时按事实时间读取，本地有只知道一个边界的和两个边界都未知的 Observation | 只知道一个边界的按那个时刻匹配；两个都未知的不在结果中，与后端的查询一致 |
 | 安装一个没有专用视图的 Observer，在 macOS 客户端中打开 | 详情显示状态、发送和最近的 Observation |
 | 前台状态 Observer 在 macOS 客户端中 | 显示今天的前台应用视图；断网时标明可能不完整 |
 
@@ -34,6 +35,7 @@ Runtime 使用独立的数据目录，连接通过 `WebApplicationFactory` 启�
 
 - 发送前读到 `draft`，发送后同一份 Observation 只出现一次且为 `saved`；后端删除后不再出现，之后离线也不出现本地副本：`RuntimeReadingTests.UploadDoesNotDuplicateAndKnownDeletionDoesNotReappearOffline`。
 - 翻页期间有新的时段提交，各页来自第一页的快照，不重复：`RuntimeReadingTests.PaginationKeepsOneSnapshotWhileCollectionContinues`。
+- 离线时只知道一个边界的按时刻匹配，两个都未知的排除：`RuntimeReadingTests.OfflineFactQueriesTreatOneEndpointAsAPointAndExcludeUnknownTime`。这个问题先以失败的测试复现，再修复。
 - macOS 客户端经 Runtime 读取今天的时段、分页和游标过期后重读，`versions` 报告缺失的内容不再显示，`versions` 报告错误时结果标为不完整：`OrisumiClient` 的 `ObservationReaderTests`；对真实 Runtime 读到进行中的时段、停用后仍能读取：`RuntimeIntegrationTests.enableUninstallReinstallKeepIdentityAndTodayReads`（设置 `ORISUMI_APP` 时运行）。
 - 未覆盖：`versions` 读取旧版本和已删除的版本。macOS 客户端的界面按 [macOS](../../clients/macos.mdx) 实际运行检查。
 

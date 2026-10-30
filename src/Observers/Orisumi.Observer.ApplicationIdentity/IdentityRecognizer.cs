@@ -1,24 +1,23 @@
 using System.Text.Json;
 using Orisumi.Core;
-using Orisumi.Application.Observers;
 
 namespace Orisumi.Observers.ApplicationIdentity;
 
-internal sealed class IdentityRecognizer(IdentityRepository repository, ServerObserverSession session, IServerObserverStore persistence, IApplicationModel model,
+internal sealed class IdentityRecognizer(IdentityRepository repository, IdentityWork work, IApplicationModel model,
     string modelName, string programVersion, Action<string> diagnostic)
 {
     private Dictionary<string, string> unknown = [];
 
     public async Task RunOnceAsync(CancellationToken token)
     {
-        var savedState = await persistence.ReadStateAsync(session.InstanceId, token);
+        var savedState = work.ReadState();
         unknown = savedState is null ? [] : JsonSerializer.Deserialize<Dictionary<string, string>>(savedState)!;
         if (!model.IsConfigured) { diagnostic("OPENAI_API_KEY 未配置，本轮不识别。"); return; }
         try
         {
             var productSchema = await repository.EnsureAsync(IdentityData.ProductSchemaId, null, IdentityData.ProductSchema, token);
             var observerSchema = await repository.EnsureAsync(IdentityData.ObserverSchemaId, null, IdentityData.ObserverSchema, token);
-            var observer = await repository.EnsureAsync(session.InstanceId, observerSchema.VersionId,
+            var observer = await repository.EnsureAsync(work.InstanceId, observerSchema.VersionId,
                 IdentityData.Content(new { programVersion, model = "openai/" + modelName }), token);
             var applications = await repository.ListAsync("local-applications", token);
             var groups = applications.SelectMany(app => IdentityData.Identifiers(app).Where(i => i.IsShared).Distinct()
@@ -42,8 +41,8 @@ internal sealed class IdentityRecognizer(IdentityRepository repository, ServerOb
         catch (ModelViolationException exception) { diagnostic($"提交被拒绝：{exception.Rule} {exception.Message}"); }
     }
 
-    private Task SaveUnknownAsync(CancellationToken token) =>
-        persistence.SaveStateAsync(session.InstanceId, JsonSerializer.Serialize(unknown), token);
+    private Task SaveUnknownAsync(CancellationToken token)
+    { token.ThrowIfCancellationRequested(); work.SaveState(JsonSerializer.Serialize(unknown)); return Task.CompletedTask; }
 
     private async Task IdentifyAsync(ApplicationIdentifier identifier, EntityVersion[] apps,
         VersionId productSchema, VersionId observer, CancellationToken token)

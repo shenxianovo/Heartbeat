@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApplicationsRouteImport } from './routes/applications'
+import { Route as HostsRouteImport } from './routes/hosts'
 import { Route as ObserversRouteImport } from './routes/observers'
 import { Route as EntitiesIndexRouteImport } from './routes/entities.index'
 import { Route as EntitiesEntityIdRouteImport } from './routes/entities.$entityId'
@@ -24,6 +25,11 @@ const IndexRoute = IndexRouteImport.update({
 const ApplicationsRoute = ApplicationsRouteImport.update({
   id: '/applications',
   path: '/applications',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HostsRoute = HostsRouteImport.update({
+  id: '/hosts',
+  path: '/hosts',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ObserversRoute = ObserversRouteImport.update({
@@ -50,6 +56,7 @@ const VersionsVersionIdRoute = VersionsVersionIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/applications': typeof ApplicationsRoute
+  '/hosts': typeof HostsRoute
   '/observers': typeof ObserversRoute
   '/entities/$entityId': typeof EntitiesEntityIdRoute
   '/versions/$versionId': typeof VersionsVersionIdRoute
@@ -58,6 +65,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/applications': typeof ApplicationsRoute
+  '/hosts': typeof HostsRoute
   '/observers': typeof ObserversRoute
   '/entities/$entityId': typeof EntitiesEntityIdRoute
   '/versions/$versionId': typeof VersionsVersionIdRoute
@@ -67,6 +75,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/applications': typeof ApplicationsRoute
+  '/hosts': typeof HostsRoute
   '/observers': typeof ObserversRoute
   '/entities/$entityId': typeof EntitiesEntityIdRoute
   '/versions/$versionId': typeof VersionsVersionIdRoute
@@ -77,6 +86,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/applications'
+    | '/hosts'
     | '/observers'
     | '/entities/$entityId'
     | '/versions/$versionId'
@@ -85,6 +95,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/applications'
+    | '/hosts'
     | '/observers'
     | '/entities/$entityId'
     | '/versions/$versionId'
@@ -93,6 +104,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/applications'
+    | '/hosts'
     | '/observers'
     | '/entities/$entityId'
     | '/versions/$versionId'
@@ -102,6 +114,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApplicationsRoute: typeof ApplicationsRoute
+  HostsRoute: typeof HostsRoute
   ObserversRoute: typeof ObserversRoute
   EntitiesEntityIdRoute: typeof EntitiesEntityIdRoute
   VersionsVersionIdRoute: typeof VersionsVersionIdRoute
@@ -122,6 +135,13 @@ declare module '@tanstack/react-router' {
       path: '/applications'
       fullPath: '/applications'
       preLoaderRoute: typeof ApplicationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/hosts': {
+      id: '/hosts'
+      path: '/hosts'
+      fullPath: '/hosts'
+      preLoaderRoute: typeof HostsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/observers': {
@@ -158,6 +178,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApplicationsRoute: ApplicationsRoute,
+  HostsRoute: HostsRoute,
   ObserversRoute: ObserversRoute,
   EntitiesEntityIdRoute: EntitiesEntityIdRoute,
   VersionsVersionIdRoute: VersionsVersionIdRoute,

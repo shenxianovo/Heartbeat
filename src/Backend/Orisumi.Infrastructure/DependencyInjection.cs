@@ -1,6 +1,6 @@
+using Orisumi.Application.Management;
 using Orisumi.Infrastructure.Database;
 using Orisumi.Application.Entities;
-using Orisumi.Application.Observers;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -21,7 +21,7 @@ public static class DependencyInjection
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<IEntityStore, PostgresEntityStore>();
         services.AddScoped<EntityService>();
-        services.AddSingleton<IServerObserverStore, PostgresServerObserverStore>();
+        services.AddSingleton<IManagementStore, PostgresManagementStore>();
         services.AddSingleton<ObservationPreviewCache>();
         services.AddScoped<ObservationPreviewService>();
         return services;

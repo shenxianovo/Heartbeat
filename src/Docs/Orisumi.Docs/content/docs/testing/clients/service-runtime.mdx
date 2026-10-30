@@ -28,7 +28,14 @@ export const caseId = 'runtime-service';
 
 ## 测试实现 [#implementation]
 
-尚无测试。本页的预期由实现任务补齐。
+没有自动测试。手动步骤：
+
+1. `orisumi observers pack application-identity --target <RID> --output <目录>` 构建 Runtime 和应用识别的安装包，`orisumi env up web --temp` 启动环境。
+2. 不带配对码以 `--service` 启动，确认非零退出；在 Web 的托管页签发配对码后再启动，确认出现一台服务器和它的应用识别实例。
+3. 在 Web 中停用、修改设置、重试，确认状态随之变化；移除这台服务器，再用为它签发的配对码重新启动，确认 `hostId` 不变、`host.json` 的权限是 `0600`。
+4. 发送 `SIGTERM`，确认退出码为 0；用同一个数据目录重启，确认程序实例的 EntityId 不变。
+
+容器镜像的构建和缺少身份时的退出另行检查。未覆盖：长时间运行和断网后的恢复。
 
 ## 执行结果 [#results]
 
