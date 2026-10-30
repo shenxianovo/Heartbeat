@@ -25,19 +25,25 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.describe("外壳", () => {
-  test("主题切换写到 html 上", async ({ page }) => {
+  test("外观菜单切换主题，写到 html 上", async ({ page }) => {
     await page.goto("/");
+    await page.getByRole("button", { name: "外观" }).click();
     await page.getByRole("button", { name: "深", exact: true }).click();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
     await page.reload();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await page.getByRole("button", { name: "外观" }).click();
     await page.getByRole("button", { name: "系统", exact: true }).click();
     await expect(page.locator("html")).not.toHaveAttribute("data-theme");
   });
 
-  test("ID 输入框检查格式，找不到时提示", async ({ page }) => {
+  test("⌘K 打开查找，检查格式，找不到时提示", async ({ page }) => {
     await page.goto("/");
+    // 快捷键在页面渲染后才开始监听。
+    await expect(page.getByText("今天还没有记录")).toBeVisible();
+    await page.keyboard.press("ControlOrMeta+k");
     const input = page.getByLabel("EntityId 或 VersionId");
+    await expect(input).toBeFocused();
     await input.fill("hello");
     await input.press("Enter");
     await expect(page.getByRole("alert")).toHaveText("不是 UUIDv7");

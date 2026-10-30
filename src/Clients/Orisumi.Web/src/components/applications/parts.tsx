@@ -3,7 +3,6 @@ import { AppWindow, Boxes, MoreHorizontal, Plus, Undo2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useSource } from "@/api/source";
 import { isObservation, type Observation, type Version } from "@/api/types";
-import { DayStrip } from "@/components/stack/bodies";
 import { Mark, Token } from "@/components/token/Token";
 import { useHighlight, useStack } from "@/components/token/context";
 import { useNow } from "@/hooks/useNow";
@@ -227,7 +226,7 @@ function Provenance({ product }: { product: Product }) {
   const statement = statements.data?.get(product.version.versionId);
   const at = Date.parse(product.version.recordedAt);
   return (
-    <p className="text-fg-3 flex min-w-0 items-center gap-1 text-[11px]">
+    <p className="text-fg-3 -ml-1 flex min-w-0 items-center gap-1 text-[11px]">
       {statement ? (
         <Token versionId={statement.content.observerVersionId} size="sm" />
       ) : (
@@ -239,12 +238,83 @@ function Provenance({ product }: { product: Product }) {
   );
 }
 
-export function ProductCard({
+/**
+ * 产品表的列：名字和来历、今天的用量条、时长、线索与安装、操作。
+ * 宽屏时每个产品一行；窄屏时用量条和线索各占一行。
+ */
+export const PRODUCT_GRID =
+  "grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-4 gap-y-2 lg:grid-cols-[minmax(150px,200px)_minmax(160px,1fr)_64px_minmax(260px,340px)_28px]";
+
+/** 表头：列名，用量列写出 0、6、12、18、24 点，与每一行的用量条对齐。 */
+export function ProductHeader() {
+  return (
+    <div className={cn(PRODUCT_GRID, "text-fg-3 border-line border-b px-4 pb-2 text-[11px] max-lg:hidden")}>
+      <span>产品</span>
+      <span className="relative h-4 tabular-nums">
+        {[0, 6, 12, 18, 24].map((hour) => (
+          <span
+            key={hour}
+            className="absolute top-0"
+            style={{ left: `${(hour / 24) * 100}%`, translate: hour === 0 ? "0" : hour === 24 ? "-100%" : "-50%" }}
+          >
+            {hour}
+          </span>
+        ))}
+      </span>
+      <span className="text-right">今天</span>
+      <span>线索与安装</span>
+      <span />
+    </div>
+  );
+}
+
+/** 一天的用量条：0 点到 24 点，6、12、18 点各有一道细线，现在的位置是一道竖线。 */
+function UsageStrip({
+  segments,
+  from,
+  to,
+  now,
+  color,
+}: {
+  segments: readonly Pick<Row["segments"][number], "start" | "end">[];
+  from: number;
+  to: number;
+  now: number;
+  color: string;
+}) {
+  const span = to - from;
+  const at = (t: number) => `${((t - from) / span) * 100}%`;
+  return (
+    <div className="bg-line relative h-2.5 overflow-hidden rounded-full">
+      {[6, 12, 18].map((hour) => (
+        <span key={hour} className="bg-card absolute inset-y-0 w-px" style={{ left: `${(hour / 24) * 100}%` }} />
+      ))}
+      {segments.map((segment, i) => (
+        <span
+          key={i}
+          className="absolute inset-y-0"
+          style={{
+            left: at(segment.start),
+            width: `max(1.5px, ${((segment.end - segment.start) / span) * 100}%)`,
+            background: color,
+          }}
+        />
+      ))}
+      {now > from && now < to && (
+        <span className="bg-fg-3 absolute inset-y-0 w-px opacity-60" style={{ left: at(now) }} />
+      )}
+    </div>
+  );
+}
+
+/** 一个应用产品占表里的一行。线索可以拖到别的行上；悬停时它在面板和别处的记号一起亮起。 */
+export function ProductRow({
   product,
   catalog,
   usage,
   from,
   to,
+  now,
   dragging,
   busy,
   onEdit,
@@ -255,6 +325,7 @@ export function ProductCard({
   usage: Row | undefined;
   from: number;
   to: number;
+  now: number;
   dragging: Dragging | null;
   busy: boolean;
   onEdit: (edit: Edit) => void;
@@ -269,6 +340,7 @@ export function ProductCard({
   const target = !!dragging && dragging.owner?.version.entityId !== entityId;
   const color = thingColor(product.name);
   const closeMenu = () => setMenu("closed");
+  const lit = highlight.active === entityId;
 
   return (
     <article
@@ -286,142 +358,64 @@ export function ProductCard({
         if (dragging && target) onEdit({ kind: "move", identifier: dragging.identifier, to: product });
         onDrag(null);
       }}
+      onPointerEnter={() => highlight.set(entityId)}
+      onPointerLeave={() => highlight.set(null)}
       className={cn(
-        "bg-card border-line relative rounded-xl border px-4 pt-3 pb-2.5 transition-[box-shadow,opacity,border-color] duration-150",
-        highlight.active === entityId && "border-line-3",
-        target && "border-dashed",
+        PRODUCT_GRID,
+        "relative rounded-xl px-4 py-2.5 transition-[background-color,box-shadow,opacity] duration-150",
+        lit || over ? "bg-accent-soft" : "hover:bg-panel/60",
         over && "ring-2",
-        dragging && !target && "opacity-60",
+        dragging && !target && "opacity-50",
       )}
       style={over ? ({ "--tw-ring-color": color } as CSSProperties) : undefined}
     >
-      <header className="flex items-center gap-2">
+      <div className="flex min-w-0 items-center gap-2.5">
         <ProductMark name={product.name} />
-        {renaming ? (
-          <form
-            className="min-w-0 flex-1"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const name = String(new FormData(event.currentTarget).get("name") ?? "").trim();
-              setRenaming(false);
-              if (name && name !== product.name) onEdit({ kind: "rename", product, name });
-            }}
-          >
-            <input
-              name="name"
-              autoFocus
-              defaultValue={product.name}
-              aria-label="产品名"
-              onBlur={(event) => event.currentTarget.form?.requestSubmit()}
-              onKeyDown={(event) => {
-                if (event.key !== "Escape") return;
+        <div className="min-w-0 flex-1">
+          {renaming ? (
+            <form
+              onSubmit={(event) => {
                 event.preventDefault();
+                const name = String(new FormData(event.currentTarget).get("name") ?? "").trim();
                 setRenaming(false);
+                if (name && name !== product.name) onEdit({ kind: "rename", product, name });
               }}
-              className="border-line-3 w-full rounded-md border bg-transparent px-1.5 py-0.5 text-[15px] font-medium outline-none"
-            />
-          </form>
-        ) : (
-          <button
-            type="button"
-            onClick={() => stack.open(entityId, -1)}
-            onPointerEnter={() => highlight.set(entityId)}
-            onPointerLeave={() => highlight.set(null)}
-            className="min-w-0 flex-1 cursor-pointer truncate text-left text-[15px] font-medium"
-          >
-            {product.name}
-          </button>
-        )}
-        <span className="text-fg-2 shrink-0 text-xs tabular-nums">{usage ? duration(usage.total) : ""}</span>
-        <Anchored
-          align="end"
-          open={menu !== "closed"}
-          onClose={closeMenu}
-          trigger={
+            >
+              <input
+                name="name"
+                autoFocus
+                defaultValue={product.name}
+                aria-label="产品名"
+                onBlur={(event) => event.currentTarget.form?.requestSubmit()}
+                onKeyDown={(event) => {
+                  if (event.key !== "Escape") return;
+                  event.preventDefault();
+                  setRenaming(false);
+                }}
+                className="border-line-3 w-full rounded-md border bg-transparent px-1.5 py-0.5 text-[14px] font-medium outline-none"
+              />
+            </form>
+          ) : (
             <button
               type="button"
-              aria-label={`${product.name} 的操作`}
-              disabled={busy}
-              onClick={() => setMenu((value) => (value === "closed" ? "main" : "closed"))}
-              className="text-fg-3 hover:text-fg hover:bg-panel -mr-1 cursor-pointer rounded-md p-1 disabled:opacity-40"
+              onClick={() => stack.open(entityId, -1)}
+              className="block max-w-full cursor-pointer truncate text-left text-[14px] leading-snug font-medium hover:underline hover:underline-offset-4"
             >
-              <MoreHorizontal className="size-4" />
+              {product.name}
             </button>
-          }
-        >
-          {menu === "main" && (
-            <>
-              <MenuItem
-                onClick={() => {
-                  closeMenu();
-                  setRenaming(true);
-                }}
-              >
-                改名
-              </MenuItem>
-              <MenuItem onClick={() => setMenu("merge")} disabled={catalog.products.length < 2}>
-                合并到另一个产品…
-              </MenuItem>
-              <MenuItem danger onClick={() => setMenu("delete")}>
-                删除…
-              </MenuItem>
-            </>
           )}
-          {menu === "merge" && (
-            <>
-              <MenuLabel>把「{product.name}」的线索全部移到</MenuLabel>
-              <ProductPicker
-                products={catalog.products}
-                exclude={entityId}
-                onPick={(into) => {
-                  closeMenu();
-                  onEdit({ kind: "merge", from: product, into });
-                }}
-              />
-            </>
-          )}
-          {menu === "delete" && (
-            <div className="grid gap-2 p-1.5">
-              <p className="text-[13px]">
-                删除「{product.name}」？
-                {product.identifiers.length > 0 && (
-                  <span className="text-fg-2">
-                    {" "}
-                    它的 {product.identifiers.length} 条线索会交给应用识别 Observer 重新判断。
-                  </span>
-                )}
-              </p>
-              <div className="flex justify-end gap-1.5">
-                <button
-                  type="button"
-                  onClick={closeMenu}
-                  className="text-fg-2 hover:text-fg cursor-pointer rounded-lg px-2.5 py-1 text-[13px]"
-                >
-                  取消
-                </button>
-                <button
-                  type="button"
-                  autoFocus
-                  onClick={() => {
-                    closeMenu();
-                    onEdit({ kind: "delete", product });
-                  }}
-                  className="bg-danger cursor-pointer rounded-lg px-2.5 py-1 text-[13px] text-white"
-                >
-                  删除
-                </button>
-              </div>
-            </div>
-          )}
-        </Anchored>
-      </header>
-
-      <div className={cn("ml-7", !usage && "opacity-40")}>
-        <DayStrip segments={usage?.segments ?? []} from={from} to={to} color={color} compact />
+          <Provenance product={product} />
+        </div>
       </div>
 
+      <div className={cn("max-lg:order-last max-lg:col-span-3", !usage && "opacity-50")}>
+        <UsageStrip segments={usage?.segments ?? []} from={from} to={to} now={now} color={color} />
+      </div>
+
+      <span className="text-fg-2 text-right text-xs tabular-nums">{usage ? duration(usage.total) : "—"}</span>
+
       {product.identifiers.length ? (
-        <ul className="mt-2 grid gap-1.5">
+        <ul className="grid min-w-0 gap-1 max-lg:order-last max-lg:col-span-3">
           {product.identifiers.map((identifier) => (
             <li key={keyOf(identifier)} className="flex min-w-0 items-center gap-2">
               <ClueChip
@@ -438,12 +432,92 @@ export function ProductCard({
           ))}
         </ul>
       ) : (
-        <p className="text-fg-3 mt-2 text-xs">没有线索。把线索拖进来，或者删除这个产品。</p>
+        <p className="text-fg-3 text-xs max-lg:order-last max-lg:col-span-3">
+          没有线索。把线索拖进来，或者删除这个产品。
+        </p>
       )}
 
-      <footer className="border-line mt-2.5 border-t pt-2">
-        <Provenance product={product} />
-      </footer>
+      <Anchored
+        align="end"
+        open={menu !== "closed"}
+        onClose={closeMenu}
+        trigger={
+          <button
+            type="button"
+            aria-label={`${product.name} 的操作`}
+            disabled={busy}
+            onClick={() => setMenu((value) => (value === "closed" ? "main" : "closed"))}
+            className="text-fg-3 hover:text-fg hover:bg-panel cursor-pointer rounded-md p-1 disabled:opacity-40"
+          >
+            <MoreHorizontal className="size-4" />
+          </button>
+        }
+      >
+        {menu === "main" && (
+          <>
+            <MenuItem
+              onClick={() => {
+                closeMenu();
+                setRenaming(true);
+              }}
+            >
+              改名
+            </MenuItem>
+            <MenuItem onClick={() => setMenu("merge")} disabled={catalog.products.length < 2}>
+              合并到另一个产品…
+            </MenuItem>
+            <MenuItem danger onClick={() => setMenu("delete")}>
+              删除…
+            </MenuItem>
+          </>
+        )}
+        {menu === "merge" && (
+          <>
+            <MenuLabel>把「{product.name}」的线索全部移到</MenuLabel>
+            <ProductPicker
+              products={catalog.products}
+              exclude={entityId}
+              onPick={(into) => {
+                closeMenu();
+                onEdit({ kind: "merge", from: product, into });
+              }}
+            />
+          </>
+        )}
+        {menu === "delete" && (
+          <div className="grid gap-2 p-1.5">
+            <p className="text-[13px]">
+              删除「{product.name}」？
+              {product.identifiers.length > 0 && (
+                <span className="text-fg-2">
+                  {" "}
+                  它的 {product.identifiers.length} 条线索会交给应用识别 Observer 重新判断。
+                </span>
+              )}
+            </p>
+            <div className="flex justify-end gap-1.5">
+              <button
+                type="button"
+                onClick={closeMenu}
+                className="text-fg-2 hover:text-fg cursor-pointer rounded-lg px-2.5 py-1 text-[13px]"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                autoFocus
+                onClick={() => {
+                  closeMenu();
+                  onEdit({ kind: "delete", product });
+                }}
+                className="bg-danger cursor-pointer rounded-lg px-2.5 py-1 text-[13px] text-white"
+              >
+                删除
+              </button>
+            </div>
+          </div>
+        )}
+      </Anchored>
     </article>
   );
 }
@@ -462,8 +536,8 @@ export function DropBar({
 }) {
   if (!dragging) return null;
   return (
-    // 浮在页面上方，拖动开始时不推动下面的卡片。
-    <div className="pop fixed inset-x-0 top-4 z-30 mx-auto grid max-w-[1080px] grid-cols-2 gap-3 px-4">
+    // 浮在页面上方，拖动开始时不推动下面的行。
+    <div className="pop fixed inset-x-0 top-4 z-30 mx-auto grid max-w-[1240px] grid-cols-2 gap-3 px-4 sm:px-8 md:left-[216px]">
       <Zone
         label="放到这里，新建产品"
         icon={<Plus className="size-4" />}

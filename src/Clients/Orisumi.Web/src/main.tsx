@@ -4,12 +4,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
 import { createHttpSource } from "@/api/client";
 import { SourceProvider } from "@/api/source";
-import { applyTheme, applyTone, readTheme, readTone } from "@/lib/preferences";
+import { applyTheme, readTheme } from "@/lib/preferences";
 import { routeTree } from "./routeTree.gen";
 import "./styles/globals.css";
 
 applyTheme(readTheme());
-applyTone(readTone());
 
 const queryClient = new QueryClient({
   defaultOptions: {

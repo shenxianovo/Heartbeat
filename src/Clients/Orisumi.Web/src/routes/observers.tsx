@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { ObserverRows } from "@/components/observers/ObserverRows";
-import { Card, Message } from "@/components/ui";
+import { Card, Message, PageHeader } from "@/components/ui";
 import { useActivity } from "@/hooks/useActivity";
 import { useNow } from "@/hooks/useNow";
 import { isActive, observerRows } from "@/lib/activity";
@@ -24,17 +24,23 @@ function ObserversPage() {
 
   return (
     <section>
-      <header aria-label="现在的状态" className="mb-4 flex flex-wrap items-baseline gap-x-4 gap-y-1">
-        <p aria-live="polite" className="text-[15px]">
-          {activity.loading ? "正在读取 Observer" : `${rows.length} 个 Observer，${active} 个正在写入`}
-        </p>
-        {!activity.loading && (
-          <p className="text-fg-3 text-xs tabular-nums">
-            今天 {count.toLocaleString()} 份 Observation
-            {latest && ` · 最后一次写入 ${clock(latest.lastAt)}，${latest.name}`}
-          </p>
-        )}
-      </header>
+      <PageHeader
+        title="Observer"
+        label="现在的状态"
+        summary={
+          <>
+            <p aria-live="polite" className="text-fg">
+              {activity.loading ? "正在读取 Observer" : `${rows.length} 个 Observer，${active} 个正在写入`}
+            </p>
+            {!activity.loading && (
+              <p className="tabular-nums">
+                今天 {count.toLocaleString()} 份 Observation
+                {latest && ` · 最后一次写入 ${clock(latest.lastAt)}，${latest.name}`}
+              </p>
+            )}
+          </>
+        }
+      />
       <Card>
         {activity.error && !rows.length ? (
           <Message title="读不到数据" detail={activity.error.message} />

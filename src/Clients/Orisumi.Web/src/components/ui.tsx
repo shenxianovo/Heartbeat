@@ -22,8 +22,8 @@ export function Segmented<T extends string>({
           aria-pressed={key === value}
           onClick={() => onChange(key)}
           className={cn(
-            "inline-flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1 text-[13px] transition-colors",
-            key === value ? "bg-card text-fg" : "text-fg-2 hover:text-fg",
+            "inline-flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md px-2.5 py-1 text-[13px] whitespace-nowrap transition-colors",
+            key === value ? "bg-card text-fg shadow-[0_1px_2px_rgb(0_0_0/0.08)]" : "text-fg-2 hover:text-fg",
           )}
         >
           {Icon && <Icon aria-hidden="true" className="size-3.5" />}
@@ -35,11 +35,41 @@ export function Segmented<T extends string>({
 }
 
 export function Card({ className, children }: { className?: string; children: ReactNode }) {
-  return <div className={cn("bg-card border-line rounded-xl border px-[18px] py-3.5", className)}>{children}</div>;
+  return (
+    <div className={cn("bg-card border-line shadow-card rounded-2xl border px-5 py-4", className)}>{children}</div>
+  );
+}
+
+/**
+ * 每个页面的页头：标题、一句现状，右边是这一页的操作。
+ * 现状写成一句话，数字和名字放在句子里，不另起一排统计。
+ */
+export function PageHeader({
+  title,
+  summary,
+  actions,
+  label,
+  className,
+}: {
+  title: ReactNode;
+  summary?: ReactNode;
+  actions?: ReactNode;
+  label?: string;
+  className?: string;
+}) {
+  return (
+    <header aria-label={label} className={cn("mb-6 flex flex-wrap items-end gap-x-6 gap-y-3", className)}>
+      <div className="min-w-[min(100%,320px)] flex-1">
+        <h1 className="text-[26px] leading-tight font-semibold tracking-[-0.01em]">{title}</h1>
+        {summary && <div className="text-fg-2 mt-1.5 text-[13px] leading-relaxed">{summary}</div>}
+      </div>
+      {actions && <div className="flex flex-wrap items-center gap-2 max-sm:w-full">{actions}</div>}
+    </header>
+  );
 }
 
 export function SectionTitle({ children }: { children: ReactNode }) {
-  return <h2 className="mb-2 text-[13px] font-medium">{children}</h2>;
+  return <h2 className="text-fg-2 mb-3 text-xs font-medium">{children}</h2>;
 }
 
 export function Dot({ color }: { color: string }) {
@@ -123,7 +153,7 @@ export function Message({
   return (
     <div className="grid place-items-center gap-2 py-16 text-center">
       {mascot && <Mascot className="mb-2" />}
-      <p className="text-fg text-[15px]">{title}</p>
+      <p className="text-fg text-[15px] font-medium">{title}</p>
       {detail && <p className="text-fg-3 text-xs">{detail}</p>}
       {children}
     </div>
@@ -134,19 +164,25 @@ export function Mono({ children, className }: { children: ReactNode; className?:
   return <span className={cn("font-mono text-xs", className)}>{children}</span>;
 }
 
-/** 锚在触发按钮下方的弹出层。点外面或按 Esc 关闭；Esc 不会再关掉右侧的面板。 */
+/** 锚在触发按钮下方（或上方）的弹出层。点外面或按 Esc 关闭；Esc 不会再关掉右侧的面板。 */
 export function Anchored({
   trigger,
   open,
   onClose,
   children,
   align = "start",
+  side = "bottom",
+  width = "w-72",
 }: {
   trigger: ReactNode;
   open: boolean;
   onClose: () => void;
   children: ReactNode;
   align?: "start" | "end";
+  /** 靠近窗口底部的触发按钮，弹出层放在它上方。 */
+  side?: "top" | "bottom";
+  /** 弹出层的宽度，Tailwind 的 w- 类。 */
+  width?: string;
 }) {
   const ref = useRef<HTMLSpanElement>(null);
   useEffect(() => {
@@ -169,8 +205,9 @@ export function Anchored({
             onClose();
           }}
           className={cn(
-            "pop bg-card border-line absolute top-full z-40 mt-1 w-72 rounded-xl border p-1.5",
-            "shadow-[0_12px_32px_-12px_rgb(0_0_0/0.35)]",
+            "pop bg-card border-line shadow-float absolute z-40 rounded-xl border p-1.5",
+            width,
+            side === "top" ? "bottom-full mb-1" : "top-full mt-1",
             align === "end" ? "right-0" : "left-0",
           )}
         >
@@ -267,13 +304,16 @@ export function Dialog({
     return () => window.removeEventListener("keydown", key);
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/25 p-4" onPointerDown={onClose}>
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/25 p-4 backdrop-blur-[2px]"
+      onPointerDown={onClose}
+    >
       <section
         role="dialog"
         aria-label={title}
         onPointerDown={(event) => event.stopPropagation()}
         className={cn(
-          "pop bg-card border-line w-full rounded-2xl border p-5 shadow-[0_24px_64px_-24px_rgb(0_0_0/0.45)]",
+          "pop bg-card border-line shadow-float w-full rounded-2xl border p-5",
           wide ? "max-w-[480px]" : "max-w-[400px]",
         )}
       >

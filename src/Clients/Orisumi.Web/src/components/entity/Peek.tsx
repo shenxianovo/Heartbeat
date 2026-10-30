@@ -119,7 +119,7 @@ function Card({
     <div
       ref={ref}
       role="tooltip"
-      className="bg-card border-line-2 pop pointer-events-none fixed z-40 w-[300px] rounded-xl border p-3.5 shadow-[0_18px_40px_-18px_rgb(0_0_0/0.45)]"
+      className="bg-card border-line shadow-float pop pointer-events-none fixed z-40 w-[300px] rounded-xl border p-3.5"
       style={position ?? { left: 0, top: 0, visibility: "hidden" }}
     >
       {children}

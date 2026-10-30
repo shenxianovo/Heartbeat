@@ -201,7 +201,7 @@ async function seedThing(request: APIRequestContext) {
   return { names, cleanup: [observation, period, observer, thing, periodSchema, observerSchema, thingSchema] };
 }
 
-test("web edge: a thing appears in the day ranking, opens stacked panels and its type on the type map", async ({
+test("web edge: a thing appears in the day ranking, opens stacked panels, shows on the type map and grows a weave", async ({
   page,
   request,
 }) => {
@@ -231,6 +231,24 @@ test("web edge: a thing appears in the day ranking, opens stacked panels and its
     await expect(page.getByRole("button", { name: new RegExp(data.names.thingType), pressed: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: data.names.thingType })).toBeVisible();
     await expect(page.getByRole("button", { name: new RegExp(data.names.thing) }).first()).toBeVisible();
+
+    // 点类型下的实体，从它开始织：事物左边长出引用它的时段（并着记下它的 Observation），
+    // 时段左边长出 Observer；停在 Observer 上时，路上的标签亮起。
+    await page
+      .getByRole("button", { name: new RegExp(data.names.thing) })
+      .first()
+      .click();
+    await expect(page).toHaveURL(/root=/);
+    await page.getByRole("button", { name: new RegExp(`${data.names.thingType} ${data.names.thing}`) }).click();
+    const period = page.getByRole("button", { name: new RegExp(data.names.seenAs) });
+    await expect(period).toBeVisible();
+    await expect(period).toContainText(data.names.observer);
+    await period.click();
+    const observer = page.getByRole("button", { name: new RegExp(data.names.observer) }).last();
+    await expect(observer).toBeVisible();
+    await observer.hover();
+    await expect(page.locator("svg text", { hasText: /^来源$/ })).toBeVisible();
+    await expect(page.locator("svg text", { hasText: /^thing$/ })).toBeVisible();
   } finally {
     for (const entityId of data.cleanup) await request.delete(`${BASE}/api/entities/${entityId}`);
   }

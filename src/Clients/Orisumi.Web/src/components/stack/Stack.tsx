@@ -68,8 +68,8 @@ function Panel({
       aria-label={info ? `${info.typeName} ${info.title}` : "实体"}
       className={cn(
         "panel-enter bg-card border-line pointer-events-auto flex h-full shrink-0 flex-col overflow-hidden border-l",
-        "shadow-[-16px_0_40px_-24px_rgb(0_0_0/0.35)] transition-[width] duration-200 ease-out",
-        expanded ? "w-[min(400px,100vw)]" : "w-11 max-md:hidden",
+        "shadow-[-24px_0_48px_-28px_rgb(0_0_0/0.4)] transition-[width] duration-200 ease-out",
+        expanded ? "w-[min(420px,100vw)]" : "w-11 max-md:hidden",
         !last && expanded && "max-lg:hidden",
       )}
       onPointerEnter={() => highlight.set(entityId)}
@@ -87,7 +87,7 @@ function Panel({
         </button>
       ) : (
         <>
-          <header className="border-line flex items-start gap-3 border-b px-4 pt-4 pb-3">
+          <header className="border-line flex items-start gap-3 border-b px-5 pt-5 pb-4">
             {info ? (
               <Mark role={info.role} color={info.color} icon={iconOf(info)} size="lg" />
             ) : (
@@ -95,7 +95,9 @@ function Panel({
             )}
             <div className="min-w-0 flex-1">
               <p className="text-fg-3 text-xs">{info ? `${info.roleName} · ${info.typeName}` : "读取中"}</p>
-              <h2 className="truncate text-[17px] leading-snug font-medium break-all">{info?.title ?? "…"}</h2>
+              <h2 className="truncate text-[18px] leading-snug font-semibold tracking-[-0.01em] break-all">
+                {info?.title ?? "…"}
+              </h2>
             </div>
             <button
               type="button"
@@ -106,7 +108,7 @@ function Panel({
               <X className="size-4" />
             </button>
           </header>
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
             <PanelDepth depth={depth}>
               {entity.isError ? (
                 <p className="text-fg-3 py-10 text-center text-[13px]">
@@ -120,9 +122,14 @@ function Panel({
             </PanelDepth>
           </div>
           {info && (
-            <footer className="border-line text-fg-3 flex items-center gap-3 border-t px-4 py-2 text-xs">
+            <footer className="border-line bg-side text-fg-3 flex items-center gap-3 border-t px-5 py-2.5 text-xs">
               <span className="font-mono">…{entityId.slice(-8)}</span>
               <span className="flex-1" />
+              {info.role !== "definition" && (
+                <Link to="/entities" search={{ root: entityId }} className="hover:text-fg">
+                  从这里织
+                </Link>
+              )}
               <Link to="/entities/$entityId" params={{ entityId }} className="hover:text-fg">
                 在检查器中打开 →
               </Link>

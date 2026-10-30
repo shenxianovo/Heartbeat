@@ -1,10 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Search, X } from "lucide-react";
-import { ClueChip, DropBar, Installs, ProductCard, ProductMark, type Dragging } from "@/components/applications/parts";
+import {
+  ClueChip,
+  DropBar,
+  Installs,
+  ProductHeader,
+  ProductMark,
+  ProductRow,
+  type Dragging,
+} from "@/components/applications/parts";
 import { useStack } from "@/components/token/context";
 import { Token } from "@/components/token/Token";
-import { Message } from "@/components/ui";
+import { Card, Message, PageHeader } from "@/components/ui";
 import { editError, productGroup, useApplicationEdit, useCatalog } from "@/hooks/useApplications";
 import { useDay } from "@/hooks/useDay";
 import { useNow } from "@/hooks/useNow";
@@ -17,8 +25,8 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/applications")({ component: ApplicationsPage });
 
 /**
- * 应用：每个应用产品、它的跨设备线索和归到它的安装。线索可以拖到另一个产品上，
- * 也可以点开选择去处；每次修改以用户本人的身份提交。
+ * 应用：一张产品表，每个应用产品一行，写出今天的用量、它的跨设备线索和归到它的安装。
+ * 线索可以拖到另一行上，也可以点开选择去处；每次修改以用户本人的身份提交。
  */
 function ApplicationsPage() {
   const catalog = useCatalog();
@@ -82,26 +90,27 @@ function ApplicationsPage() {
 
   return (
     <section onDragEnd={() => setDragging(null)}>
-      <header className="mb-4 flex flex-wrap items-end gap-x-4 gap-y-3">
-        <div>
-          <h1 className="text-[19px] font-medium">应用</h1>
-          <p className="text-fg-2 mt-0.5 text-[13px]">
+      <PageHeader
+        title="应用"
+        summary={
+          <p>
             {data.products.length} 个产品 · {data.installs.length} 个安装
             {loose.clues.length > 0 && ` · ${loose.clues.length} 条线索未归属`}
           </p>
-        </div>
-        <span className="flex-1" />
-        <label className="bg-panel flex w-full items-center gap-1.5 rounded-lg px-2.5 py-1.5 sm:w-60">
-          <Search className="text-fg-3 size-3.5" aria-hidden="true" />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="筛选产品或线索"
-            aria-label="筛选产品或线索"
-            className="placeholder:text-fg-3 min-w-0 flex-1 bg-transparent text-[13px] outline-none"
-          />
-        </label>
-      </header>
+        }
+        actions={
+          <label className="bg-card border-line focus-within:border-line-3 flex w-full items-center gap-1.5 rounded-lg border px-2.5 py-1.5 sm:w-64">
+            <Search className="text-fg-3 size-3.5" aria-hidden="true" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="筛选产品或线索"
+              aria-label="筛选产品或线索"
+              className="placeholder:text-fg-3 min-w-0 flex-1 bg-transparent text-[13px] outline-none"
+            />
+          </label>
+        }
+      />
 
       <DropBar
         dragging={dragging}
@@ -123,22 +132,26 @@ function ApplicationsPage() {
       )}
 
       {products.length > 0 ? (
-        <div className="rise grid gap-3 md:grid-cols-2">
-          {products.map((product) => (
-            <ProductCard
-              key={product.version.entityId}
-              product={product}
-              catalog={data}
-              usage={usage.get(product.version.entityId)}
-              from={day.range.start}
-              to={day.range.end}
-              dragging={dragging}
-              busy={busy}
-              onEdit={apply}
-              onDrag={setDragging}
-            />
-          ))}
-        </div>
+        <Card className="rise px-2 pt-3 pb-2">
+          <ProductHeader />
+          <div className="divide-line mt-1 grid divide-y">
+            {products.map((product) => (
+              <ProductRow
+                key={product.version.entityId}
+                product={product}
+                catalog={data}
+                usage={usage.get(product.version.entityId)}
+                from={day.range.start}
+                to={day.range.end}
+                now={now}
+                dragging={dragging}
+                busy={busy}
+                onEdit={apply}
+                onDrag={setDragging}
+              />
+            ))}
+          </div>
+        </Card>
       ) : (
         needle && <p className="text-fg-3 py-8 text-center text-[13px]">没有符合「{query.trim()}」的产品</p>
       )}
@@ -199,7 +212,7 @@ function Unassigned({
   onDrag: (dragging: Dragging | null) => void;
 }) {
   return (
-    <section aria-label="未归属" className="border-line-2 mt-6 rounded-xl border border-dashed px-4 py-3">
+    <section aria-label="未归属" className="border-line-2 mt-6 rounded-2xl border border-dashed px-5 py-4">
       <h2 className="text-[13px] font-medium">未归属</h2>
       {clues.length > 0 && (
         <>

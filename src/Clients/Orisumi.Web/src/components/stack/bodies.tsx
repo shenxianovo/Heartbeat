@@ -31,7 +31,7 @@ import { Membership, ProductSections } from "./application";
 
 export function PanelBody({ info }: { info: EntityInfo }) {
   return (
-    <div className="panel-body grid gap-5">
+    <div className="panel-body grid gap-6">
       {info.role === "thing" && <ThingBody info={info} />}
       {info.role === "experience" && <ExperienceBody info={info} />}
       {info.role === "source" && <SourceBody info={info} />}
@@ -46,7 +46,7 @@ function Section({ title, aside, children }: { title: string; aside?: ReactNode;
   return (
     <section>
       <div className="mb-1.5 flex items-baseline gap-2">
-        <h3 className="text-fg-3 text-xs">{title}</h3>
+        <h3 className="text-fg-2 text-xs font-medium">{title}</h3>
         <span className="flex-1" />
         {aside && <span className="text-fg-3 text-xs">{aside}</span>}
       </div>
@@ -178,7 +178,7 @@ export function DayStrip({
   const span = to - from;
   return (
     <div className="mt-2">
-      <div className={cn("bg-panel relative overflow-hidden rounded-full", compact ? "h-1" : "h-2")}>
+      <div className={cn("bg-line relative overflow-hidden rounded-full", compact ? "h-1.5" : "h-2")}>
         {segments.map((segment, i) => (
           <span
             key={i}

@@ -32,7 +32,7 @@ export function HostCard({
   const removed = instances.filter((instance) => instance.removed);
 
   return (
-    <article aria-label={host.name} className="bg-card border-line rounded-xl border">
+    <article aria-label={host.name} className="bg-card border-line shadow-card rounded-2xl border">
       <header className="flex items-center gap-3 px-4 pt-3.5 pb-3">
         <HostIcon host={host} />
         <div className="min-w-0 flex-1">

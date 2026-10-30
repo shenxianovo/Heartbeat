@@ -2,11 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as
 import type { DaySummary, Row, Segment } from "@/lib/day";
 import { ticks as makeTicks, tickStep } from "@/lib/day";
 import { clock, duration, HOUR, MINUTE } from "@/lib/time";
+import { cn } from "@/lib/utils";
 import { useHighlight, useStack } from "../token/context";
 import { Token } from "../token/Token";
 
-const LABEL = 176;
-const ROW = 26;
+const LABEL = 272;
+const ROW = 30;
 const LANE = 20;
 const AXIS = 22;
 const MIN_SPAN = 5 * MINUTE;
@@ -17,6 +18,7 @@ type View = [number, number];
 /**
  * 一天的时间线：上面是全天的缩略条，拖动或拉两端选范围；下面每个事物一行，不引用事物的经历按类型一行，
  * 只有时间点的 Observation 画成密度。捏合或 ⌘ + 滚轮缩放，拖动平移；预设范围之间平滑过渡。
+ * 事物的行左边就是排行：名次、记号和时长，底色的长度是它占最多者的比例，和右边它的段在同一行。
  */
 export function Timeline({
   summary,
@@ -60,11 +62,16 @@ export function Timeline({
     return () => observer.disconnect();
   }, [box]);
 
-  const plot = Math.max(0, width - LABEL);
+  // 窄屏时排行收窄，给时间轴留出地方。
+  const label = width < 720 ? 200 : LABEL;
+  const plot = Math.max(0, width - label);
   const span = view[1] - view[0];
   const x = (t: number) => ((t - view[0]) / span) * plot;
   const things = expanded ? summary.things : summary.things.slice(0, VISIBLE_THINGS);
   const hidden = summary.things.length - things.length;
+  const longest = Math.max(1, ...summary.things.map((row) => row.total));
+  const highlight = useHighlight();
+  const stack = useStack();
 
   const clampView = useCallback(
     ([a, b]: View): View => {
@@ -123,20 +130,27 @@ export function Timeline({
 
   return (
     <div ref={setBox} className="min-w-0 select-none">
-      <div className="mb-2 flex flex-wrap items-center gap-1.5">
-        {presets.map((preset) => (
-          <button
-            key={preset.label}
-            type="button"
-            onClick={() => animate(clampView(preset.view))}
-            className="text-fg-2 hover:text-fg hover:bg-panel cursor-pointer rounded-md px-2 py-0.5 text-xs"
-          >
-            {preset.label}
-          </button>
-        ))}
+      <div className="mb-3 flex flex-wrap items-center gap-1">
+        {presets.map((preset) => {
+          const on = Math.abs(preset.view[0] - view[0]) < MINUTE && Math.abs(preset.view[1] - view[1]) < MINUTE;
+          return (
+            <button
+              key={preset.label}
+              type="button"
+              aria-pressed={on}
+              onClick={() => animate(clampView(preset.view))}
+              className={cn(
+                "cursor-pointer rounded-md px-2.5 py-1 text-xs transition-colors",
+                on ? "bg-panel text-fg font-medium" : "text-fg-2 hover:text-fg hover:bg-panel",
+              )}
+            >
+              {preset.label}
+            </button>
+          );
+        })}
         <span className="flex-1" />
-        <span className="text-fg-3 text-xs tabular-nums">
-          {clock(view[0])} – {clock(view[1])} · 捏合或 ⌘ + 滚轮缩放，拖动平移
+        <span className="text-fg-3 text-xs tabular-nums" title="捏合或 ⌘ + 滚轮缩放，拖动平移">
+          {clock(view[0])} – {clock(view[1])}
         </span>
       </div>
 
@@ -152,20 +166,50 @@ export function Timeline({
         />
       )}
 
-      <div className="mt-2 flex">
-        <div className="shrink-0" style={{ width: LABEL }}>
-          <div style={{ height: AXIS }} />
-          {things.map((row) => (
-            <div key={row.key} className="flex items-center pr-2" style={{ height: ROW }}>
-              <Token version={row.thing!} size="sm" detail={details.get(row.key)} />
-            </div>
-          ))}
+      <div className="mt-3 flex">
+        <div className="shrink-0 pr-4" style={{ width: label }}>
+          <div className="text-fg-3 flex items-end justify-between px-2 pb-1 text-[11px]" style={{ height: AXIS }}>
+            <span>排行</span>
+            <span>时长</span>
+          </div>
+          <ol aria-label="排行">
+            {things.map((row, i) => {
+              const lit = highlight.active === row.key;
+              return (
+                <li key={row.key} style={{ height: ROW }} className="py-[2px]">
+                  <div
+                    className={cn(
+                      "relative grid h-full cursor-pointer grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-x-1 overflow-hidden rounded-md px-2 transition-colors duration-150",
+                      lit ? "bg-accent-soft" : "hover:bg-panel/70",
+                    )}
+                    onPointerEnter={() => highlight.set(row.key)}
+                    onPointerLeave={() => highlight.set(null)}
+                    onClick={() => stack.open(row.key, -1)}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="absolute inset-y-0 left-0 rounded-md transition-[width] duration-300 ease-out"
+                      style={{
+                        width: `${(row.total / longest) * 100}%`,
+                        background: `color-mix(in srgb, ${row.color ?? "var(--fg-3)"} 11%, transparent)`,
+                      }}
+                    />
+                    <span className="text-fg-3 relative text-[11px] tabular-nums">{i + 1}</span>
+                    <span className="relative min-w-0">
+                      <Token version={row.thing!} size="sm" detail={details.get(row.key)} />
+                    </span>
+                    <span className="text-fg-2 relative text-xs tabular-nums">{duration(row.total)}</span>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
           {hidden > 0 || expanded ? (
             <div className="flex items-center" style={{ height: ROW }}>
               <button
                 type="button"
                 onClick={() => setExpanded((value) => !value)}
-                className="text-fg-3 hover:text-fg cursor-pointer px-1 text-xs"
+                className="text-fg-2 hover:text-fg hover:bg-panel cursor-pointer rounded-md px-2 py-0.5 text-xs"
               >
                 {expanded ? "收起" : `还有 ${hidden} 个`}
               </button>
@@ -173,12 +217,12 @@ export function Timeline({
           ) : null}
           {summary.lanes.length + summary.points.length > 0 && <div className="border-line mt-1 border-t pt-1" />}
           {summary.lanes.map((row) => (
-            <div key={row.key} className="text-fg-2 flex items-center truncate px-1 text-xs" style={{ height: LANE }}>
+            <div key={row.key} className="text-fg-2 flex items-center truncate px-2 text-xs" style={{ height: LANE }}>
               {row.title}
             </div>
           ))}
           {summary.points.map((group) => (
-            <div key={group.key} className="text-fg-3 flex items-center truncate px-1 text-xs" style={{ height: LANE }}>
+            <div key={group.key} className="text-fg-3 flex items-center truncate px-2 text-xs" style={{ height: LANE }}>
               {group.title}
             </div>
           ))}
@@ -256,7 +300,7 @@ function Plot({
           const dim = active !== null && active !== row.key;
           return (
             <g key={row.key} opacity={dim ? 0.18 : 1} style={{ transition: "opacity 150ms ease-out" }}>
-              <rect x={0} y={y + ROW / 2 - 0.5} width={plot} height={1} fill="var(--line)" opacity={0.5} />
+              <rect x={0} y={y + ROW / 2 - 0.5} width={plot} height={1} fill="var(--line)" opacity={0.6} />
               {row.segments.map((segment) => {
                 if (segment.end < view[0] || segment.start > view[1]) return null;
                 const left = x(segment.start);
@@ -266,9 +310,9 @@ function Plot({
                     key={segment.observationId}
                     data-segment=""
                     x={left}
-                    y={y + 5}
+                    y={y + 7}
                     width={w}
-                    height={ROW - 10}
+                    height={ROW - 14}
                     rx={Math.min(3, w / 2)}
                     fill={row.color ?? "var(--fg-3)"}
                     className="cursor-pointer"
@@ -338,7 +382,7 @@ function Plot({
       {hover && (
         <div
           role="tooltip"
-          className="bg-card border-line-2 pointer-events-none absolute z-10 rounded-lg border px-2.5 py-1.5 text-xs shadow-[0_8px_24px_-12px_rgb(0_0_0/0.35)]"
+          className="bg-card border-line shadow-float pointer-events-none absolute z-10 rounded-lg border px-2.5 py-1.5 text-xs"
           style={{
             left: Math.min(Math.max(0, hover.left - 80), plot - 180),
             top: hover.top + ROW + 2,
@@ -431,7 +475,7 @@ function Minimap({
     <svg
       width={width}
       height={28}
-      className="bg-panel/60 block cursor-crosshair rounded-md"
+      className="bg-panel block cursor-crosshair rounded-lg"
       onPointerDown={(event) => down(event, "new")}
       onPointerMove={move}
       onPointerUp={() => (drag.current = null)}

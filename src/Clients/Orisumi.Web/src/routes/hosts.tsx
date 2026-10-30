@@ -5,7 +5,7 @@ import { runState, synced, type Host } from "@/api/management";
 import { HostCard } from "@/components/hosts/HostCard";
 import { InstallDialog, PairingDialog } from "@/components/hosts/dialogs";
 import { InstancePanel } from "@/components/hosts/InstancePanel";
-import { Button, Card, Message } from "@/components/ui";
+import { Button, Card, Message, PageHeader } from "@/components/ui";
 import { useHosts, useInstances } from "@/hooks/useManagement";
 import { useNow } from "@/hooks/useNow";
 
@@ -35,24 +35,29 @@ export function HostsPage() {
 
   return (
     <section>
-      <header className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
-        <div className="min-w-0 flex-1">
-          <p aria-live="polite" className="text-[15px]">
-            {hosts.isPending
-              ? "正在读取"
-              : `${live.length} 台机器${offline ? `，${offline} 台离线` : live.length ? "，都在线" : ""}`}
-          </p>
-          {!hosts.isPending && live.length > 0 && (
-            <p className="text-fg-3 text-xs tabular-nums">
-              {running} 个 Observer 在运行{waiting ? ` · ${waiting} 个等待设备同步` : ""}
+      <PageHeader
+        title="托管"
+        summary={
+          <>
+            <p aria-live="polite" className="text-fg">
+              {hosts.isPending
+                ? "正在读取"
+                : `${live.length} 台机器${offline ? `，${offline} 台离线` : live.length ? "，都在线" : ""}`}
             </p>
-          )}
-        </div>
-        <Button primary onClick={() => setPairing({ host: null })}>
-          <Plus className="size-3.5" />
-          接入
-        </Button>
-      </header>
+            {!hosts.isPending && live.length > 0 && (
+              <p className="tabular-nums">
+                {running} 个 Observer 在运行{waiting ? ` · ${waiting} 个等待设备同步` : ""}
+              </p>
+            )}
+          </>
+        }
+        actions={
+          <Button primary onClick={() => setPairing({ host: null })}>
+            <Plus className="size-3.5" />
+            接入
+          </Button>
+        }
+      />
       {error && !hosts.data ? (
         <Card>
           <Message title="读不到托管方" detail={error.message} />

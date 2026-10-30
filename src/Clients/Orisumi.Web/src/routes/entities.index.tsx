@@ -5,23 +5,32 @@ import { readAllPages } from "@/api/client";
 import { useSource } from "@/api/source";
 import type { Observation, Version } from "@/api/types";
 import { typeIcon } from "@/components/token/icons";
-import { Mark, Token } from "@/components/token/Token";
-import { Card, Message } from "@/components/ui";
+import { iconOf, Mark, Token } from "@/components/token/Token";
+import { Button, Card, Message, PageHeader } from "@/components/ui";
+import { WeaveCanvas } from "@/components/weave/Weave";
 import { useEntityCount, type EntityFilter } from "@/hooks/queries";
-import { describeVersion } from "@/hooks/useEntityInfo";
+import { describeVersion, useDescribe, useEntityInfo } from "@/hooks/useEntityInfo";
+import { useCurrent } from "@/hooks/useCurrent";
+import { useEntity } from "@/hooks/queries";
+import { useNow } from "@/hooks/useNow";
 import { useTypes, type TypeEdge, type TypeIndex, type TypeNode } from "@/hooks/useTypes";
 import { referenceLabel } from "@/lib/references";
 import { differences, ROLE_NAMES } from "@/lib/roles";
 import { DAY } from "@/lib/time";
 import { cn } from "@/lib/utils";
+import { isUuidv7 } from "@/lib/uuid";
 
 interface EntitiesSearch {
   type?: string | undefined;
+  /** 织图的起点，EntityId。 */
+  root?: string | undefined;
 }
 
 export const Route = createFileRoute("/entities/")({
-  validateSearch: (search: Record<string, unknown>): EntitiesSearch =>
-    typeof search.type === "string" && search.type ? { type: search.type } : {},
+  validateSearch: (search: Record<string, unknown>): EntitiesSearch => ({
+    ...(typeof search.type === "string" && search.type ? { type: search.type } : {}),
+    ...(typeof search.root === "string" && isUuidv7(search.root) ? { root: search.root } : {}),
+  }),
   component: EntitiesPage,
 });
 
@@ -48,11 +57,31 @@ const LABEL_CHAR_W = 6;
 const LABEL_PAD = 12;
 const LABEL_STEP = 12;
 
-/** 实体：类型之间怎样引用画成一张图，点一个类型在下面展开它的实体。 */
+/**
+ * 实体：有起点时是织图，从起点一层层长出和它有引用关系的实体。
+ * 没有起点时是类型图，点一个类型列出它的实体，点实体从它开始织。
+ */
 function EntitiesPage() {
   const types = useTypes();
-  const { type } = Route.useSearch();
+  const { type, root } = Route.useSearch();
   const navigate = Route.useNavigate();
+
+  if (root)
+    return (
+      <section>
+        <PageHeader
+          title="实体"
+          summary={
+            <p>
+              从 <RootName entityId={root} />{" "}
+              开始织。点节点长出和它有引用关系的实体，再点收起；停在节点上，看它是怎么长出来的。
+            </p>
+          }
+          actions={<Button onClick={() => void navigate({ search: (prev) => ({ type: prev.type }) })}>换个起点</Button>}
+        />
+        <WeaveCanvas key={root} rootId={root} />
+      </section>
+    );
 
   if (types.isPending) return <Message title="正在整理类型" />;
   if (types.isError) return <Message title="读不到类型" detail={types.error.message} mascot />;
@@ -60,18 +89,24 @@ function EntitiesPage() {
 
   const selected = types.data.nodes.find((node) => node.key === type) ?? null;
   return (
-    <section className="grid gap-4">
-      <h1 className="text-[19px] font-medium">实体</h1>
-      <Card className="min-w-0">
-        <TypeMap
-          index={types.data}
-          selected={selected?.key ?? null}
-          onSelect={(key) =>
-            void navigate({ search: (prev) => ({ ...prev, type: key === selected?.key ? undefined : key }) })
-          }
-        />
-      </Card>
-      {selected && <TypeDetail key={selected.key} node={selected} />}
+    <section>
+      <PageHeader
+        title="实体"
+        summary={`${types.data.nodes.length} 种类型。线上写着引用它的字段。点一个类型列出它的实体，再点一个实体从它开始织。`}
+        actions={<CurrentStart />}
+      />
+      <div className="grid gap-4">
+        <Card className="min-w-0">
+          <TypeMap
+            index={types.data}
+            selected={selected?.key ?? null}
+            onSelect={(key) =>
+              void navigate({ search: (prev) => ({ ...prev, type: key === selected?.key ? undefined : key }) })
+            }
+          />
+        </Card>
+        {selected && <TypeDetail key={selected.key} node={selected} />}
+      </div>
     </section>
   );
 }
@@ -387,7 +422,7 @@ function EntityTokens({ node }: { node: TypeNode }) {
           className="rise min-w-0"
           style={{ animationDelay: `${Math.min(i, 20) * 12}ms` }}
         >
-          <Token version={item.version} detail={item.detail} />
+          <StartButton version={item.version} detail={item.detail} />
         </li>
       ))}
     </ul>
@@ -426,9 +461,9 @@ function RecentExperiences({ node }: { node: TypeNode }) {
             style={{ animationDelay: `${Math.min(i, 20) * 12}ms` }}
           >
             {node.key === "observation" ? (
-              <Token version={observation} />
+              <StartButton version={observation} />
             ) : (
-              <Token versionId={observation.content.contentVersionId} />
+              <StartButton versionId={observation.content.contentVersionId} />
             )}
           </li>
         ))}
@@ -443,5 +478,56 @@ function RecentExperiences({ node }: { node: TypeNode }) {
         </button>
       )}
     </>
+  );
+}
+
+/** 起点的名字。 */
+function RootName({ entityId }: { entityId: string }) {
+  const entity = useEntity(entityId);
+  const { info } = useDescribe(entity.data);
+  return <span className="text-fg font-medium">「{info?.title ?? "…"}」</span>;
+}
+
+/** 现在正在记录的事物，一键从它开始织。 */
+function CurrentStart() {
+  const now = useNow(5000);
+  const { current } = useCurrent(now);
+  const navigate = Route.useNavigate();
+  if (!current) return null;
+  return (
+    <Button onClick={() => void navigate({ search: { root: current.row.thing!.entityId } })}>
+      从现在的「{current.row.title}」开始
+    </Button>
+  );
+}
+
+/** 列表里的一个实体：记号和名字，点它从它开始织。 */
+function StartButton({
+  version,
+  versionId,
+  detail,
+}: {
+  version?: Version;
+  versionId?: string;
+  detail?: string | null | undefined;
+}) {
+  const byId = useEntityInfo(version ? null : versionId);
+  const given = useDescribe(version);
+  const { info } = version ? given : byId;
+  const navigate = Route.useNavigate();
+  if (!info) return <span className="bg-panel block h-7 rounded-md" />;
+  return (
+    <button
+      type="button"
+      title={`从 ${info.title} 开始织`}
+      onClick={() => void navigate({ search: (prev) => ({ ...prev, root: info.version.entityId }) })}
+      className="hover:bg-panel flex w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-0.5 text-left text-[13px]"
+    >
+      <Mark role={info.role} color={info.color} icon={iconOf(info)} size="md" />
+      <span className="min-w-0 truncate">
+        {info.title}
+        {detail && <span className="text-fg-3 font-mono text-[11px]"> {detail}</span>}
+      </span>
+    </button>
   );
 }

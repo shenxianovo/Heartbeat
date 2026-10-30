@@ -42,13 +42,13 @@ export function InstancePanel({
   return (
     <aside
       aria-label={`${instance.name} 的管理`}
-      className="panel-enter bg-card border-line fixed inset-y-0 right-0 z-30 flex w-[min(400px,100vw)] flex-col border-l shadow-[-16px_0_40px_-24px_rgb(0_0_0/0.35)]"
+      className="panel-enter bg-card border-line fixed inset-y-0 right-0 z-30 flex w-[min(420px,100vw)] flex-col border-l shadow-[-24px_0_48px_-28px_rgb(0_0_0/0.4)]"
     >
-      <header className="border-line flex items-start gap-3 border-b px-4 pt-4 pb-3">
+      <header className="border-line flex items-start gap-3 border-b px-5 pt-5 pb-4">
         <Mark role="source" color={null} size="lg" framed />
         <div className="min-w-0 flex-1">
           <p className="text-fg-3 text-xs">程序实例 · {host.name}</p>
-          <h2 className="truncate text-[17px] leading-snug font-medium">{instance.name}</h2>
+          <h2 className="truncate text-[18px] leading-snug font-semibold tracking-[-0.01em]">{instance.name}</h2>
         </div>
         <button
           type="button"

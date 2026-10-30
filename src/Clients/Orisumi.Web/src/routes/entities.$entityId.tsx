@@ -112,12 +112,12 @@ function EntityPage() {
         <span className="text-fg-2">{number === null ? "?" : versionLabel(number, versions.length)}</span>
       </nav>
 
-      <header className="bg-card border-line mb-4 rounded-xl border p-4 sm:p-5">
+      <header className="bg-card border-line shadow-card mb-4 rounded-2xl border p-4 sm:p-5">
         <div className="flex items-start gap-3.5">
           {mark("xl")}
           <div className="min-w-0 flex-1">
             <p className="text-fg-3 text-xs">{info ? `${info.roleName} · ${typeName}` : "读取中"}</p>
-            <h1 className="text-[22px] leading-tight font-medium break-all">{title}</h1>
+            <h1 className="text-[26px] leading-tight font-semibold tracking-[-0.01em] break-all">{title}</h1>
             <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
               <CopyId id={entityId} />
               <span className="text-fg-2 text-xs">
