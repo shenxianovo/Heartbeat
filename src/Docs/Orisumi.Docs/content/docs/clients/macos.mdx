@@ -3,7 +3,7 @@ title: "macOS"
 description: "macOS 客户端附带哪些 Observer、怎样展示它们的数据，以及实现到了哪一步"
 ---
 
-macOS 客户端常驻在菜单栏，通过 [Runtime](../hosting/runtime.mdx) 托管这台 Mac 上的 Observer。它遵循[设备端客户端](./index.mdx#device)的托管规则；本页写它附带哪些 Observer、怎样展示数据，以及实现的进度。
+macOS 客户端常驻在菜单栏，通过 [Runtime](../hosting/runtime.mdx) 托管这台 Mac 上的 Observer。它遵循[设备端客户端](./device.mdx)的托管规则；本页写它附带哪些 Observer、怎样展示数据，以及实现的进度。
 
 ## 附带的 Observer [#observers]
 
@@ -49,7 +49,7 @@ Observer 停用或出了问题时，侧栏中它的视图旁有标记；其他�
 
 ## 管理 [#management]
 
-“这台 Mac”列出本机的 Observer，经 Runtime 管理，所以离线时启用、停用和修改设置立即生效。其他机器列出它们的 Observer，经后端管理。功能和显示规则见 [Overview · 管理](./index.mdx#management)。
+“这台 Mac”列出本机的 Observer，经 Runtime 管理，所以离线时启用、停用和修改设置立即生效。其他机器列出它们的 Observer，经后端管理。功能和显示规则见 [Management](./management.mdx)。
 
 每个 Observer 一行：名称、版本、运行和发送状态，还没同步时写着“等待同步”，右边是启用开关。选中一行，右侧的检查器显示它的详情：
 
@@ -99,11 +99,11 @@ Observer 停用或出了问题时，侧栏中它的视图旁有标记；其他�
 | 常驻菜单栏，关闭窗口后继续运行 | 已实现 |
 | 设置与登录时启动 | 已实现 |
 | 经 Runtime 托管 Observer，前台状态 Observer 作为附带的安装包 | 已实现 |
-| [安装与卸载](./index.mdx#install) | 已实现：附带的安装包；官方目录尚未托管，见 [Overview · 待定](./index.mdx#open) |
-| [更新](./index.mdx#updates) | 已实现，界面在官方目录有新版本时出现 |
-| [启用与停用](./index.mdx#enable) | 已实现 |
-| [故障恢复](./index.mdx#recovery) | 已实现：Observer 由 Runtime 重启，Runtime 由客户端重启 |
-| [发送](./index.mdx#sending)由 Runtime 完成 | 已实现 |
+| [安装与卸载](./device.mdx#install) | 已实现：附带的安装包；官方目录尚未托管，见 [Device Clients · 待定](./device.mdx#open) |
+| [更新](./device.mdx#updates) | 已实现，界面在官方目录有新版本时出现 |
+| [启用与停用](./device.mdx#enable) | 已实现 |
+| [故障恢复](./device.mdx#recovery) | 已实现：Observer 由 Runtime 重启，Runtime 由客户端重启 |
+| [发送](./device.mdx#sending)由 Runtime 完成 | 已实现 |
 | [最近的数据](#recent) | 已实现 |
 | [今天的前台应用](#today) | 已实现，经 Runtime 读取 |
 | [管理](#management) | 已实现 |

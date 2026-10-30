@@ -54,6 +54,10 @@ macOS 唤醒后立即重新读取。休眠、读取失败等情况下时段怎�
 
 标题通过所属应用时段的观测内容关联到这一段活动，窗口本身没有身份。标题怎样分段，见 [Foreground Window Title · 粒度](./foreground-window-title.mdx#granularity)。
 
+## 事实时间 [#fact-time]
+
+应用时段和标题时段都是时段，各有自己的时间线，边界见 [Foreground Application Period · 事实时间](./foreground-application-period.mdx#fact-time) 和 [Foreground Window Title · 事实时间](./foreground-window-title.mdx#fact-time)。
+
 ## 提交 [#submission]
 
 前台状态 Observer 使用 [.NET](../../hosting/dotnet.mdx) 的 SDK，采用[结束后提交](../../hosting/submission.mdx#strategies)，并写入[观测预览](../../hosting/submission.mdx#previews)：进行中的时段在本地补全，同时作为草稿写入后端，读取方能实时读到；时段结束时才冻结 Observation 并安排发送，所以后端为每个时段保存一个版本。业务事件对应的操作如下：

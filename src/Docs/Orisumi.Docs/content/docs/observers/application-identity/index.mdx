@@ -35,7 +35,7 @@ flowchart LR
   click C "/observers/foreground-state/foreground-application-period"
 ```
 
-## 归属 [#membership]
+### 归属 [#membership]
 
 Mac A 和 Mac B 上的 QQ 是两个本机应用，它们的应用包标识都是 `com.tencent.qq`。QQ 这个产品的当前版本在 `identifiers` 中列出这条线索，所以两个本机应用都属于 QQ。之后第三台 Mac 装上 QQ，它直接属于 QQ。
 
@@ -55,7 +55,7 @@ Mac A 和 Mac B 上的 QQ 是两个本机应用，它们的应用包标识都是
 - 启动时，它经 Runtime 登记两种业务类型的 EntitySchema 和程序实例。程序版本或模型型号变化时，Runtime 为程序实例形成新版本，之后的 Observation 引用新版本，见 [Submission · 登记](../../hosting/submission.mdx#registration)。
 - 进程启动后，它先[恢复](#recovery)上次没有完成的批次，再开始第一轮。轮次由它自己安排，同一时刻只有一轮，上一轮结束后等待一个间隔再开始下一轮。
 
-## 识别 [#identification]
+## 处理 [#processing]
 
 应用识别 Observer 默认每 60 秒运行一轮，读取都经 Runtime 读后端已保存的数据，见 [Protocol · 读取后端](../../hosting/protocol.mdx#observer-reading)：
 
@@ -67,7 +67,7 @@ Mac A 和 Mac B 上的 QQ 是两个本机应用，它们的应用包标识都是
 
 ### 模型 [#model]
 
-应用识别 Observer 调用 OpenAI 的 API，型号由配置给出。请求用结构化输出限定回答的格式。
+应用识别 Observer 调用 OpenAI 的 API，型号由[配置](#configuration)给出，记在 Observer 的版本中，所以从 Observation 能查到这次判断用的模型。请求用结构化输出限定回答的格式。
 
 发送的内容：
 
@@ -88,25 +88,6 @@ Mac A 和 Mac B 上的 QQ 是两个本机应用，它们的应用包标识都是
 | 新的产品 | 产品的名称 |
 | 未知 | 无 |
 
-### 写入 [#writes]
-
-属于已有的产品或新的产品时，应用识别 Observer 向 Runtime 交出一个批次，按顺序包含：
-
-| 版本 | 内容 |
-| --- | --- |
-| InputSet | 拥有这条线索的本机应用版本、读到名称的前台时段版本，以及目录中每个产品的当前版本 |
-| 应用产品 | 已有的产品：当前版本加上这条线索，形成新版本。新的产品：首版，`identifiers` 只有这条线索 |
-| Observation | Observer 是程序实例的当前版本，观测内容是上面的产品版本，`inputSetVersionId` 指向上面的 InputSet |
-
-- 三个版本都是草稿，在同一个批次中结束，所以随即冻结并发送。
-- 已有产品的新版本用 `previousVersionId` 指定读到的当前版本，见 [Protocol · 批次的操作](../../hosting/protocol.mdx#operations)。
-
-交出批次后，它用 `outcome` 等待这一批的最终结果，已保存后才更新对照、处理下一条线索，见 [Submission · 最终结果](../../hosting/submission.mdx#outcome)。
-
-Observation 的 `startAt`、`endAt` 和 `timeZone` 都是 `null`：这款软件从什么时候起有这条线索，判断时不知道，见 [OBSERVATION-5](../../core/model/observation.mdx#observation-5)。模型的型号记在 Observer 的版本中，所以从 Observation 能查到这次判断用的模型。
-
-例如 Android 上第一次出现 QQ：线索 `android.package-name`、`com.tencent.mobileqq` 不在对照中，模型回答属于 QQ。批次中是 InputSet、QQ 的新版本（`identifiers` 多了这条线索）和一份 Observation。
-
 结果为未知时，应用识别 Observer 不提交，记下这条线索，以及当时拥有它的本机应用和收集到的名称。这份记录是它的业务状态，保存在实例的数据目录中，重启后仍在。之后的轮次中，这两项都没有变化时跳过这条线索；出现新的本机应用或新的名称时，重新交给模型。线索归入某个产品后，这条记录随之删除。
 
 ### 用户的修改 [#edits]
@@ -117,13 +98,7 @@ Observation 的 `startAt`、`endAt` 和 `timeZone` 都是 `null`：这款软件�
 - 用户删除一个产品，它的线索都成为待识别的线索。
 - 已经在产品中的线索，应用识别 Observer 不再处理。
 
-## 恢复 [#recovery]
-
-批次交给 Runtime 之前，应用识别 Observer 先把批次的标识和序列化好的请求写进实例的数据目录。收到最终结果后，删除这份记录。
-
-进程启动时，记录还在，说明上次没有确认这一批：它用同一个标识重发原来的请求，Runtime 返回原来的回执，不形成新的版本，见 [Submission · 回执](../../hosting/submission.mdx#receipts)。然后等待这一批的最终结果，再开始新的一轮，所以模型不会为同一条线索再调用一次，也不会再建一个产品。
-
-## 失败 [#failures]
+### 失败 [#failures]
 
 失败作为采集诊断写入标准错误，由 Runtime 报告，见 [OBSERVER-8](../../core/model/observer.mdx#observer-8)。
 
@@ -139,15 +114,46 @@ Observation 的 `startAt`、`endAt` 和 `timeZone` 都是 `null`：这款软件�
 
 只有模型回答“新的产品”时才创建产品。
 
-## 配置 [#configuration]
+### 配置 [#configuration]
 
-模型型号和间隔是程序实例的设置，在客户端中修改，见 [Clients · 管理](../../clients/index.mdx#management)。API Key 不放进设置，由服务器的运行环境提供，见 [Server · 运行环境](../../hosting/server.mdx#environment)。
+模型型号和间隔是程序实例的设置，在客户端中修改，见 [Clients · Management](../../clients/management.mdx)。API Key 不放进设置，由服务器的运行环境提供，见 [Server · 运行环境](../../hosting/server.mdx#environment)。
 
 | 配置 | 来源 | 含义 |
 | --- | --- | --- |
 | `OPENAI_API_KEY` | Runtime 的环境变量 | OpenAI 的 API Key |
 | `model` | 设置 | 调用的 OpenAI 模型，省略时为默认模型 |
 | `intervalSeconds` | 设置 | 两轮之间的间隔，默认 60 |
+
+## 事实时间 [#fact-time]
+
+Observation 的 `startAt`、`endAt` 和 `timeZone` 都是 `null`：这款软件从什么时候起有这条线索，判断时不知道，见 [OBSERVATION-5](../../core/model/observation.mdx#observation-5)。
+
+## 提交 [#submission]
+
+应用识别 Observer 使用 [.NET](../../hosting/dotnet.mdx) 的 SDK，每条线索的结果交给 Runtime 一个批次。
+
+### 写入 [#writes]
+
+属于已有的产品或新的产品时，应用识别 Observer 向 Runtime 交出一个批次，按顺序包含：
+
+| 版本 | 内容 |
+| --- | --- |
+| InputSet | 拥有这条线索的本机应用版本、读到名称的前台时段版本，以及目录中每个产品的当前版本 |
+| 应用产品 | 已有的产品：当前版本加上这条线索，形成新版本。新的产品：首版，`identifiers` 只有这条线索 |
+| Observation | Observer 是程序实例的当前版本，观测内容是上面的产品版本，`inputSetVersionId` 指向上面的 InputSet |
+
+- 三个版本都是草稿，在同一个批次中结束，所以随即冻结并发送。
+- 已有产品的新版本用 `previousVersionId` 指定读到的当前版本，见 [Protocol · 批次的操作](../../hosting/protocol.mdx#operations)。
+
+交出批次后，它用 `outcome` 等待这一批的最终结果，已保存后才更新对照、处理下一条线索，见 [Submission · 最终结果](../../hosting/submission.mdx#outcome)。
+
+例如 Android 上第一次出现 QQ：线索 `android.package-name`、`com.tencent.mobileqq` 不在对照中，模型回答属于 QQ。批次中是 InputSet、QQ 的新版本（`identifiers` 多了这条线索）和一份 Observation。
+
+### 恢复 [#recovery]
+
+批次交给 Runtime 之前，应用识别 Observer 先把批次的标识和序列化好的请求写进实例的数据目录。收到最终结果后，删除这份记录。
+
+进程启动时，记录还在，说明上次没有确认这一批：它用同一个标识重发原来的请求，Runtime 返回原来的回执，不形成新的版本，见 [Submission · 回执](../../hosting/submission.mdx#receipts)。然后等待这一批的最终结果，再开始新的一轮，所以模型不会为同一条线索再调用一次，也不会再建一个产品。
 
 ## 实现 [#implementation]
 

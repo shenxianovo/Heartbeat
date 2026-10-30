@@ -5,23 +5,22 @@
   "root": true,
   "pages": [
     "index",
-    "integration",
-    "template",
-    "---Applications---",
+    "---Observers---",
     "foreground-state",
     "application-identity",
-    "---Activity & Devices---",
+    "user",
+    "---Drafts---",
     "input-events",
     "device-state",
-    "---People---",
-    "user",
-    "---Source Drafts---",
     "browser-history/index",
     "assistant-sessions/index",
     "screen-capture/index",
     "health/index",
     "vrchat/index",
     "playback/index",
-    "audio/index"
+    "audio/index",
+    "---Authoring---",
+    "integration",
+    "template"
   ]
 }

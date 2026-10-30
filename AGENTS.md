@@ -21,10 +21,12 @@
 | 类型的结构与规则 | `core/model/` |
 | 跨类型的规则 | `core/rules/` |
 | 术语 | `core/glossary.mdx` |
+| 规则的格式与编号 | `core/conventions.mdx` |
+| 文字、用词和导航 | `core/writing.mdx` |
 | 架构决定 | `adr/` |
 | HTTP 契约 | `api/openapi.json` |
 | 单个 Observer 的业务规则和实现决定 | `observers/<observer>/` |
-| 托管方的职责、Runtime 的进程与管道协议、服务器上的运行、Observer 的统一管理 | `hosting/` |
+| 托管方的职责、Runtime 的进程与管道协议、安装包、服务器上的运行、Observer 的统一管理 | `hosting/` |
 | 模块的运行和操作说明 | 模块目录的 `README.md` |
 
 使用 `grill-with-docs` 或 `domain-modeling` 时，`GLOSSARY.md` 对应 `core/glossary.mdx`，`docs/adr/` 对应 `adr/`。
@@ -46,7 +48,7 @@
 - 实现任务只改代码和测试。文档站、各级 `README.md`、`AGENTS.md` 和 skill 都由文档任务修改。
 - 修改接口时，文档任务先改契约，实现任务在一次改动中同步生产者、消费者和测试。
 - 实现任务发现文档需要修改时，找到最早能解决问题的位置，把改动写成需求，放进 `.scratch/<feature-slug>/doc-requests.md`，并告诉用户。每条需求写明位置（页面和规则编号）、问题，以及希望表达的意思。
-- 文档任务按 [Core · Conventions](src/Docs/Orisumi.Docs/content/docs/core/conventions.mdx#writing) 的文字和用词把需求写进文档，用自己的语言重新组织，需求原文只作参考。
+- 文档任务按 [Core · Writing](src/Docs/Orisumi.Docs/content/docs/core/writing.mdx) 的文字和用词把需求写进文档，用自己的语言重新组织，需求原文只作参考。
 
 ## 工作约定
 

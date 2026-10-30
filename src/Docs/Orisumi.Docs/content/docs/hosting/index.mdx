@@ -1,11 +1,20 @@
 ---
 title: "Overview"
-description: "托管方是什么，它和 Observer 的业务代码怎样分工，提交的流程，以及 Runtime 在设备和服务器上的两种运行方式"
+description: "托管方是什么，它和 Observer 的业务代码怎样分工，提交的流程，Runtime 在设备和服务器上的两种运行方式，以及它报告的状态"
 ---
 
 Observer 的业务代码判断事实、形成版本；托管方运行它，保管它的身份，并把它形成的版本可靠地交给后端。托管方是 [Runtime](./runtime.mdx)。设备上由设备端客户端启动它，服务器上由服务管理器或容器启动它，两处是同一个程序。
 
-例如 16:00 用户从 VS Code 切到浏览器。前台状态 Observer 判断 VS Code 的时段到此结束、浏览器的时段开始，形成对应的版本。这些版本怎样留在本机、怎样送到后端，断网、崩溃和重启后怎样继续，都由 Mac 上的 Runtime 负责。晚上服务器上的 Runtime 运行应用识别 Observer，它读到浏览器这个新的本机应用，形成应用产品的版本，交给的是同一种 Runtime。
+[Walkthrough](../start/walkthrough.mdx) 那一天 16:00，用户从 VS Code 切到浏览器。前台状态 Observer 判断 VS Code 的时段到此结束、浏览器的时段开始，形成对应的版本。这些版本怎样留在本机、怎样送到后端，断网、崩溃和重启后怎样继续，都由 Mac 上的 Runtime 负责。晚上服务器上的 Runtime 运行应用识别 Observer，它读到浏览器这个新的本机应用，形成应用产品的版本，交给的是同一种 Runtime。
+
+## 本分区的页面 [#pages]
+
+| 要做的事 | 读 |
+| --- | --- |
+| 编写 Observer | [Submission](./submission.mdx)，以及所用语言的 SDK，例如 [.NET](./dotnet.mdx) |
+| 发布 Observer 的安装包 | [Packages](./packages.mdx) |
+| 编写设备端客户端，或修改 Runtime | [Runtime](./runtime.mdx)、[Protocol](./protocol.mdx)、[Packages](./packages.mdx)、[Management](./management.mdx) |
+| 在服务器上运行 Observer | [Server](./server.mdx) |
 
 ## 分工 [#division]
 
@@ -61,11 +70,3 @@ Runtime 为每个程序实例报告三项状态：
 | 发送 | 待发送和已保存的数量，发送错误和被拒绝的版本 |
 
 三项各自变化。例如程序实例停用后，它已经交出的版本照常发送；程序实例在运行时，来源可能正在读取失败。Runtime 把它们报告给本机客户端，取值见 [Runtime · 状态](./runtime.mdx#states)；也报告给后端，供其他客户端读取，见 [Management · 状态报告](./management.mdx#status)。
-
-## 本分区的页面 [#pages]
-
-| 要做的事 | 读 |
-| --- | --- |
-| 编写 Observer | [Submission](./submission.mdx)，以及所用语言的 SDK，例如 [.NET](./dotnet.mdx) |
-| 编写设备端客户端，或修改 Runtime | [Runtime](./runtime.mdx)、[Protocol](./protocol.mdx)、[Management](./management.mdx) |
-| 在服务器上运行 Observer | [Server](./server.mdx) |

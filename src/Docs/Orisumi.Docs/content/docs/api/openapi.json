@@ -3579,7 +3579,7 @@
               "host",
               "deployment"
             ],
-            "description": "安装包的部署范围，见 [Packages · 清单](/clients/packages#manifest)。"
+            "description": "安装包的部署范围，见 [Packages · 清单](/hosting/packages#manifest)。"
           },
           "enabled": {
             "type": "boolean"

@@ -3,5 +3,8 @@
   "defaultOpen": false,
   "collapsible": true,
   "pagesIndex": "index",
-  "pages": ["---Business Types---", "application-identity-observer", "application-product"]
+  "pages": [
+    "application-identity-observer",
+    "application-product"
+  ]
 }

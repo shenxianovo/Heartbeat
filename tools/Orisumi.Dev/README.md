@@ -42,6 +42,22 @@ dotnet run --project tools/Orisumi.Dev -- tool install
 
 只输入命令组时显示该组的帮助。
 
+### 输出
+
+命令默认输出给人读的文字，带 `--json` 选项的命令加上它输出 JSON。文字的第一行是“主题 · 范围 · 结论”，例如 `Quality · against HEAD (cd2bedb) · nothing new`。状态记号如下：
+
+| 记号 | 含义 |
+| --- | --- |
+| ✓ | 成功 |
+| ✗ | 失败 |
+| ● | 运行中 |
+| ○ | 等待或已停止 |
+| ⊘ | 跳过或取消 |
+
+仓库内的路径写成相对仓库根目录的形式，主目录写成 `~`。
+
+在支持 ANSI 的交互终端里，输出带颜色，长时间的步骤原地刷新转圈和已用时间，每秒一次。输出被重定向、`TERM=dumb`、设置了 `CI` 时，输出纯文本，不刷新；设置了 `NO_COLOR` 时不着色。Agent 在伪终端里运行命令时，设置 `TERM=dumb` 得到纯文本。
+
 ## 环境
 
 | 命令 | 作用 |
@@ -113,7 +129,7 @@ NGINX 总是启动，提供固定的入口端口。各入口在不同服务组�
 | --- | --- |
 | `observers pack <id...> --target <RID> --output <目录> [--sign <身份>]` | 把 Runtime 发布为单文件，放进 `<目录>/runtime/`；为每个安装包写出清单并打成 ZIP，放进 `<目录>/bundled/`。`--sign` 在 macOS 上用 `codesign` 签名 Runtime 和包中的可执行文件，`-` 是临时签名 |
 
-- 安装包按 `src/Observers/` 下项目的 `ObserverPackageId` 找到，清单的名称和部署范围取自 `ObserverName` 和 `ObserverScope`，格式见 [Packages · 清单](../../src/Docs/Orisumi.Docs/content/docs/clients/packages.mdx#manifest)。
+- 安装包按 `src/Observers/` 下项目的 `ObserverPackageId` 找到，清单的名称和部署范围取自 `ObserverName` 和 `ObserverScope`，格式见 [Packages · 清单](../../src/Docs/Orisumi.Docs/content/docs/hosting/packages.mdx#manifest)。
 - .NET 的构建输出在 `.artifacts/observers/build/`。
 - 步骤和容器镜像见 [Runtime README](../../src/Observers/Orisumi.Observer.Runtime/README.md)。
 
@@ -174,7 +190,11 @@ orisumi analyze loc
 
 `analyze quality` 扫描业务代码、文档站和开发工具的复杂度、重复代码和未使用代码，并与基点比较。发现供审查，业务需要的复杂代码可以保留。基点必须能完成分析构建；历史代码无法编译时，命令报告比较未完成并返回失败，当前代码的扫描结果仍然保存。
 
-`analyze loc` 按模块、语言和类别统计已跟踪的文件，不计空行和纯注释行。
+终端列出相对基点新增的发现：重复代码、新增或变复杂的函数、未使用的代码，以及未完成的扫描。现有的发现只给数量，完整列表在证据目录的 `quality.json`。`verify checks --quality` 的质量部分写法相同。
+
+`analyze loc` 按模块和语言统计工作区中已跟踪的文件，包括 Swift，不计空行和纯注释行。开头的总数只算代码，也就是实现加测试，实现是生产代码和开发工具。文档、构建描述和生成文件（锁文件、EF 模型快照）单列一行，不进总数。文件先按语言分类，所以测试目录里的 csproj 算构建描述，README 算文档。
+
+`src/` 下的测试归它所在的模块。`tests/` 下的测试项目按 csproj 的 `ProjectReference` 归属：只引用一个模块的归那个模块，引用多个模块或不引用生产项目的归 `Cross-module`。所以 Core 和 Observers 的测试行数很少，它们的测试大多在引用多个模块的 `Orisumi.Integration.Tests` 里。
 
 ## 证据
 
@@ -194,6 +214,8 @@ orisumi runs list
 orisumi runs prune           # 只预览
 orisumi runs prune --apply   # 删除
 ```
+
+`runs list` 每次运行一行：开始的时间（本地时区）、运行的类型、结果、耗时和失败的步骤，由此可以看出哪次运行失败、失败在哪一步。需要证据目录的路径时加 `--json`。
 
 每次运行结束时自动清理，保留最近 10 次、最近 5 次没有成功的，以及 2 天内的全部运行。`runs prune` 使用同样的条件。质量扫描的基线工作树缓存在 `.artifacts/quality-baselines/<commit>/`，不参与清理，需要回收空间时移除对应的 Git worktree。
 

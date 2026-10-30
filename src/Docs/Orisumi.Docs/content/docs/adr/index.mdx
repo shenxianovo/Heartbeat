@@ -25,11 +25,11 @@ ADR（Architecture Decision Record）记录一项架构决定和它的理由。�
 | 代价 | 接受了哪些成本或限制 |
 | 规则位置 | 承载具体规则的文档 |
 
-条件、例外和细节写在规则中，ADR 链接过去。ADR 可以属于任何一层，归层方式见 [设计层与变更流程](./documentation-authority.mdx#layers)。流程类决定在 Core 中没有页面，这类 ADR 在“决定”之后加一节“规则”，例如[设计层与变更流程](./documentation-authority.mdx)。写法见 [Core · Conventions](../core/conventions.mdx#writing)。
+条件、例外和细节写在规则中，ADR 链接过去。ADR 可以属于任何一层，归层方式见 [设计层与变更流程](./documentation-authority.mdx#layers)。流程类决定在 Core 中没有页面，这类 ADR 在“决定”之后加一节“规则”，例如[设计层与变更流程](./documentation-authority.mdx)。文字见 [Core · Writing](../core/writing.mdx)。
 
 ## 命名 [#naming]
 
-ADR 用英文 slug 命名，例如 `entity-model.mdx`，没有编号。引用时写标题并链接，例如 [ADR · 实体模型](./entity-model.mdx)；代码注释写 `ADR entity-model`。按侧边栏顺序读，每篇只依赖排在它前面的 ADR。
+ADR 用英文 slug 命名，例如 `entity-model.mdx`，没有编号。引用时写标题并链接，例如 [ADR · 实体模型](./entity-model.mdx)；代码注释写 `ADR entity-model`。按侧边栏顺序读，每篇的背景只用到排在它前面的决定。
 
 - 重写期间，ADR 直接改成当前的决定。合并、拆分或改名时，同时更新所有引用。
 - 重写完成后，slug 固定。决定被取代时，新写一篇 ADR，并在旧 ADR 开头链接新的。
@@ -38,22 +38,22 @@ ADR 用英文 slug 命名，例如 `entity-model.mdx`，没有编号。引用时
 
 | 分组 | ADR | 决定 |
 | --- | --- | --- |
-| Foundation | [定位与边界](./positioning.mdx) | Orisumi 保存一个人经历了什么，记录以用户为主体，独立于采集和使用它的软件 |
-| Foundation | [设计层与变更流程](./documentation-authority.mdx) | 文档是唯一权威；设计分为目标与模型、组件与契约、实现三层，变更从最早需要改变的位置开始，沿依赖同步并删除被取代的部分，以验证证据收口 |
+| Model | [定位与边界](./positioning.mdx) | Orisumi 保存一个人经历了什么，记录以用户为主体，独立于采集和使用它的软件 |
 | Model | [实体模型](./entity-model.mdx) | 实体表达身份，不可变的版本保存完整内容，引用固定到版本，只引用已保存的版本 |
 | Model | [Observer 与输入集](./observers-and-evidence.mdx) | Observer 是对观测负责的实体，按负责的陈述划分；一次处理实际使用的版本由可共享的 InputSet 列出 |
 | Model | [身份、时间与更新](./identity-and-updates.mdx) | 业务规则决定身份和粒度，每个版本有自己的保存时间，更新形成新版本，独立的陈述形成新观测 |
-| Model | [提交与 Runtime](./submission.mdx) | 程序实例的身份持久不变，Observer 的业务代码按业务规则形成事实，Runtime 本地保存并按依赖顺序可靠提交；各语言的 SDK 只连接 Runtime |
-| Model | [观测预览](./observation-previews.mdx) | 进行中的 Observation 以观测预览实时可读：Observer 在本地的草稿中补全并决定何时结束，后端在内存中暂存最新的一份预览，结束后才保存为版本 |
-| Model | [删除](./deletion.mdx) | 删除以实体为单位，只移除选中实体的全部版本，删除后不可复活 |
 | Model | [二进制内容](./binary-content.mdx) | 业务字段可以是二进制内容：版本保存摘要、媒体类型和大小，字节按摘要单独保存、先于版本上传，随使用它的版本保留和移除 |
+| Model | [删除](./deletion.mdx) | 删除以实体为单位，只移除选中实体的全部版本，删除后不可复活 |
+| Hosting | [提交与 Runtime](./submission.mdx) | 程序实例的身份持久不变，Observer 的业务代码按业务规则形成事实，Runtime 本地保存并按依赖顺序可靠提交；各语言的 SDK 只连接 Runtime |
+| Hosting | [观测预览](./observation-previews.mdx) | 进行中的 Observation 以观测预览实时可读：Observer 在本地的草稿中补全并决定何时结束，后端在内存中暂存最新的一份预览，结束后才保存为版本 |
+| Hosting | [Runtime 与进程托管](./observer-runtime.mdx) | 设备和服务器运行同一个 Runtime，Runtime 启动各 Observer 的进程，经标准输入输出双向通信；实例身份和本地数据由 Runtime 保管，与程序文件分开 |
+| Hosting | [Observer 的统一管理](./observer-management.mdx) | 后端为每个 Runtime 和程序实例保存管理登记；启停和设置离线先生效、按字段同步，后端接受的顺序决定结果；安装维护只在线执行；Runtime 主动连接后端，凭配对得到的凭证接入 |
+| Hosting | [设备端客户端](./device-client.mdx) | 原生客户端通过 Runtime 托管本机的 Observer：从官方目录单独安装 ZIP 包，启停、更新和有限重启；专用视图原生实现，随客户端发布；陈述由各 Observer 负责 |
 | Backend | [后端运行与本地环境](./backend-runtime.mdx) | 四个后端项目组成一个进程，Aspire 编排本地环境，NGINX 提供同源入口 |
 | Backend | [实体 API](./entity-api.mdx) | 接口按身份寻址，所有类型共用一组路由，一次提交是一组有序的版本，内容按 JSON 的值比较，反查按目标实体列出直接的引用方，错误带规则编号 |
 | Backend | [实体存储](./entity-storage.mdx) | 版本、删除身份和二进制内容是三张权威表，其余五张是可以从它们重建的查询投影；版本以 jsonb 保存在一张表中，查询走以类型开头的索引，引用反查只记录引用方版本和目标实体，所有操作串行执行 |
-| Clients | [Runtime 与进程托管](./observer-runtime.mdx) | 设备和服务器运行同一个 Runtime，Runtime 启动各 Observer 的进程，经标准输入输出双向通信；实例身份和本地数据由 Runtime 保管，与程序文件分开 |
-| Clients | [设备端客户端](./device-client.mdx) | 原生客户端通过 Runtime 托管本机的 Observer：从官方目录单独安装 ZIP 包，启停、更新和有限重启；专用视图原生实现，随客户端发布；陈述由各 Observer 负责 |
-| Clients | [Observer 的统一管理](./observer-management.mdx) | 后端为每个 Runtime 和程序实例保存管理登记；启停和设置离线先生效、按字段同步，后端接受的顺序决定结果；安装维护只在线执行；Runtime 主动连接后端，凭配对得到的凭证接入 |
 | Observers | [应用识别](./application-identity.mdx) | 应用产品按跨设备线索聚合各设备上的本机应用；服务器上的应用识别 Observer 用模型认出新线索，用户在 Web 中修改 |
-| Verification | [开发验证与测试证据](./verification.mdx) | Orisumi.Dev 组织验证并保存证据，原生测试报告是测试结果的权威来源 |
-| Verification | [开发环境的启动与隔离](./development-environment.mdx) | Orisumi.Dev 是启动环境的统一入口，每个检出目录运行一套环境，数据卷可选，服务按需启动 |
-| Verification | [文档站的发布](./documentation-publishing.mdx) | 文档站构建为静态文件，GitHub Actions 从 main 构建并发布到 GitHub Pages，测试报告随发布固定 |
+| Process | [设计层与变更流程](./documentation-authority.mdx) | 文档是唯一权威；设计分为目标与模型、组件与契约、实现三层，变更从最早需要改变的位置开始，沿依赖同步并删除被取代的部分，以验证证据收口 |
+| Process | [开发验证与测试证据](./verification.mdx) | Orisumi.Dev 组织验证并保存证据，原生测试报告是测试结果的权威来源 |
+| Process | [开发环境的启动与隔离](./development-environment.mdx) | Orisumi.Dev 是启动环境的统一入口，每个检出目录运行一套环境，数据卷可选，服务按需启动 |
+| Process | [文档站的发布](./documentation-publishing.mdx) | 文档站构建为静态文件，GitHub Actions 从 main 构建并发布到 GitHub Pages，测试报告随发布固定 |

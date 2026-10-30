@@ -23,11 +23,11 @@ Orisumi API 按 [Core](../core/index.mdx) 的实体与版本模型保存、读�
 
 | 用途 | 接口 |
 | --- | --- |
-| 写入 | [`POST /versions`](/api/submitVersions)、[`PUT /contents/{digest}`](/api/putContent)、[`DELETE /entities/{entityId}`](/api/deleteEntity) |
+| 写入 | [`PUT /contents/{digest}`](/api/putContent)、[`POST /versions`](/api/submitVersions)、[`DELETE /entities/{entityId}`](/api/deleteEntity) |
 | 读取 | [`GET /versions/{versionId}`](/api/getVersion)、[`GET /entities/{entityId}`](/api/getEntity)、[`GET /entities/{entityId}/versions`](/api/listEntityVersions)、[`GET /contents/{digest}`](/api/getContent) |
 | 列出与查询 | [`GET /entities`](/api/listEntities)、[`GET /observations`](/api/listObservations)、[`GET /entities/{entityId}/referrers`](/api/listReferrers) |
 | 观测预览 | [`PUT /observation-previews/{entityId}`](/api/putObservationPreview)、[`GET /observation-previews/{entityId}`](/api/getObservationPreview)、[`GET /observation-previews`](/api/listObservationPreviews) |
-| Observer 的管理 | `/pairings`、`/hosts`、`/observer-instances` 和 `/runtime/` 下的接口，见 [Management](./management.mdx) |
+| Observer 的管理 | `/pairings`、`/hosts` 和 `/observer-instances` 下的接口由管理入口调用，`/runtime/` 下的由 Runtime 调用，见 [Management](./management.mdx) |
 
 每个接口一页，由契约生成，给出路径、参数、请求和响应的结构。接口的语义写在本分区的主题页中：[Writing](./writing.mdx)、[Reading](./reading.mdx)、[Previews](./previews.mdx) 和 [Management](./management.mdx)。
 

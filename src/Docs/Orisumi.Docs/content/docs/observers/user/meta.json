@@ -1,7 +1,9 @@
 {
-  "title": "User",
+  "title": "User Statements",
   "defaultOpen": false,
   "collapsible": true,
   "pagesIndex": "index",
-  "pages": ["---Business Types---", "user"]
+  "pages": [
+    "user"
+  ]
 }

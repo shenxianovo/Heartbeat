@@ -16,7 +16,7 @@ description: "Observer 页和业务类型页的写法"
 
 一种业务类型和它的 EntitySchema 写在同一个业务类型页。业务类型页放在形成它的 Observer 下，其他 Observer 用到它时链接过去。同一类页面使用相同的章节顺序，没有内容的章节省略，业务特有的内容作为对应章节下的小节。
 
-还没有划分 Observer 的来源写成来源草案，放在导航的 Source Drafts 下：记下来源中有什么、可能形成哪些实体，以及待定的问题。职责明确后，再按本模板建立 Observer 页。
+还没有划分 Observer 的来源写成来源草案，放在导航的 Drafts 下：记下来源中有什么、可能形成哪些实体，以及待定的问题。职责明确后，再按本模板建立 Observer 页。
 
 ## 目录结构 [#structure]
 
@@ -27,7 +27,7 @@ observers/<observer-slug>/
   <business-type>.mdx       业务类型页，每种已定义的业务类型一页
 ```
 
-`meta.json` 用 `Business Types` 分隔业务类型页：
+`meta.json` 以 Observer 页为首页，下面列出业务类型页：
 
 ```json title="meta.json"
 {
@@ -35,15 +35,15 @@ observers/<observer-slug>/
   "defaultOpen": false,
   "collapsible": true,
   "pagesIndex": "index",
-  "pages": ["---Business Types---", "example-entity"]
+  "pages": ["example-entity"]
 }
 ```
 
-最后把目录加进 `observers/meta.json` 的 Observers 分组。
+最后把目录加进 `observers/meta.json`：业务规则已经确定的放在 Observers 分组，还是草案的放在 Drafts 分组。
 
 ## 写作要点 [#writing]
 
-- 文字和用词遵循 [Core · Conventions](../../core/conventions.mdx#writing)。
+- 文字和用词遵循 [Core · Writing](../../core/writing.mdx)。
 - 正文只写已确认的业务规则。尚未确认的标识、约束和策略集中列在“待定”中。尚未定义的业务类型只列在待定中，不建页面。
 - 页首的结构图从共享的 `observers/relations.json` 取节点，关系数据只维护一份。
 - 多个页面共用的规则写在一处，其他页面链接过去。

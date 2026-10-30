@@ -14,7 +14,7 @@ description: "Runtime 怎样接入后端、保存和同步程序实例的配置�
 | `hostId` | 后端，配对时 | 一个 Runtime，也就是一个数据目录 |
 | 程序实例的 EntityId | Runtime，第一次安装时 | 程序实例在 Core 和管理登记中的身份，见 [OBSERVER-4](../core/model/observer.mdx#observer-4) |
 | 登记标识 `instanceKey` | Runtime | 托管方内找到这个实例的标识。一个 Runtime 中每个安装包最多一个实例，所以登记标识就是安装包的 `id` |
-| 安装包的 `id` | 发布方 | 安装和更新时找到同一个包，见 [Packages · 清单](../clients/packages.mdx#manifest) |
+| 安装包的 `id` | 发布方 | 安装和更新时找到同一个包，见 [Packages · 清单](./packages.mdx#manifest) |
 
 三者分开：同一个安装包在 Mac 和服务器上各有一个实例；删除实例后再安装，登记标识相同，EntityId 和实例目录是新的。
 
@@ -112,7 +112,7 @@ Runtime 用 `PUT /runtime/instances/{entityId}/status` 报告每个实例的状�
 
 安装、更新、卸载、重试和读取可安装的包，由管理入口发起，经长轮询交给 Runtime：
 
-1. Runtime 收到操作后，按本机客户端发起时的同样规则执行，见 [Clients · 设备端客户端](../clients/index.mdx#device)。
+1. Runtime 收到操作后，按本机客户端发起时的同样规则执行，见 [Clients · Device Clients](../clients/device.mdx)。
 2. 执行结束后，用 `POST /runtime/operations/{operationId}/result` 报告结果。报告失败时重试，直到后端返回 `204` 或 `404`。
 
 Runtime 不保存收到的操作。执行中退出时，这个操作不再继续，管理入口看到的是结果未确认。

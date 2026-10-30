@@ -1,5 +1,5 @@
 ---
-title: "Runtime Handoff"
+title: "Handoff"
 description: "批次整批提交或回滚，回执在提交后返回，重发同一个批次不重复"
 ---
 
@@ -37,7 +37,7 @@ Runtime 使用独立的数据目录，启动一个由测试控制的 Observer �
 
 - 提交后回执丢失，重启后用同一个标识重发得到原回执、没有新版本；同一个标识带不同内容被拒绝：`RuntimeProtocolTests.LostReceiptReplaysAfterRestartAndDifferentPayloadIsRejected`。
 - 批次中的操作不合法时整批回滚、不留回执，改正后可沿用同一个标识；批次取得的引用不随实体之后的版本改变：`RuntimeProtocolTests.FailedBatchRollsBackReceiptAndVersionsAndReferencesStayFixed`。
-- 前台时段切换的批次形成一个回执：由 [提交与恢复](./foreground-submission.mdx) 的测试经 `LocalObserverSession` 覆盖。
+- 前台时段切换的批次形成一个回执：由 [提交与恢复](../observers/foreground-submission.mdx) 的测试经 `LocalObserverSession` 覆盖。
 - 回执跨重启保留，`outcome` 的已保存、等待、被拒绝（含依赖的版本被拒绝）和已丢弃，以及取消等待：`RuntimeOutcomeTests.ReceiptTracksUnnamedVersionsAcrossRestartAndReportsDependencyRejectionAndDiscard`。
 - 未覆盖：收到回执前结束 Observer 的进程；超过 512 个操作或 16 MiB 的一行；`draft` 的 `previousVersionId`。
 

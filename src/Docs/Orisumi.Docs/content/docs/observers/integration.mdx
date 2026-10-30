@@ -65,11 +65,11 @@ description: "接入新来源时，依次确定事实、Observer、实体、Enti
 
 在 Observer 页写明用的是哪个 SDK、哪种策略，并链接 [Submission](../hosting/submission.mdx)。业务代码和 Runtime 的分工见 [Hosting · 分工](../hosting/index.mdx#division)。
 
-在设备上运行的 Observer 由设备端客户端启动的 Runtime 托管。依据全部已保存数据形成观测的 Observer 在服务器上由 Runtime 运行，例如[应用识别 Observer](./application-identity/index.mdx)，见 [Hosting · Server](../hosting/server.mdx)。每个 Observer 为每个支持的平台构建一个安装包，见 [Clients · Packages](../clients/packages.mdx)；进程怎样启动、停止和恢复，见 [Runtime · 进程](../hosting/runtime.mdx#process)。
+在设备上运行的 Observer 由设备端客户端启动的 Runtime 托管。依据全部已保存数据形成观测的 Observer 在服务器上由 Runtime 运行，例如[应用识别 Observer](./application-identity/index.mdx)，见 [Hosting · Server](../hosting/server.mdx)。每个 Observer 为每个支持的平台构建一个安装包，见 [Hosting · Packages](../hosting/packages.mdx)；进程怎样启动、停止和恢复，见 [Runtime · 进程](../hosting/runtime.mdx#process)。
 
 ## 9. 读回 [#read-back]
 
-提交业务类型页的示例，再用 `GET /versions/{versionId}` 逐个读回（[API · 接口](../api/index.mdx#operations)），检查保存和读取是否一致：
+提交业务类型页的示例，再用 `GET /versions/{versionId}` 逐个读回（见 [API · Reading](../api/reading.mdx#versions)），检查保存和读取是否一致：
 
 - 业务版本的 `schemaVersionId` 指向它所用的 Schema 版本。观测内容的类型由内容版本自己的 `schemaVersionId` 给出。
 - 每个版本都带有后端赋值的 `recordedAt`，提交时不带它。

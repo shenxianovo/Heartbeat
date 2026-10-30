@@ -1,6 +1,6 @@
 # Orisumi.Mac
 
-Orisumi.Mac 是常驻菜单栏的 macOS 客户端。它启动 [Runtime](../../Docs/Orisumi.Docs/content/docs/hosting/runtime.mdx)，通过 Runtime 安装和运行本机的 Observer，并展示它们的状态和数据。客户端的责任见 [ADR · 设备端客户端](../../Docs/Orisumi.Docs/content/docs/adr/device-client.mdx)，托管规则见 [Clients · 设备端客户端](../../Docs/Orisumi.Docs/content/docs/clients/index.mdx#device)，界面和实现进度见 [macOS](../../Docs/Orisumi.Docs/content/docs/clients/macos.mdx)。
+Orisumi.Mac 是常驻菜单栏的 macOS 客户端。它启动 [Runtime](../../Docs/Orisumi.Docs/content/docs/hosting/runtime.mdx)，通过 Runtime 安装和运行本机的 Observer，并展示它们的状态和数据。客户端的责任见 [ADR · 设备端客户端](../../Docs/Orisumi.Docs/content/docs/adr/device-client.mdx)，托管规则见 [Clients · Device Clients](../../Docs/Orisumi.Docs/content/docs/clients/device.mdx)，界面和实现进度见 [macOS](../../Docs/Orisumi.Docs/content/docs/clients/macos.mdx)。
 
 ## 结构
 
@@ -10,7 +10,7 @@ Orisumi.Mac 是常驻菜单栏的 macOS 客户端。它启动 [Runtime](../../Do
 | `OrisumiClient/` | Swift 包：Runtime 的进程和管道、管理与状态、经 Runtime 读取数据。单元测试在这里 |
 | `Scripts/publish-runtime.sh` | Xcode 构建阶段：用本检出的 `orisumi observers pack` 构建并签名 Runtime 和附带的 Observer 的安装包，复制进应用 |
 
-`Assets.xcassets` 中的图标由 `src/Clients/Orisumi.Web/public/mascots/macos.png` 缩放而成。Runtime 是自包含的单文件 .NET 程序。前台状态 Observer 的安装包是 `foreground-state-<版本>-<平台>.zip`，格式见 [Packages](../../Docs/Orisumi.Docs/content/docs/clients/packages.mdx)，版本取自它的 csproj。Runtime 第一次启动时安装它，之后和其他 Observer 一样管理。
+`Assets.xcassets` 中的图标由 `src/Clients/Orisumi.Web/public/mascots/macos.png` 缩放而成。Runtime 是自包含的单文件 .NET 程序。前台状态 Observer 的安装包是 `foreground-state-<版本>-<平台>.zip`，格式见 [Packages](../../Docs/Orisumi.Docs/content/docs/hosting/packages.mdx)，版本取自它的 csproj。Runtime 第一次启动时安装它，之后和其他 Observer 一样管理。
 
 ## 构建与运行
 

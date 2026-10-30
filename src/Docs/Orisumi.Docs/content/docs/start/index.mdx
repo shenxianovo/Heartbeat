@@ -40,12 +40,12 @@ flowchart LR
 | 分区 | 内容 |
 | --- | --- |
 | [Core](../core/index.mdx) | 所有数据共用的结构与规则，其他分区都遵守它 |
-| [ADR](../adr/index.mdx) | 各项决定和它们的理由 |
 | [Observers](../observers/index.mdx) | 各 Observer 从来源中读到什么、形成哪些观测，以及怎样接入新的来源 |
 | [Hosting](../hosting/index.mdx) | Runtime 怎样在设备和服务器上运行 Observer，把版本可靠地交给后端，以及怎样接受统一管理 |
 | [API](../api/index.mdx) | 后端的 HTTP 接口 |
 | [Storage](../storage/index.mdx) | 实体、版本和 Observer 的管理登记怎样保存在 PostgreSQL 中 |
 | [Clients](../clients/index.mdx) | 用户使用的 Web 控制台和设备端客户端，以及它们怎样管理各处的 Observer |
+| [ADR](../adr/index.mdx) | 各项决定和它们的理由 |
 | [Testing](../testing/index.mdx) | 验证用例与测试报告 |
 
 ## 从哪里开始 [#reading]
@@ -68,7 +68,7 @@ flowchart LR
 </Card>
 <Card title="编写设备端客户端">
 
-[Clients · 设备端客户端](../clients/index.mdx#device)、[Hosting · Runtime](../hosting/runtime.mdx)、[Hosting · Protocol](../hosting/protocol.mdx)、[Hosting · Management](../hosting/management.mdx)、[Clients · Packages](../clients/packages.mdx)
+[Clients · Device Clients](../clients/device.mdx)、[Clients · Management](../clients/management.mdx)、[Hosting · Runtime](../hosting/runtime.mdx)、[Hosting · Protocol](../hosting/protocol.mdx)、[Hosting · Management](../hosting/management.mdx)、[Hosting · Packages](../hosting/packages.mdx)
 
 </Card>
 <Card title="修改后端">
@@ -78,7 +78,7 @@ flowchart LR
 </Card>
 <Card title="编写文档">
 
-[Core · Conventions](../core/conventions.mdx)、[ADR · 设计层与变更流程](../adr/documentation-authority.mdx)
+[Core · Writing](../core/writing.mdx)、[Core · Conventions](../core/conventions.mdx)、[ADR · 设计层与变更流程](../adr/documentation-authority.mdx)
 
 </Card>
 </Cards>

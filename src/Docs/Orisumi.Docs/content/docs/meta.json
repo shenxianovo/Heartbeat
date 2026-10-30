@@ -3,12 +3,12 @@
   "pages": [
     "start",
     "core",
-    "adr",
     "observers",
     "hosting",
     "api",
     "storage",
     "clients",
+    "adr",
     "testing"
   ]
 }

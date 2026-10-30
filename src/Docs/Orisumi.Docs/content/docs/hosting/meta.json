@@ -1,17 +1,18 @@
 {
   "title": "Hosting",
-  "description": "托管方怎样运行 Observer，并把版本可靠地交给后端",
+  "description": "Runtime 怎样运行 Observer，把版本可靠地交给后端，并接受统一管理",
   "icon": "Server",
   "root": true,
   "pages": [
     "index",
-    "---Runtime---",
+    "---For Observers---",
     "submission",
+    "dotnet",
+    "---Runtime---",
     "runtime",
     "protocol",
+    "packages",
     "management",
-    "server",
-    "---SDKs---",
-    "dotnet"
+    "server"
   ]
 }

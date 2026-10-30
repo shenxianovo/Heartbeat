@@ -5,9 +5,22 @@
   "root": true,
   "pages": [
     "index",
-    "model",
-    "rules",
+    "---Model---",
+    "model/entity",
+    "model/version",
+    "model/binary",
+    "model/schema",
+    "model/observation",
+    "model/input-set",
+    "model/observer",
+    "---Rules---",
+    "rules/identity",
+    "rules/time",
+    "rules/history",
+    "rules/evidence",
+    "---Reference---",
     "glossary",
-    "conventions"
+    "conventions",
+    "writing"
   ]
 }

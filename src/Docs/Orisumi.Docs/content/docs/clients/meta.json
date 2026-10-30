@@ -5,10 +5,10 @@
   "root": true,
   "pages": [
     "index",
+    "device",
+    "management",
     "---Platforms---",
     "web",
-    "macos",
-    "---Distribution---",
-    "packages"
+    "macos"
   ]
 }

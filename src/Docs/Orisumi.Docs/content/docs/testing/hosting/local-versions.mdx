@@ -1,5 +1,5 @@
 ---
-title: "Runtime Local Versions"
+title: "Local Versions"
 description: "草稿的合并与冻结、两种提交策略，以及观测预览的写入"
 ---
 
@@ -40,7 +40,7 @@ Runtime 的本地保存使用独立的 SQLite 文件，后端是记录每次请�
 - 写入观测预览时后端返回 `VERSION-6`，Runtime 停止写入；之后本地补全或重启 Runtime，都不再写入这份观测预览，发送也不报错：`ObserverPreviewTests.VersionConflictStopsPublishingEvenAfterLocalUpdatesAndRestart`。
 - 未覆盖：进程意外退出后的草稿。
 
-观测内容先于观测预览保存、`sequence` 递增且重启后继续递增，以及通知结束后不再写入、只发送一个版本，由前台状态 Observer 的测试检查：`RuntimeStoreTests.ForegroundUploadsOnlyFinishedPeriods` 和 `ObserverPreviewTests.LivePreviewRecoversAcrossServerAndStoreRestartsAndCompletesOnce`。它们关联 [Foreground Submission](./foreground-submission.mdx)，执行结果在那一页显示。
+观测内容先于观测预览保存、`sequence` 递增且重启后继续递增，以及通知结束后不再写入、只发送一个版本，由前台状态 Observer 的测试检查：`RuntimeStoreTests.ForegroundUploadsOnlyFinishedPeriods` 和 `ObserverPreviewTests.LivePreviewRecoversAcrossServerAndStoreRestartsAndCompletesOnce`。它们关联 [Foreground Submission](../observers/foreground-submission.mdx)，执行结果在那一页显示。
 
 ## 执行结果 [#results]
 

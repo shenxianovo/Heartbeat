@@ -5,19 +5,19 @@ description: "有哪些 Observer、各自形成什么观测，以及接入新来
 
 Observer 把来源中发生的事变成观测。本分区按 Observer 组织：每个 Observer 一页，说明它负责什么、形成哪些业务类型、事实时间怎样取值；它下面的每一页说明一种业务类型。Observer 的身份和责任规则见 [Observer](../core/model/observer.mdx)。
 
-Observer 在哪台设备上运行、由哪个客户端托管，见 [Clients](../clients/index.mdx)。
+Observer 由 Runtime 运行：设备上的 Runtime 由设备端客户端启动，服务器上的以服务方式运行，见 [Hosting](../hosting/index.mdx)。
 
 ## 目录 [#catalog]
 
 状态说明业务规则是否已经确定。各平台的实现情况写在每个 Observer 页的“实现”一节。
 
-| 分组 | Observer | 观测内容 | 状态 |
-| --- | --- | --- | --- |
-| 应用 | [Foreground State](./foreground-state/index.mdx) | 前台应用时段与窗口标题时段 | 业务已定义 |
-| 应用 | [Application Identity](./application-identity/index.mdx) | 应用产品：各设备上的本机应用归属的软件。在服务端运行 | 业务已定义 |
-| 活动与设备 | [Input Events](./input-events/index.mdx) | 逐条键鼠事件 | 草案 |
-| 活动与设备 | [Device State](./device-state/index.mdx) | 设备休眠、清醒与会话锁定 | 草案 |
-| 人 | [User](./user/index.mdx) | 用户本人的陈述，例如修改应用产品 | 业务已定义 |
+| Observer | 观测内容 | 状态 |
+| --- | --- | --- |
+| [Foreground State](./foreground-state/index.mdx) | 前台应用时段与窗口标题时段 | 业务已定义 |
+| [Application Identity](./application-identity/index.mdx) | 应用产品：各设备上的本机应用归属的软件。在服务端运行 | 业务已定义 |
+| [User Statements](./user/index.mdx) | 用户本人的陈述，例如修改应用产品 | 业务已定义 |
+| [Input Events](./input-events/index.mdx) | 逐条键鼠事件 | 草案 |
+| [Device State](./device-state/index.mdx) | 设备休眠、清醒与会话锁定 | 草案 |
 
 ### 来源草案 [#drafts]
 
