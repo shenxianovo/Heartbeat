@@ -19,7 +19,7 @@ public sealed class CliContractTests
         using var result = JsonDocument.Parse(fixture.Output.ToString());
         await Assert.That(result.RootElement.GetProperty("exitCode").GetInt32()).IsEqualTo(exitCode);
         await Assert.That(result.RootElement.GetProperty("verification").GetProperty("results").GetArrayLength()).IsGreaterThan(0);
-        await Assert.That(error.ToString().Contains("Running", StringComparison.Ordinal)).IsTrue();
+        await Assert.That(error.ToString().Contains("dotnet-build", StringComparison.Ordinal)).IsTrue();
     }
 
     [Test]
@@ -86,7 +86,7 @@ public sealed class CliContractTests
         using var fixture = new EnvironmentFixture();
         fixture.Runner.VolumeInventory = true;
         var cli = new DeveloperCli(fixture.Repository, fixture.Runner, fixture.Output, TextWriter.Null);
-        await Assert.That(await cli.RunAsync(["env", "volumes", "list"], CancellationToken.None)).IsEqualTo(0);
+        await Assert.That(await cli.RunAsync(["env", "volumes", "list", "--json"], CancellationToken.None)).IsEqualTo(0);
         using var result = JsonDocument.Parse(fixture.Output.ToString());
         await Assert.That(result.RootElement.GetArrayLength()).IsEqualTo(2);
         await Assert.That(fixture.Runner.Calls.Any(call => call.Args.Contains("rm"))).IsFalse();

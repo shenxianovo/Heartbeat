@@ -3,6 +3,7 @@ using System.CommandLine.Help;
 using System.IO.Compression;
 using System.Text.Json;
 using System.Xml.Linq;
+using Spectre.Console;
 
 namespace Orisumi.Dev;
 
@@ -52,7 +53,7 @@ internal sealed class ObserversCommand(RepositoryContext repository, IProcessRun
 
         foreach (var id in ids)
             if (await PackageAsync(known[id], target, bundled, sign, token) is var packed and not 0) return packed;
-        await output.WriteLineAsync($"Runtime: {runtime}");
+        Terminal.Create(output).MarkupLine($"{Terminal.Mark(Outcome.Passed)} Runtime  {Terminal.Esc(Terminal.Path(repository, runtime))}");
         return 0;
     }
 
@@ -72,7 +73,7 @@ internal sealed class ObserversCommand(RepositoryContext repository, IProcessRun
             Manifest(project, version, target, "bin/" + properties["AssemblyName"]), token);
         var archive = Path.Combine(bundled, $"{project.Id}-{version}-{target}.zip");
         ZipFile.CreateFromDirectory(staging, archive);
-        await output.WriteLineAsync($"Package: {archive}");
+        Terminal.Create(output).MarkupLine($"{Terminal.Mark(Outcome.Passed)} Package  {Terminal.Esc(Terminal.Path(repository, archive))}");
         return 0;
     }
 

@@ -10,6 +10,7 @@
   <ItemGroup>
     <Compile Include="../Orisumi.AppHost/ServiceSelection.cs" Link="Environment/ServiceSelection.cs" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+    <PackageReference Include="Spectre.Console" />
     <PackageReference Include="System.CommandLine" />
     <InternalsVisibleTo Include="Orisumi.Dev.Tests" />
   </ItemGroup>

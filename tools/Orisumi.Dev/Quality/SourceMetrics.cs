@@ -67,6 +67,7 @@ internal static class SourceCorpus
             [".tsx"] = "TypeScript",
             [".mts"] = "TypeScript",
             [".cts"] = "TypeScript",
+            [".swift"] = "Swift",
             [".sh"] = "Shell",
             [".ps1"] = "PowerShell",
             [".py"] = "Python",
@@ -108,9 +109,9 @@ internal static class SourceCorpus
 
     private static SourceRole Classify(string path, string name, string language) =>
         IsGenerated(name) ? SourceRole.Generated
-        : IsTest(path, name) ? SourceRole.Test
         : language == "Markdown" || path.StartsWith("src/Docs/Orisumi.Docs/content/", StringComparison.Ordinal) ? SourceRole.Documentation
         : IsBuild(name, language) ? SourceRole.Build
+        : IsTest(path, name) ? SourceRole.Test
         : StartsWithAny(path, ProductionRoots) ? SourceRole.Production
         : StartsWithAny(path, ToolingRoots) ? SourceRole.Tooling
         : SourceRole.Unclassified;
@@ -156,6 +157,7 @@ internal static class SourceLineCounter
             ["PowerShell"] = ["#"],
             ["Python"] = ["#"],
             ["Shell"] = ["#"],
+            ["Swift"] = ["//"],
             ["TypeScript"] = ["//"],
             ["YAML"] = ["#"],
         };
@@ -166,6 +168,7 @@ internal static class SourceLineCounter
             ["C#"] = [("/*", "*/")],
             ["CSS"] = [("/*", "*/")],
             ["JavaScript"] = [("/*", "*/")],
+            ["Swift"] = [("/*", "*/")],
             ["TypeScript"] = [("/*", "*/")],
             ["Markdown"] = [("<!--", "-->")],
             ["MSBuild"] = [("<!--", "-->")],

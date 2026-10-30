@@ -1,5 +1,7 @@
 using System.CommandLine;
+using System.Diagnostics;
 using System.Text.Json;
+using Spectre.Console;
 
 namespace Orisumi.Dev;
 
@@ -21,9 +23,13 @@ internal sealed class ScenarioCommand(RepositoryContext repository, IProcessRunn
     public Command CreateCommand()
     {
         var command = new Command("scenarios", "Run smoke scenarios with recorded evidence");
-        var names = new Argument<string[]>("scenarios") { Arity = ArgumentArity.ZeroOrMore };
-        var plan = new Option<bool>("--plan");
-        var json = new Option<bool>("--json");
+        var names = new Argument<string[]>("scenarios")
+        {
+            Arity = ArgumentArity.ZeroOrMore,
+            Description = $"Scenarios to run: {string.Join(", ", Scenarios.Select(scenario => scenario.Name))}; all when omitted",
+        };
+        var plan = new Option<bool>("--plan") { Description = "Check prerequisites without running scenarios" };
+        var json = new Option<bool>("--json") { Description = "Print the plan or results as JSON" };
         command.Arguments.Add(names);
         command.Options.Add(plan);
         command.Options.Add(json);
@@ -37,66 +43,116 @@ internal sealed class ScenarioCommand(RepositoryContext repository, IProcessRunn
         foreach (var name in names)
             if (!available.Any(scenario => scenario.Name == name)) throw new CommandUsageException($"Unknown scenario '{name}'.");
         var selected = available.Where(scenario => names.Length == 0 || names.Contains(scenario.Name)).ToArray();
+        var console = Terminal.Create(output);
+        var width = selected.Select(scenario => scenario.Name.Length).DefaultIfEmpty(0).Max();
         if (plan)
         {
             var checks = new List<object>();
+            var rows = new List<string[]>();
             foreach (var scenario in selected)
             {
                 var prerequisite = await scenario.CheckAsync(token);
                 checks.Add(new { scenario.Name, prerequisite });
-                if (!json) await output.WriteLineAsync($"{scenario.Name}: {(prerequisite.Satisfied ? "ready" : "skip")} — {prerequisite.Reason}");
+                rows.Add([
+                    $"{Terminal.Mark(prerequisite.Satisfied ? Outcome.Passed : Outcome.Skipped)} {Terminal.Esc(scenario.Name)}",
+                    prerequisite.Satisfied ? "[green]ready[/]" : "[grey]skip[/]",
+                    $"[grey]{Terminal.Esc(prerequisite.Reason)}[/]",
+                ]);
             }
             if (json) await output.WriteLineAsync(JsonSerializer.Serialize(checks, JsonOptions.Indented));
+            else
+            {
+                Terminal.Heading(console, "Scenarios plan", $"{selected.Length} selected");
+                Terminal.Rows(console, rows);
+            }
             return 0;
         }
-        return await EvidenceSession.ExecuteAsync(repository, "verify", "scenarios",
-            ["Smoke scenarios do not verify browser interaction or hot reload."], async evidence =>
+        if (!json) Terminal.Heading(console, "Scenarios", $"{selected.Length} selected");
+        var started = Stopwatch.StartNew();
+        string? directory = null;
+        var exitCode = 1;
+        try
         {
-            var results = new List<ScenarioResult>();
-            var code = 0;
-            try
-            {
-                foreach (var scenario in selected)
+            exitCode = await EvidenceSession.ExecuteAsync(repository, "verify", "scenarios",
+                ["Smoke scenarios do not verify browser interaction or hot reload."], evidence =>
                 {
-                    var path = Path.Combine(evidence.Run.Directory, $"scenario-{scenario.Name}.log");
-                    await using var log = new StreamWriter(path) { AutoFlush = true };
-                    evidence.Commands.Add($"scenario {scenario.Name}");
-                    try
+                    directory = evidence.Run.Directory;
+                    return RunScenariosAsync(selected, evidence, json, console, width, token);
+                }, notes: json ? null : output);
+            return exitCode;
+        }
+        catch (OperationCanceledException)
+        {
+            exitCode = 130;
+            throw;
+        }
+        finally
+        {
+            if (!json && directory is not null)
+                VerificationReporter.WriteVerdict(console, repository, exitCode, started.Elapsed, directory);
+        }
+    }
+
+    private async Task<int> RunScenariosAsync(
+        IReadOnlyList<ISmokeScenario> selected, EvidenceSession evidence, bool json, IAnsiConsole console, int width,
+        CancellationToken token)
+    {
+        var results = new List<ScenarioResult>();
+        var code = 0;
+        try
+        {
+            foreach (var scenario in selected)
+            {
+                var path = Path.Combine(evidence.Run.Directory, $"scenario-{scenario.Name}.log");
+                await using var log = new StreamWriter(path) { AutoFlush = true };
+                evidence.Commands.Add($"scenario {scenario.Name}");
+                var clock = Stopwatch.StartNew();
+                ScenarioResult result;
+                try
+                {
+                    token.ThrowIfCancellationRequested();
+                    var prerequisite = await scenario.CheckAsync(token);
+                    await log.WriteLineAsync(prerequisite.Reason);
+                    if (!prerequisite.Satisfied) result = new(scenario.Name, "skipped", prerequisite.Reason, path);
+                    else
                     {
-                        token.ThrowIfCancellationRequested();
-                        var prerequisite = await scenario.CheckAsync(token);
-                        await log.WriteLineAsync(prerequisite.Reason);
-                        if (!prerequisite.Satisfied)
-                            results.Add(new(scenario.Name, "skipped", prerequisite.Reason, path));
-                        else
-                        {
-                            if (!json) await output.WriteLineAsync($"Running scenario {scenario.Name} ... Evidence: {path}");
-                            await scenario.ExecuteAsync(log, token);
-                            results.Add(new(scenario.Name, "passed", null, path));
-                        }
-                    }
-                    catch (Exception exception)
-                    {
-                        await log.WriteLineAsync(exception.ToString());
-                        results.Add(new(scenario.Name, "failed", exception.Message, path));
-                        code = exception is OperationCanceledException ? 130 : 1;
-                        if (code == 130) break;
+                        if (json) await scenario.ExecuteAsync(log, token);
+                        else await Terminal.SpinAsync(console, $"Running {Terminal.Esc(scenario.Name)}", () => scenario.ExecuteAsync(log, token));
+                        result = new(scenario.Name, "passed", null, path);
                     }
                 }
-                return code;
-            }
-            finally
-            {
-                var report = new { mode = "scenarios", exitCode = code, results, evidence = evidence.Run.Directory };
-                var serialized = JsonSerializer.Serialize(report, JsonOptions.Indented);
-                await File.WriteAllTextAsync(Path.Combine(evidence.Run.Directory, "verification.json"), serialized, CancellationToken.None);
-                if (json) await output.WriteLineAsync(serialized);
-                else
+                catch (Exception exception)
                 {
-                    foreach (var result in results) await output.WriteLineAsync($"{result.Name}: {result.Status} {result.Reason}");
-                    await output.WriteLineAsync($"Evidence: {evidence.Run.Directory}");
+                    await log.WriteLineAsync(exception.ToString());
+                    result = new(scenario.Name, "failed", exception.Message, path);
+                    code = exception is OperationCanceledException ? 130 : 1;
                 }
+                results.Add(result);
+                if (!json) WriteResult(console, result, width, clock.Elapsed, code == 130);
+                if (code == 130) break;
             }
-        }, notes: json ? null : output);
+            return code;
+        }
+        finally
+        {
+            var report = new { mode = "scenarios", exitCode = code, results, evidence = evidence.Run.Directory };
+            var serialized = JsonSerializer.Serialize(report, JsonOptions.Indented);
+            await File.WriteAllTextAsync(Path.Combine(evidence.Run.Directory, "verification.json"), serialized, CancellationToken.None);
+            if (json) await output.WriteLineAsync(serialized);
+        }
+    }
+
+    private void WriteResult(IAnsiConsole console, ScenarioResult result, int width, TimeSpan elapsed, bool cancelled)
+    {
+        var outcome = result.Status switch
+        {
+            "passed" => Outcome.Passed,
+            "skipped" => Outcome.Skipped,
+            _ => cancelled ? Outcome.Cancelled : Outcome.Failed,
+        };
+        VerificationReporter.WriteStep(console, result.Name, width, outcome, elapsed,
+            result.Reason is { } reason ? $"[grey]{Terminal.Esc(reason)}[/]" : "");
+        if (outcome == Outcome.Failed)
+            console.MarkupLine($"      [grey]log[/] {Terminal.Esc(Terminal.Path(repository, result.Log))}");
     }
 }

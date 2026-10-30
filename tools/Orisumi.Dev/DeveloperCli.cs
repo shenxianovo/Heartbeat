@@ -56,7 +56,7 @@ internal sealed class DeveloperCli(
         }
         catch (CommandUsageException exception)
         {
-            await error.WriteLineAsync(exception.Message);
+            Terminal.Error(error, exception.Message);
             return 2;
         }
     }

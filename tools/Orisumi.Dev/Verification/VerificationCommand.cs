@@ -1,6 +1,8 @@
 using System.CommandLine;
 using System.CommandLine.Help;
+using System.Diagnostics;
 using System.Text.Json;
+using Spectre.Console;
 
 namespace Orisumi.Dev;
 
@@ -16,6 +18,7 @@ internal sealed class VerificationCommand(
     TextWriter? error = null)
 {
     private const string Limitation = "Container startup and browser interaction are verified separately.";
+    private const int FailureLines = 20;
     private const string QualityLimitation = "Quality findings guide review; scans must complete, but findings do not fail the run.";
 
     public Command CreateCommand()
@@ -57,15 +60,17 @@ internal sealed class VerificationCommand(
         var plan = await VerificationPlanner.CreateAsync(repository, runner, request, cancellationToken);
         if (request.PlanOnly)
         {
-            await VerificationReporter.WriteAsync(output, plan, request.Json, request.Quality);
+            await VerificationReporter.WriteAsync(repository, output, plan, request.Json, request.Quality);
             return 0;
         }
         var progress = request.Json ? error ?? Console.Error : output;
-        await VerificationReporter.WriteAsync(progress, plan, false, request.Quality);
+        var console = Terminal.Create(progress);
+        VerificationReporter.WriteHeading(console, plan, request.Quality);
         var execution = new VerificationCommand(repository, runner, progress);
         string[] limitations = request.Quality ? [Limitation, QualityLimitation] : [Limitation];
         string? directory = null;
         var exitCode = 1;
+        var clock = Stopwatch.StartNew();
         try
         {
             exitCode = await EvidenceSession.ExecuteAsync(repository, "verify", plan.Mode, limitations, evidence =>
@@ -84,6 +89,7 @@ internal sealed class VerificationCommand(
         }
         finally
         {
+            if (directory is not null) VerificationReporter.WriteVerdict(console, repository, exitCode, clock.Elapsed, directory);
             if (request.Json && directory is not null)
             {
                 await output.WriteLineAsync(JsonSerializer.Serialize(new
@@ -108,10 +114,18 @@ internal sealed class VerificationCommand(
     {
         var result = await CombineAsync(
             () => RunPlanAsync(plan, evidence, cancellationToken),
-            () => new QualityCommand(repository, runner, output).RunChecksAsync(new QualityOptions(commit), evidence, cancellationToken),
+            async () =>
+            {
+                var console = Terminal.Create(output);
+                var clock = Stopwatch.StartNew();
+                var report = await Terminal.SpinAsync(console, "Analyzing quality",
+                    () => new QualityCommand(repository, runner, output).AnalyzeAsync(new QualityOptions(commit), evidence, cancellationToken));
+                VerificationReporter.WriteStep(console, "quality", VerificationReporter.NameWidth(plan),
+                    report.Completed ? Outcome.Passed : Outcome.Failed, clock.Elapsed, QualityCommand.Verdict(report));
+                QualityCommand.WriteFindings(console, report);
+                return report.Completed ? 0 : 1;
+            },
             cancellationToken);
-        await output.WriteLineAsync($"Summary: verification exit {result.Verification}; quality "
-            + (result.Quality is { } code ? $"exit {code}" : "not run") + $"; evidence: {evidence.Run.Directory}");
         return result.ExitCode;
     }
 
@@ -131,11 +145,12 @@ internal sealed class VerificationCommand(
 
     internal async Task<int> RunPlanAsync(VerificationPlan plan, EvidenceSession evidence, CancellationToken cancellationToken)
     {
+        var console = Terminal.Create(output);
+        var width = VerificationReporter.NameWidth(plan);
         var run = evidence.Run;
         var commands = evidence.Commands;
         var exitCode = 0;
         var results = new List<(string Name, int ExitCode, string Log)>();
-        await output.WriteLineAsync($"Verification evidence: {run.Directory}");
         try
         {
             foreach (var step in plan.Steps)
@@ -144,25 +159,29 @@ internal sealed class VerificationCommand(
                 var arguments = step.Arguments;
                 var command = $"{step.FileName} {string.Join(' ', arguments.Select(Quote))}";
                 commands.Add(command);
-                await output.WriteLineAsync($"Running {step.Name} ...");
                 var log = Path.Combine(run.Directory, $"{step.Name}.log");
+                var clock = Stopwatch.StartNew();
                 ProcessResult result;
                 try
                 {
-                    result = await runner.CaptureAsync(step.FileName, arguments, null, cancellationToken);
+                    result = await Terminal.SpinAsync(console, $"Running {Terminal.Esc(step.Name)}",
+                        () => runner.CaptureAsync(step.FileName, arguments, null, cancellationToken));
                 }
                 catch (CapturedProcessCancelledException cancelled)
                 {
                     await File.WriteAllTextAsync(log, cancelled.StdOut + cancelled.StdErr, CancellationToken.None);
                     results.Add((step.Name, 130, log));
+                    VerificationReporter.WriteStep(console, step.Name, width, Outcome.Cancelled, clock.Elapsed);
                     throw;
                 }
                 await File.WriteAllTextAsync(log, result.StdOut + result.StdErr, cancellationToken);
                 results.Add((step.Name, result.ExitCode, log));
+                VerificationReporter.WriteStep(console, step.Name, width, Terminal.FromExitCode(result.ExitCode), clock.Elapsed,
+                    result.ExitCode is 0 or 130 ? "" : $"[grey]exit {result.ExitCode}[/]");
                 if (result.ExitCode == 130) { exitCode = 130; return 130; }
                 if (result.ExitCode == 0) continue;
                 if (exitCode == 0) exitCode = result.ExitCode;
-                await output.WriteAsync(result.StdErr.Length > 0 ? result.StdErr : result.StdOut);
+                WriteFailure(console, result.StdErr.Length > 0 ? result.StdErr : result.StdOut, log);
             }
             return exitCode;
         }
@@ -184,18 +203,15 @@ internal sealed class VerificationCommand(
                     plan.Mode, plan.Base, plan.ChangedPaths, exitCode,
                     results = results.Select(result => new { result.Name, result.ExitCode, result.Log }),
                 }, JsonOptions.Indented), CancellationToken.None);
-            await WriteSummaryAsync(results);
         }
     }
 
-    private async Task WriteSummaryAsync(IEnumerable<(string Name, int ExitCode, string Log)> results)
+    /// 失败步骤输出的最后几行；完整输出在日志里。
+    private void WriteFailure(IAnsiConsole console, string text, string log)
     {
-        await output.WriteLineAsync("Verification summary:");
-        foreach (var result in results)
-        {
-            var status = result.ExitCode switch { 0 => "succeeded", 130 => "cancelled", _ => "failed" };
-            await output.WriteLineAsync($"  {result.Name}: {status} (exit {result.ExitCode}); log: {result.Log}");
-        }
+        foreach (var line in text.Split('\n').Select(line => line.TrimEnd('\r')).Where(line => line.Trim().Length > 0).TakeLast(FailureLines))
+            console.MarkupLine($"      [grey]{Terminal.Esc(line)}[/]");
+        console.MarkupLine($"      [grey]log[/] {Terminal.Esc(Terminal.Path(repository, log))}");
     }
 
     private static string Quote(string value) => value.Contains(' ', StringComparison.Ordinal) ? $"\"{value}\"" : value;

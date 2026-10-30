@@ -1,5 +1,6 @@
 using System.CommandLine;
 using System.CommandLine.Help;
+using Spectre.Console;
 
 namespace Orisumi.Dev;
 
@@ -84,10 +85,15 @@ internal sealed class MacCommand(RepositoryContext repository, IProcessRunner ru
         var arguments = LaunchArguments(status, window);
         var result = await runner.CaptureAsync("open", ["-n", application, "--args", .. arguments], null, token);
         if (result.ExitCode != 0) throw new InvalidOperationException(result.StdErr.Trim());
-        await output.WriteLineAsync($"Started {application}");
-        await output.WriteLineAsync($"  API: {arguments[1]}");
-        await output.WriteLineAsync($"  Web console: {arguments[3]}");
-        await output.WriteLineAsync($"  Program instance: {arguments[5]}");
+        var console = Terminal.Create(output);
+        Terminal.Heading(console, "Mac client", Terminal.Verdict(Outcome.Passed, "started"));
+        Terminal.Fields(console,
+        [
+            ("Application", Terminal.Esc(Terminal.Path(repository, application))),
+            ("API", Terminal.Esc(arguments[1])),
+            ("Web console", Terminal.Esc(arguments[3])),
+            ("Instance", Terminal.Esc(Terminal.Path(repository, arguments[5]))),
+        ]);
         return 0;
     }
 
@@ -114,7 +120,7 @@ internal sealed class MacCommand(RepositoryContext repository, IProcessRunner ru
         var running = await RunningAsync(token);
         if (running.Count == 0)
         {
-            await output.WriteLineAsync("No client from this checkout is running.");
+            Terminal.Create(output).MarkupLine($"{Terminal.Mark(Outcome.Waiting)} No client from this checkout is running");
             return 0;
         }
         // The client handles SIGTERM like Quit: Runtime stops the Observers before the client exits.
@@ -123,7 +129,7 @@ internal sealed class MacCommand(RepositoryContext repository, IProcessRunner ru
             await Task.Delay(TimeSpan.FromMilliseconds(500), token);
         var left = await RunningAsync(token);
         if (left.Count > 0) throw new InvalidOperationException($"The client did not quit (PID {string.Join(", ", left)}).");
-        await output.WriteLineAsync($"Stopped PID {string.Join(", ", running)}.");
+        Terminal.Create(output).MarkupLine($"{Terminal.Mark(Outcome.Passed)} Stopped the client [grey](PID {string.Join(", ", running)})[/]");
         return 0;
     }
 

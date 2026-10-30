@@ -61,8 +61,9 @@ public sealed class EnvironmentTests
     {
         using var fixture = new EnvironmentFixture();
         fixture.Runner.Running = true;
-        await Assert.That(async () => await fixture.Manager.UpAsync(["docs"], true, CancellationToken.None))
-            .Throws<InvalidOperationException>();
+        var cli = new DeveloperCli(fixture.Repository, fixture.Runner, fixture.Output, TextWriter.Null);
+        await Assert.That(async () => await cli.RunAsync(["env", "up", "docs", "--temp"], CancellationToken.None))
+            .Throws<EnvironmentAlreadyRunningException>();
         await Assert.That(fixture.Runner.Calls.Any(call => call.File == "docker" || call.Args[0] == "start")).IsFalse();
         await Assert.That(fixture.Output.ToString().Contains("https://localhost:19999", StringComparison.Ordinal)).IsTrue();
     }
@@ -115,7 +116,7 @@ public sealed class EnvironmentTests
         fixture.Runner.Running = running;
         var cli = new DeveloperCli(fixture.Repository, fixture.Runner, fixture.Output, TextWriter.Null);
         await cli.RunAsync(["env", "status"], CancellationToken.None);
-        await Assert.That(fixture.Output.ToString().Contains(running ? "Running" : "Stopped", StringComparison.Ordinal)).IsTrue();
+        await Assert.That(fixture.Output.ToString().Contains(running ? "running" : "stopped", StringComparison.Ordinal)).IsTrue();
         fixture.Output.GetStringBuilder().Clear();
         await cli.RunAsync(["env", "status", "--json"], CancellationToken.None);
         using var json = JsonDocument.Parse(fixture.Output.ToString());

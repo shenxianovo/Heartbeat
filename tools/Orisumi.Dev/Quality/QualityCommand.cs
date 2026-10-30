@@ -1,5 +1,8 @@
 using System.CommandLine;
+using System.Globalization;
 using System.Text.Json;
+using System.Text.RegularExpressions;
+using Spectre.Console;
 
 namespace Orisumi.Dev;
 
@@ -35,14 +38,30 @@ internal sealed class QualityCommand(RepositoryContext repository, IProcessRunne
 
     internal async Task<int> RunChecksAsync(QualityOptions options, EvidenceSession evidence, CancellationToken token)
     {
+        if (options.Json)
+        {
+            var analyzed = await AnalyzeAsync(options, evidence, token);
+            await output.WriteLineAsync(JsonSerializer.Serialize(analyzed, JsonOptions.Indented));
+            return analyzed.Completed ? 0 : 1;
+        }
+        var console = Terminal.Create(output);
+        var report = await Terminal.SpinAsync(console, $"Analyzing quality against {Terminal.Esc(options.Base)}",
+            () => AnalyzeAsync(options, evidence, token));
+        Write(console, repository, report);
+        return report.Completed ? 0 : 1;
+    }
+
+    /// 运行全部扫描，把报告写进证据目录。
+    internal async Task<QualityReport> AnalyzeAsync(QualityOptions options, EvidenceSession evidence, CancellationToken token)
+    {
         var source = new GitSourceReader(repository, runner);
         var baseline = await source.ReadRevisionAsync(options.Base, token);
         var usability = BaseUsability.Evaluate(options.Base, baseline);
         var baseReport = new QualityBaseReport(options.Base, baseline.Revision,
             usability.Usable, usability.Reason, usability.Suggestions);
         if (!usability.Usable)
-            return await ReportAsync(new(baseReport, evidence.Run.Directory, null, null, null, null,
-                false, [usability.Reason!]), options.Json, token);
+            return await SaveAsync(new(baseReport, evidence.Run.Directory, null, null, null, null,
+                false, [usability.Reason!]), token);
 
         var current = await source.ReadWorktreeAsync(token);
         var clones = await new CloneDetector(repository, runner)
@@ -52,8 +71,8 @@ internal sealed class QualityCommand(RepositoryContext repository, IProcessRunne
         var deadCode = await new DeadCodeDetector(repository, runner).CompareAsync(
             baseline.Revision, evidence.Run.Directory, evidence.Commands, complexity.BaselineCSharpComplete, complexity.CurrentCSharpComplete, token);
         var failures = Failures(clones, complexity).Concat(deadCode.Failures()).ToArray();
-        return await ReportAsync(new(baseReport, evidence.Run.Directory, CompareLines(baseline, current),
-            clones, complexity, deadCode, failures.Length == 0, failures), options.Json, token);
+        return await SaveAsync(new(baseReport, evidence.Run.Directory, CompareLines(baseline, current),
+            clones, complexity, deadCode, failures.Length == 0, failures), token);
     }
 
     internal static IReadOnlyList<string> Failures(CloneQualityReport clones, ComplexityQualityReport complexity)
@@ -64,40 +83,92 @@ internal sealed class QualityCommand(RepositoryContext repository, IProcessRunne
         return failures;
     }
 
-    private async Task<int> ReportAsync(QualityReport report, bool json, CancellationToken token)
+    private static async Task<QualityReport> SaveAsync(QualityReport report, CancellationToken token)
     {
         await File.WriteAllTextAsync(Path.Combine(report.ArtifactDirectory, "quality.json"),
             JsonSerializer.Serialize(report, JsonOptions.Indented), token);
-        if (json) await output.WriteLineAsync(JsonSerializer.Serialize(report, JsonOptions.Indented));
-        else
+        return report;
+    }
+
+    /// 相对基点新增的发现数；复杂度在基点无法分析时不计。
+    internal static int NewFindings(QualityReport report) =>
+        (report.Clones?.NewClones ?? 0)
+        + (report.Complexity is { BaselineComplete: true } complexity ? complexity.Regressions : 0)
+        + (report.DeadCode?.NewFindings.Count ?? 0);
+
+    internal static string Verdict(QualityReport report) => !report.Completed
+        ? Terminal.Verdict(Outcome.Failed, "incomplete")
+        : NewFindings(report) is var found and > 0
+            ? Terminal.Verdict(Outcome.Attention, $"{found} new {(found == 1 ? "finding" : "findings")}")
+            : Terminal.Verdict(Outcome.Passed, "nothing new");
+
+    internal static void Write(IAnsiConsole console, RepositoryContext repository, QualityReport report)
+    {
+        var resolved = report.Base.Resolved.Length >= 7 ? report.Base.Resolved[..7] : report.Base.Resolved;
+        Terminal.Heading(console, "Quality", Terminal.Esc($"against {report.Base.Requested} ({resolved})"), Verdict(report));
+        if (report.Lines is { } lines)
         {
-            await output.WriteLineAsync($"Quality observations against {report.Base.Requested} ({report.Base.Resolved[..7]})");
-            if (report.Lines is { } lines)
+            static string New(int count) => count > 0 ? $"[yellow]{Terminal.Number(count)}[/]" : "0";
+            List<string[]> rows =
+            [
+                ["", "[grey]current[/]", "[grey]new[/]"],
+                ["Production LOC", Terminal.Number(lines.CurrentProductionLines), Terminal.Delta(lines.ProductionDelta)],
+                ["Clones", Terminal.Number(report.Clones!.Scans.Sum(scan => scan.Clones)), New(report.Clones.NewClones)],
+            ];
+            if (report.Complexity is { CurrentComplete: true } complexity)
             {
-                await output.WriteLineAsync($"  production LOC: {lines.CurrentProductionLines:N0} ({lines.ProductionDelta:+#;-#;0} vs base)");
-                foreach (var scan in report.Clones!.Scans)
-                {
-                    await output.WriteLineAsync($"  {scan.Scope} clones: {scan.Clones} current; {scan.NewClones} new");
-                    foreach (var finding in scan.NewFindings) await output.WriteLineAsync("    " + finding.Describe());
-                }
-                if (report.Complexity is { CurrentComplete: true } complexity)
-                {
-                    await output.WriteLineAsync($"  complex functions above 10: {complexity.CurrentHotspots}; comparison "
-                        + (complexity.BaselineComplete ? $"new or increased: {complexity.Regressions}" : "unavailable for this base"));
-                    foreach (var hotspot in complexity.Hotspots ?? [])
-                        await output.WriteLineAsync($"    {hotspot.Path}:{hotspot.Line} {hotspot.Symbol}: {hotspot.Complexity}");
-                    if (complexity.CurrentErosion is { } erosion)
-                        await output.WriteLineAsync($"  complexity burden ratio: {erosion.Ratio:P2}");
-                    foreach (var module in complexity.Modules ?? [])
-                        await output.WriteLineAsync($"    {module.Module}: {module.Current.TotalFunctions} functions, {module.Current.HighRiskFunctions} above 10");
-                }
-                await output.WriteLineAsync($"  unused code/dependencies: {report.DeadCode!.Current.Count} current; {report.DeadCode.NewFindings.Count} new");
-                foreach (var finding in report.DeadCode.NewFindings) await output.WriteLineAsync("    " + finding.Describe());
+                rows.Add(["Complex functions > 10", Terminal.Number(complexity.CurrentHotspots),
+                    complexity.BaselineComplete ? New(complexity.Regressions) : "[grey]n/a[/]"]);
+                if (complexity.CurrentErosion is { } erosion)
+                    rows.Add(["Complexity burden", erosion.Ratio.ToString("P1", CultureInfo.InvariantCulture),
+                        complexity.ErosionDelta is { } delta
+                            ? (delta * 100).ToString("+0.0;-0.0;±0.0", CultureInfo.InvariantCulture) + "pp" : "[grey]n/a[/]"]);
             }
-            foreach (var failure in report.Failures) await output.WriteLineAsync("  INCOMPLETE: " + failure);
-            await output.WriteLineAsync($"  evidence: {report.ArtifactDirectory}");
+            rows.Add(["Unused code", Terminal.Number(report.DeadCode!.Current.Count), New(report.DeadCode.NewFindings.Count)]);
+            Terminal.Rows(console, rows, 1, 2);
         }
-        return report.Completed ? 0 : 1;
+        WriteFindings(console, report);
+        foreach (var suggestion in report.Base.Suggestions) Terminal.Hint(console, suggestion);
+        console.WriteLine();
+        console.MarkupLine($"  [grey]evidence[/]  {Terminal.Esc(Terminal.Path(repository, Path.Combine(report.ArtifactDirectory, "quality.json")))}");
+    }
+
+    /// 只展开新增的发现和未完成的扫描；现有的发现见 quality.json。
+    internal static void WriteFindings(IAnsiConsole console, QualityReport report)
+    {
+        var findings = NewFindingLines(report).ToArray();
+        if (findings.Length > 0) console.WriteLine();
+        foreach (var (kind, text) in findings) console.MarkupLine($"    [yellow]{kind,-8}[/] {Terminal.Esc(text)}");
+        if (report.Failures.Count > 0) console.WriteLine();
+        foreach (var failure in report.Failures) console.MarkupLine($"    {Terminal.Mark(Outcome.Failed)} {Terminal.Esc(failure)}");
+    }
+
+    private static IEnumerable<(string Kind, string Text)> NewFindingLines(QualityReport report) =>
+        NewClones(report).Concat(NewComplexity(report)).Concat(NewUnused(report));
+
+    private static IEnumerable<(string, string)> NewClones(QualityReport report) =>
+        (report.Clones?.Scans.SelectMany(scan => scan.NewFindings) ?? []).Select(finding => ("clone",
+            $"{finding.FirstFile}:{finding.FirstStart}-{finding.FirstEnd} ↔ "
+            + $"{finding.SecondFile}:{finding.SecondStart}-{finding.SecondEnd} · {finding.Lines} lines"));
+
+    private static IEnumerable<(string, string)> NewComplexity(QualityReport report) =>
+        (report.Complexity is { BaselineComplete: true } complexity ? complexity.RegressionDetails ?? [] : [])
+            .Select(regression => ("complex",
+                $"{regression.Current.Path}:{regression.Current.Line} {ShortSymbol(regression.Current.Symbol)} · "
+                + $"{regression.Current.Complexity}" + (regression.BaseComplexity is { } before ? $" (was {before})" : " (new)")));
+
+    private static IEnumerable<(string, string)> NewUnused(QualityReport report) =>
+        (report.DeadCode?.NewFindings ?? []).Select(finding => ("unused", $"{finding.Path}:{finding.Line} {finding.Symbol} · {finding.Rule}"));
+
+    /// 分析器的符号名带命名空间、泛型元数和参数，只保留最后的类型和函数名。
+    internal static string ShortSymbol(string symbol)
+    {
+        var withoutParameters = Regex.Replace(symbol, @"\(.*\)", "");
+        var segments = withoutParameters.Split('/')
+            .Select(segment => Regex.Replace(Regex.Replace(segment, @"^[A-Za-z]+:", ""), @"`\d+", ""))
+            .Where(segment => segment.Length > 0)
+            .ToArray();
+        return string.Join('.', segments.TakeLast(2));
     }
 
     internal static LineQualityReport CompareLines(SourceSnapshot baseline, SourceSnapshot current)

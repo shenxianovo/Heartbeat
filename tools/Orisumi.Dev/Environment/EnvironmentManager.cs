@@ -2,11 +2,20 @@ using System.Text.Json;
 
 namespace Orisumi.Dev;
 
-internal sealed class EnvironmentManager(RepositoryContext repository, IProcessRunner runner, TextWriter output)
+internal sealed class EnvironmentAlreadyRunningException(EnvironmentStatus status)
+    : InvalidOperationException("This checkout already has a running environment. Run orisumi env down first.")
+{
+    public EnvironmentStatus Status { get; } = status;
+}
+
+/// <param name="notice">破坏性操作前的提示，例如重置数据卷；默认写到 <paramref name="output"/>。</param>
+internal sealed class EnvironmentManager(
+    RepositoryContext repository, IProcessRunner runner, TextWriter output, Action<string>? notice = null)
 {
     internal const string CheckoutLabel = "orisumi.checkout";
     internal const string TemporaryLabel = "orisumi.temporary";
     private readonly EnvironmentFiles files = new(repository);
+    private readonly Action<string> notify = notice ?? output.WriteLine;
     internal string AppHost => repository.Path("tools", "Orisumi.AppHost", "Orisumi.AppHost.csproj");
 
     internal async Task<bool> IsWorktreeAsync(CancellationToken token)
@@ -53,18 +62,14 @@ internal sealed class EnvironmentManager(RepositoryContext repository, IProcessR
         if (reset && temporary) throw new CommandUsageException("--reset and --temp cannot be used together.");
         var services = ServiceSelection.Resolve(requested);
         var current = await StatusAsync(token);
-        if (current.Running)
-        {
-            await output.WriteLineAsync(JsonSerializer.Serialize(current, JsonOptions.Indented));
-            throw new InvalidOperationException("This checkout already has a running environment. Run orisumi env down first.");
-        }
+        if (current.Running) throw new EnvironmentAlreadyRunningException(current);
         var worktree = await IsWorktreeAsync(token);
         var defaults = files.Defaults();
         var ports = worktree ? EnvironmentPorts.Allocate(files.Read()?.Ports, EnvironmentPorts.Available, EnvironmentPorts.FreePort) : defaults.Ports;
         var volume = reuseVolume ?? (temporary ? EnvironmentFiles.TemporaryVolume() : files.DefaultVolume(worktree));
         if (reset)
         {
-            await output.WriteLineAsync($"Resetting default volume '{volume}': all existing data will be deleted.");
+            notify($"Resetting default volume '{volume}': all existing data will be deleted.");
             await ExecuteAsync("docker", ["volume", "rm", "--force", volume], token);
         }
         await ExecuteAsync("docker", ["volume", "create", "--label", $"{CheckoutLabel}={repository.Root}",
@@ -84,7 +89,8 @@ internal sealed class EnvironmentManager(RepositoryContext repository, IProcessR
         return await StatusAsync(token);
     }
 
-    public async Task DownAsync(CancellationToken token, bool preserveVolume = false)
+    /// 返回删除的临时数据卷；没有删除时返回 null。
+    public async Task<string?> DownAsync(CancellationToken token, bool preserveVolume = false)
     {
         var state = files.Read();
         await AspireAsync(["stop", "--force"], token);
@@ -95,7 +101,9 @@ internal sealed class EnvironmentManager(RepositoryContext repository, IProcessR
             var ids = containers.StdOut.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
             if (ids.Length > 0) await ExecuteAsync("docker", ["rm", "--force", .. ids], token);
             await ExecuteAsync("docker", ["volume", "rm", "--force", state.Volume], token);
+            return state.Volume;
         }
+        return null;
     }
 
     public Task<ProcessResult> AspireAsync(IReadOnlyList<string> arguments, CancellationToken token) =>

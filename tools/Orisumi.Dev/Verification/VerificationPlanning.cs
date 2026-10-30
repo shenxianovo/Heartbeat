@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Spectre.Console;
 
 namespace Orisumi.Dev;
 
@@ -165,7 +166,8 @@ internal static class VerificationPlanner
 
 internal static class VerificationReporter
 {
-    public static async Task WriteAsync(TextWriter output, VerificationPlan plan, bool json, bool quality = false)
+    public static async Task WriteAsync(
+        RepositoryContext repository, TextWriter output, VerificationPlan plan, bool json, bool quality = false)
     {
         if (json)
         {
@@ -179,12 +181,57 @@ internal static class VerificationReporter
             }, JsonOptions.Indented));
             return;
         }
-        await output.WriteLineAsync($"Verification plan: {plan.Mode}");
-        foreach (var step in plan.Steps)
+        var console = Terminal.Create(output);
+        WriteHeading(console, plan, quality, "Verify plan");
+        var width = NameWidth(plan);
+        var rows = plan.Steps.Select(step => new[]
         {
-            await output.WriteLineAsync($"  {step.Name}: {step.FileName} {string.Join(' ', step.Arguments)}");
-        }
-        if (quality) await output.WriteLineAsync($"  quality: structural observations --base {plan.Base}");
-        if (plan.Steps.Count == 0) await output.WriteLineAsync("  No executable checks selected.");
+            Terminal.Esc(step.Name.PadRight(width)),
+            $"[grey]{Terminal.Esc(string.Join(' ', [step.FileName, .. step.Arguments.Select(argument => Relative(repository, argument))]))}[/]",
+        }).ToList();
+        if (quality) rows.Add(["quality".PadRight(width), $"[grey]structural observations against {Terminal.Esc(ShortBase(plan.Base))}[/]"]);
+        if (rows.Count == 0) console.MarkupLine($"  {Terminal.Mark(Outcome.Skipped)} No executable checks selected");
+        Terminal.Rows(console, rows);
     }
+
+    public static void WriteHeading(IAnsiConsole console, VerificationPlan plan, bool quality, string subject = "Verify")
+    {
+        var scope = plan.Mode switch
+        {
+            "changed" => $"changed since {ShortBase(plan.Base)}",
+            "full-fallback" => $"all checks; changes since {ShortBase(plan.Base)} reach unmapped paths",
+            _ => "all checks",
+        };
+        var count = $"{plan.Steps.Count} {(plan.Steps.Count == 1 ? "check" : "checks")}" + (quality ? " + quality" : "");
+        Terminal.Heading(console, subject, Terminal.Esc(scope), count);
+    }
+
+    /// 步骤名对齐的宽度，包括质量扫描那一行。
+    public static int NameWidth(VerificationPlan plan) =>
+        plan.Steps.Select(step => step.Name.Length).Append("quality".Length).Max();
+
+    public static void WriteStep(IAnsiConsole console, string name, int width, Outcome outcome, TimeSpan elapsed, string note = "") =>
+        console.MarkupLine($"  {Terminal.Mark(outcome)} {Terminal.Esc(name.PadRight(width))}  [grey]{Terminal.Duration(elapsed),6}[/]"
+            + (note.Length > 0 ? "  " + note : ""));
+
+    public static void WriteVerdict(IAnsiConsole console, RepositoryContext repository, int exitCode, TimeSpan elapsed, string evidence)
+    {
+        var outcome = Terminal.FromExitCode(exitCode);
+        var text = outcome switch
+        {
+            Outcome.Passed => "Passed",
+            Outcome.Cancelled => "Cancelled",
+            _ => "Failed",
+        };
+        console.WriteLine();
+        console.MarkupLine($"{Terminal.Mark(outcome)} {Terminal.Verdict(outcome, $"{text} in {Terminal.Duration(elapsed)}")}");
+        console.MarkupLine($"  [grey]evidence[/]  {Terminal.Esc(Terminal.Path(repository, evidence))}/");
+    }
+
+    private static string ShortBase(string? value) =>
+        value is { Length: 40 } && value.All(char.IsAsciiHexDigit) ? value[..7] : value ?? "";
+
+    private static string Relative(RepositoryContext repository, string argument) =>
+        Path.IsPathRooted(argument) && argument.StartsWith(repository.Root, StringComparison.Ordinal)
+            ? Terminal.Path(repository, argument) : argument;
 }

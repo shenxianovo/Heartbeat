@@ -4,6 +4,9 @@ namespace Orisumi.Dev;
 
 internal sealed record ArtifactRun(string Id, string Directory, DateTimeOffset CreatedAt);
 
+/// 一次运行在列表里显示的内容；没有 manifest 的运行还没结束或中途退出，退出码为 null。
+internal sealed record RunSummary(ArtifactRun Run, string What, int? ExitCode, TimeSpan? Duration, IReadOnlyList<string> Failed);
+
 internal sealed record EvidenceManifest(
     string RunId,
     string Kind,
@@ -96,6 +99,50 @@ internal sealed class ArtifactStore(RepositoryContext repository)
             .Where(run => !retained.Contains(run.Id) && run.CreatedAt < cutoff)
             .ToArray();
         return new PruneOutcome(candidates, candidates.Sum(Bytes));
+    }
+
+    public static RunSummary Summarize(ArtifactRun run)
+    {
+        var manifest = ReadJson(Path.Combine(run.Directory, "manifest.json"));
+        var kind = Text(manifest, "kind");
+        var name = Text(manifest, "name") ?? NameFromId(run.Id);
+        var what = kind == "quality" ? "analyze quality" : $"verify {(name == "full-fallback" ? "full (fallback)" : name)}";
+        if (kind != "quality" && File.Exists(Path.Combine(run.Directory, "quality.json"))) what += " + quality";
+        int? exitCode = manifest is { } document && document.TryGetProperty("exitCode", out var code) ? code.GetInt32() : null;
+        return new RunSummary(run, what, exitCode, Duration(manifest), FailedSteps(run));
+    }
+
+    private static TimeSpan? Duration(JsonElement? manifest) =>
+        manifest is { } document
+        && document.TryGetProperty("startedAt", out var started) && document.TryGetProperty("completedAt", out var completed)
+            ? completed.GetDateTimeOffset() - started.GetDateTimeOffset() : null;
+
+    /// 检查步骤按退出码判断，冒烟场景按状态判断；取消的步骤不算失败。
+    private static string[] FailedSteps(ArtifactRun run) =>
+        ReadJson(Path.Combine(run.Directory, "verification.json")) is { } verification
+        && verification.TryGetProperty("results", out var results)
+            ? [.. results.EnumerateArray().Where(IsFailedStep).Select(result => Text(result, "name") ?? "")]
+            : [];
+
+    private static bool IsFailedStep(JsonElement result) =>
+        result.TryGetProperty("exitCode", out var code) ? code.GetInt32() is not (0 or 130) : Text(result, "status") == "failed";
+
+    private static string NameFromId(string id) => id.Split('-') is [_, _, var name, ..] ? name : id;
+
+    private static string? Text(JsonElement? element, string name) =>
+        element is { } value && value.TryGetProperty(name, out var property) && property.ValueKind == JsonValueKind.String
+            ? property.GetString() : null;
+
+    private static JsonElement? ReadJson(string path)
+    {
+        try
+        {
+            return File.Exists(path) ? JsonSerializer.Deserialize<JsonElement>(File.ReadAllText(path)) : null;
+        }
+        catch (Exception exception) when (exception is JsonException or IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     /// 退出码非 0 算失败；manifest 缺失或读不出来也算——这两种都是最需要留证据的情况。

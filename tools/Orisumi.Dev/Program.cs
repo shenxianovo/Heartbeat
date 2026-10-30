@@ -21,8 +21,8 @@ public static class Program
         }
         catch (CommandUsageException exception)
         {
-            Console.Error.WriteLine(exception.Message);
-            Console.Error.WriteLine("Run orisumi --help for usage.");
+            Terminal.Error(Console.Error, exception.Message);
+            Terminal.Hint(Terminal.Create(Console.Error), "orisumi --help");
             return 2;
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
@@ -31,7 +31,7 @@ public static class Program
         }
         catch (Exception exception)
         {
-            Console.Error.WriteLine(exception.Message);
+            Terminal.Error(Console.Error, exception.Message);
             return 1;
         }
         finally
