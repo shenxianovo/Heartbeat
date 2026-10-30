@@ -49,4 +49,5 @@ API 中的时间精确到 1 微秒，UTC 指协调世界时。事实时间的含
 - 字符串逐个字符比较，不做 Unicode 规范化。
 - 数组按顺序比较。InputSet 的 `members` 无序，见 [INPUTSET-4](../core/model/input-set.mdx#inputset-4)。
 - 省略的字段与值为 `null` 的字段不同，见 [SCHEMA-13](../core/model/schema.mdx#schema-13)。
+- `binary` 值按描述的三个成员比较。摘要确定了字节，所以描述相同，文件就相同，见 [BINARY-2](../core/model/binary.mdx#binary-2)。
 - Observation 的时间先换算为 UTC、截断到整微秒，再比较。所以 `2026-10-06T14:00:00+08:00` 与 `2026-10-06T06:00:00Z` 相同。

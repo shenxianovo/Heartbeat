@@ -61,6 +61,8 @@ Runtime 用 `GET /entities/{entityId}/versions` 读取 EntitySchema 的版本链
 - 业务代码决定 EntityId、内容和何时结束；Runtime 生成 VersionId，接好 `previousVersionId`，冻结被引用的版本，见 [VERSION-12](../core/model/version.mdx#version-12)。
 - 已冻结的版本不能被批次改写，补全形成新的草稿。
 
+草稿中有 `binary` 字段时，业务代码把字节放进同一个批次，例如 14:00 的批次带着 VS Code 的图标。Runtime 核对摘要，把字节和版本在同一个事务中本地保存，同样的字节只保存一份，见 [Protocol · 批次的操作](./protocol.mdx#operations)。
+
 本地批次只在本机生效。发送到后端时，版本仍按[发送与确认](#delivery)逐个保存。
 
 ### 回执 [#receipts]
@@ -112,7 +114,7 @@ Observation 的草稿可以作为观测预览写入后端，供读取方在事�
 
 ## 发送与确认 [#delivery]
 
-已冻结且依赖都已满足的版本按冻结的顺序分批发送，一批就是一次 `POST /versions`，大小在请求体的上限之内。发送失败或响应不确定时，版本留在本地，等网络恢复或程序重启后继续发送。请求和响应见 [API · 提交](../api/writing.mdx#submission)。
+已冻结且依赖都已满足的版本按冻结的顺序分批发送，一批就是一次 `POST /versions`，大小在请求体的上限之内。发送一批之前，Runtime 先用 `PUT /contents/{digest}` 上传其中用到、还没有上传过的二进制内容，见 [BINARY-3](../core/model/binary.mdx#binary-3)。Runtime 永久记下上传过的摘要，所以 VS Code 的图标只在第一次出现时上传。用到某份内容的版本都已保存后，Runtime 移除本地的字节，摘要的记录保留。发送失败或响应不确定时，版本留在本地，等网络恢复或程序重启后继续发送。请求和响应见 [API · 提交](../api/writing.mdx#submission)。
 
 ### 确认 [#confirmation]
 
@@ -121,6 +123,7 @@ Runtime 按响应确认版本，不需要读回。
 | 响应 | Runtime 的处理 |
 | --- | --- |
 | `200` | 这一批全部确认为已保存 |
+| `409`，`rule` 为 `BINARY-3` | 内容在后端的暂存已被清理。位置在 `index` 之前的版本确认为已保存；Runtime 重新上传 `index` 处版本用到的内容，再发送其余的版本 |
 | `400` 或 `409`，带 `index` | 位置在 `index` 之前的版本确认为已保存；`index` 处的版本被拒绝；之后的版本确定没有保存，可以由业务代码改写 |
 | `400`，不带 `index` | 请求不符合契约，是 Runtime 的错误：停止发送，报告给业务代码 |
 | `401` | 托管方凭证无效或已撤销：版本留在本地，停止发送，重新接入后原样发送，见 [Management · 移除托管方](./management.mdx#revocation) |

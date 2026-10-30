@@ -1,0 +1,36 @@
+---
+title: "Foreground Icons"
+description: "图标在时段开始时读取并随观测内容保存，读不到时时段照常记录"
+---
+
+export const caseId = 'foreground-icons';
+
+## 为什么验证 [#why]
+
+前台时段带着应用当时的图标，其他设备上的客户端靠它显示应用。图标只是时段的一个字段：读不到时，前台时长照常记录；同一个图标在各段时段中只保存一份。约定见 [Foreground Application Period · 图标](../../observers/foreground-state/foreground-application-period.mdx#icon)。
+
+## 前置条件 [#setup]
+
+前台状态 Observer 使用模拟的读数和模拟的图标，Runtime 的本地保存使用独立的 SQLite 文件。需要后端的行通过 `WebApplicationFactory` 启动 API，连接一个独立的测试数据库，见 [Database](../database.mdx)。
+
+## 操作与预期结果 [#steps]
+
+| 操作 | 预期结果 |
+| --- | --- |
+| 确认应用在前台，读到图标 | 观测内容的 `icon` 是图标的描述，`mediaType` 为 `image/png`；后端读到的字节与图标相同 |
+| 确认应用在前台，读取图标失败 | 时段照常形成，`icon` 为 `null` |
+| 同一应用的两段时段读到同一个图标 | 两份观测内容的 `icon` 相同，后端只有一份内容 |
+| 时段进行中，模拟的图标改变 | 当前时段的 `icon` 不变；下一段时段读到新的图标 |
+| 图标改变 | 本机应用的身份不变，见 [Local Application · 身份](../../observers/foreground-state/local-application.mdx#identity) |
+
+## 测试实现 [#implementation]
+
+以下方法位于 `tests/Orisumi.Integration.Tests/ForegroundIconTests.cs`，使用模拟的图标：
+
+- 图标随观测内容保存并能读回字节；时段进行中图标改变，当前时段不变，图标只读取一次；之后的时段读到新图标，两段相同的图标只保存一份；本机应用的 EntityId 不变：`IconIsCapturedAtPeriodStartAndSharedWithoutChangingApplicationIdentity`。
+- 读不到图标和读取抛出异常时，`icon` 为 `null`，时段和 Observation 照常保存：`MissingOrFailedIconDoesNotPreventSavingAPeriod`。
+- macOS 上原生读取和绘制图标没有自动测试，按 `src/Observers/Orisumi.Observer.ForegroundState/README.md` 的验证步骤手动检查。
+
+## 执行结果 [#results]
+
+<TestCaseResults caseId={caseId} />

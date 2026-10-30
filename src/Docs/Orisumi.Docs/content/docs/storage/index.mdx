@@ -1,9 +1,9 @@
 ---
 title: "Overview"
-description: "后端的八张表：哪些是权威，哪些是可以重建的投影，以及共用的事务和命名"
+description: "后端的十张表：哪些是权威，哪些是可以重建的投影，以及共用的事务和命名"
 ---
 
-后端在 PostgreSQL 中保存八张业务表。六张保存 Core 的数据：`versions` 和 `deleted_versions` 是权威，其余四张是从它们推导、供查询使用的投影。另外两张是 Observer 的管理登记。这样设计的理由见 [ADR · 实体存储](../adr/entity-storage.mdx)。
+后端在 PostgreSQL 中保存十张业务表。八张保存 Core 的数据：`versions`、`deleted_versions` 和 `contents` 是权威，其余五张是推导出来、供查询使用的投影。另外两张是 Observer 的管理登记。这样设计的理由见 [ADR · 实体存储](../adr/entity-storage.mdx)。
 
 观测预览只暂存在后端进程的内存中，不写入 PostgreSQL，见 [API · Previews](../api/previews.mdx)。此外还有迁移工具自己的元数据表。
 
@@ -17,9 +17,11 @@ description: "后端的八张表：哪些是权威，哪些是可以重建的投
 | `entities` | 时段一行，Observation 一行，各记着自己的当前版本 |
 | `observations` | Observation 一行，记着当前版本、事实时间和观测内容的类型 |
 | `version_references` | 时段对 VS Code 一行；Observation 对前台状态 Observer 和对时段各一行 |
+| `contents` | VS Code 的图标一行，之后的时段读到同一个图标时共用 |
+| `version_contents` | 时段对图标一行 |
 | `observer_instances` | 前台状态 Observer 一行，记着它的启用状态、设置和最近的状态报告 |
 
-第二天用户删掉浏览器的时段，它的版本从 `versions` 中移除，身份写入 `deleted_versions`，它在三张投影中的行也随之移除。
+第二天用户删掉浏览器的时段，它的版本从 `versions` 中移除，身份写入 `deleted_versions`，它在各张投影中的行也随之移除；图标还有其他时段使用，所以保留。
 
 ## 表 [#tables]
 
@@ -27,14 +29,16 @@ description: "后端的八张表：哪些是权威，哪些是可以重建的投
 | --- | --- | --- | --- |
 | `versions` | 一个未删除的版本 | 权威：版本内容 | [Versions · versions](./versions.mdx#versions) |
 | `deleted_versions` | 一个已删除的版本 | 权威：删除的身份 | [Versions · deleted_versions](./versions.mdx#deleted-versions) |
+| `contents` | 一份已上传的二进制内容 | 权威：内容的字节 | [Contents · contents](./contents.mdx#contents) |
 | `entities` | 一个未删除的实体 | 投影 | [Versions · entities](./versions.mdx#entities) |
 | `schemas` | 一个未删除的 EntitySchema | 投影 | [Versions · schemas](./versions.mdx#schemas) |
 | `observations` | 一份未删除的 Observation | 投影 | [Queries · 事实时间](./queries.mdx#fact-time) |
 | `version_references` | 一个版本对一个目标实体的引用 | 投影 | [Queries · 引用方](./queries.mdx#references) |
+| `version_contents` | 一个版本对一份内容的使用 | 投影 | [Contents · version_contents](./contents.mdx#version-contents) |
 | `observer_hosts` | 一个 Runtime | 权威：管理登记 | [Management](./management.mdx#observer-hosts) |
 | `observer_instances` | 一个受管理的程序实例 | 权威：管理登记 | [Management](./management.mdx#observer-instances) |
 
-- 四张投影可以随时从 `versions` 和 `deleted_versions` 重建，见[重建](#rebuild)。
+- 五张投影可以随时从 `versions` 和 `deleted_versions` 重建，见[重建](#rebuild)。
 - 权威表不设置指向投影的外键。投影可以有指向权威表或其他投影的外键。
 - 两张管理表不是 Core 的投影，配置、凭证和移除标记都不能从版本推导。
 
@@ -44,17 +48,18 @@ description: "后端的八张表：哪些是权威，哪些是可以重建的投
 
 - 每个操作在一个事务中完成，事务开始时取得一个固定键的事务级 advisory lock（`pg_advisory_xact_lock`）。所以所有读写，包括管理登记的写入，都串行执行。
 - 一次提交在一个事务中完成，每个版本在自己的保存点中保存。某个版本被拒绝时，回滚到它的保存点，提交此前已保存的版本，再返回错误，见 [VERSION-13](../core/model/version.mdx#version-13)。出现异常或请求取消时，整个事务回滚。
-- 保存一个版本时，`versions` 的新行和它在四张投影中的变化在同一个保存点中写入。
-- 删除一个实体时，删除身份、版本、投影的变化和管理登记的移除标记在同一个事务中写入，见 [Versions · 删除](./versions.mdx#deletion)。
+- 保存一个版本时，`versions` 的新行和它在五张投影中的变化在同一个保存点中写入。
+- 删除一个实体时，删除身份、版本、投影的变化、不再使用的内容和管理登记的移除标记在同一个事务中写入，见 [Versions · 删除](./versions.mdx#deletion)。
 
 ## 重建 [#rebuild]
 
-四张投影按以下方式从权威表算出，结果与逐次保存和删除后的投影相同：
+五张投影按以下方式从权威表算出，结果与逐次保存和删除后的投影相同：
 
 1. `entities`：每个在 `versions` 中有版本的实体一行，当前版本是版本链的最后一个，即 `ordinal` 最大的版本。
 2. `schemas`：每个 `category` 为 `entity_schema` 的实体一行，资源名取当前版本的 `resourceName`。
 3. `observations`：每个 `category` 为 `observation` 的实体一行。内容类型按当前版本的 `contentVersionId` 查找：目标在 `versions` 中时取它所属实体的 `schema_id`；目标在 `deleted_versions` 中时为 `NULL`。
 4. `version_references`：按每个版本的 Core 类型或 Schema 版本枚举它的引用，目标所属的实体从 `versions` 或 `deleted_versions` 中查出。
+5. `version_contents`：按每个版本的 Schema 版本枚举它的 `binary` 值，每个版本对每个摘要一行。
 
 重建只读权威表，不写入它们。只从 `versions` 重建是不够的：引用已删除目标的边和观测内容的空类型，都要靠 `deleted_versions` 才能算出。
 

@@ -1,0 +1,55 @@
+---
+title: "Binary Content"
+description: "二进制内容先上传再被版本使用，按描述校验，随使用它的版本保留和移除"
+---
+
+export const caseId = 'api-binary-content';
+
+## 为什么验证 [#why]
+
+版本读到的文件要确定：版本保存时字节必须已在后端，描述必须与字节一致。同一份内容被多个实体使用时，删除其中一个不能让其他实体读不到；最后一个使用方删除后，内容不留副本。约定见 [Binary](../../core/model/binary.mdx)、[API · 内容](../../api/writing.mdx#contents) 和 [Storage · Contents](../../storage/contents.mdx)。
+
+## 前置条件 [#setup]
+
+通过 `WebApplicationFactory` 启动 API，连接一个独立的测试数据库，见 [Database](../database.mdx)。时间由可控的 `TimeProvider` 提供。先提交一个 EntitySchema，它有可空的顶层 `binary` 字段、对象成员中的 `binary` 字段和元素为 `binary` 的数组。
+
+## 操作与预期结果 [#steps]
+
+| 操作 | 预期结果 |
+| --- | --- |
+| 提交 Schema 版本，字段的 `type` 为 `binary`，分别作为顶层字段、对象成员和数组元素 | 保存成功 |
+| 业务版本的 `binary` 值缺少成员、多出成员、摘要用大写或不是 64 位、`size` 为负 | `400`，`rule` 为 `BINARY-1` |
+| `binary` 字段省略或为 `null`，按 `required` 和 `nullable` 的四种组合 | 与其他字段类型的结果相同，见 [SCHEMA-11](../../core/model/schema.mdx#schema-11) |
+| 上传内容，路径中的摘要与字节不符 | `400`，`rule` 为 `BINARY-1` |
+| 上传超过 8 MiB 的内容 | `413` |
+| 上传内容，再原样上传一次 | 两次都返回 `204` |
+| 提交使用一份尚未上传的内容的版本 | `409`，`rule` 为 `BINARY-3`，带 `index` |
+| 上传这份内容后原样重发同一次提交 | `200`，版本保存成功 |
+| 提交的 `size` 与已上传的字节数不同 | `400`，`rule` 为 `BINARY-3` |
+| 读取已被版本使用的内容 | `200`，字节与上传的相同，带 `Cache-Control: private, max-age=31536000, immutable` |
+| 读取已上传、还没有版本使用的内容 | `404` |
+| 两个实体使用同一份内容，删除其中一个 | 内容仍返回 `200`，见 [BINARY-4](../../core/model/binary.mdx#binary-4) |
+| 再删除另一个 | 内容返回 `404`；`contents` 中没有这一行 |
+| 一个实体的两个版本使用同一份内容 | `version_contents` 每个版本一行；`contents` 一行 |
+| 上传内容后把时间推进 25 小时，运行清理 | 没有版本使用的内容被移除，之后提交使用它的版本返回 `409`，`rule` 为 `BINARY-3` |
+| 已被版本使用的内容，时间推进 25 小时后运行清理 | 内容保留 |
+| 重建投影 | `version_contents` 与逐次保存和删除后的结果相同，见 [Storage · 重建](../../storage/index.mdx#rebuild) |
+
+## 测试实现 [#implementation]
+
+模型测试位于 `tests/Orisumi.Model.Tests/BinaryValueTests.cs`：
+
+- `binary` 只在 Schema 声明的位置被识别，顶层字段、对象成员和数组元素都包括：`BinaryFieldsAreEnumeratedOnlyAtSchemaDeclaredPositions`。
+- `size` 按整数的值判断：`3.0` 和 `3e0` 读作 3，带极小小数部分的值和超过 64 位整数范围的值被拒绝：`BinarySizeUsesIntegerValueRatherThanNumberSpelling`，参数覆盖这四种写法。
+
+集成测试位于 `tests/Orisumi.Integration.Tests/BinaryContentTests.cs`：
+
+- 描述缺少或多出成员、摘要大小写或长度不对、`size` 为负或带小数、媒体类型不完整，在顶层、对象成员和数组元素中都返回 `BINARY-1`；上传时摘要不符、超过 8 MiB；`size` 与已上传的字节数不同：`InvalidDescriptorsUploadsAndSizesAreRejected`。
+- `required` 与 `nullable` 的四种组合：`RequiredAndNullableRemainIndependentForBinaryValues`。
+- 未上传时 `409`，上传和重复上传都返回 `204`，暂存内容读取返回 `404`，上传后重发成功；读取的字节与缓存头；历史版本与另一实体共用一份内容，重建后 `version_contents` 的行数不变，删除一个使用方后仍可读取，删除最后一个后返回 `404` 且两张表为空：`ContentMustBeUploadedAndIsRetainedUntilEveryHistoricalUsageIsDeleted`。
+- 暂存超过 24 小时被清理，期间重新上传会刷新时限，已被使用的内容保留：`StagingExpiresButUploadsRefreshItAndUsedContentSurvives`。
+- 重建投影只比较了 `version_contents` 的行数，没有逐行比较。
+
+## 执行结果 [#results]
+
+<TestCaseResults caseId={caseId} />

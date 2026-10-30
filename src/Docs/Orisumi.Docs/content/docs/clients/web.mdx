@@ -42,7 +42,7 @@ Web 控制台是 Orisumi 的完整读取界面，目前只在本机使用。它�
 
 角色由控制台从数据推出：每种业务类型取最近 30 天里一份以它为内容的 Observation 作样本，由它知道哪些类型是观测内容、哪些类型是 Observer。事实时间未知的陈述不在样本中，所以应用产品是事物；只写这种陈述的 Observer，例如应用识别 Observer 和用户本人，从它们的一个实体的引用方认出。
 
-应用的图标来自前台时段的 `icon`，见 [Foreground Application Period · 图标](../observers/foreground-state/foreground-application-period.mdx#icon)。前台时段的记号用它自己的 `icon`；本机应用用引用它的、最近形成的前台时段中的图标；应用产品用属于它的本机应用中最近形成、带图标的前台时段的图标。控制台按摘要读取并缓存字节，见 [API · 内容](../api/reading.mdx#contents)。
+应用的图标来自前台时段的 `icon`，见 [Foreground Application Period · 图标](../observers/foreground-state/foreground-application-period.mdx#icon)。本机应用用引用它的最近 20 段前台时段中，最新一段带图标的图标，控制台用 `order=desc` 读取它的引用方找到这一段，见 [API · 引用方](../api/reading.mdx#referrers)；应用产品用属于它的本机应用中图标最新的那个。字节按摘要读取并缓存，见 [API · 内容](../api/reading.mdx#contents)。
 
 来源的名字是它的类型名，例如“前台状态 Observer”。事物的颜色按名字稳定地取，所以同名的事物颜色相同。
 
@@ -244,7 +244,7 @@ Observer 来自[角色和记号](#roles)中认出的 Observer 类型：每种类
 
 ## 实现 [#implementation]
 
-代码在 `src/Clients/Orisumi.Web/`，用 React 编写，按 [`openapi.json`](../api/index.mdx) 读取后端。运行和验证见该目录的 README。应用的图标尚未实现，记号仍用类型图标。
+代码在 `src/Clients/Orisumi.Web/`，用 React 编写，按 [`openapi.json`](../api/index.mdx) 读取后端。运行和验证见该目录的 README。
 
 ## 待定 [#open]
 

@@ -5,6 +5,7 @@
     "---Structure---",
     "entity",
     "version",
+    "binary",
     "---Core Types---",
     "schema",
     "observation",

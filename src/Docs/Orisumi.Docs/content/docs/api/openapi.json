@@ -82,7 +82,7 @@
             }
           },
           "409": {
-            "description": "某个版本与已保存的数据冲突：基于旧版本（[VERSION-6](/core/model/version#version-6)）、重试的内容不同（[VERSION-7](/core/model/version#version-7)）、资源名已被占用（[SCHEMA-5](/core/model/schema#schema-5)）、实体已被删除（[HISTORY-7](/core/rules/history#history-7)）或 VersionId 属于已删除的实体（[VERSION-9](/core/model/version#version-9)）。`rule`、`index` 和 `versionId` 指出原因和版本。",
+            "description": "某个版本与已保存的数据冲突：基于旧版本（[VERSION-6](/core/model/version#version-6)）、重试的内容不同（[VERSION-7](/core/model/version#version-7)）、资源名已被占用（[SCHEMA-5](/core/model/schema#schema-5)）、实体已被删除（[HISTORY-7](/core/rules/history#history-7)）VersionId 属于已删除的实体（[VERSION-9](/core/model/version#version-9)），或者用到的二进制内容尚未上传（[BINARY-3](/core/model/binary#binary-3)）。`rule`、`index` 和 `versionId` 指出原因和版本。",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -575,6 +575,20 @@
             }
           },
           {
+            "name": "order",
+            "in": "query",
+            "required": false,
+            "description": "按引用方的 VersionId 排序：`asc` 从早到晚，`desc` 从晚到早。翻页时沿用第一页的值。",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "default": "asc"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -619,6 +633,149 @@
           },
           "404": {
             "description": "这个身份从未出现过。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "请求带着托管方凭证，凭证无效或托管方已移除。`code` 为 `credential_invalid` 或 `credential_revoked`，见 [Overview · 认证](/api#auth)。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "后端出现意外错误。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/contents/{digest}": {
+      "put": {
+        "operationId": "putContent",
+        "summary": "上传内容",
+        "description": "上传一份二进制内容，按摘要幂等：内容已存在时同样返回 `204`，见 [Writing · 内容](/api/writing#contents)。",
+        "parameters": [
+          {
+            "name": "digest",
+            "in": "path",
+            "required": true,
+            "description": "内容的摘要。",
+            "schema": {
+              "$ref": "#/components/schemas/Digest"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "contentMediaType": "application/octet-stream"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "内容已上传，或者之前已经上传。无响应体。"
+          },
+          "400": {
+            "description": "路径中的摘要格式无效，或者字节的摘要与路径不同。摘要不同时 `rule` 为 `BINARY-1`。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "内容超过 8 MiB。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "请求带着托管方凭证，凭证无效或托管方已移除。`code` 为 `credential_invalid` 或 `credential_revoked`，见 [Overview · 认证](/api#auth)。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "后端出现意外错误。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "getContent",
+        "summary": "读取内容",
+        "description": "按摘要读取二进制内容，见 [Reading · 内容](/api/reading#contents)。只返回仍有已保存的版本使用的内容。",
+        "parameters": [
+          {
+            "name": "digest",
+            "in": "path",
+            "required": true,
+            "description": "内容的摘要。",
+            "schema": {
+              "$ref": "#/components/schemas/Digest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "内容的字节。字节的类型由使用它的版本中的 `mediaType` 说明。响应带 `Cache-Control: private, max-age=31536000, immutable`。",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "contentMediaType": "application/octet-stream"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "路径中的摘要格式无效。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "没有已保存的版本使用这份内容。",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -2618,6 +2775,7 @@
               "integer",
               "number",
               "reference",
+              "binary",
               "object",
               "array"
             ]
@@ -2645,7 +2803,42 @@
       },
       "BusinessContent": {
         "type": "object",
-        "description": "业务字段，按 `schemaVersionId` 指向的 Schema 版本校验，见 [SCHEMA-2](/core/model/schema#schema-2)。"
+        "description": "业务字段，按 `schemaVersionId` 指向的 Schema 版本校验，见 [SCHEMA-2](/core/model/schema#schema-2)。 `binary` 字段的值见 `BinaryValue`。"
+      },
+      "BinaryValue": {
+        "type": "object",
+        "description": "`binary` 字段的非空值，见 [BINARY-1](/core/model/binary#binary-1)。它是业务内容的一部分，由 Schema 版本声明的位置决定，后端在版本规则阶段逐项检查。",
+        "required": [
+          "digest",
+          "mediaType",
+          "size"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "digest": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "mediaType": {
+            "type": "string",
+            "description": "字节的媒体类型，例如 `image/png`。",
+            "examples": [
+              "image/png"
+            ]
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "字节数。"
+          }
+        }
+      },
+      "Digest": {
+        "type": "string",
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "description": "二进制内容的摘要：`sha256:` 加上字节的 SHA-256 摘要，64 位小写十六进制，见 [BINARY-1](/core/model/binary#binary-1)。",
+        "examples": [
+          "sha256:3a7bd3e2360a3d29eea436fcfb7e44c735d117c42d1c1835420b6b9942dd4f1b"
+        ]
       },
       "SubmissionRequest": {
         "type": "object",

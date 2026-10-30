@@ -92,7 +92,8 @@ description: "版本、删除身份、实体和 EntitySchema 四张表：版本�
 1. 把它每个版本的 `version_id` 和 `entity_id` 写入 `deleted_versions`。
 2. 找出当前版本以它的某个版本为 `contentVersionId` 的 Observation：沿 `version_references` 找到以它为目标、并且是 `observations` 中当前版本的行，再核对这个版本的 `contentVersionId`。把这些行的 `content_schema_id` 置为 `NULL`，见 [Queries · 事实时间](./queries.mdx#fact-time)。
 3. 删除它在 `observations`、`schemas`、`entities` 中的行，以及它的各版本作为引用方在 `version_references` 中的行。
-4. 删除它在 `versions` 中的行。
-5. 它是受管理的程序实例时，把实例登记标记为已移除，见 [Management · 删除实例](./management.mdx#removal)。
+4. 删除它的各版本在 `version_contents` 中的行，再删除已没有使用方的内容，见 [Contents · 删除](./contents.mdx#deletion)。
+5. 删除它在 `versions` 中的行。
+6. 它是受管理的程序实例时，把实例登记标记为已移除，见 [Management · 删除实例](./management.mdx#removal)。
 
 其他版本对它的引用留在它们的 `content` 和 `version_references` 中，见 [HISTORY-8](../core/rules/history.mdx#history-8)。删除不保存删除的时刻。

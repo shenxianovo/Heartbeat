@@ -25,7 +25,7 @@ description: "接入新来源时，依次确定事实、Observer、实体、Enti
 
 例如同一封邮件被两个 Observer 读到：邮件保持一个身份，两份 Observation 各自引用它。正文从 A 改成 B 时，形成邮件的新版本，A 留在旧版本中，见 [HISTORY-3](../core/rules/history.mdx#history-3)。
 
-关系需要自己的身份、时间或属性时，定义为关系实体，见 [ENTITY-9](../core/model/entity.mdx#entity-9)。指向另一个实体时用 `reference` 字段；写在普通字符串里的标识只是属性。
+关系需要自己的身份、时间或属性时，定义为关系实体，见 [ENTITY-9](../core/model/entity.mdx#entity-9)。指向另一个实体时用 `reference` 字段；写在普通字符串里的标识只是属性。文件用 `binary` 字段，例如应用的图标，见 [Binary](../core/model/binary.mdx)。
 
 ## 4. EntitySchema [#schema]
 

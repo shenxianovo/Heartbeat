@@ -45,10 +45,10 @@ description: "错误响应的格式，各状态码的含义，以及冲突对应
 | `400` | 请求本身有错：请求体或参数不符合契约，路径中的 ID 不是 UUID，或者版本违反 Core 规则。违反规则时带 `rule` |
 | `401` | 托管方凭证缺失、无效或已撤销，带 `code` |
 | `403` | 调用方不能做这项操作，带 `code` |
-| `404` | 路径中的身份从未出现过，或者没有 EntitySchema 使用参数中的 `resourceName` |
+| `404` | 路径中的身份从未出现过，没有 EntitySchema 使用参数中的 `resourceName`，或者没有已保存的版本使用读取的内容 |
 | `409` | 请求与已保存的数据冲突，带 `rule`，见[冲突](#conflicts) |
 | `410` | 读取的实体或版本已被删除，读取方把它列为不可读取，见 [HISTORY-8](../core/rules/history.mdx#history-8)；或者管理的实例已删除，带 `code` |
-| `413` | 请求体超过 10 MiB（10,485,760 字节） |
+| `413` | 请求体超过 10 MiB（10,485,760 字节）；上传的内容超过 8 MiB（8,388,608 字节） |
 | `500` | 后端出现意外错误 |
 
 `409` 的版本本身合法，换一个时机或在实体的另一个状态下可能保存成功；`400` 的版本本身需要修改。
@@ -62,4 +62,5 @@ description: "错误响应的格式，各状态码的含义，以及冲突对应
 | 资源名已被另一个业务类型使用 | [SCHEMA-5](../core/model/schema.mdx#schema-5) |
 | 实体已被删除，或者首版的 EntityId 属于已删除的程序实例 | [HISTORY-7](../core/rules/history.mdx#history-7) |
 | VersionId 属于已删除的实体 | [VERSION-9](../core/model/version.mdx#version-9) |
+| 版本用到的二进制内容尚未上传 | [BINARY-3](../core/model/binary.mdx#binary-3) |
 | 删除仍有业务版本使用的 EntitySchema | [HISTORY-9](../core/rules/history.mdx#history-9) |

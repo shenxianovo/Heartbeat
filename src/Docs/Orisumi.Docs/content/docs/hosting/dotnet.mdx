@@ -5,6 +5,6 @@ description: ".NET 编写的 Observer 怎样通过 SDK 连接 Runtime"
 
 .NET 编写的 Observer 引用 `src/Observers/Orisumi.Observer.Sdk/` 连接 [Runtime](./runtime.mdx)。前台状态 Observer 用的就是它，见 [Foreground State · 提交](../observers/foreground-state/index.mdx#submission)。
 
-SDK 读取 `init`，把业务操作编码成管道中的请求，等待回执和最终结果，再把结果、本地状态、后端的读取结果和被拒绝的版本交给业务代码，见 [Protocol · Observer 管道](./protocol.mdx#observer-pipe)。SDK 只处理管道、JSON 和请求的对应，本地保存和发送由 Runtime 完成，业务代码按 [Submission](./submission.mdx) 的约定使用它。
+SDK 读取 `init`，把业务操作编码成管道中的请求，等待回执和最终结果，再把结果、本地状态、后端的读取结果和被拒绝的版本交给业务代码，见 [Protocol · Observer 管道](./protocol.mdx#observer-pipe)。业务代码交来二进制内容的字节和媒体类型，SDK 计算摘要和大小，写成 `binary` 字段的描述，并把字节放进同一个批次。SDK 只处理管道、JSON 和请求的对应，本地保存和发送由 Runtime 完成，业务代码按 [Submission](./submission.mdx) 的约定使用它。
 
 测试可以通过 `LocalObserverSession` 直接调用 Runtime 的本地保存，不经过管道。

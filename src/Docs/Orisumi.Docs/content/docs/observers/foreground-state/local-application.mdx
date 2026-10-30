@@ -63,7 +63,7 @@ description: "某台设备上的一个应用安装"
 | `identifiers[].scheme` | `string` | 是 | 否 | 线索的种类：macos.bundle-id 是应用包标识，macos.executable-path 是可执行文件路径，android.package-name 是 Android 应用的包名 |
 | `identifiers[].value` | `string` | 是 | 否 | 线索的原始值 |
 
-应用名称保存在观测内容中，本机应用只保存标识线索。
+应用的名称和图标随每段时段读取，保存在[前台应用时段](./foreground-application-period.mdx)中。
 
 ### 标识线索 [#identifiers]
 

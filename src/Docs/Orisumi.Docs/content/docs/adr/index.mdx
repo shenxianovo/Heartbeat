@@ -46,9 +46,10 @@ ADR 用英文 slug 命名，例如 `entity-model.mdx`，没有编号。引用时
 | Model | [提交与 Runtime](./submission.mdx) | 程序实例的身份持久不变，Observer 的业务代码按业务规则形成事实，Runtime 本地保存并按依赖顺序可靠提交；各语言的 SDK 只连接 Runtime |
 | Model | [观测预览](./observation-previews.mdx) | 进行中的 Observation 以观测预览实时可读：Observer 在本地的草稿中补全并决定何时结束，后端在内存中暂存最新的一份预览，结束后才保存为版本 |
 | Model | [删除](./deletion.mdx) | 删除以实体为单位，只移除选中实体的全部版本，删除后不可复活 |
+| Model | [二进制内容](./binary-content.mdx) | 业务字段可以是二进制内容：版本保存摘要、媒体类型和大小，字节按摘要单独保存、先于版本上传，随使用它的版本保留和移除 |
 | Backend | [后端运行与本地环境](./backend-runtime.mdx) | 四个后端项目组成一个进程，Aspire 编排本地环境，NGINX 提供同源入口 |
 | Backend | [实体 API](./entity-api.mdx) | 接口按身份寻址，所有类型共用一组路由，一次提交是一组有序的版本，内容按 JSON 的值比较，反查按目标实体列出直接的引用方，错误带规则编号 |
-| Backend | [实体存储](./entity-storage.mdx) | 版本和删除身份是两张权威表，其余四张是可以从它们重建的查询投影；版本以 jsonb 保存在一张表中，查询走以类型开头的索引，引用反查只记录引用方版本和目标实体，所有操作串行执行 |
+| Backend | [实体存储](./entity-storage.mdx) | 版本、删除身份和二进制内容是三张权威表，其余五张是可以从它们重建的查询投影；版本以 jsonb 保存在一张表中，查询走以类型开头的索引，引用反查只记录引用方版本和目标实体，所有操作串行执行 |
 | Clients | [Runtime 与进程托管](./observer-runtime.mdx) | 设备和服务器运行同一个 Runtime，Runtime 启动各 Observer 的进程，经标准输入输出双向通信；实例身份和本地数据由 Runtime 保管，与程序文件分开 |
 | Clients | [设备端客户端](./device-client.mdx) | 原生客户端通过 Runtime 托管本机的 Observer：从官方目录单独安装 ZIP 包，启停、更新和有限重启；专用视图原生实现，随客户端发布；陈述由各 Observer 负责 |
 | Clients | [Observer 的统一管理](./observer-management.mdx) | 后端为每个 Runtime 和程序实例保存管理登记；启停和设置离线先生效、按字段同步，后端接受的顺序决定结果；安装维护只在线执行；Runtime 主动连接后端，凭配对得到的凭证接入 |

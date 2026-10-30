@@ -17,7 +17,7 @@ orisumi mac build
 dotnet run --project src/Observers/Orisumi.Observer.Runtime -- \
 	--data-dir /tmp/orisumi-observer-check \
 	--backend http://localhost:8080/api/ \
-	--bundled .artifacts/mac/Build/Products/Debug/Orisumi.app/Contents/Resources/Observers \
+	--bundled .artifacts/mac/Build/Products/Release/Orisumi.app/Contents/Resources/Observers \
 	--run foreground-state
 ```
 
@@ -41,7 +41,7 @@ dotnet run --project src/Observers/Orisumi.Observer.Runtime -- \
 
 ## 验证
 
-自动测试覆盖本机应用身份、时段边界、采集事件、休眠边界、本地事务恢复、观测预览的写入与恢复，以及经 API 上传和本机应用被删除后的恢复。测试通过 `LocalObserverSession` 直接调用本地保存，不调用 macOS 原生接口。Case 见文档站的 Testing 分区。
+自动测试覆盖本机应用身份、时段边界、采集事件、休眠边界、本地事务恢复、观测预览的写入与恢复，以及经 API 上传、本机应用被删除后的恢复和应用图标的保存。测试通过 `LocalObserverSession` 直接调用本地保存，不调用 macOS 原生接口。Case 见文档站的 Testing 分区。
 
 ```sh
 orisumi verify checks --base HEAD --quality
@@ -53,5 +53,6 @@ orisumi verify checks --base HEAD --quality
 2. 切换应用后，旧时段的观测预览移除，新时段有自己的观测预览。
 3. 已结束的时段可以用 `GET /api/entities/{observationId}` 读到。
 4. 再次运行，程序实例和本机应用的 EntityId 不变，Observation 是新的。
+5. 前台时段的 `icon` 有值，用 `GET /api/contents/{digest}` 读回的是 1024×1024 的 PNG，长度等于 `size`。同一个应用的下一段时段读到相同的摘要。
 
 真实休眠需要另外验证。自动测试只模拟计时差和采集空白。

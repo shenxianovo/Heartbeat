@@ -1,0 +1,75 @@
+---
+title: "Binary"
+description: "业务字段中的文件：版本保存它的描述，字节按摘要单独保存"
+---
+
+二进制内容是业务字段中的一份文件，例如前台时段里 VS Code 的图标。版本中保存它的描述，字节按摘要单独保存，同样的字节只保存一份。
+
+业务类型用 `binary` 字段声明二进制内容，见 [EntitySchema · 字段定义](./schema.mdx#field-definitions)。顶层字段、对象成员和数组元素都可以是 `binary`。
+
+- **身份**：摘要，见 [BINARY-2](#binary-2)
+- **决策**：[ADR · 二进制内容](../../adr/binary-content.mdx)
+
+## 示例 [#example]
+
+14:00 的前台时段中，`icon` 字段的值：
+
+```json
+{
+  "digest": "sha256:3a7bd3e2360a3d29eea436fcfb7e44c735d117c42d1c1835420b6b9942dd4f1b",
+  "mediaType": "image/png",
+  "size": 612480
+}
+```
+
+写入方先用 [`PUT /contents/{digest}`](/api/putContent) 上传这 612,480 个字节，再提交引用它的前台时段。读取方从版本中读到描述，再用 [`GET /contents/{digest}`](/api/getContent) 取得字节，按 `image/png` 显示。
+
+16:00 之后的时段读到同一个图标，描述相同，后端不再保存新的字节。
+
+## 描述 [#descriptor]
+
+### BINARY-1 描述的成员 [#binary-1]
+
+执行方：后端
+
+`binary` 字段的非空值是一个对象，只有下面三个成员，都必须出现：
+
+| 成员 | 值 |
+| --- | --- |
+| `digest` | `sha256:` 加上字节的 SHA-256 摘要，写成 64 位小写十六进制 |
+| `mediaType` | 字节的媒体类型，例如 `image/png`，写法见 [RFC 6838](https://www.rfc-editor.org/rfc/rfc6838.html) |
+| `size` | 字节数，非负整数 |
+
+`mediaType` 由写入方给出，后端只检查写法。
+
+### BINARY-2 摘要即身份 [#binary-2]
+
+定义
+
+摘要相同的字节是同一份二进制内容。摘要确定了字节，所以已保存的版本读到的字节不会改变；文件改变时，写入方形成新版本，写入新的描述。
+
+一份内容可以被多个版本使用，这些版本可以属于不同的实体和业务类型。文件在业务中的用途和归属由使用它的字段表达。
+
+## 保存与读取 [#storage]
+
+### BINARY-3 先上传内容 [#binary-3]
+
+执行方：后端、写入方
+
+版本中每个 `binary` 值的内容，必须在版本保存前已上传到后端，`size` 与上传的字节数相同。写入方按[示例](#example)的顺序先上传，再提交版本。
+
+内容尚未上传时，后端拒绝这个版本；写入方上传后原样重发提交，见 [VERSION-13](./version.mdx#version-13)。
+
+### BINARY-4 随版本保留 [#binary-4]
+
+执行方：后端
+
+还有已保存的版本使用一份内容时，后端保留它。使用它的最后一个版本删除时，后端同时移除这份内容，不留副本，见 [HISTORY-6](../rules/history.mdx#history-6)。
+
+已上传、还没有版本使用的内容，后端保留一段时间供提交使用，时长见 [Storage · Contents](../../storage/contents.mdx#staging)。
+
+### BINARY-5 读取内容 [#binary-5]
+
+执行方：后端、读取方
+
+读取方按摘要读取内容。后端只返回仍有已保存的版本使用的内容。读取方按描述中的 `mediaType` 解释字节。

@@ -17,5 +17,12 @@ await session.RequestAsync("commit", JsonLines.Json(new { operations }), request
 ```
 
 - `session.Stopping` 在收到 `stop` 或管道关闭时取消。业务代码据此结束进行中的事实，等最后一个批次的回执后退出。
+- 草稿中有 `binary` 字段时，用 `BinaryContent` 从字节和媒体类型生成描述：`Descriptor` 写进草稿的内容，`Payload` 放进同一批次的 `contents`，见 [Submission · 批次](../../Docs/Orisumi.Docs/content/docs/hosting/submission.mdx#handoff)。
+
+```csharp
+var icon = new BinaryContent(png, "image/png");
+await session.RequestAsync("commit", JsonLines.Json(new { operations, contents = new[] { icon.Payload } }), requestId);
+```
+
 - 请求和结果的字段见 [Protocol · Observer 管道](../../Docs/Orisumi.Docs/content/docs/hosting/protocol.mdx#observer-pipe)。
 - 日志和采集诊断写入标准错误，标准输出只写协议消息。

@@ -3,7 +3,7 @@ title: "Foreground Application Period"
 description: "应用处于前台的一个时段"
 ---
 
-前台应用时段表达“应用 A 处于前台”。它保存对本机应用的引用和当时读到的应用名称；这一段从几点到几点，保存在引用它的 Observation 上。
+前台应用时段表达“应用 A 处于前台”。它保存对本机应用的引用，以及时段开始时读到的应用名称和图标；这一段从几点到几点，保存在引用它的 Observation 上。
 
 <ObserverStructure node="APPLICATION_CONTENT" />
 
@@ -18,6 +18,14 @@ description: "应用处于前台的一个时段"
 ## 身份 [#identity]
 
 每个时段新建观测内容和 Observation。本机应用、应用名称或时区变化时，前台状态 Observer 结束当前时段，为新的时段新建两者，原来的内容保持不变。
+
+## 图标 [#icon]
+
+前台状态 Observer 在时段开始时读取应用的图标，作为[二进制内容](../../core/model/binary.mdx)写进 `icon`。观测内容在时段开始时就冻结，所以 `icon` 是这一段开始时应用的样子；应用升级换了图标，下一段时段读到新的图标。
+
+- 在 macOS 上，图标取自 `NSRunningApplication` 的 `icon`，绘制为 1024×1024 像素的 PNG。
+- 读不到图标时，`icon` 为 `null`，时段照常记录。
+- 同一个应用的各段时段读到相同的图标，它们的描述相同，后端只保存一份字节。
 
 ## 引用 [#references]
 
@@ -51,17 +59,18 @@ description: "应用处于前台的一个时段"
 | --- | --- |
 | SchemaId | `019e1bbb-ec00-7000-8000-000000000001` |
 | 显示名称 | 前台应用时段 |
-| 说明 | 表达某个本机应用连续处于前台的一段活动，每段活动一个实体；内容保存应用引用与当时读到的名称，Observation 保存时段。 |
+| 说明 | 表达某个本机应用连续处于前台的一段活动，每段活动一个实体；内容保存应用引用与时段开始时读到的名称和图标，Observation 保存时段。 |
 | 资源名 | `foreground-application-periods` |
 
 | 字段 | 类型 | 必填 | 可空 | description |
 | --- | --- | --- | --- | --- |
 | `localApplicationVersionId` | `reference` | 是 | 否 | 观测设备上的本机应用 |
 | `name` | `string` | 是 | 是 | 当时读到的应用名称，没读到时为 `null` |
+| `icon` | `binary` | 是 | 是 | 时段开始时读到的应用图标，1024×1024 像素的 PNG；没读到时为 `null` |
 
 ## 示例 [#example]
 
-VS Code 从 14:00 到 16:00 处于前台。14:00 首次确认时，`POST /versions` 提交观测内容。`localApplicationVersionId` 是本机应用首版的 VersionId：
+VS Code 从 14:00 到 16:00 处于前台。14:00 首次确认时，Runtime 先上传图标，再用 `POST /versions` 提交观测内容。`localApplicationVersionId` 是本机应用首版的 VersionId：
 
 ```json title="14:00 · POST /versions"
 {
@@ -74,7 +83,12 @@ VS Code 从 14:00 到 16:00 处于前台。14:00 首次确认时，`POST /versio
       "schemaVersionId": "019e1bbb-ec00-7000-8000-000000000101",
       "content": {
         "localApplicationVersionId": "01a12e31-9050-7000-8000-000000000101",
-        "name": "Visual Studio Code"
+        "name": "Visual Studio Code",
+        "icon": {
+          "digest": "sha256:3a7bd3e2360a3d29eea436fcfb7e44c735d117c42d1c1835420b6b9942dd4f1b",
+          "mediaType": "image/png",
+          "size": 612480
+        }
       }
     }
   ]

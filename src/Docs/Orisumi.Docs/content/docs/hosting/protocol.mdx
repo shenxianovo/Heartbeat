@@ -152,6 +152,15 @@ Runtime 用同一个 `id` 返回结果或错误：
 
 后端不可用时，Runtime 用最近 32 次读取的结果补充本地数据，这些结果只在 Runtime 运行期间保留。
 
+`content` 按摘要读取一份二进制内容，参数是 `digest`：
+
+```json
+{ "data": "iVBORw0KGgoAAAANSUhEUgAA…" }
+```
+
+- `data` 是字节的 Base64。本地还没发送的版本用到的内容从本地读取，其余的从 [`GET /contents/{digest}`](/api/getContent) 读取。
+- 后端没有这份内容时返回 `not_found`，后端不可用时返回 `unavailable`。
+
 ## Observer 管道 [#observer-pipe]
 
 管道绑定启动它的程序实例，消息中不能指定另一个实例。各语言的 SDK 把业务操作编码成这些消息，自己不保存数据；业务代码通过 SDK 调用。
@@ -209,10 +218,17 @@ Observer 发出的请求如下。批次的语义见 [Submission · 批次](./sub
         "entityId": "0196f3a3-0a32-7c74-95e6-3a4f5b6c7d8e",
         "category": "business",
         "schemaVersionId": "0196f3a1-ff43-7d85-86f7-4b5a6c7d8e9f",
-        "content": { "name": "Safari", "localApplicationVersionId": null },
+        "content": {
+          "name": "Safari",
+          "icon": { "digest": "sha256:8d2f…", "mediaType": "image/png", "size": 584113 },
+          "localApplicationVersionId": null
+        },
         "bindings": { "/localApplicationVersionId": "app" },
         "as": "period"
       }
+    ],
+    "contents": [
+      { "digest": "sha256:8d2f…", "data": "iVBORw0KGgoAAAANSUhEUgAA…" }
     ]
   }
 }
@@ -230,6 +246,7 @@ Observer 发出的请求如下。批次的语义见 [Submission · 批次](./sub
 - `ifAbsent` 为 `true` 时，实体在本地已有版本就沿用当前版本，不写入。
 - `previousVersionId` 指定新版本的前一版本，用于更新由其他写入方保存的实体，例如用户在 Web 中改过的应用产品。实体在本地没有未保存的版本时，它可以是后端的任何一个已保存版本，通常是 `readCurrent` 的结果；否则必须是实体在本地最新的版本。省略时用本地最新的版本。
 - `content` 是完整的版本内容，Observation 的可空字段也要写出。
+- `contents` 列出批次的草稿中用到的每份二进制内容，`data` 是字节的 Base64。草稿中的 `binary` 值都要在同一批次的 `contents` 中，摘要和大小都要与字节相符，否则整批返回 `invalid_request`。没有用到二进制内容时省略。
 
 ### 读取后端 [#observer-reading]
 

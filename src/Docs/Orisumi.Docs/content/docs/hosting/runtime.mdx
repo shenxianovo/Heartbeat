@@ -103,10 +103,10 @@ Runtime 的进程管理在 `src/Observers/Orisumi.Observer.Runtime/`，本地保
 
 每个程序实例一个 SQLite 文件，即实例目录中的 `store.sqlite`，只有 Runtime 打开：
 
-1. 业务代码交来的批次在一个 SQLite 事务中执行，回执和数据一起提交，见 [Submission · 批次](./submission.mdx#handoff)。
+1. 业务代码交来的批次在一个 SQLite 事务中执行，回执和数据一起提交，见 [Submission · 批次](./submission.mdx#handoff)。批次带来的二进制内容按摘要保存在同一个文件中；上传过的摘要另外记下，移除字节后仍然保留。
 2. SQLite 还保存每个实体在本地最新的 VersionId。版本确认后移出发送队列，这个 VersionId 仍然保留，供之后的版本作为 `previousVersionId` 或引用。
 3. 后台任务按冻结的顺序读取待发送的版本，分批提交，并按 [Submission · 确认](./submission.mdx#confirmation) 处理响应。
 4. 需要写入观测预览时，SQLite 保存每份观测预览的 `sequence`；后台任务把草稿最新的内容写成观测预览，见 [Submission · 观测预览](./submission.mdx#previews)。
-5. Runtime 重启后，从 SQLite 恢复草稿、待发送的版本和待处理的被拒绝版本。
+5. Runtime 重启后，从 SQLite 恢复草稿、待发送的版本、它们用到的内容和待处理的被拒绝版本。
 
 批次的回执一直保留到实例目录删除，`outcome` 据此读取批次的最终结果。

@@ -1,0 +1,58 @@
+---
+title: "Contents"
+description: "二进制内容的两张表：字节怎样按摘要保存，怎样记下版本用到的内容，以及什么时候移除"
+---
+
+`contents` 按摘要保存二进制内容的字节，是权威表。`version_contents` 记下每个版本用到的内容，是投影，删除时据此判断内容是否还有使用方。规则见 [Binary](../core/model/binary.mdx)，理由见 [ADR · 二进制内容](../adr/binary-content.mdx)。
+
+## 例子 [#example]
+
+14:00 Runtime 上传 VS Code 的图标，`contents` 多了一行。随后保存的前台时段用到这份内容，`version_contents` 多了一行。16:00 之后 VS Code 的时段用到同一个图标，`version_contents` 每段一行，`contents` 不变。
+
+第二天用户删掉其中一段，它在 `version_contents` 中的行随之移除。图标还有其他时段使用，所以 `contents` 中的行保留。
+
+## contents [#contents]
+
+每份已上传的内容一行。
+
+| 列 | 类型 | 含义 |
+| --- | --- | --- |
+| `digest` | `text` | 内容的摘要，例如 `sha256:3a7b…`，主键 `pk_contents` |
+| `size` | `bigint` | 字节数 |
+| `data` | `bytea` | 字节 |
+| `uploaded_at` | `timestamptz` | 最近一次上传的时刻 |
+
+| 约束或索引 | 内容 | 用途 |
+| --- | --- | --- |
+| `ck_contents_size` | `size = octet_length(data)` | 大小与字节一致 |
+| `ix_contents_uploaded_at` | `uploaded_at` | 清理暂存的内容 |
+
+- 上传时，后端计算字节的摘要，与路径中的摘要不同时拒绝，见 [BINARY-1](../core/model/binary.mdx#binary-1)。
+- 摘要已存在时，只把 `uploaded_at` 更新为这次上传的时刻。
+- 字节保存后不再修改。
+
+## version_contents [#version-contents]
+
+一个版本至少有一个 `binary` 值使用某份内容时，这一对一行，是投影。
+
+| 列 | 类型 | 含义 |
+| --- | --- | --- |
+| `version_id` | `uuid` | 使用内容的版本 |
+| `digest` | `text` | 用到的内容 |
+
+| 约束或索引 | 内容 | 用途 |
+| --- | --- | --- |
+| `pk_version_contents` | `(version_id, digest)` | 一个版本对一份内容只记一行 |
+| `fk_version_contents_versions_version_id` | 外键指向 `versions` | 使用方存在 |
+| `fk_version_contents_contents_digest` | 外键指向 `contents` | 内容存在 |
+| `ix_version_contents_digest` | `digest` | 判断内容是否还有使用方 |
+
+保存一个版本时，后端按它的 Schema 版本找出全部 `binary` 值，检查内容已上传、大小一致（[BINARY-3](../core/model/binary.mdx#binary-3)），再写入这些行。
+
+## 删除 [#deletion]
+
+删除一个实体时，在[删除的事务](./versions.mdx#deletion)中移除它的各版本在 `version_contents` 中的行，再移除这些行涉及、已没有其他行的内容。
+
+## 暂存 [#staging]
+
+已上传、没有版本使用的内容是暂存的。后端每小时移除 `uploaded_at` 早于 24 小时前、在 `version_contents` 中没有行的内容。Runtime 在这之后提交用到它的版本时，按 [BINARY-3](../core/model/binary.mdx#binary-3) 被拒绝，重新上传即可。

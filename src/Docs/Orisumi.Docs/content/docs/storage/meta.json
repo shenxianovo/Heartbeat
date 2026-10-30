@@ -6,6 +6,7 @@
   "pages": [
     "index",
     "versions",
+    "contents",
     "queries",
     "management",
     "postgresql"

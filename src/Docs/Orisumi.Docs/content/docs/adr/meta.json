@@ -15,6 +15,7 @@
     "submission",
     "observation-previews",
     "deletion",
+    "binary-content",
     "---Backend---",
     "backend-runtime",
     "entity-api",

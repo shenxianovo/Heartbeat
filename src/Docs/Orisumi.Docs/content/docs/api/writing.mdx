@@ -1,9 +1,22 @@
 ---
 title: "Writing"
-description: "怎样提交一组版本、后端怎样逐个校验和保存，以及怎样删除实体"
+description: "怎样上传二进制内容、提交一组版本、后端怎样逐个校验和保存，以及怎样删除实体"
 ---
 
-写入有两种：提交一组版本，以及删除一个实体。Observer 经 Runtime 提交，Runtime 怎样处理这些响应见 [Hosting · Submission](../hosting/submission.mdx#confirmation)。
+写入有三种：上传二进制内容、提交一组版本，以及删除一个实体。Observer 经 Runtime 提交，Runtime 怎样处理这些响应见 [Hosting · Submission](../hosting/submission.mdx#confirmation)。
+
+## 内容 [#contents]
+
+14:00 VS Code 的前台时段带着它的图标。Runtime 先用 [`PUT /contents/{digest}`](/api/putContent) 上传图标的字节，再提交时段，见 [BINARY-3](../core/model/binary.mdx#binary-3)。请求体是原始字节，`Content-Type` 为 `application/octet-stream`，最大 8 MiB（8,388,608 字节）。
+
+| 结果 | 响应 |
+| --- | --- |
+| 已上传，或者之前已经上传 | `204` |
+| 路径中的摘要格式无效 | `400` |
+| 字节的摘要与路径不同 | `400`，`rule` 为 `BINARY-1` |
+| 超过 8 MiB | `413` |
+
+上传按摘要幂等，响应丢失后原样重传。上传超过 24 小时、仍没有版本使用的内容会被移除，见 [Storage · 暂存](../storage/contents.mdx#staging)。
 
 ## 提交 [#submission]
 
@@ -24,9 +37,11 @@ description: "怎样提交一组版本、后端怎样逐个校验和保存，以
 | 阶段 | 检查 | 失败时 |
 | --- | --- | --- |
 | 请求结构 | JSON 与版本共有成员、Core 内容的成员和基础值类型、字段配置出现时的值类型，以及存储支持的字符串与数值范围 | `400`，不带 `index`，整批不处理 |
-| 版本规则 | UUIDv7、版本链、引用目标、事实边界、InputSet 非空与去重、Schema 字段定义的必写项与组合、业务字段匹配等 Core 规则 | `400` 或 `409`，带 `rule`、`index` 和 `versionId`，保留前面已保存的版本 |
+| 版本规则 | UUIDv7、版本链、引用目标、二进制内容、事实边界、InputSet 非空与去重、Schema 字段定义的必写项与组合、业务字段匹配等 Core 规则 | `400` 或 `409`，带 `rule`、`index` 和 `versionId`，保留前面已保存的版本 |
 
 例如第二个版本的 Observation 缺少 `timeZone`，是请求结构错误，第一个版本也不保存；第二个版本的 InputSet 的 `members` 是空数组，结构合法，但违反 [INPUTSET-2](../core/model/input-set.mdx#inputset-2)，第一个版本保留。
+
+`binary` 值的成员不符合 [BINARY-1](../core/model/binary.mdx#binary-1)，或 `size` 与已上传的字节数不同时，返回 `400`；内容尚未上传时返回 `409`，`rule` 为 `BINARY-3`，写入方上传后原样重发。
 
 字段定义的 `description` 与 `type`、`required`、`nullable` 的必填检查属于 [SCHEMA-10](../core/model/schema.mdx#schema-10)。缺少说明、说明为空字符串或全为空白时，拒绝该版本；说明出现但不是字符串时，是请求结构错误。所以结构检查通过，还要经过版本规则的检查，版本才算合法。字符串与数值的存储范围见 [Storage · 内容的表示](../storage/versions.mdx#content)。
 

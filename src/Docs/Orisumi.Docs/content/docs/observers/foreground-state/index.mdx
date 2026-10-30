@@ -44,7 +44,7 @@ flowchart LR
 
 ## 采集 [#collection]
 
-应用、焦点窗口和标题在同一次读取中取得，再分别更新应用时段和标题时段。读取由三种情况触发：
+应用、焦点窗口和标题在同一次读取中取得，再分别更新应用时段和标题时段。应用的图标只在时段开始时读取，见 [Foreground Application Period · 图标](./foreground-application-period.mdx#icon)。读取由三种情况触发：
 
 - 启动时，读取一次当前状态。
 - macOS 报告应用激活、焦点窗口切换或窗口标题变化时，立即读取。切换应用或焦点窗口后，监听目标随之更新。
@@ -60,7 +60,7 @@ macOS 唤醒后立即重新读取。休眠、读取失败等情况下时段怎�
 
 | 业务事件 | 交给 Runtime 的操作 |
 | --- | --- |
-| 首次确认应用在前台 | 识别本机应用；形成观测内容并安排发送；形成 Observation 的草稿 |
+| 首次确认应用在前台 | 识别本机应用；读取图标，连同字节形成观测内容并安排发送；形成 Observation 的草稿 |
 | 再次确认同一段活动 | 把新的结束边界合并进 Observation 的草稿 |
 | 切换应用，或应用名称、时区变化 | 通知当前时段结束；为新状态形成新的草稿 |
 | 读取失败、停止采集或其他中断 | 当前时段结束于最后一次确认，通知结束；恢复后形成新的草稿 |
@@ -83,7 +83,7 @@ macOS 唤醒后立即重新读取。休眠、读取失败等情况下时段怎�
 
 | 平台 | 应用时段 | 窗口标题 |
 | --- | --- | --- |
-| macOS | 已实现：本机应用身份、连续时段、时段开始时提交观测内容、写入观测预览，经 Runtime 上传 | 未实现 |
+| macOS | 已实现：本机应用身份、连续时段、时段开始时提交观测内容、写入观测预览，经 Runtime 上传。图标未实现 | 未实现 |
 | Windows | 未实现 | 未实现 |
 | Android | 未实现 | 未实现 |
 
@@ -91,7 +91,7 @@ macOS 程序在 `src/Observers/Orisumi.Observer.ForegroundState/`，通过 AppKi
 
 用到的 macOS 接口：[应用激活通知](https://developer.apple.com/documentation/appkit/nsworkspace/didactivateapplicationnotification)、[焦点窗口变化通知](https://developer.apple.com/documentation/applicationservices/kaxfocusedwindowchangednotification)、[标题变化通知](https://developer.apple.com/documentation/applicationservices/kaxtitlechangednotification)。
 
-测试 Case：[本机应用身份](../../testing/observers/local-application-identity.mdx)、[时段边界](../../testing/observers/application-period-boundaries.mdx)、[提交与恢复](../../testing/observers/foreground-submission.mdx)、[被拒绝的版本](../../testing/observers/foreground-rejections.mdx)。
+测试 Case：[本机应用身份](../../testing/observers/local-application-identity.mdx)、[时段边界](../../testing/observers/application-period-boundaries.mdx)、[提交与恢复](../../testing/observers/foreground-submission.mdx)、[被拒绝的版本](../../testing/observers/foreground-rejections.mdx)、[图标](../../testing/observers/foreground-icons.mdx)。
 
 ## 待定 [#open]
 

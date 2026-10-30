@@ -27,6 +27,7 @@ export const caseId = 'api-referrers';
 | 一个版本在三个位置引用同一个实体 | 列为一项，`references` 中有三个位置 |
 | 删除引用方 | 它不再出现在结果中 |
 | 列出从未出现过的 EntityId 的引用方 | `404` |
+| 用 `order=desc` 和 `limit=1` 翻页 | 按 VersionId 从晚到早，每页一个版本；把升序的游标用在降序上返回 `400` |
 
 ## 测试实现 [#implementation]
 
@@ -34,7 +35,7 @@ export const caseId = 'api-referrers';
 
 - 嵌套引用的位置、普通字符串排除、按目标实体归集，以及 Schema 和前驱引用不参与反查：`ReferrerApiTests.NestedReferencesUseSavedSchemaAndRootJsonPointers`。
 - Observation 的各引用角色和 InputSet 成员位置：`ReferrerApiTests.CoreReferencesKeepAllRolesAndInputPositions`。
-- current 与 all、延长和改指向后的结果，以及一个版本的多个位置按一项分页：`ReferrerApiTests.CurrentAndAllPaginateVersionsAfterExtensionAndRetargeting`。
+- current 与 all、延长和改指向后的结果，一个版本的多个位置按一项分页，`order=desc` 的翻页顺序和游标与排序不符时的 `400`：`ReferrerApiTests.CurrentAndAllPaginateVersionsAfterExtensionAndRetargeting`。
 - 目标删除后保留引用方，引用方删除后移除结果：`ReferrerApiTests.TargetDeletionRetainsReferencesAndReferrerDeletionCascades`。
 - 目标身份从未出现：`ReferrerApiTests.UnknownTargetReturnsNotFound`。
 - 未覆盖：目标删除后的 `path` 和 `targetVersionId`；同一个版本多处引用同一个实体。

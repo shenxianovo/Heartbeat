@@ -19,6 +19,8 @@ Core 类型、Observer 和各种 Id 用英文名，其余概念用中文。Obser
 | 提交 | 写入方把一个或多个版本交给后端保存的一次请求 | [VERSION-13](./model/version.mdx#version-13) |
 | 引用 | 保存目标 VersionId 的位置，由 Core 或 Schema 版本声明 | [ENTITY-4](./model/entity.mdx#entity-4) |
 | 引用方 | 保存引用的版本，以及它所属的实体 | [ENTITY-8](./model/entity.mdx#entity-8) |
+| 二进制内容 | 业务字段中的一份文件。版本保存它的描述，字节按摘要单独保存 | [Binary](./model/binary.mdx) |
+| 摘要 | 二进制内容的身份，`sha256:` 加字节的 SHA-256 摘要 | [BINARY-2](./model/binary.mdx#binary-2) |
 | 关系实体 | 表达一种关系的业务实体，用于关系需要身份、时间或属性的情况 | [ENTITY-9](./model/entity.mdx#entity-9) |
 
 ## 类型 [#types]
