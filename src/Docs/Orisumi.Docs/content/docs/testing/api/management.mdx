@@ -1,0 +1,57 @@
+---
+title: "Management"
+description: "配对码一次有效，托管方只能操作自己的实例，本机修改按序号去重，删除实例和移除托管方不能被普通请求恢复"
+---
+
+export const caseId = 'api-management';
+
+## 为什么验证 [#why]
+
+管理接口决定一个 Runtime 是谁、它能改什么，以及删除和移除能否被撤销。序号和修订号处理错了，重发会用旧配置覆盖新配置；身份检查错了，一台设备能冒充另一台报告状态。约定见 [API · Management](../../api/management.mdx) 和 [Storage · Management](../../storage/management.mdx)。
+
+## 前置条件 [#setup]
+
+通过 `WebApplicationFactory` 启动 API，连接一个独立的测试数据库。测试以管理入口的身份签发配对码，再以两个 Runtime 的身份接入，分别称为 Mac 和服务器。时间由可控的时钟提供。
+
+## 操作与预期结果 [#steps]
+
+| 操作 | 预期结果 |
+| --- | --- |
+| 用一个配对码接入两次 | 第一次得到 `hostId` 和凭证；第二次 `400`，`code` 为 `pairing_code_invalid` |
+| 配对码签发 10 分钟后接入 | `400`，`pairing_code_invalid` |
+| 重启 API 后用之前的配对码接入 | `400`，`pairing_code_invalid` |
+| 数据库中的托管方 | `credential_hash` 是凭证的 SHA-256，不包含凭证本身 |
+| `/runtime/` 下的接口不带凭证，或带错误的凭证 | `401`，`code` 分别为 `credential_required` 和 `credential_invalid` |
+| Mac 首次登记一个实例，用同一个请求重发 | 两次都返回 `revision` 为 1 的同一份登记 |
+| 服务器登记、修改或报告 Mac 的实例 | `403`，`code` 为 `host_mismatch`；登记不变 |
+| Mac 以同一个登记标识登记第二个实例 | `409`，`instance_key_taken` |
+| Mac 和服务器各登记一个 `scope` 为 `deployment`、登记标识相同的实例 | 第二个 `409`，`deployment_singleton` |
+| Mac 发送序号 1 的停用，再重发序号 1 | 第一次 `revision` 加 1；重发不修改，返回当前的配置 |
+| 管理入口启用实例后，Mac 重发序号 1 的停用 | 返回启用，`revision` 不变 |
+| Mac 发送序号 3，而 `lastLocalSequence` 为 1 | `409`，`sequence_gap`，带 `lastLocalSequence` 为 1 |
+| Mac 修改 `enabled`，管理入口修改 `settings` | 两项都保留 |
+| 管理入口修改 `settings` 中的一项，Mac 随后修改另一项 | 结果是 Mac 提交的整个设置对象 |
+| 长轮询期间管理入口修改实例 | 长轮询立即返回这个实例的新登记 |
+| 长轮询 25 秒内没有变化 | 返回两个空列表 |
+| 托管方没有连接时发起在线操作 | `409`，`host_offline` |
+| 发起在线操作后，Runtime 30 秒内没有长轮询 | 操作的 `state` 为 `expired` |
+| 操作交出后，Runtime 在时限内没有报告结果 | `state` 为 `unconfirmed` |
+| 删除一个已保存首版的实例 | `204`；它的实体返回 `410`，登记的 `removed` 为 `true`，`revision` 加 1 |
+| 删除后，Runtime 登记或同步这个实例 | `410`，`instance_removed` |
+| 删除后，管理入口修改这个实例 | `410` |
+| 删除一个还没有首版的实例，再提交它的首版 | 删除返回 `204`；提交 `409`，`rule` 为 `HISTORY-7` |
+| 用 `DELETE /entities/{entityId}` 删除一个已登记的程序实例 | 登记的 `removed` 为 `true` |
+| 删除和同一实例的首版提交并发 | 两者串行：首版要么在删除前保存后被删除，要么被拒绝 |
+| 删除后，以同一个登记标识登记新的 EntityId | 新登记成功，旧登记仍是已删除 |
+| 移除 Mac | 它的凭证调用任何接口都返回 `401`，`credential_revoked`；正在等待的长轮询以 `401` 结束 |
+| 用不带 `hostId` 的配对码让 Mac 带着原 `hostId` 接入 | `409`，`pairing_mismatch` |
+| 用为 Mac 签发的配对码重新接入 | 得到新凭证，`hostId` 不变；旧凭证仍返回 `401` |
+| 带托管方凭证删除实体，或调用管理入口的接口 | `403`，`management_only` |
+
+## 测试实现 [#implementation]
+
+尚无测试。本页的预期由实现任务补齐。
+
+## 执行结果 [#results]
+
+<TestCaseResults caseId={caseId} />

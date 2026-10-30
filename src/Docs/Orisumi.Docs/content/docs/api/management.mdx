@@ -1,0 +1,149 @@
+---
+title: "Management"
+description: "管理 Observer 的 HTTP 接口：配对与托管方、实例的登记与配置、状态报告、长轮询和在线操作"
+---
+
+管理接口让客户端查看和修改各个 Runtime 托管的程序实例，也让 Runtime 登记实例、同步配置和报告状态。本页写每个接口的语义和响应；登记的含义、Runtime 一侧的同步步骤和状态的结构见 [Hosting · Management](../hosting/management.mdx)，表见 [Storage · Management](../storage/management.mdx)。
+
+例如用户在 Web 中停用服务器上的应用识别 Observer：Web 调用 `PATCH /observer-instances/{entityId}`，后端接受配置，修订号加 1；服务器上的 Runtime 正在等待 `POST /runtime/poll`，立即收到新的配置，停止进程，再用 `PUT /runtime/instances/{entityId}/status` 报告已停止。
+
+## 调用方 [#callers]
+
+| 调用方 | 认证 | 接口 |
+| --- | --- | --- |
+| 管理入口：Web 控制台、设备端客户端 | 尚未决定，见 [Overview · 认证](./index.mdx#auth) | `/hosts`、`/pairings`、`/observer-instances` |
+| Runtime | 托管方凭证 | `/runtime/` 下的接口；配对接口 `POST /runtime/pair` 用配对码代替凭证 |
+
+Runtime 只能登记、同步和报告自己的实例。实例属于另一个托管方时，后端返回 `403`，`code` 为 `host_mismatch`。
+
+## 配对与托管方 [#hosts]
+
+| 接口 | 作用 |
+| --- | --- |
+| [`POST /pairings`](/api/createPairing) | 签发一个配对码。带 `hostId` 时，配对码只能用于让这个托管方重新接入 |
+| [`POST /runtime/pair`](/api/claimPairing) | Runtime 用配对码接入，得到 `hostId` 和凭证 |
+| [`GET /hosts`](/api/listHosts) | 列出全部托管方，包括已移除的 |
+| [`PATCH /hosts/{hostId}`](/api/updateHost) | 修改托管方的名称 |
+| [`POST /hosts/{hostId}/revoke`](/api/revokeHost) | 移除托管方，返回 `204`；重复调用也返回 `204` |
+
+- 配对码是 8 个字符，取自去掉易混字符的大写字母和数字，10 分钟内有效，只能使用一次。配对码只保存在 API 进程的内存中，API 重启后全部失效。
+- 无效、过期或已使用的配对码返回 `400`，`code` 为 `pairing_code_invalid`。
+- 不带 `hostId` 签发的配对码只用于新的 Runtime：请求中带了 `hostId` 时返回 `409`，`code` 为 `pairing_mismatch`。带 `hostId` 签发的，请求必须带同一个 `hostId`，否则同样返回 `409`。
+- 接入成功时，后端新建托管方，或者为原托管方换一份凭证，并把 `revoked` 置为 `false`。旧凭证随即失效。
+- 凭证是 32 个随机字节的 base64url 编码，不带填充，只在这个响应中出现一次。
+- 移除托管方后，这个凭证的全部请求都返回 `401`，`code` 为 `credential_revoked`；正在等待的长轮询立即以 `401` 结束。它的实例登记和已保存的数据保留。
+
+`connected` 表示 Runtime 现在能接收在线操作：它有一个正在等待的长轮询，或者上一次长轮询在 10 秒内返回。
+
+## 实例 [#instances]
+
+| 接口 | 调用方 | 作用 |
+| --- | --- | --- |
+| [`GET /observer-instances`](/api/listObserverInstances) | 管理入口 | 列出实例，可以用 `hostId` 筛选；包括已删除的 |
+| [`GET /observer-instances/{entityId}`](/api/getObserverInstance) | 管理入口 | 读取一个实例 |
+| [`PATCH /observer-instances/{entityId}`](/api/updateObserverInstance) | 管理入口 | 修改启用或设置 |
+| [`DELETE /observer-instances/{entityId}`](/api/deleteObserverInstance) | 管理入口 | 删除实例 |
+| [`PUT /runtime/instances/{entityId}`](/api/registerObserverInstance) | Runtime | 首次登记 |
+| [`POST /runtime/instances/{entityId}/changes`](/api/submitLocalChange) | Runtime | 同步一次本机修改 |
+| [`PUT /runtime/instances/{entityId}/status`](/api/reportObserverStatus) | Runtime | 报告状态 |
+
+### 首次登记 [#registration]
+
+Runtime 为一个实例第一次联系后端时登记它，请求带着登记标识、名称、安装包的部署范围、本机当前的配置，以及这份配置已经包含的最大本机序号 `localSequence`。
+
+| 后端已有的登记 | 结果 |
+| --- | --- |
+| 没有 | 新建：配置取自请求，`revision` 为 1，`lastLocalSequence` 为 `localSequence`。返回 `200` |
+| 同一个托管方，未删除 | 不修改，返回现有的登记。所以重发是幂等的 |
+| 已删除 | `410`，`code` 为 `instance_removed` |
+| 属于另一个托管方 | `403`，`code` 为 `host_mismatch` |
+
+- 同一个托管方中已有另一个未删除的实例使用这个登记标识时，返回 `409`，`code` 为 `instance_key_taken`。
+- `scope` 为 `deployment` 时，其他托管方中已有未删除的实例使用这个登记标识，返回 `409`，`code` 为 `deployment_singleton`。
+- 请求中的 `name` 写入登记；之后重发登记不修改它。
+
+### 本机修改 [#local-changes]
+
+Runtime 一次同步一项本机修改：序号、改动的字段。`enabled` 和 `settings` 至少出现一个，`settings` 整体替换。后端在一个事务中比较序号和登记中的 `lastLocalSequence`：
+
+| 序号 | 结果 |
+| --- | --- |
+| `lastLocalSequence + 1` | 写入改动的字段，`lastLocalSequence` 设为这个序号，`revision` 加 1 |
+| 不大于 `lastLocalSequence` | 已经接受过，不修改 |
+| 大于 `lastLocalSequence + 1` | `409`，`code` 为 `sequence_gap`，响应带 `lastLocalSequence` |
+
+前两种都返回 `200` 和登记当前的配置、`revision` 与 `lastLocalSequence`。所以响应丢失后重发同一项修改，不会用旧的内容覆盖之后接受的配置。已删除的实例返回 `410`。
+
+### 管理入口的修改 [#management-changes]
+
+`PATCH /observer-instances/{entityId}` 写入请求中出现的字段，`revision` 加 1，返回修改后的实例。请求中两个字段都没有时返回 `400`。不比较修订号：同一字段以后端最后接受的修改为准，见 [Hosting · 合并](../hosting/management.mdx#merge)。已删除的实例返回 `410`。
+
+### 状态报告 [#status]
+
+`PUT /runtime/instances/{entityId}/status` 用请求体整体替换 `status`，后端把 `reportedAt` 设为收到请求的时刻，返回 `204`。已删除的实例也接受状态报告，所以界面能看到它实际停止。状态的字段见 [Hosting · 状态报告](../hosting/management.mdx#status)。
+
+### 删除实例 [#removal]
+
+`DELETE /observer-instances/{entityId}` 在一个事务中把登记标记为已删除，并删除它的 Core 实体，返回 `204`；重复删除也返回 `204`，EntityId 没有登记时返回 `404`。[`DELETE /entities/{entityId}`](/api/deleteEntity) 删除一个已登记的程序实例时，做同样的事，见 [Writing · 删除](./writing.mdx#deletion)。
+
+之后这个 EntityId 的任何版本都按 [HISTORY-7](../core/rules/history.mdx#history-7) 被拒绝，包括它还没保存过的首版。
+
+## 长轮询 [#poll]
+
+Runtime 用 [`POST /runtime/poll`](/api/pollRuntime) 接收配置变化和在线操作。请求列出它已知的每个实例的 `revision`：
+
+- 这个托管方有实例不在列表中，或者修订号与列表中的不同，后端立即返回这些实例的登记。
+- 有等待交给这个托管方的在线操作，后端立即返回它们，每个操作只返回一次。
+- 两者都没有时，后端最多等待 25 秒；期间出现变化就立即返回，否则返回两个空列表。
+
+Runtime 收到响应后立即发起下一次长轮询。请求失败时依次等待 1、2、4 秒，之后每 30 秒重试一次。第一次长轮询的列表为空，所以得到这个托管方的全部实例。
+
+## 在线操作 [#operations]
+
+| 接口 | 调用方 | 作用 |
+| --- | --- | --- |
+| [`POST /hosts/{hostId}/operations`](/api/createOperation) | 管理入口 | 发起一个在线操作，返回 `202` 和操作的状态 |
+| [`GET /hosts/{hostId}/operations/{operationId}`](/api/getOperation) | 管理入口 | 读取操作的状态 |
+| [`POST /runtime/operations/{operationId}/result`](/api/reportOperationResult) | Runtime | 报告操作的结果，返回 `204` |
+
+| `action` | 附带的字段 | 结果 |
+| --- | --- | --- |
+| `catalog` | 无 | 这个 Runtime 可以安装的包，结构与 [Protocol · 管理](../hosting/protocol.mdx#management) 中的 `catalog` 相同 |
+| `install` | `packageId`，可选 `newInstance` | 安装后的程序实例的 `entityId` |
+| `update` | `entityId` | 无 |
+| `uninstall` | `entityId` | 无 |
+| `retry` | `entityId` | 无 |
+
+托管方没有连接时，`POST` 返回 `409`，`code` 为 `host_offline`，后端不保存这个操作。操作的状态：
+
+| `state` | 含义 |
+| --- | --- |
+| `queued` | 等待交给 Runtime |
+| `delivered` | 已在长轮询的响应中交出，还没有收到结果 |
+| `succeeded`、`failed` | Runtime 报告了结果；失败时 `error` 说明原因 |
+| `expired` | 30 秒内没有交出，Runtime 没有执行它 |
+| `unconfirmed` | 交出后在时限内没有收到结果：`install` 和 `update` 是 10 分钟，其他操作是 1 分钟 |
+
+- 操作只保存在 API 进程的内存中，结束后保留 10 分钟。之后或 API 重启后，`GET` 返回 `404`，调用方按结果未确认处理。
+- `unconfirmed` 不说明操作没有执行。调用方重新读取实例的状态，不自动重发。
+- Runtime 报告结果时，操作已经结束或不存在，后端返回 `404`，Runtime 丢弃这个结果。
+
+## 错误 [#errors]
+
+管理接口的错误用 [Errors](./errors.mdx) 中的格式，带扩展字段 `code`：
+
+| 状态码 | `code` | 情况 |
+| --- | --- | --- |
+| `400` | `pairing_code_invalid` | 配对码无效、过期或已使用 |
+| `401` | `credential_required` | `/runtime/` 下的接口没有托管方凭证 |
+| `401` | `credential_invalid` | 凭证不属于任何托管方 |
+| `401` | `credential_revoked` | 托管方已移除 |
+| `403` | `host_mismatch` | Runtime 操作另一个托管方的实例 |
+| `403` | `management_only` | 带托管方凭证调用管理入口的接口，或者删除实体 |
+| `404` | 无 | 托管方、实例或操作不存在 |
+| `409` | `pairing_mismatch` | 配对码与请求中的 `hostId` 不符 |
+| `409` | `instance_key_taken` | 登记标识已被同一托管方的另一个实例使用 |
+| `409` | `deployment_singleton` | 每个部署只能有一个实例的安装包已有实例 |
+| `409` | `sequence_gap` | 本机修改的序号不连续 |
+| `409` | `host_offline` | 托管方没有连接，不能发起在线操作 |
+| `410` | `instance_removed` | 实例已删除 |

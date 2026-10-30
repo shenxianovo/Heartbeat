@@ -11,9 +11,9 @@ export const caseId = 'application-identity';
 
 ## 前置条件 [#setup]
 
-API 通过 `WebApplicationFactory` 启动，连接独立的测试数据库。模型由测试替身代替，按每一步给定的回答返回，并记下调用次数和请求内容。本机应用和前台时段通过 HTTP 提交，结果也通过 HTTP 读回。
+API 通过 `WebApplicationFactory` 启动，连接独立的测试数据库。应用识别 Observer 作为安装包，由以服务方式运行的 Runtime 启动，经 SDK 读写；模型由测试替身代替，按每一步给定的回答返回，并记下调用次数和请求内容。本机应用和前台时段通过 HTTP 提交，结果也通过 HTTP 读回。
 
-应用识别的每一轮由测试直接开始，读取和提交走实体服务，未决提交和业务状态保存在同一个测试数据库中。检查轮次调度的用例运行真实的服务端托管。“进程在保存期间退出”用故障注入模拟：保存未决提交的存储在指定的位置抛出异常，之后用新的会话从数据库恢复。
+“进程在保存期间退出”在两个位置结束 Observer 的进程：批次交给 Runtime 之后、收到回执之前；收到回执之后、最终结果为已保存之前。之后由 Runtime 重新启动它。
 
 ## 操作与预期结果 [#steps]
 
@@ -30,27 +30,23 @@ API 通过 `WebApplicationFactory` 启动，连接独立的测试数据库。模
 | 未知的线索出现新的本机应用或新的名称 | 再次调用模型 |
 | 模型请求超时，或回答指向目录中没有的产品 | 不提交，不创建产品；下一轮重试这条线索 |
 | 没有配置 API Key | 不调用模型，不提交，报告诊断 |
-| 进程在保存期间退出，之后重启 | 用原来的 VersionId 和内容重发，不再调用模型；后端只有一个产品 |
+| 进程在保存期间退出，之后重启 | 用同一个批次标识重发原来的请求，等到已保存后才开始新的一轮，不再调用模型；后端只有一个产品 |
+| 一个批次还没保存时 | 不处理下一条线索；已保存后，下一条线索读到的目录包含上一条的结果 |
+| 后端在等待最终结果时不可用 | 继续等待，不调用模型；恢复后版本保存，接着处理下一条线索 |
 | 一轮还在等待模型回答时，到了下一轮的时间 | 这一轮结束后才开始下一轮；模型只调用一次，后端只有一个产品 |
+| 在第二个 Runtime 上安装应用识别 Observer | 登记被拒绝，`code` 为 `deployment_singleton`，这个实例不启动 |
+| 在客户端中修改 `intervalSeconds` | 下一轮按新的间隔开始；API Key 不在设置中 |
 | 用户把一条线索移出 QQ | 下一轮重新判断这条线索 |
-| 应用识别 Observer 基于旧版本提交时，用户已经修改了产品 | 提交被拒绝；重新读取后再处理，结果保留用户的修改 |
+| 应用识别 Observer 基于旧版本提交时，用户已经修改了产品 | 提交被拒绝；丢弃这一批，重新读取后再处理，结果保留用户的修改 |
 | 更换模型型号后重启 | 程序实例形成新版本；已经在产品中的线索不重新判断 |
 | 产品形成新版本之后 | 之前的 Observation 和 InputSet 保持原样，仍指向原来的版本 |
 
 ## 测试实现 [#implementation]
 
-以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
+以下方法位于 `tests/Orisumi.Integration.Tests/`：
 
-- 两台 Mac 和 Android 的 QQ 归入一个产品，再运行一轮或出现同一应用包标识、不同路径的本机应用时不调用模型，同名的不同软件分开、批次中的 InputSet 和 Observation、产品更新后旧的 Observation 不变：`ApplicationIdentityTests.RecognizesOnceAcrossDevicesAndPlatformsAndPreservesEvidence`。
-- 未知在重启后保留，只在出现新的本机应用或名称时重试：`ApplicationIdentityTests.UnknownSurvivesRestartAndRetriesOnlyOnNewNamesOrApplications`。
-- 模型超时和指向目录外的产品不写入，下一轮重试：`ApplicationIdentityTests.ModelFailuresAndInvalidTargetsRetryWithoutCreatingProducts`。
-- 没有 Key 时不写入；更换模型后程序实例形成新版本，已在产品中的线索不重新判断：`ApplicationIdentityTests.MissingKeyDoesNotWriteAndModelChangesVersionTheSameObserver`。
-- 进程在保存期间退出后重启，用原来的 VersionId 和内容重发，不再调用模型，程序实例的 EntityId 不变：`ApplicationIdentityTests.ProcessExitDuringSaveReplaysTheSameBatchAfterRestart`。参数 `false` 中断在未决提交保存之后、版本保存之前，`true` 中断在版本保存之后、确认之前。
-- 新启动的 API 先完成未决提交，再检查 API Key，模型没有 Key 时也是如此：`ApplicationIdentityTests.ApiStartupRecoversPendingBeforeCheckingTheModelKey`。
-- 模型的回答被阻塞时，经过多个间隔仍只调用一次；放开后只有一个产品：`ApplicationIdentityTests.SlowModelDoesNotOverlapRounds`。
-- 基于旧版本的提交被拒绝后重新读取；线索移出产品后重新判断：`ApplicationIdentityTests.StaleProductIsRereadAndRemovedIdentifiersAreRecognizedAgain`。
 - 请求包含线索、全部标识线索、名称和目录，不带外部工具；正常回答的解析：`ApplicationModelTests.SendsStructuredInputWithoutToolsAndReadsTheDecision`。无效或未完成的回答作为失败：`ApplicationModelTests.InvalidOrIncompleteResponseIsADiagnosticFailure`，参数是缺少字段的回答和未完成的回答。
-- API 注册了服务端托管，应用识别不需要单独的进程：`ApplicationIdentityTests.ApiHostsApplicationIdentityWithoutASeparateProcess`。
+- `ApplicationIdentityTests` 按 API 进程中运行的旧实现编写，不检查本页的前置条件。实现任务改为经 Runtime 运行后，在这里逐项写明对应的方法。
 - 未覆盖：杀掉操作系统进程；真实的 OpenAI 调用。
 
 ## 执行结果 [#results]

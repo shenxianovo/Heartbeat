@@ -24,7 +24,7 @@
 | 架构决定 | `adr/` |
 | HTTP 契约 | `api/openapi.json` |
 | 单个 Observer 的业务规则和实现决定 | `observers/<observer>/` |
-| 托管方的职责、Runtime 的进程与管道协议、服务端托管 | `hosting/` |
+| 托管方的职责、Runtime 的进程与管道协议、服务器上的运行、Observer 的统一管理 | `hosting/` |
 | 模块的运行和操作说明 | 模块目录的 `README.md` |
 
 使用 `grill-with-docs` 或 `domain-modeling` 时，`GLOSSARY.md` 对应 `core/glossary.mdx`，`docs/adr/` 对应 `adr/`。

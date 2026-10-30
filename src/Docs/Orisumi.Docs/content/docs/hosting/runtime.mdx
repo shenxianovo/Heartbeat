@@ -1,9 +1,9 @@
 ---
 title: "Runtime"
-description: "设备上的托管方 Runtime 怎样启动、保管数据目录，以及怎样运行和重启 Observer 的进程"
+description: "Runtime 怎样随客户端启动、保管数据目录，以及怎样运行和重启 Observer 的进程"
 ---
 
-Runtime 是设备端客户端中的公共组件。它安装和运行 Observer 的进程，接收它们交来的数据，本地保存并发送到后端，再把状态和数据提供给客户端的界面。本页写 Runtime 的启动参数、数据目录和进程的生命周期；它怎样提交版本见 [Submission](./submission.mdx)，管道的消息格式见 [Protocol](./protocol.mdx)。为什么这样分工，见 [ADR · Runtime 与进程托管](../adr/observer-runtime.mdx)。
+Runtime 是运行 Observer 的公共组件。它安装和运行 Observer 的进程，接收它们交来的数据，本地保存并发送到后端，再把状态和数据提供给客户端的界面和后端。本页写 Runtime 随客户端运行时的启动参数、数据目录和进程的生命周期；服务器上的运行方式见 [Server](./server.mdx)，它怎样提交版本见 [Submission](./submission.mdx)，管道的消息格式见 [Protocol](./protocol.mdx)，接入和远程管理见 [Management](./management.mdx)。为什么这样分工，见 [ADR · Runtime 与进程托管](../adr/observer-runtime.mdx)。
 
 Runtime 是一个 .NET 程序，代码在 `src/Observers/Orisumi.Observer.Runtime/`。本地保存和发送的实现见[实现](#implementation)。
 
@@ -22,9 +22,9 @@ Orisumi.Observer.Runtime --data-dir <目录> --backend <API 地址> --bundled <�
 | `--bundled` | 随客户端附带的安装包所在的目录，见 [Packages · 附带的 Observer](../clients/packages.mdx#bundled) |
 | `--catalog` | 官方目录的 HTTPS 地址。省略时只列出附带的安装包 |
 
-启动后，Runtime 安装尚未登记过的附带安装包，再运行所有启用的 Observer。
+启动后，Runtime 安装尚未登记过的附带安装包，再运行所有启用的 Observer。已接入后端时，它同时开始登记、同步和长轮询，见 [Management · 同步](./management.mdx#sync)；还没有接入时，客户端经 [`pair`](./protocol.mdx#management) 交给它配对码。
 
-Runtime 对 API 的每个请求最多等待 5 秒，超时按网络失败处理：发送稍后原样重发，见 [Submission · 确认](./submission.mdx#confirmation)；读取报告后端不可用，见 [Protocol · 读取](./protocol.mdx#reading)。客户端管道一次只有一个请求未完成，所以后端没有响应时，界面最多等 5 秒就能继续。
+Runtime 对 API 的每个请求最多等待 5 秒，长轮询除外，超时按网络失败处理：发送稍后原样重发，见 [Submission · 确认](./submission.mdx#confirmation)；读取报告后端不可用，见 [Protocol · 读取](./protocol.mdx#reading)。客户端管道一次只有一个请求未完成，所以后端没有响应时，界面最多等 5 秒就能继续。
 
 ## 数据目录 [#data]
 
@@ -32,6 +32,7 @@ Runtime 对 API 的每个请求最多等待 5 秒，超时按网络失败处理�
 
 ```text
 <data-dir>/
+  host.json                     托管方身份、凭证和 API 地址，接入后写入
   registry.json                 安装登记
   packages/<package-id>/<version>/   解压后的安装包，安装后不再改动
   instances/<entity-id>/
@@ -41,7 +42,9 @@ Runtime 对 API 的每个请求最多等待 5 秒，超时按网络失败处理�
   staging/                      下载和解压中的安装包
 ```
 
-- 安装登记记录每个安装包当前的版本、对应的程序实例、是否已安装、是否启用，以及设置。Runtime 写入新的登记文件后整个替换旧文件，所以登记总是完整的。
+- 安装登记记录每个安装包当前的版本、对应的程序实例、是否已安装、是否已删除，以及配置：生效的配置、后端的配置和它的修订号、待同步的修改和下一个序号，见 [Management · 配置](./management.mdx#configuration)。Runtime 写入新的登记文件后整个替换旧文件，所以登记总是完整的。
+- 已删除的实例在登记中保留，直到它的版本发送完；它的实例目录同样保留。
+- `host.json` 只有运行 Runtime 的用户可以读写。数据目录是这些数据唯一的位置，后端无法重建它们。
 - 实例目录的名字是程序实例的 EntityId，不含包版本。更新、卸载和重装都使用同一个实例目录。
 - `store.sqlite` 只有 Runtime 打开。客户端和各语言的 SDK 都通过管道读取。
 - `data/` 和 `shared/` 中的内容由 Observer 的业务代码解释。`shared/` 供同一设备上的多个程序实例共用，例如前台状态 Observer 的[本机应用登记文件](../observers/foreground-state/local-application.mdx#registry)。
@@ -55,7 +58,7 @@ Runtime 为每个 Observer 报告托管方的三项状态，含义见 [Overview 
 
 | 状态 | 取值 |
 | --- | --- |
-| 启用 | `enabled` 为 `true` 或 `false`，持久保存 |
+| 启用 | `enabled` 为 `true` 或 `false`，是生效的配置，持久保存 |
 | 运行 | `state` 为 `starting`、`running`、`stopping`、`waiting`（等待重启）、`stopped` 或 `failed`；故障的原因在 `error` |
 | 发送 | `delivery`：草稿、待发送、已保存的数量，发送错误和被拒绝的版本 |
 
@@ -82,7 +85,7 @@ Runtime 不用心跳判断 Observer 是否卡住，因为事件型的 Observer �
 
 ### 退出 [#shutdown]
 
-客户端发送 `shutdown` 或关闭 Runtime 的标准输入时，Runtime 先停止所有 Observer，再停止发送，然后退出。退出不等网络恢复，也不等待发送的数据全部发完。
+客户端发送 `shutdown` 或关闭 Runtime 的标准输入时，或者服务方式的 Runtime 收到 `SIGTERM` 或 `SIGINT` 时，Runtime 先停止所有 Observer，再停止发送，然后退出。退出不等网络恢复，也不等待发送的数据全部发完。
 
 ## 开发运行 [#development]
 
@@ -92,7 +95,7 @@ Runtime 不用心跳判断 Observer 是否卡住，因为事件型的 Observer �
 dotnet run --project src/Observers/Orisumi.Observer.Runtime -- --data-dir <目录> --backend <API 地址> --bundled <目录> --run foreground-state
 ```
 
-这时 Runtime 不读取标准输入，按 Ctrl+C 退出。它启动同样的 Observer 进程，用同样的方式保存和发送。为不同的测试指定不同的数据目录，它们就是不同的程序实例，`shared/` 也互不影响。
+这时 Runtime 不读取标准输入，按 Ctrl+C 退出。它启动同样的 Observer 进程，用同样的方式保存和发送。数据目录还没有接入时，可以加 `--pairing-code`，和[服务方式](./server.mdx#pairing)一样接入。为不同的测试指定不同的数据目录，它们就是不同的程序实例，`shared/` 也互不影响。
 
 ## 实现 [#implementation]
 
@@ -106,4 +109,6 @@ Runtime 的进程管理在 `src/Observers/Orisumi.Observer.Runtime/`，本地保
 4. 需要写入观测预览时，SQLite 保存每份观测预览的 `sequence`；后台任务把草稿最新的内容写成观测预览，见 [Submission · 观测预览](./submission.mdx#previews)。
 5. Runtime 重启后，从 SQLite 恢复草稿、待发送的版本和待处理的被拒绝版本。
 
-批次的回执一直保留到实例目录删除。
+批次的回执一直保留到实例目录删除，`outcome` 据此读取批次的最终结果。
+
+服务方式、接入、配置同步、状态报告、在线操作和 `outcome` 尚未实现，见 [Server · 实现](./server.mdx#implementation)。

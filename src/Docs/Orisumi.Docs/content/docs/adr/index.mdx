@@ -48,11 +48,11 @@ ADR 用英文 slug 命名，例如 `entity-model.mdx`，没有编号。引用时
 | Model | [删除](./deletion.mdx) | 删除以实体为单位，只移除选中实体的全部版本，删除后不可复活 |
 | Backend | [后端运行与本地环境](./backend-runtime.mdx) | 四个后端项目组成一个进程，Aspire 编排本地环境，NGINX 提供同源入口 |
 | Backend | [实体 API](./entity-api.mdx) | 接口按身份寻址，所有类型共用一组路由，一次提交是一组有序的版本，内容按 JSON 的值比较，反查按目标实体列出直接的引用方，错误带规则编号 |
-| Backend | [实体存储](./entity-storage.mdx) | 所有版本以 jsonb 保存在一张表中，查询走以类型开头的索引，引用另存一张推导的反查表，删除留下墓碑，所有操作串行执行 |
-| Clients | [Runtime 与进程托管](./observer-runtime.mdx) | 客户端启动一个 Runtime，Runtime 启动各 Observer 的进程，经标准输入输出双向通信；实例身份和本地数据由 Runtime 保管，与程序文件分开 |
+| Backend | [实体存储](./entity-storage.mdx) | 版本和删除身份是两张权威表，其余四张是可以从它们重建的查询投影；版本以 jsonb 保存在一张表中，查询走以类型开头的索引，引用反查只记录引用方版本和目标实体，所有操作串行执行 |
+| Clients | [Runtime 与进程托管](./observer-runtime.mdx) | 设备和服务器运行同一个 Runtime，Runtime 启动各 Observer 的进程，经标准输入输出双向通信；实例身份和本地数据由 Runtime 保管，与程序文件分开 |
 | Clients | [设备端客户端](./device-client.mdx) | 原生客户端通过 Runtime 托管本机的 Observer：从官方目录单独安装 ZIP 包，启停、更新和有限重启；专用视图原生实现，随客户端发布；陈述由各 Observer 负责 |
-| Observers | [服务端托管](./server-observer-hosting.mdx) | 服务端 Observer 由 API 进程中的服务端托管运行：身份和未决提交保存在 PostgreSQL，经实体服务直接提交，等后端保存后再交还业务代码 |
-| Observers | [应用识别](./application-identity.mdx) | 应用产品按跨设备线索聚合各设备上的本机应用；服务端的应用识别 Observer 用模型认出新线索，用户在 Web 中修改 |
+| Clients | [Observer 的统一管理](./observer-management.mdx) | 后端为每个 Runtime 和程序实例保存管理登记；启停和设置离线先生效、按字段同步，后端接受的顺序决定结果；安装维护只在线执行；Runtime 主动连接后端，凭配对得到的凭证接入 |
+| Observers | [应用识别](./application-identity.mdx) | 应用产品按跨设备线索聚合各设备上的本机应用；服务器上的应用识别 Observer 用模型认出新线索，用户在 Web 中修改 |
 | Verification | [开发验证与测试证据](./verification.mdx) | Orisumi.Dev 组织验证并保存证据，原生测试报告是测试结果的权威来源 |
 | Verification | [开发环境的启动与隔离](./development-environment.mdx) | Orisumi.Dev 是启动环境的统一入口，每个检出目录运行一套环境，数据卷可选，服务按需启动 |
 | Verification | [文档站的发布](./documentation-publishing.mdx) | 文档站构建为静态文件，GitHub Actions 从 main 构建并发布到 GitHub Pages，测试报告随发布固定 |

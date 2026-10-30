@@ -1,0 +1,44 @@
+---
+title: "Management Sync"
+description: "本机修改离线先生效并持久保存，联网后按序同步；响应丢失、重启、乱序和同步期间的新修改都不丢失修改，也不用旧配置覆盖新配置"
+---
+
+export const caseId = 'runtime-management-sync';
+
+## 为什么验证 [#why]
+
+用户在断网时停用一个 Observer，它必须立即停下，联网后其他客户端才能看到；同步过程中的任何失败都不能让这次停用丢失，也不能让旧的配置盖过之后的修改。界面还要分清后端接受的配置和设备实际的状态。约定见 [Hosting · Management](../../hosting/management.mdx) 和 [Clients · 管理](../../clients/index.mdx#management)。
+
+## 前置条件 [#setup]
+
+Runtime 使用独立的数据目录，运行一个由测试控制的 Observer。后端是真实的 API 和测试数据库，Runtime 与 API 之间有一个可以断开、丢弃响应和延迟请求的代理。
+
+## 操作与预期结果 [#steps]
+
+| 操作 | 预期结果 |
+| --- | --- |
+| 还没接入时运行 Observer | 照常运行和本地保存；`host.connection` 为 `unpaired`，发送状态说明尚未接入 |
+| 经 `pair` 接入 | `host.json` 写入数据目录；实例登记的配置是 Runtime 当时生效的配置 |
+| 断网时 `setEnabled` 停用 | 进程停止；安装登记中有序号 1 的待同步修改 |
+| 断网时停用后重启 Runtime | Observer 保持停用，待同步的修改仍在 |
+| 联网 | 后端接受停用，`revision` 加 1；`sync.pendingChanges` 为 0 |
+| 后端已接受，响应丢失 | Runtime 用同一个序号和内容重发，后端不再修改 |
+| 修改 1 的请求还没响应时，本机又修改设置 | 修改 1 的响应只移除修改 1；修改 2 随后发送；生效的配置包含两项 |
+| 旧请求的响应晚于新请求的响应到达 | Runtime 忽略 `revision` 较小的配置，生效的配置不变 |
+| 其他客户端修改设置，Runtime 有一项待同步的启用修改 | 生效的配置是新的设置加上本机的启用；Runtime 不把收到的设置作为本机修改上传 |
+| 其他客户端在 Runtime 离线时启用，Runtime 离线时停用并在之后同步 | 结果是停用 |
+| 安装一个 Observer | 启用作为一项本机修改同步；更新不形成修改 |
+| 后端接受了停用，Runtime 还没收到 | 管理入口读到 `enabled` 为 `false`，`status.appliedRevision` 小于 `revision`，界面显示等待设备同步 |
+| Runtime 离线 18 分钟 | 托管方的 `connected` 为 `false`；界面显示运行状态未知，写出最近一次报告的时刻 |
+| 远程删除实例 | Runtime 停止进程，报告 `state` 为 `stopped`；之后不再启动它；待发送的版本照常发送，被拒绝的原因在 `delivery.rejection` 中 |
+| 删除后本机 `install` 同一个包，不带 `newInstance` | `conflict`；带 `newInstance` 时得到新的 EntityId 和实例目录 |
+| 托管方被移除 | Runtime 停止同步和发送，`host.connection` 为 `revoked`，不再自动重试；Observer 照常运行 |
+| 远程安装，执行中结束 Runtime | 管理入口看到 `unconfirmed`；Runtime 重启后不执行这个操作 |
+
+## 测试实现 [#implementation]
+
+尚无测试。本页的预期由实现任务补齐；界面的显示由 Web 和 macOS 客户端的测试检查。
+
+## 执行结果 [#results]
+
+<TestCaseResults caseId={caseId} />

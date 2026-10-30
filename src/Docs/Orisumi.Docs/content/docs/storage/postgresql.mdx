@@ -25,7 +25,7 @@ description: "后端使用的 PostgreSQL：版本、数据访问、时间怎样�
 
 ## 时间 [#time]
 
-已知的时间先转换为 UTC，再向下截断到整微秒。列中的时间以 `timestamptz` 保存，例如 `recorded_at`、`deleted_at` 和 `fact_range` 的边界；Observation 的 `content` 中的时间保存为同一时刻以 `Z` 结尾的字符串，见 [Versions · 内容的表示](./versions.mdx#content)。
+已知的时间先转换为 UTC，再向下截断到整微秒。列中的时间以 `timestamptz` 保存，例如 `recorded_at`、`reported_at` 和 `fact_range` 的边界；Observation 的 `content` 中的时间保存为同一时刻以 `Z` 结尾的字符串，见 [Versions · 内容的表示](./versions.mdx#content)。
 
 截断在应用层完成。数据库驱动按自己的时间纪元截断，会让 2000 年以前的时间向后进位；应用层的截断与纪元无关，例如 `1999-12-31T23:59:59.9999999Z` 保存为 `1999-12-31T23:59:59.999999Z`。API 中时间的写法见 [API · 时间](../api/versions.mdx#time)。
 

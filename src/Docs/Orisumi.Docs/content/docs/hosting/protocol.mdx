@@ -29,7 +29,7 @@ Runtime 用同一个 `id` 返回结果或错误：
 | --- | --- |
 | `invalid_request` | 请求不符合协议 |
 | `not_found` | 安装包、程序实例或版本不存在 |
-| `conflict` | 与当前状态冲突，例如读取的游标已过期 |
+| `conflict` | 与当前状态冲突，例如读取的游标已过期，或者安装的包原来的实例已删除 |
 | `unavailable` | 暂时无法完成，例如官方目录读取失败 |
 | `internal` | Runtime 的错误 |
 
@@ -43,9 +43,11 @@ Runtime 用同一个 `id` 返回结果或错误：
 | --- | --- | --- |
 | `list` | 无 | 已登记的 Observer 及其状态 |
 | `catalog` | 无 | 可安装的安装包 |
-| `install` | `packageId` | 安装完成后返回 |
+| `install` | `packageId`，可选 `newInstance` | 安装完成后返回 |
 | `update` | `packageId` | 更新完成后返回 |
 | `setEnabled` | `packageId`、`enabled` | 启用时进程开始启动即返回，不等 `ready`；停用时进程实际退出后返回 |
+| `setSettings` | `packageId`、`settings` | 设置写入安装登记后返回；进程在运行时，Runtime 停止它，再用新的设置启动 |
+| `pair` | `code`、`name` | 接入后端后返回 `hostId`，见 [Management · 接入](./management.mdx#pairing) |
 | `retry` | `packageId` | 启用并开始新一轮重启 |
 | `uninstall` | `packageId` | 进程停止、程序移除后返回 |
 | `shutdown` | 无 | 返回后 Runtime 退出 |
@@ -54,6 +56,7 @@ Runtime 用同一个 `id` 返回结果或错误：
 
 ```json
 {
+  "host": { "hostId": "0196f3a0-2b11-7c30-8a1b-1c2d3e4f5a60", "connection": "connected" },
   "observers": [
     {
       "packageId": "foreground-state",
@@ -65,13 +68,18 @@ Runtime 用同一个 `id` 返回结果或错误：
       "state": "running",
       "error": null,
       "diagnostic": null,
+      "removed": false,
+      "settings": {},
+      "sync": { "revision": 7, "pendingChanges": 0, "error": null },
       "delivery": { "pending": 0, "drafts": 1, "saved": 42, "error": null, "rejection": null }
     }
   ]
 }
 ```
 
-- 已卸载、但还有待发送数据的程序实例也在列表中，`installed` 为 `false`。
+- `host.connection` 是这个 Runtime 与后端的连接：`unpaired`（还没有接入，`hostId` 为 `null`）、`connected`、`offline` 或 `revoked`（托管方已移除）。
+- 已卸载、但还有待发送数据的程序实例也在列表中，`installed` 为 `false`。已删除、版本还没发送完的程序实例也在列表中，`removed` 为 `true`。
+- `enabled` 和 `settings` 是生效的配置。`sync.revision` 是已合并的后端配置的修订号，还没有登记时为 `0`；`sync.pendingChanges` 是待同步的修改数；`sync.error` 说明同步停止的原因，见 [Management · 同步](./management.mdx#sync)。
 - `rejection` 不为空时是 `{ "rule": "VERSION-6", "detail": "…" }`，说明这个实例的发送因被拒绝的版本暂停，见 [Submission · 被拒绝的版本](./submission.mdx#rejections)。
 
 `catalog` 合并附带的安装包和官方目录，列出本机可用的每个包：
@@ -96,7 +104,7 @@ Runtime 用同一个 `id` 返回结果或错误：
 
 `compatible` 说明本机的 Runtime 能否安装这个包：`target` 是本机平台，`format` 和 `protocol` 是 Runtime 支持的版本。官方目录中省略 `format` 或 `protocol` 时按 `1` 处理。官方目录读取失败时，`catalog` 返回错误，`list` 不受影响。下载地址和摘要只在 Runtime 中使用。
 
-`install` 和 `update` 选择本机平台可用的最高版本。同一个安装包的安装和更新依次进行。安装和重装后 Observer 是启用的；更新保持原来的启用状态。停用的 `setEnabled` 和 `uninstall` 等进程实际退出后返回，最多等 10 秒，见 [Runtime · 启动与停止](./runtime.mdx#lifecycle)。
+`install` 和 `update` 选择本机平台可用的最高版本。同一个安装包的安装和更新依次进行。安装和重装后 Observer 是启用的；更新保持原来的启用状态。这个包原来的实例已删除时，`install` 必须带 `newInstance: true`，否则返回 `conflict`，见 [Management · 删除实例](./management.mdx#removal)。`setEnabled`、`setSettings` 和安装形成的启用都是本机修改，见 [Management · 本机修改](./management.mdx#local-changes)。停用的 `setEnabled` 和 `uninstall` 等进程实际退出后返回，最多等 10 秒，见 [Runtime · 启动与停止](./runtime.mdx#lifecycle)。
 
 ### 读取 [#reading]
 
@@ -176,8 +184,12 @@ Observer 发出的请求如下。批次的语义见 [Submission · 批次](./sub
 | `commit` | `operations` | `results`：每个具名操作得到的 VersionId |
 | `local` | 可选的 `entityId`、`versionId`、`draftsOnly`、`category` | 本地的版本及其状态，供恢复和修复使用 |
 | `status` | 无 | 发送状态：`pending`、`drafts`、`saved`、`error`、`rejection` |
+| `outcome` | `batchId`，可选 `wait` | 一个批次的最终结果，见[最终结果](#outcome) |
 | `readCurrent` | `entityId` | 后端的当前版本，带 `recordedAt`；没有时为 `null` |
 | `entityStatus` | `entityId` | 后端对这个实体返回的 HTTP 状态码，例如 `410` 说明已删除 |
+| `versions` | `versionIds`，最多 256 个 | 与客户端管道的 [`versions`](#reading) 相同 |
+| `listEntities` | 可选的 `category`、`resourceName`、`after`、`limit` | 一页实体的当前版本和 `next`，与 [`GET /entities`](/api/listEntities) 相同 |
+| `listReferrers` | `entityId`，可选的 `versions`、`after`、`limit` | 一页引用方和 `next`，与 [`GET /entities/{entityId}/referrers`](/api/listReferrers) 相同 |
 | `repair` | `rejectedVersionId`、`action` 及其字段 | 处理被拒绝的版本 |
 
 ### 批次的操作 [#operations]
@@ -208,7 +220,7 @@ Observer 发出的请求如下。批次的语义见 [Submission · 批次](./sub
 
 | 操作 | 字段 |
 | --- | --- |
-| `draft` | `entityId`、`category`、`content`，可选 `schemaVersionId`、`strategy`（`Immediate` 或 `OnCompletion`）、`publishPreview`、`ifAbsent`、`bindings`、`as` |
+| `draft` | `entityId`、`category`、`content`，可选 `schemaVersionId`、`previousVersionId`、`strategy`（`Immediate` 或 `OnCompletion`）、`publishPreview`、`ifAbsent`、`bindings`、`as` |
 | `reference` | `entityId`、`as` |
 | `complete` | `entityId`，可选 `as` |
 
@@ -216,7 +228,29 @@ Observer 发出的请求如下。批次的语义见 [Submission · 批次](./sub
 - `as` 给操作的结果起名，后面的 `bindings` 和回执中的 `results` 用这个名字。
 - `bindings` 把内容中的一个引用位置（JSON Pointer）绑定到前面 `reference` 的结果，结果是一个确定的版本。
 - `ifAbsent` 为 `true` 时，实体在本地已有版本就沿用当前版本，不写入。
+- `previousVersionId` 指定新版本的前一版本，用于更新由其他写入方保存的实体，例如用户在 Web 中改过的应用产品。实体在本地没有未保存的版本时，它可以是后端的任何一个已保存版本，通常是 `readCurrent` 的结果；否则必须是实体在本地最新的版本。省略时用本地最新的版本。
 - `content` 是完整的版本内容，Observation 的可空字段也要写出。
+
+### 读取后端 [#observer-reading]
+
+`readCurrent`、`entityStatus`、`listEntities` 和 `listReferrers` 只读取后端已保存的数据，不合并本地的版本。后端不可用时返回 `unavailable`。`versions` 先读本地，再读后端。
+
+### 最终结果 [#outcome]
+
+`outcome` 的 `batchId` 是 `commit` 请求的 `id`。`wait` 是最多等待的秒数，0 到 30，默认 0；等待期间结果确定时立即返回：
+
+```json
+{ "state": "rejected", "versionId": "0196f3a3-2c41-7d85-a6e7-4b5c6d7e8f90", "rule": "VERSION-6", "detail": "…" }
+```
+
+| `state` | 含义 |
+| --- | --- |
+| `saved` | 回执中的全部版本都已保存 |
+| `pending` | 还有版本在本地，例如草稿还没结束、等待发送或发送失败 |
+| `rejected` | 回执中的一个版本，或者它依赖的版本，是当前被拒绝的版本；带 `versionId`、`rule` 和 `detail` |
+| `discarded` | 回执中的一个版本已被修复操作丢弃或替换 |
+
+回执永久保留，所以重启后仍可以读取以前批次的结果；`batchId` 不存在时返回 `not_found`。收到 `stop` 后，SDK 结束正在等待的 `outcome`。语义见 [Submission · 最终结果](./submission.mdx#outcome)。
 
 ### 修复 [#repair]
 

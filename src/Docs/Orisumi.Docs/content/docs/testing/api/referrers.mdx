@@ -23,7 +23,8 @@ export const caseId = 'api-referrers';
 | 列出 EntitySchema 的引用方，它被 `schemaVersionId` 和另一个 Schema 版本的 `previousVersionId` 指向 | 结果为空 |
 | 一份 Observation 延长过一次，一个 InputSet 后来改为引用别的实体 | `versions=current` 只返回延长后的 Observation；`versions=all` 返回 Observation 的两个版本和 InputSet 的旧版本 |
 | 用 `limit=1` 翻页，其中一个版本有两个引用位置 | 每页一个版本，这个版本的两个位置在同一项中 |
-| 删除目标实体 | 照常列出引用方，见 [HISTORY-8](../../core/rules/history.mdx#history-8) |
+| 删除目标实体 | 照常列出引用方，每一项的 `path` 和 `targetVersionId` 与删除前相同，见 [HISTORY-8](../../core/rules/history.mdx#history-8) |
+| 一个版本在三个位置引用同一个实体 | 列为一项，`references` 中有三个位置 |
 | 删除引用方 | 它不再出现在结果中 |
 | 列出从未出现过的 EntityId 的引用方 | `404` |
 
@@ -36,6 +37,7 @@ export const caseId = 'api-referrers';
 - current 与 all、延长和改指向后的结果，以及一个版本的多个位置按一项分页：`ReferrerApiTests.CurrentAndAllPaginateVersionsAfterExtensionAndRetargeting`。
 - 目标删除后保留引用方，引用方删除后移除结果：`ReferrerApiTests.TargetDeletionRetainsReferencesAndReferrerDeletionCascades`。
 - 目标身份从未出现：`ReferrerApiTests.UnknownTargetReturnsNotFound`。
+- 未覆盖：目标删除后的 `path` 和 `targetVersionId`；同一个版本多处引用同一个实体。
 
 ## 执行结果 [#results]
 

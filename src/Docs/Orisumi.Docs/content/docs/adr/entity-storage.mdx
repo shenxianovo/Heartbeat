@@ -1,53 +1,64 @@
 ---
 title: "实体存储"
-description: "所有版本以 jsonb 保存在一张表中，查询走以类型开头的索引，引用另存一张推导的反查表，删除留下墓碑，所有操作串行执行"
+description: "版本和删除身份是两张权威表，其余四张是可以从它们重建的查询投影；版本以 jsonb 保存在一张表中，查询走以类型开头的索引，引用反查只记录引用方版本和目标实体，所有操作串行执行"
 ---
 
 ## 背景 [#context]
 
-后端要在 PostgreSQL 中保存所有类型的版本，按身份、类型和事实时间读取它们，并记住已删除的身份。业务类型的数据量相差几个数量级：键鼠事件一天几千条，有些类型一天只有几条。业务类型的字段随 Schema 版本变化，引用可以嵌在对象和数组中，读取方还要能按目标实体找到引用方。多个 API 实例可能同时处理提交和删除。
+后端要在 PostgreSQL 中保存所有类型的版本，按身份、类型和事实时间读取它们，并记住已删除的身份。业务类型的数据量相差几个数量级：键鼠事件一天几千条，有些类型一天只有几条。业务类型的字段随 Schema 版本变化，引用可以嵌在对象和数组中，读取方还要能按目标实体找到引用方。多个请求可能同时处理提交和删除。
 
 ## 决定 [#decision]
 
-- 所有类别、所有业务类型的版本保存在同一张 `versions` 表中，内容以 `jsonb` 保存。`versions` 是版本内容的权威位置。
-- `entities` 保存每个实体的类型、当前版本和删除状态；`current_observations` 保存每份 Observation 当前版本的事实时间范围和观测内容的类型。两张表由版本推导，供查询使用。
+- 权威数据只有两张表：`versions` 保存每个未删除的版本，`deleted_versions` 保存每个已删除版本的身份和它所属的实体。
+- `entities`、`observations`、`schemas` 和 `version_references` 是查询投影，可以从 `versions` 和 `deleted_versions` 重建。权威表不设置指向投影的外键。
+- 所有类别、所有业务类型的版本保存在同一张 `versions` 表中，内容以 `jsonb` 保存。
 - 按类型和事实时间的查询，使用以类型开头的索引。
-- 删除实体时移除它的全部版本，只把身份写入墓碑，墓碑永久保留。
-- 所有操作在多个 API 实例之间串行执行。一次提交在一个事务中完成，某个版本被拒绝时，提交它之前已保存的版本。
-- 引用的权威位置是版本的内容（[ENTITY-8](../core/model/entity.mdx#entity-8)）。`version_references` 由内容推导，每个非空的引用一行，记下引用方版本、位置（JSON Pointer）、目标版本和目标实体，供反查使用；`previousVersionId` 和 `schemaVersionId` 不写入。
+- 删除实体时移除它的全部版本，只把版本身份写入 `deleted_versions`，永久保留，不保存删除时间。
+- `version_references` 每行记录一个引用方版本引用了一个目标实体，不记录位置和目标版本。API 返回的位置在读取时从版本内容中重新算出。
+- 观测内容被删除后，Observation 的投影不再记录内容的类型。
+- 所有操作串行执行。一次提交在一个事务中完成，某个版本被拒绝时，提交它之前已保存的版本。
+- 后端的另外两张表是 Observer 的管理登记，不属于 Core，见 [ADR · Observer 的统一管理](./observer-management.mdx)。
 
 ## 理由 [#rationale]
 
 字段随 Schema 版本变化。按字段建列，每出一个 Schema 版本就要改表，嵌在对象和数组中的引用也放不进列。以 `jsonb` 保存，每个版本按提交时的结构原样保存，按它引用的 Schema 版本解释。
 
-查询的代价取决于索引读到的行，与表的总行数关系不大。以类型开头的索引让每个查询只读到目标类型的行，所以键鼠事件再多，也不会拖慢一天只有几条的类型。版本不可改写（[VERSION-2](../core/model/version.mdx#version-2)），`versions` 几乎只追加，大表中常见的更新膨胀很少出现。
+查询的代价取决于索引读到的行，与表的总行数关系不大。以类型开头的索引让每个查询只读到目标类型的行，所以键鼠事件再多，也不会拖慢一天只有几条的类型。版本不可改写（[VERSION-2](../core/model/version.mdx#version-2)），`versions` 几乎只追加。
 
-已删除的身份不能再分配（[VERSION-9](../core/model/version.mdx#version-9)），实体也不能复活（[HISTORY-7](../core/rules/history.mdx#history-7)），所以后端要记住这些身份。墓碑只保存身份，内容不留副本，见 [ADR · 删除](./deletion.mdx)。
+权威和投影分开，正确性只取决于两张表：投影出错时可以丢弃重建，重建也不会改动权威数据。删除的身份必须是权威数据。已删除的 VersionId 不能再分配（[VERSION-9](../core/model/version.mdx#version-9)），实体也不能复活（[HISTORY-7](../core/rules/history.mdx#history-7)）；被删除的目标属于哪个实体，也只有 `deleted_versions` 知道，重建引用反查时要用到。实体至少有一个已保存的版本，所以 `deleted_versions` 中出现它的版本就说明它已删除，不需要另外的实体墓碑。删除时间不影响任何规则，所以不保存，被删除的数据也少留一项痕迹，见 [ADR · 删除](./deletion.mdx)。
+
+`entities` 只保存未删除实体的当前状态，资源名放进只有 EntitySchema 才有的 `schemas`。每张投影的每一行都对应一个存在的实体，可空的列只剩确实可能未知的值。
+
+按实体归集引用方（[ENTITY-7](../core/model/entity.mdx#entity-7)）只需要知道哪个版本引用了哪个实体，一个版本多次引用同一个实体也只算一次，所以反查表只存这一条边。哪些位置是引用，由 Core 和每个版本的 Schema 版本决定，同一个字段名在不同类型中可以不是引用。API 要返回精确的位置，读取一页时按引用方的类型重新枚举它的引用，再批量判断目标版本属于哪个实体，一页只多读一次身份。
+
+观测内容删除后，它的类型只能从已删除的内容中读出，而内容不留副本。投影中保留这个类型，重建后就会和重建前不同。所以清空它：这份 Observation 仍可以按事实时间查到，不再匹配原来的内容类型。
 
 个人数据的写入量不高。所有操作串行执行，检查和写入之间就不会插进别的操作，删除也不会和引用它的新版本交错。一次提交一个事务，提交次数从版本数降到请求数，导入大量数据时差距最大。
 
-一份观测只需在当前版本变化时更新 `current_observations` 的一行。PostgreSQL 的范围类型按重叠匹配，与 API 的时间查询规则一致，GiST 索引直接支持这种查询。
-
-哪些位置是引用，由 Core 和每个版本的 Schema 版本决定，同一个字段名在不同类型中可以不是引用。所以保存时按 Schema 版本找出引用，逐个写成行；查询只读 `version_references` 的索引，不用解析 `jsonb`。目标实体在写入时记下，按实体归集（[ENTITY-7](../core/model/entity.mdx#entity-7)）就是一次索引查找。目标版本删除后，墓碑和引用方的内容都还在，这一行也保留，所以 `target_version_id` 不设外键。前一版本和 Schema 版本已经是 `versions` 的列，再写一份只会让行数翻倍。
+PostgreSQL 的范围类型按重叠匹配，与 API 的时间查询规则一致，GiST 索引直接支持这种查询。
 
 放弃的方案：
 
 - **每个业务类型一张、按字段建列的表。** 每个 Schema 版本都要改表，嵌套的引用放不进列。
 - **按业务类型分区。** 可以按类型删除数据、统计空间，但后端要在运行时建表，按 VersionId 读取还要先查一张身份表。分区对 API 和 Application 透明，需要时可以再改。
 - **每个版本一个事务。** 导入时提交次数等于版本数。
-- **在 `content` 上建 GIN 索引，查询时匹配 VersionId。** 索引不知道哪些位置是引用，会匹配到恰好等于某个 VersionId 的普通字符串；按实体归集还要先列出目标的全部版本，也算不出引用的位置。
+- **在 `content` 上建 GIN 索引，查询时匹配 VersionId。** 索引不知道哪些位置是引用，会匹配到恰好等于某个 VersionId 的普通字符串；按实体归集还要先列出目标的全部版本。
+- **反查表每个引用位置一行，记下位置和目标版本。** 行数随引用位置增长，读取时省下的只是一页内的枚举。
+- **`entities` 保留已删除实体的行，记下删除时间。** 投影中混入只属于删除的状态，每一列都要为删除后的行允许为空。
+- **观测内容删除后在墓碑中保留它的类型。** 被删除的数据留下了副本。
 
 ## 代价 [#costs]
 
 - 所有类型共用一张表的统计信息和清理。按业务字段过滤时，索引要建成带类型条件的部分索引。
-- 墓碑永久占用空间。
+- `deleted_versions` 永久占用空间。
 - 写入串行执行，吞吐受单个事务的速度限制。
-- 保存和删除时，`entities` 和 `current_observations` 要在同一个事务中同步更新。
-- 每保存一个版本，要多写它的每个引用；`version_references` 的行数与引用数相同，导入键鼠和前台时段时约占 1 GB。
-- 反查表的正确性依赖保存时对 Schema 版本的解析，解析规则改变时要从 `versions` 重建。
+- 保存和删除时，四张投影要在同一个事务中同步更新。
+- 列出引用方时，每一页都要重新解析引用方的内容。
+- 观测内容删除后，原来按内容类型能查到的 Observation 不再出现在这种类型的结果中。
+- 反查表的正确性依赖保存时对 Schema 版本的解析，解析规则改变时要重建投影。
 
 ## 规则位置 [#details]
 
-- [Storage · Overview](../storage/index.mdx)、[Storage · 引用方](../storage/queries.mdx#references)、[Storage · PostgreSQL](../storage/postgresql.mdx)
-- [VERSION-4](../core/model/version.mdx#version-4)、[VERSION-9](../core/model/version.mdx#version-9)、[HISTORY-7](../core/rules/history.mdx#history-7)、[HISTORY-9](../core/rules/history.mdx#history-9)
+- [Storage · Overview](../storage/index.mdx)、[Storage · Versions](../storage/versions.mdx)、[Storage · Queries](../storage/queries.mdx)、[Storage · PostgreSQL](../storage/postgresql.mdx)
+- [VERSION-4](../core/model/version.mdx#version-4)、[VERSION-9](../core/model/version.mdx#version-9)、[HISTORY-7](../core/rules/history.mdx#history-7)、[HISTORY-8](../core/rules/history.mdx#history-8)、[HISTORY-9](../core/rules/history.mdx#history-9)
 - [ADR · 实体 API](./entity-api.mdx)

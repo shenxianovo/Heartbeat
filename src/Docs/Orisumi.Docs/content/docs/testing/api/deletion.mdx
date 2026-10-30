@@ -7,7 +7,7 @@ export const caseId = 'api-deletion';
 
 ## 为什么验证 [#why]
 
-用户删除数据后，这些数据不能再被读取，离线的 Runtime 补发旧版本也不能让它们复活。仍被业务数据使用的 EntitySchema 不能删除，否则那些数据就无法解释。约定见 [API · 状态码](../../api/errors.mdx#status) 和 [Storage · 删除](../../storage/versions.mdx#deletion)。
+用户删除数据后，这些数据不能再被读取，离线的 Runtime 补发旧版本也不能让它们复活。仍被业务数据使用的 EntitySchema 不能删除，否则那些数据就无法解释。删除一个受管理的程序实例时，它也不能以旧身份继续运行。约定见 [API · 状态码](../../api/errors.mdx#status)、[Storage · 删除](../../storage/versions.mdx#deletion) 和 [API · 删除实例](../../api/management.mdx#removal)。
 
 ## 前置条件 [#setup]
 
@@ -24,6 +24,9 @@ export const caseId = 'api-deletion';
 | 把它首版的 VersionId 用在一个新实体上提交 | `409`，`rule` 为 `VERSION-9`，见 [VERSION-9](../../core/model/version.mdx#version-9) |
 | 再删除 EntitySchema，然后提交使用同一资源名的新 EntitySchema | 删除返回 `204`，新 EntitySchema 保存成功 |
 | 删除从未出现过的 EntityId | `404` |
+| 删除一个已登记的程序实例的实体 | `204`；实例登记的 `removed` 为 `true` |
+| 删除一个已登记、还没有首版的程序实例，再提交它的首版 | 删除经 `DELETE /observer-instances/{entityId}` 返回 `204`；提交 `409`，`rule` 为 `HISTORY-7` |
+| 删除观测内容，Observation 保留 | Observation 的 `contentVersionId` 不变，读取这个版本返回 `410` |
 
 删除后引用方的结果见 [Referrers](./referrers.mdx)。
 
@@ -31,7 +34,8 @@ export const caseId = 'api-deletion';
 
 以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
 
-- 本页全部预期：Schema 删除限制、实体全部版本删除、重复删除、重放、身份占用、资源名复用和未知身份：`EntityApiTests.DeletionRemovesAllVersionsPreventsReplayAndAllowsResourceReuse`。
+- Schema 删除限制、实体全部版本删除、重复删除、重放、身份占用、资源名复用和未知身份：`EntityApiTests.DeletionRemovesAllVersionsPreventsReplayAndAllowsResourceReuse`。
+- 未覆盖：程序实例的删除与管理登记；删除观测内容后的 Observation。
 
 ## 执行结果 [#results]
 

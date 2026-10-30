@@ -1,13 +1,13 @@
 ---
 title: "Transactions"
-description: "部分拒绝只留下已保存版本的数据，并发写入不形成分叉"
+description: "部分拒绝只留下已保存版本的数据，并发写入不形成分叉，删除在一个事务中完成"
 ---
 
 export const caseId = 'storage-transactions';
 
 ## 为什么验证 [#why]
 
-一次提交中途被拒绝时，被拒绝的版本不能在派生的表中留下引用，否则引用方的结果会多出没有保存的版本。多个 API 实例同时写入同一个实体时，版本链也只能有一条。约定见 [Storage · 事务](../../storage/index.mdx#transactions)。
+一次提交中途被拒绝时，被拒绝的版本不能在派生的表中留下引用，否则引用方的结果会多出没有保存的版本。多个请求同时写入同一个实体时，版本链也只能有一条。删除实体要在一个事务中同时改动权威表、投影和管理登记，中途失败不能留下一半。约定见 [Storage · 事务](../../storage/index.mdx#transactions)。
 
 ## 前置条件 [#setup]
 
@@ -19,6 +19,8 @@ export const caseId = 'storage-transactions';
 | --- | --- |
 | 一次提交依次是 EntitySchema、目标、引用目标的 InputSet A、被拒绝的版本、引用目标的 InputSet B；随后原样重发前三个版本 | 目标的引用方只有 A；重发返回 `200`，引用方仍只有 A |
 | 两个服务实例同时提交同一个实体的首版，VersionId 不同 | 只有一个保存，另一个被拒绝，`rule` 为 `VERSION-6` |
+| 删除一个有引用方的实体，在写入 `versions` 的删除之前注入失败 | 整个事务回滚：`deleted_versions`、四张投影和管理登记都与删除前相同 |
+| 一次提交中第二个版本被拒绝 | 第一个版本和它在四张投影中的行都已保存；第二个版本在任何表中都没有行 |
 
 ## 测试实现 [#implementation]
 
@@ -26,6 +28,7 @@ export const caseId = 'storage-transactions';
 
 - 部分提交与重试只留下已保存版本的引用：`ReferrerApiTests.PartialSubmissionAndRetryPreserveExactlyTheSavedReferences`。
 - 两个服务实例并发提交同一实体的首版：`EntityApiTests.ConcurrentFirstVersionsFromTwoServicesConflict`。
+- 未覆盖：删除中途失败的回滚；部分拒绝后四张投影的内容。
 
 ## 执行结果 [#results]
 

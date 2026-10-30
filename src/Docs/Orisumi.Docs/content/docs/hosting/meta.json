@@ -5,13 +5,13 @@
   "root": true,
   "pages": [
     "index",
-    "---Device---",
+    "---Runtime---",
     "submission",
     "runtime",
     "protocol",
+    "management",
+    "server",
     "---SDKs---",
-    "dotnet",
-    "---Server---",
-    "server"
+    "dotnet"
   ]
 }

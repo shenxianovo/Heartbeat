@@ -7,7 +7,7 @@ export const caseId = 'runtime-handoff';
 
 ## 为什么验证 [#why]
 
-一次业务变化的几项操作必须一起成立，例如结束旧时段和开始新时段。业务代码靠回执判断数据已本地保存，回执丢失后的重发不能形成第二份数据。约定见 [Submission · 批次](../../hosting/submission.mdx#handoff) 和 [回执](../../hosting/submission.mdx#receipts)。
+一次业务变化的几项操作必须一起成立，例如结束旧时段和开始新时段。业务代码靠回执判断数据已本地保存，回执丢失后的重发不能形成第二份数据。需要等后端保存的业务，要能按批次读到最终结果，进程重启后也一样。约定见 [Submission · 批次](../../hosting/submission.mdx#handoff)、[回执](../../hosting/submission.mdx#receipts) 和 [最终结果](../../hosting/submission.mdx#outcome)。
 
 ## 前置条件 [#setup]
 
@@ -24,6 +24,12 @@ Runtime 使用独立的数据目录，启动一个由测试控制的 Observer �
 | 同一个标识带着不同的内容 | Runtime 拒绝，本地没有改动 |
 | 收到回执前结束 Observer 的进程，再启动 | 业务代码读到的本地状态是批次之前或之后之一，不会只有一部分 |
 | 批次的操作数超过 512，或一行超过 16 MiB | 批次被拒绝或连接断开，本地没有改动 |
+| 一个批次的草稿都已结束；另一个批次有未结束的草稿 | 前者的 `outcome` 在后端保存后为 `saved`，后者为 `pending` |
+| 批次中的一个版本被拒绝 | `outcome` 为 `rejected`，带 `versionId` 和 `rule`；`discard` 之后为 `discarded` |
+| 等待 `outcome` 时后端不可用 | `wait` 到期后返回 `pending`，版本留在本地 |
+| 等待 `outcome` 时收到 `stop` | 等待结束，进程退出；重启后同一个 `batchId` 的 `outcome` 仍可读取 |
+| `draft` 用 `previousVersionId` 指定后端的当前版本，实体在本地没有版本 | 新版本接在这个版本之后，后端保存成功 |
+| `draft` 的 `previousVersionId` 不是本地最新的版本，而实体在本地有未保存的版本 | 批次被拒绝，本地没有改动 |
 
 ## 测试实现 [#implementation]
 
@@ -32,7 +38,7 @@ Runtime 使用独立的数据目录，启动一个由测试控制的 Observer �
 - 提交后回执丢失，重启后用同一个标识重发得到原回执、没有新版本；同一个标识带不同内容被拒绝：`RuntimeProtocolTests.LostReceiptReplaysAfterRestartAndDifferentPayloadIsRejected`。
 - 批次中的操作不合法时整批回滚、不留回执，改正后可沿用同一个标识；批次取得的引用不随实体之后的版本改变：`RuntimeProtocolTests.FailedBatchRollsBackReceiptAndVersionsAndReferencesStayFixed`。
 - 前台时段切换的批次形成一个回执：由 [提交与恢复](./foreground-submission.mdx) 的测试经 `LocalObserverSession` 覆盖。
-- 未覆盖：收到回执前结束 Observer 的进程；超过 512 个操作或 16 MiB 的一行。
+- 未覆盖：收到回执前结束 Observer 的进程；超过 512 个操作或 16 MiB 的一行；`outcome`；`draft` 的 `previousVersionId`。
 
 ## 执行结果 [#results]
 

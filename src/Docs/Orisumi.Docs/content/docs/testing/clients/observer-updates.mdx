@@ -22,13 +22,14 @@ Runtime 使用独立的数据目录，已安装一个测试包的 `0.1.0`，官�
 | 停用后更新 | 登记切换到 `0.2.0`，Observer 保持停用 |
 | `0.2.0` 启动后不回复 `ready` | 按[重启](../../hosting/runtime.mdx#restart)失败后报告故障，登记仍是 `0.2.0`，不切回 `0.1.0` |
 | 切换登记之前结束 Runtime，再启动 | 运行的是 `0.1.0`，`0.2.0` 的目录没有被启动 |
+| 更新 | 安装登记中没有新的待同步修改，配置不变 |
 
 ## 测试实现 [#implementation]
 
 以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
 
 - 停用状态下更新：身份、设置和停用状态保持，登记切换到新版本：`RuntimeHostingTests.PreparedUpdateKeepsIdentitySettingsAndDisabledIntent`。
-- 未覆盖：下载失败时旧版本继续运行；运行中更新的停止与启动；新版本不回复 `ready`；切换登记前退出。
+- 未覆盖：下载失败时旧版本继续运行；运行中更新的停止与启动；新版本不回复 `ready`；切换登记前退出；更新不形成本机修改。
 
 ## 执行结果 [#results]
 

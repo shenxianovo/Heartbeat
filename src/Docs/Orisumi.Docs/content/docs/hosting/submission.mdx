@@ -1,9 +1,9 @@
 ---
 title: "Submission"
-description: "设备上的 Observer 怎样经 Runtime 把版本交给后端：从启动登记、交出批次，到发送、被拒绝和恢复"
+description: "Observer 怎样经 Runtime 把版本交给后端：从启动登记、交出批次，到发送、最终结果、被拒绝和恢复"
 ---
 
-设备上的 Observer 通过所用语言的 SDK 把版本交给 [Runtime](./runtime.mdx)，Runtime 本地保存并发送到后端。本页按一个程序实例运行的先后，写业务代码要做什么、Runtime 怎样处理。业务代码和托管方的分工见 [Overview · 分工](./index.mdx#division)，消息的格式见 [Protocol · Observer 管道](./protocol.mdx#observer-pipe)。
+Observer 通过所用语言的 SDK 把版本交给 [Runtime](./runtime.mdx)，Runtime 本地保存并发送到后端，设备和服务器上相同。本页按一个程序实例运行的先后，写业务代码要做什么、Runtime 怎样处理。业务代码和托管方的分工见 [Overview · 分工](./index.mdx#division)，消息的格式见 [Protocol · Observer 管道](./protocol.mdx#observer-pipe)。
 
 ## 例子 [#example]
 
@@ -40,6 +40,7 @@ Runtime 用 `GET /entities/{entityId}/versions` 读取 EntitySchema 的版本链
 | 被拒绝 | 后端拒绝了它，并给出 `rule` | 交给业务代码，见[被拒绝的版本](#rejections) |
 
 - 新版本的 `previousVersionId` 指向这个实体在本地最新的版本，这个版本可以尚未保存。所以版本链在本地就已接好。
+- 更新其他写入方保存的实体时，业务代码先读取后端的当前版本，再在草稿中指定它为前一版本，见 [Protocol · 批次的操作](./protocol.mdx#operations)。
 - 合并是改写草稿的内容，草稿的 VersionId 和 `previousVersionId` 不变。
 - 业务代码引用一个实体时，Runtime 给出这个实体在本地最新的版本，并冻结这个版本。
 - 冻结一个版本前，Runtime 先冻结它引用的、仍是草稿的版本。所以冻结的顺序满足依赖顺序，Runtime 按这个顺序发送，见 [VERSION-13](../core/model/version.mdx#version-13)。
@@ -130,6 +131,20 @@ Runtime 按响应确认版本，不需要读回。
 ### 重试 [#retry]
 
 重试沿用原来的 VersionId，内容、引用和事实时间保持原样。后端已保存但响应丢失时，Runtime 原样重发，后端把已保存的版本直接确认，返回首次保存时的 `recordedAt`，见 [VERSION-7](../core/model/version.mdx#version-7)。
+
+## 最终结果 [#outcome]
+
+回执只说明本地保存。业务代码需要知道一个批次是否已保存到后端时，用批次的标识读取它的最终结果：已保存、仍在等待、被拒绝，或者已被修复操作丢弃。读取可以等待一段时间，结果确定时立即返回。
+
+例如应用识别 Observer 把 InputSet、产品的新版本和 Observation 作为一个批次交给 Runtime，三个草稿都在批次中结束，随即冻结并发送。它等到结果为已保存，再处理下一条线索，这时读取产品目录一定能读到这个版本。
+
+- 结果按批次计算，与其他批次的发送无关。
+- 回执永久保留，所以进程重启后仍可以读取以前批次的结果。
+- 批次中有尚未结束的草稿时，结果一直是等待，所以需要等待的业务在同一个批次中结束全部草稿。
+- 结果为被拒绝时，业务代码按[被拒绝的版本](#rejections)处理；丢弃之后，结果变为已丢弃。
+- 网络中断时结果保持等待，业务代码可以继续等，也可以收到 `stop` 后退出，下次启动时再读取。
+
+请求的格式见 [Protocol · 最终结果](./protocol.mdx#outcome)。
 
 ## 被拒绝的版本 [#rejections]
 

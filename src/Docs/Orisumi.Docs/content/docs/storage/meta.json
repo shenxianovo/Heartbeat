@@ -7,7 +7,7 @@
     "index",
     "versions",
     "queries",
-    "server",
+    "management",
     "postgresql"
   ]
 }

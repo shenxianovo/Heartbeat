@@ -3,7 +3,7 @@ title: "Writing"
 description: "怎样提交一组版本、后端怎样逐个校验和保存，以及怎样删除实体"
 ---
 
-写入有两种：提交一组版本，以及删除一个实体。设备上的 Observer 经 Runtime 提交，Runtime 怎样处理这些响应见 [Hosting · Submission](../hosting/submission.mdx#confirmation)。
+写入有两种：提交一组版本，以及删除一个实体。Observer 经 Runtime 提交，Runtime 怎样处理这些响应见 [Hosting · Submission](../hosting/submission.mdx#confirmation)。
 
 ## 提交 [#submission]
 
@@ -41,3 +41,5 @@ description: "怎样提交一组版本、后端怎样逐个校验和保存，以
 第二天，用户在 Web 控制台删掉 16:00 之后的浏览器时段。[`DELETE /entities/{entityId}`](/api/deleteEntity) 删除一个实体的全部版本，返回 `204`。删除一次作用于一个实体，所以这一段的 Observation 和前台时段分两次请求，见 [HISTORY-6](../core/rules/history.mdx#history-6)。
 
 删除已删除的实体也返回 `204`，所以响应丢失后可以直接重试。删除后实体不再接受新版本，见 [HISTORY-7](../core/rules/history.mdx#history-7)；读取它返回 `410`。
+
+实体是一个已登记的程序实例时，删除它同时删除实例，见 [Management · 删除实例](./management.mdx#removal)。Runtime 不能删除实体，带托管方凭证的删除请求返回 `403`。

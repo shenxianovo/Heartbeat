@@ -3,7 +3,7 @@ title: "Packages"
 description: "Observer 安装包的结构、清单和官方目录，以及安装、更新和卸载的步骤"
 ---
 
-每个 Observer 以安装包发布，设备端客户端通过 [Runtime](../hosting/runtime.mdx) 安装它。本页写安装包里有什么、官方目录怎样列出它们，以及 Runtime 怎样安装、更新和卸载。为什么用这种方式，见 [ADR · 设备端客户端](../adr/device-client.mdx)。
+每个 Observer 以安装包发布，由 [Runtime](../hosting/runtime.mdx) 安装，设备和服务器上相同。本页写安装包里有什么、官方目录怎样列出它们，以及 Runtime 怎样安装、更新和卸载。为什么用这种方式，见 [ADR · 设备端客户端](../adr/device-client.mdx)。
 
 ## 安装包 [#package]
 
@@ -17,7 +17,7 @@ foreground-state-0.1.0-osx-arm64.zip
   assets/
 ```
 
-包中是能直接在目标设备上运行的完整产物，包括 Observer 自己语言的运行库，例如 .NET 的自包含发布。Runtime 随客户端发布，安装包中不带它。安装时不执行包中的脚本，也不调用语言的包管理器。
+包中是能直接在目标设备上运行的完整产物，包括 Observer 自己语言的运行库，例如 .NET 的自包含发布。Runtime 随客户端发布，在服务器上单独安装，安装包中不带它。安装时不执行包中的脚本，也不调用语言的包管理器。
 
 第一版的安装包不带专用视图，专用视图写在客户端中，见 [Overview · 最近的数据](./index.mdx#today)。
 
@@ -43,9 +43,10 @@ foreground-state-0.1.0-osx-arm64.zip
 | `id` | 安装包的标识，安装和更新用它找到同一个包 |
 | `name` | 显示的名称 |
 | `version` | 包的版本，三段数字，例如 `0.1.0` |
-| `target` | 目标操作系统和架构，用 .NET 的 RID 表示，例如 `osx-arm64`、`osx-x64` |
+| `target` | 目标操作系统和架构，用 .NET 的 RID 表示，例如 `osx-arm64`、`osx-x64`、`linux-x64` |
 | `protocol` | 入口使用的 [Observer 管道](../hosting/protocol.mdx#observer-pipe)协议版本，目前是 `1` |
 | `entry` | 入口在包中的相对路径。Runtime 直接执行它 |
+| `scope` | 可选。`deployment` 表示每个部署最多一个实例，见 [Management · 每个部署一个实例](../hosting/management.mdx#singleton)；省略时为 `host`，每个 Runtime 一个实例 |
 
 Runtime 只安装 `format` 和 `protocol` 都是它支持的版本、`target` 是本机平台的包。
 
@@ -105,6 +106,10 @@ Runtime 在切换登记之前退出时，下次启动读到的仍是旧版本的
 
 重新安装同一个 `id` 的包时，Runtime 从登记中找回原来的程序实例，Observer 沿用身份和设置，直接开始采集。
 
+## 删除实例 [#removal]
+
+删除实例永久结束程序实例的身份，与卸载不同，见 [Management · 删除实例](../hosting/management.mdx#removal)。Runtime 停止它的进程，删除程序文件，在登记中标记实例已删除。之后安装同一个 `id` 的包，要显式新建实例：Runtime 生成新的 EntityId 和实例目录，从[安装](#install)的第四步开始，旧实例目录保留到它的版本发送完。
+
 ## 附带的 Observer [#bundled]
 
 客户端附带一组安装包，放在 Runtime 的 `--bundled` 目录中。Runtime 启动时，安装其中还没有登记过的包，安装步骤与官方目录中的相同，只省略下载。
@@ -113,6 +118,6 @@ Runtime 在切换登记之前退出时，下次启动读到的仍是旧版本的
 
 ## 发布 [#publishing]
 
-发布方为每个支持的平台构建一个安装包。.NET 的 Observer 用自包含发布，入口和它依赖的文件一起放进 `bin/`。
+发布方为每个支持的平台构建一个安装包，服务器上的 Observer 也一样，例如应用识别 Observer 的 `linux-x64` 包。.NET 的 Observer 用自包含发布，入口和它依赖的文件一起放进 `bin/`。
 
 macOS 上，包中的可执行文件需要签名才能在其他设备上运行。各平台的签名和分发方式要在正式发布前验证。

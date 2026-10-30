@@ -1,38 +1,46 @@
 ---
-title: "Server Hosting"
-description: "服务端托管怎样在 API 进程中运行服务端 Observer，保管它的身份，并可靠地提交它形成的版本"
+title: "Server"
+description: "怎样在服务器上以服务方式运行 Runtime：启动参数、持久目录、接入、凭证和运行环境"
 ---
 
-服务端托管是 API 进程中的一个模块，运行依据全部已保存数据形成观测的服务端 Observer，例如[应用识别 Observer](../observers/application-identity/index.mdx)。它承担托管方的职责，见 [Overview · 分工](./index.mdx#division)。为什么这样托管，见 [ADR · 服务端托管](../adr/server-observer-hosting.mdx)。
+服务器上的 Observer 依据全部已保存的数据形成观测，例如[应用识别 Observer](../observers/application-identity/index.mdx)。它们和设备上的 Observer 一样是安装包，由 [Runtime](./runtime.mdx) 运行。服务器上的 Runtime 以服务方式启动：没有客户端，由服务管理器或容器启停，只经后端接受管理，见 [Management](./management.mdx)。为什么这样托管，见 [ADR · Runtime 与进程托管](../adr/observer-runtime.mdx)。
 
-例如后端保存了一个新的本机应用，它的跨设备线索还没有认出。应用识别 Observer 在一轮中把这条线索交给模型，判断它属于哪个应用产品，形成产品的新版本和一份 Observation。服务端托管先把这组版本保存为未决提交，再交给实体服务保存，然后把结果交还业务代码；下一轮读取时，上一轮的结果已经可见。
+例如部署时在服务器上用 systemd 运行 Runtime，数据目录放在 `/var/lib/orisumi/runtime`。第一次启动时带上在 Web 中签发的配对码，Runtime 接入后端，安装附带的应用识别安装包，开始识别。之后用户在 Web 中停用它、修改识别间隔或更新到新版本，都经后端交给这个 Runtime。
 
-## 身份 [#identity]
+## 启动 [#startup]
 
-服务端托管为每个程序实例保存一条管理记录，按稳定的标识找到它的 EntityId；第一次运行时生成 EntityId，之后一直沿用，见 [OBSERVER-4](../core/model/observer.mdx#observer-4)。每一轮开始时，它把 EntityId 交给业务代码。
+```sh
+Orisumi.Observer.Runtime --service --data-dir <目录> --backend <API 地址> [--bundled <目录>] [--catalog <URL>] [--pairing-code <配对码>] [--name <名称>]
+```
 
-## 轮次 [#rounds]
+| 参数 | 作用 |
+| --- | --- |
+| `--service` | 以服务方式运行：不读取标准输入，收到 `SIGTERM` 或 `SIGINT` 时按 [Runtime · 退出](./runtime.mdx#shutdown) 退出 |
+| `--data-dir`、`--backend`、`--bundled`、`--catalog` | 与[设备上的启动](./runtime.mdx#startup)相同 |
+| `--pairing-code` | 数据目录中还没有 `host.json` 时，用它接入后端 |
+| `--name` | 接入时的托管方名称，省略时用主机名 |
 
-Observer 的业务代码按轮次工作，服务端托管启动每一轮。同一个程序实例的轮次依次运行，上一轮结束后才开始下一轮。
+启动后，Runtime 安装尚未登记过的附带安装包，接入、登记实例，再运行所有启用的 Observer。日志写入标准错误，由服务管理器收集。
 
-## 提交 [#submission]
+## 接入 [#pairing]
 
-业务代码把一次业务变化作为一组有序的版本交给服务端托管。服务端托管先把它们保存为未决提交，再交给实体服务按顺序逐个保存，然后把结果交还业务代码：全部已保存，或者被拒绝的版本和它的 `rule`。
+服务方式的 Runtime 必须接入后端才能运行：
 
-## 恢复 [#recovery]
+- 数据目录中有 `host.json` 时，用其中的凭证，`--pairing-code` 被忽略。
+- 没有 `host.json` 时，用 `--pairing-code` 接入，托管方类型为 `server`。接入失败或没有配对码时，Runtime 以非零的退出码退出，错误写入日志。
 
-保存的结果不确定时，服务端托管用原来的 VersionId 和内容重发未决提交。进程重启后，它先完成未决提交，再开始新的一轮。
+配对码 10 分钟内有效，所以签发后即启动服务。重新接入一个已移除的服务器时，签发为它绑定的配对码，用 `--pairing-code` 重新启动；Runtime 带着 `host.json` 中原来的 `hostId` 接入。
 
-## 被拒绝的版本 [#rejections]
+## 持久目录 [#data]
 
-之前的版本已保存，未决提交随之结束。业务代码按自己的规则重新读取并处理，例如应用识别 Observer 在产品的新版本被拒绝后重新读取产品。
+数据目录必须持久保存，并且只由一个 Runtime 使用，结构见 [Runtime · 数据目录](./runtime.mdx#data)。它保存托管方凭证、程序实例的身份、未发送的版本和 Observer 的业务状态，后端无法重建它们。容器部署时把它挂载为卷；目录丢失后，用新的配对码接入，得到的是一个新的托管方，原来的实例要在管理入口中删除。
 
-## 业务状态 [#state]
+## 运行环境 [#environment]
 
-业务代码需要持久保存的状态由服务端托管保存在 PostgreSQL 中，含义由业务代码定义，例如应用识别的未知线索。
+Observer 的进程继承 Runtime 的环境变量。外部服务的凭证由服务器的运行环境提供，例如应用识别 Observer 的 `OPENAI_API_KEY`，不写进同步的设置。
 
-管理记录、未决提交和业务状态都在后端的 PostgreSQL 中，与实体和版本分开保存，见 [Storage · Server Hosting](../storage/server.mdx)。
+API 不在本机时，地址必须是 HTTPS，见 [API · 认证与授权](../api/index.mdx#auth)。安装包按服务器的平台选择，例如 `linux-x64`，见 [Packages · 清单](../clients/packages.mdx#manifest)。
 
-## 报告 [#reporting]
+## 实现 [#implementation]
 
-服务端托管随 API 启动它托管的全部程序实例，所以它们总是启用的。运行和发送两项状态，以及读取、调用外部服务或保存失败的诊断，写入日志。
+服务方式和远程管理尚未实现。目前 Runtime 只有随客户端运行和 `--run` 两种方式，应用识别 Observer 仍在 API 进程中运行。

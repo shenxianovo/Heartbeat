@@ -38,6 +38,8 @@ description: "怎样读取版本和实体，按类型、事实时间和引用关
 
 结果按已知的开始边界升序排列，开始边界未知时用结束边界，相同时按 EntityId 升序。
 
+观测内容被删除、Observation 保留时，这份 Observation 照常出现在不带 `resourceName` 的结果中，不再出现在原内容类型的结果中。它的 `contentVersionId` 不变，读取这个版本返回 `410`，见 [HISTORY-8](../core/rules/history.mdx#history-8)。
+
 ## 引用方 [#referrers]
 
 [`GET /entities/{entityId}/referrers`](/api/listReferrers) 列出引用这个实体的版本，也就是它的引用方。例如找和 VS Code 有关的数据：先列出引用 VS Code 的前台时段，再分别列出引用这些时段的 Observation。接口只返回直接的引用方，更远的关系由读取方逐层查询。

@@ -27,8 +27,9 @@ Orisumi API 按 [Core](../core/index.mdx) 的实体与版本模型保存、读�
 | 读取 | [`GET /versions/{versionId}`](/api/getVersion)、[`GET /entities/{entityId}`](/api/getEntity)、[`GET /entities/{entityId}/versions`](/api/listEntityVersions) |
 | 列出与查询 | [`GET /entities`](/api/listEntities)、[`GET /observations`](/api/listObservations)、[`GET /entities/{entityId}/referrers`](/api/listReferrers) |
 | 观测预览 | [`PUT /observation-previews/{entityId}`](/api/putObservationPreview)、[`GET /observation-previews/{entityId}`](/api/getObservationPreview)、[`GET /observation-previews`](/api/listObservationPreviews) |
+| Observer 的管理 | `/pairings`、`/hosts`、`/observer-instances` 和 `/runtime/` 下的接口，见 [Management](./management.mdx) |
 
-每个接口一页，由契约生成，给出路径、参数、请求和响应的结构。接口的语义写在本分区的主题页中：[Writing](./writing.mdx)、[Reading](./reading.mdx) 和 [Previews](./previews.mdx)。
+每个接口一页，由契约生成，给出路径、参数、请求和响应的结构。接口的语义写在本分区的主题页中：[Writing](./writing.mdx)、[Reading](./reading.mdx)、[Previews](./previews.mdx) 和 [Management](./management.mdx)。
 
 ## 契约 [#contract]
 
@@ -40,4 +41,14 @@ Orisumi API 按 [Core](../core/index.mdx) 的实体与版本模型保存、读�
 
 ## 认证与授权 [#auth]
 
-认证与授权尚未决定。目前 API 只通过绑定本机的入口提供，见 [ADR · 定位与边界](../adr/positioning.mdx#costs)。
+调用方有两种：管理入口和 Runtime。
+
+| 调用方 | 请求怎样认证 | 可以调用 |
+| --- | --- | --- |
+| Runtime | `Authorization: Bearer <托管方凭证>`，凭证由配对得到，见 [Management · 配对与托管方](./management.mdx#hosts) | 全部读取接口、`POST /versions`、观测预览，以及 `/runtime/` 下的接口 |
+| 管理入口 | 尚未决定，之后接入 OAuth。在此之前，不带 `Authorization` 的请求按管理入口处理 | 全部接口，`/runtime/` 下的接口除外 |
+
+- 带 `Authorization` 的请求，凭证无效或托管方已移除时，任何接口都返回 `401`。
+- Runtime 读取全部 Core 数据，因为服务器上的 Observer 依据全部已保存的数据形成观测，设备上的 Runtime 也为客户端读取已保存的部分。
+- 管理入口的认证接入之前，API 只通过绑定本机的入口提供，见 [ADR · 定位与边界](../adr/positioning.mdx#costs)。本地环境照常使用 HTTP。
+- 对外提供 API 时，入口必须使用 HTTPS，托管方凭证和配对码只在 HTTPS 中传输。

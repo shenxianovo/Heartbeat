@@ -14,7 +14,7 @@ Observer 停下来的原因有很多：用户停用它、卸载它，或者它�
 ## 决定 [#decision]
 
 - 每个设备平台有一个原生客户端：macOS、Windows 和 Android 各用自己平台的界面技术，macOS 客户端用 SwiftUI 编写。桌面平台的客户端常驻在菜单栏或系统托盘。
-- 客户端通过 [Runtime](./observer-runtime.mdx) 托管本机的 Observer：安装、更新和卸载，启用和停用，故障后重启，显示运行和发送状态，管理设置和登录时启动。
+- 客户端通过 [Runtime](./observer-runtime.mdx) 托管本机的 Observer：安装、更新和卸载，启用和停用，故障后重启，显示运行和发送状态，管理设置和登录时启动。其他机器上的 Observer 经后端管理，见 [ADR · Observer 的统一管理](./observer-management.mdx)。
 - 陈述由各 Observer 负责，客户端只托管它们，所以客户端没有自己的实体。
 - 每个 Observer 单独安装。安装包是每个操作系统和架构一个 ZIP，包含清单 `observer.json`、可运行的入口和可选的资源。
 - 客户端从官方目录安装 Observer。官方目录是一个通过 HTTPS 读取的静态 JSON 列表，给出每个包的下载地址和 SHA-256。随客户端附带的 Observer 走同样的安装流程，只省略下载。

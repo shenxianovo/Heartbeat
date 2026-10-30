@@ -1,0 +1,38 @@
+---
+title: "Projections"
+description: "删除之后身份仍被占用，引用反查和事实时间查询的结果正确，四张投影重建后与逐次写入的结果相同"
+---
+
+export const caseId = 'storage-projections';
+
+## 为什么验证 [#why]
+
+四张投影由权威表推导，删除会同时改动权威表和投影。投影写错时，查询会返回已删除的数据，或者漏掉仍然保留的数据；重建得到的结果和逐次写入的不同，投影就不能丢弃重建。约定见 [Storage · Overview](../../storage/index.mdx#rebuild)、[Versions · 删除](../../storage/versions.mdx#deletion) 和 [Queries](../../storage/queries.mdx)。
+
+## 前置条件 [#setup]
+
+通过 `WebApplicationFactory` 启动 API，连接一个独立的测试数据库，见 [Database](../database.mdx)。先提交前台时段的 EntitySchema、一个有两个版本的本机应用 VS Code、引用它的两个前台时段，以及以前台时段为观测内容的 Observation；其中一份 Observation 延长过一次。
+
+## 操作与预期结果 [#steps]
+
+| 操作 | 预期结果 |
+| --- | --- |
+| 提交一个版本，它的 `previousVersionId` 是另一个实体的版本 | 被拒绝，`rule` 为 `VERSION-4`；版本链和投影不变 |
+| 提交一个版本，它的 `previousVersionId` 是实体的旧版本 | `409`，`rule` 为 `VERSION-6` |
+| 删除一个前台时段 | 它的 VersionId 在 `deleted_versions` 中，`versions`、`entities` 和以它为引用方的 `version_references` 中没有它的行 |
+| 删除后，用它的 EntityId 提交新版本，或用它的 VersionId 提交另一个实体 | 分别按 [HISTORY-7](../../core/rules/history.mdx#history-7) 和 [VERSION-9](../../core/model/version.mdx#version-9) 拒绝 |
+| 删除后，按事实时间不带 `resourceName` 查询 | 以它为内容的 Observation 仍在结果中 |
+| 删除后，按前台时段的 `resourceName` 查询 | 以它为内容的 Observation 不在结果中；另一个前台时段的 Observation 仍在 |
+| 删除 VS Code | 两个前台时段仍列为 VS Code 的引用方；每一项的 `path` 和 `targetVersionId` 与删除前相同 |
+| `versions=current` 和 `versions=all` 列出 Observation 的引用方，用 `limit=1` 翻页 | `current` 只有延长后的版本，`all` 有两个版本；每页一项，翻页不重复也不遗漏 |
+| 清空四张投影，从 `versions` 和 `deleted_versions` 重建 | 四张表的内容与重建前逐行相同，包括内容类型为 `NULL` 的 Observation 和指向已删除目标的引用 |
+| 重建期间 | `versions` 和 `deleted_versions` 没有被写入 |
+| 删除 EntitySchema，再提交使用同一资源名的新 EntitySchema | 新的 EntitySchema 保存成功，`schemas` 中只有它 |
+
+## 测试实现 [#implementation]
+
+尚无测试。本页的预期由实现任务按新的表结构补齐。
+
+## 执行结果 [#results]
+
+<TestCaseResults caseId={caseId} />
