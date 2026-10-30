@@ -3,12 +3,14 @@ import type { InputSet, Observation, Version } from "@/api/types";
 // 织图：从一个实体出发，点一个节点，和它有关的实体从两边长出来。
 // 实体是线，Observation 是把线系在一起的结：谁（Observer）依据什么（InputSet 的输入）说了什么（观测内容）。
 // - 观测内容是经历的，Observation 并进经历的节点，节点写出事实时间和 Observer。
-// - 其余的 Observation 画成结；它的 InputSet 并进结，输入是结左边的线。
+// - 其余的 Observation 画成结；它的 InputSet 并进结，输入是结左边的线。Observer 写在结上，点名字才长出来。
 // 位置按来龙去脉从左往右：Observer 和输入在陈述左边，陈述在它的内容左边，业务字段的引用方在被引用的实体左边。
 // 只用 Core 的结构，新的 Observer 和类型接入后不用改这里。
 
 export const NODE_W = 208;
 export const NODE_H = 52;
+/** 结多两行，写这次改了什么。 */
+export const KNOT_H = 80;
 export const GAP_Y = 14;
 /** 相邻两栏的距离，中间留出连线标签的位置。 */
 export const COL_STEP = NODE_W + 120;
@@ -17,6 +19,10 @@ export const BUNDLE_AT = 6;
 /** 收成一束时，直接长出来的个数；点一次线束再放出的个数。 */
 export const SHOW_FIRST = 3;
 export const REVEAL = 8;
+
+/** 连线上表示来源和依据的字。 */
+export const SOURCE = "来源";
+export const INPUT = "依据";
 
 /** 节点画的东西：一个实体（经历连同记下它的 Observation），或者一个结。 */
 export type Payload =
@@ -62,6 +68,14 @@ export interface BundleNode {
   typeName: string;
   /** 还没放出来的成员，按时间从近到远。 */
   members: Neighbor[];
+  /** 这一组已经有成员在图上，写“还有 N 个”。 */
+  more: boolean;
+}
+
+/** 收起来的一组邻居。 */
+export interface Bundle {
+  members: Neighbor[];
+  more: boolean;
 }
 
 export type WeaveNode = ItemNode | BundleNode;
@@ -94,20 +108,25 @@ function plainLabel(label: string): string {
   return label.replace(/\[\d+\]/g, "[]");
 }
 
-/** 把邻居分成直接长出来的和收进线束的：每组超过 BUNDLE_AT 个时，只直接长出最近的 SHOW_FIRST 个。 */
-export function plan(neighbors: readonly Neighbor[]): { direct: Neighbor[]; bundles: Neighbor[][] } {
+/**
+ * 把邻居分成直接长出来的和收进线束的：每组超过 BUNDLE_AT 个时，只直接长出最近的 SHOW_FIRST 个。
+ * 依据是一个例外：同一类型有两个以上时全部收成一叠，只有一个的类型直接长出。
+ */
+export function plan(neighbors: readonly Neighbor[]): { direct: Neighbor[]; bundles: Bundle[] } {
   const groups = new Map<string, Neighbor[]>();
   for (const neighbor of neighbors) {
     const key = groupKey(neighbor);
     groups.set(key, [...(groups.get(key) ?? []), neighbor]);
   }
   const direct: Neighbor[] = [];
-  const bundles: Neighbor[][] = [];
+  const bundles: Bundle[] = [];
   for (const members of groups.values()) {
     members.sort((a, b) => b.time - a.time);
-    if (members.length > BUNDLE_AT) {
+    const first = members[0]!;
+    if (first.side === "left" && first.label === INPUT && members.length > 1) bundles.push({ members, more: false });
+    else if (members.length > BUNDLE_AT) {
       direct.push(...members.slice(0, SHOW_FIRST));
-      bundles.push(members.slice(SHOW_FIRST));
+      bundles.push({ members: members.slice(SHOW_FIRST), more: true });
     } else direct.push(...members);
   }
   return { direct, bundles };
@@ -124,12 +143,12 @@ export interface Resolved {
  * 从一个节点长出它的邻居。direct 是已经解析的，bundles 是收进线束的组。
  * 已经在图上的只连一条线；解析后指向同一个节点的只算一次。
  */
-export function grow(weave: Weave, key: string, direct: readonly Resolved[], bundles: readonly Neighbor[][]): Weave {
+export function grow(weave: Weave, key: string, direct: readonly Resolved[], bundles: readonly Bundle[]): Weave {
   const parent = weave.nodes.find((node) => node.key === key);
   if (!parent || parent.kind === "bundle") return weave;
   const nodes = weave.nodes.map((node) => (node.key === key ? { ...node, expanded: true } : node));
   const next = attach({ nodes, edges: weave.edges }, parent, direct);
-  const added: BundleNode[] = bundles.map((members) => {
+  const added: BundleNode[] = bundles.map(({ members, more }) => {
     const first = members[0]!;
     return {
       kind: "bundle",
@@ -141,12 +160,43 @@ export function grow(weave: Weave, key: string, direct: readonly Resolved[], bun
       label: plainLabel(first.label),
       typeName: first.typeName,
       members,
+      more,
     };
   });
   return {
-    nodes: spread([...next.nodes, ...added], new Set([...next.added, ...added.map((node) => node.key)])),
+    nodes: layout([...next.nodes, ...added]),
     edges: [...next.edges, ...added.map((bundle) => ({ from: key, to: bundle.key, label: bundle.label }))],
   };
+}
+
+/** 只给一个节点接上几个邻居，不改它的展开状态。用来从结上长出它的 Observer。 */
+export function link(weave: Weave, key: string, resolved: readonly Resolved[]): Weave {
+  const parent = weave.nodes.find((node) => node.key === key);
+  if (!parent || parent.kind === "bundle") return weave;
+  const next = attach(weave, parent, resolved);
+  return { nodes: layout(next.nodes), edges: next.edges };
+}
+
+/**
+ * 去掉两个节点之间的线；to 是从 from 长出来的时，连同从它长出来的整枝一起移除。
+ * from 是从 to 长出来的时，这条线是它回到起点的路，保留。
+ */
+export function unlink(weave: Weave, from: string, to: string): Weave {
+  if (weave.nodes.find((node) => node.key === from)?.parent === to) return weave;
+  const child = weave.nodes.find((node) => node.key === to);
+  if (child?.parent === from) {
+    const rest = collapse(weave, to);
+    return {
+      nodes: layout(rest.nodes.filter((node) => node.key !== to)),
+      edges: rest.edges.filter((edge) => edge.from !== to && edge.to !== to),
+    };
+  }
+  return { nodes: weave.nodes, edges: weave.edges.filter((edge) => pairKey(edge.from, edge.to) !== pairKey(from, to)) };
+}
+
+/** 两个节点之间有没有线。 */
+export function linked(weave: Weave, a: string, b: string): boolean {
+  return weave.edges.some((edge) => pairKey(edge.from, edge.to) === pairKey(a, b));
 }
 
 /** 线束里接下来要放出的成员。 */
@@ -164,17 +214,21 @@ export function reveal(weave: Weave, bundleKey: string, resolved: readonly Resol
   const rest = bundle.members.slice(REVEAL);
   const base: Weave = {
     nodes: weave.nodes.flatMap((node) =>
-      node.key !== bundleKey ? [node] : rest.length ? [{ ...bundle, members: rest }] : [],
+      node.key !== bundleKey ? [node] : rest.length ? [{ ...bundle, members: rest, more: true }] : [],
     ),
     edges: weave.edges.filter((edge) => rest.length || edge.to !== bundleKey),
   };
-  // 新节点从线束的位置排开。
-  const next = attach(base, parent, resolved, bundle.y);
-  return { nodes: spread(next.nodes, next.added), edges: next.edges };
+  const next = attach(base, parent, resolved);
+  // 放出来的节点排在线束原来的位置，线束留在这一组的末尾。
+  const at = weave.nodes.findIndex((node) => node.key === bundleKey);
+  const kept = next.nodes.filter((node) => !next.added.has(node.key));
+  const fresh = next.nodes.filter((node) => next.added.has(node.key));
+  const nodes = [...kept.slice(0, at), ...fresh, ...kept.slice(at)];
+  return { nodes: layout(nodes), edges: next.edges };
 }
 
 /** 把解析好的邻居挂到 parent 上：新节点放进 parent 左右的栏，已有的只连线。 */
-function attach(weave: Weave, parent: ItemNode, resolved: readonly Resolved[], y = parent.y) {
+function attach(weave: Weave, parent: ItemNode, resolved: readonly Resolved[]) {
   const present = new Set(weave.nodes.map((node) => node.key));
   const linked = new Set(weave.edges.map((edge) => pairKey(edge.from, edge.to)));
   const nodes = [...weave.nodes];
@@ -189,7 +243,7 @@ function attach(weave: Weave, parent: ItemNode, resolved: readonly Resolved[], y
         key,
         payload,
         col: parent.col + (side === "right" ? 1 : -1),
-        y,
+        y: parent.y,
         parent: parent.key,
         expanded: false,
       });
@@ -218,9 +272,11 @@ export function collapse(weave: Weave, key: string): Weave {
     }
   }
   return {
-    nodes: weave.nodes
-      .filter((node) => !removed.has(node.key))
-      .map((node) => (node.key === key && node.kind !== "bundle" ? { ...node, expanded: false } : node)),
+    nodes: layout(
+      weave.nodes
+        .filter((node) => !removed.has(node.key))
+        .map((node) => (node.key === key && node.kind !== "bundle" ? { ...node, expanded: false } : node)),
+    ),
     edges: weave.edges.filter((edge) => !removed.has(edge.from) && !removed.has(edge.to)),
   };
 }
@@ -241,18 +297,21 @@ export function nodeX(node: { col: number }): number {
   return node.col * COL_STEP;
 }
 
+export function heightOf(node: { kind: WeaveNode["kind"] }): number {
+  return node.kind === "knot" ? KNOT_H : NODE_H;
+}
+
 /** 一组节点占的范围，包含节点自身的宽高。 */
 export function bounds(nodes: readonly WeaveNode[]): { x: number; y: number; width: number; height: number } {
   if (!nodes.length) return { x: 0, y: 0, width: 0, height: 0 };
   const xs = nodes.map(nodeX);
-  const ys = nodes.map((node) => node.y);
   const left = Math.min(...xs) - NODE_W / 2;
-  const top = Math.min(...ys) - NODE_H / 2;
+  const top = Math.min(...nodes.map((node) => node.y - heightOf(node) / 2));
   return {
     x: left,
     y: top,
     width: Math.max(...xs) + NODE_W / 2 - left,
-    height: Math.max(...ys) + NODE_H / 2 - top,
+    height: Math.max(...nodes.map((node) => node.y + heightOf(node) / 2)) - top,
   };
 }
 
@@ -287,30 +346,55 @@ function pairKey(a: string, b: string): string {
 }
 
 /**
- * 新节点在各自的栏里以父节点的高度为中心排开，然后每一栏把重叠的节点上下推开，
- * 已有节点之间的先后不变。
+ * 按长出来的关系排布：一个节点连同从它长出来的整枝占一段高度。
+ * 同一个节点在同一边长出来的各枝按长出来的先后上下排开，互不交错，然后以第一枝和最后一枝的中间对准这个节点。
+ * 左右两边各排各的。一枝回到父节点那一栏时可能和别的节点重叠，最后每一栏再把重叠的上下推开。
  */
-export function spread(nodes: WeaveNode[], added: ReadonlySet<string>): WeaveNode[] {
-  const step = NODE_H + GAP_Y;
+export function layout(nodes: WeaveNode[]): WeaveNode[] {
+  const children = new Map<string | null, WeaveNode[]>();
+  for (const node of nodes) children.set(node.parent, [...(children.get(node.parent) ?? []), node]);
+  const y = new Map<string, number>();
+
+  function move(node: WeaveNode, by: number) {
+    y.set(node.key, y.get(node.key)! + by);
+    for (const child of children.get(node.key) ?? []) move(child, by);
+  }
+
+  /** 以 node 为 0 排好它的整枝，返回整枝的上下边。 */
+  function place(node: WeaveNode): { top: number; bottom: number } {
+    y.set(node.key, 0);
+    let top = -heightOf(node) / 2;
+    let bottom = heightOf(node) / 2;
+    for (const side of [-1, 1]) {
+      const branch = (children.get(node.key) ?? []).filter((child) => Math.sign(child.col - node.col) === side);
+      if (!branch.length) continue;
+      let cursor = 0;
+      const bands = branch.map((child) => {
+        const band = place(child);
+        const at = cursor - band.top;
+        move(child, at);
+        cursor = at + band.bottom + GAP_Y;
+        return { top: at + band.top, bottom: at + band.bottom };
+      });
+      const shift = -(y.get(branch[0]!.key)! + y.get(branch.at(-1)!.key)!) / 2;
+      for (const child of branch) move(child, shift);
+      top = Math.min(top, bands[0]!.top + shift);
+      bottom = Math.max(bottom, bands.at(-1)!.bottom + shift);
+    }
+    return { top, bottom };
+  }
+
+  for (const root of children.get(null) ?? []) place(root);
+
   const byCol = new Map<number, WeaveNode[]>();
   for (const node of nodes) byCol.set(node.col, [...(byCol.get(node.col) ?? []), node]);
-  const placed = new Map<string, number>();
   for (const column of byCol.values()) {
-    // 同一个地方长出来的新节点一起排开。
-    const fresh = new Map<string, WeaveNode[]>();
-    for (const node of column) {
-      if (!added.has(node.key)) continue;
-      const at = `${node.parent}@${node.y}`;
-      fresh.set(at, [...(fresh.get(at) ?? []), node]);
-    }
-    for (const siblings of fresh.values())
-      siblings.forEach((node, i) => placed.set(node.key, node.y + (i - (siblings.length - 1) / 2) * step));
-    const items = column.map((node, order) => ({ key: node.key, y: placed.get(node.key) ?? node.y, order }));
+    const items = column.map((node, order) => ({ key: node.key, y: y.get(node.key) ?? 0, h: heightOf(node), order }));
     items.sort((a, b) => a.y - b.y || a.order - b.order);
     for (let pass = 0; pass < 200; pass++) {
       let moved = false;
       for (let i = 1; i < items.length; i++) {
-        const overlap = step - (items[i]!.y - items[i - 1]!.y);
+        const overlap = (items[i - 1]!.h + items[i]!.h) / 2 + GAP_Y - (items[i]!.y - items[i - 1]!.y);
         if (overlap > 0.5) {
           items[i - 1]!.y -= overlap / 2;
           items[i]!.y += overlap / 2;
@@ -319,7 +403,7 @@ export function spread(nodes: WeaveNode[], added: ReadonlySet<string>): WeaveNod
       }
       if (!moved) break;
     }
-    for (const item of items) placed.set(item.key, item.y);
+    for (const item of items) y.set(item.key, item.y);
   }
-  return nodes.map((node) => ({ ...node, y: Math.round(placed.get(node.key) ?? node.y) }));
+  return nodes.map((node) => ({ ...node, y: Math.round(y.get(node.key) ?? 0) }));
 }

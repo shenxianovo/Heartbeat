@@ -2,12 +2,15 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, ty
 import { useNavigate } from "@tanstack/react-router";
 import { Loader2, Maximize, Minus, Plus, Quote } from "lucide-react";
 import { timeLabel, useDescribe, useEntityInfo } from "@/hooks/useEntityInfo";
+import { useVersion } from "@/hooks/queries";
 import { useWeave } from "@/hooks/useWeave";
 import { cn } from "@/lib/utils";
+import { describeChanges } from "@/lib/versions";
 import {
   bounds,
   edgeGeometry,
-  NODE_H,
+  heightOf,
+  linked,
   NODE_W,
   nodeX,
   pathToRoot,
@@ -40,7 +43,7 @@ const FOOTER = 40;
  * 拖动背景平移，捏合或 ⌘ + 滚轮缩放；每次生长后画面对准新长出来的节点。
  */
 export function WeaveCanvas({ rootId }: { rootId: string }) {
-  const { weave, fresh, busy, message, error, toggle, open } = useWeave(rootId);
+  const { weave, fresh, busy, message, error, toggle, toggleSource, open } = useWeave(rootId);
   const [box, setBox] = useState<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [hover, setHover] = useState<string | null>(null);
@@ -216,18 +219,32 @@ export function WeaveCanvas({ rootId }: { rootId: string }) {
                   }}
                 />
               );
-            const Card = node.kind === "knot" ? KnotCard : EntityCard;
+            const props = {
+              node,
+              ...common,
+              root: node.parent === null,
+              selected: selected === node.key,
+              onClick: () => {
+                setSmooth(true);
+                setSelected(node.key);
+                void toggle(node.key);
+              },
+            };
+            if (node.kind === "entity") return <EntityCard key={node.key} {...props} />;
+            const observer = node.payload.kind === "knot" ? node.payload.observation.content.observerVersionId : null;
+            const source = weave.nodes.find(
+              (item) =>
+                item.kind === "entity" && item.payload.kind === "entity" && item.payload.version.versionId === observer,
+            );
             return (
-              <Card
+              <KnotCard
                 key={node.key}
-                node={node}
-                {...common}
-                root={node.parent === null}
-                selected={selected === node.key}
-                onClick={() => {
+                {...props}
+                sourceShown={!!source && linked(weave, node.key, source.key)}
+                onSource={() => {
                   setSmooth(true);
                   setSelected(node.key);
-                  void toggle(node.key);
+                  void toggleSource(node.key);
                 }}
               />
             );
@@ -290,7 +307,8 @@ function fitView(nodes: readonly WeaveNode[], width: number, height: number, min
 }
 
 function place(node: WeaveNode) {
-  return { left: nodeX(node) - NODE_W / 2, top: node.y - NODE_H / 2, width: NODE_W, height: NODE_H };
+  const height = heightOf(node);
+  return { left: nodeX(node) - NODE_W / 2, top: node.y - height / 2, width: NODE_W, height };
 }
 
 interface CardProps {
@@ -410,44 +428,75 @@ function EntityCard(props: CardProps) {
   );
 }
 
-/** 一个结：一份 Observation，写着谁说的、什么时候，以及依据了几个输入。 */
-function KnotCard(props: CardProps) {
-  const { node, onHover, onClick } = props;
+/**
+ * 一个结：一份 Observation，写着谁说的、这次改了什么、什么时候，以及依据了几个输入。
+ * 点结展开依据和其他邻居；Observer 的名字是另一个按钮，点它长出或收起来源。
+ */
+function KnotCard(props: CardProps & { sourceShown: boolean; onSource: () => void }) {
+  const { node, onHover, onClick, sourceShown, onSource } = props;
   const payload = node.payload.kind === "knot" ? node.payload : null;
   const observer = useEntityInfo(payload?.observation.content.observerVersionId);
   const who = observer.info?.title ?? "…";
   const when = payload ? timeLabel(payload.observation.content.startAt, payload.observation.content.endAt) : "";
   const inputs = payload?.inputSet?.content.members.length ?? 0;
+  const content = useVersion(payload?.observation.content.contentVersionId);
+  const previous = useVersion(content.data?.previousVersionId);
+  const changes =
+    content.data && (!content.data.previousVersionId || previous.data)
+      ? describeChanges(previous.data ?? null, content.data).join("；")
+      : "…";
   return (
     <Frame node={node} root={props.root} selected={props.selected} panelId={node.key}>
-      <button
-        type="button"
-        aria-expanded={node.expanded}
-        aria-label={`陈述 ${who} ${when}`}
-        onClick={onClick}
+      <div
         onPointerEnter={() => onHover(true)}
         onPointerLeave={() => onHover(false)}
-        onFocus={() => onHover(true)}
-        onBlur={() => onHover(false)}
-        className={cn("bg-panel rounded-full pl-1.5", cardClass(props))}
+        className={cn("bg-panel relative rounded-[28px] pl-1.5", cardClass(props))}
       >
-        <span className="bg-card text-fg-2 grid size-8 shrink-0 place-items-center rounded-full">
+        <button
+          type="button"
+          aria-expanded={node.expanded}
+          aria-label={`陈述 ${who} ${when}`}
+          onClick={onClick}
+          onFocus={() => onHover(true)}
+          onBlur={() => onHover(false)}
+          className="focus-visible:ring-accent/50 absolute inset-0 cursor-pointer rounded-[28px] focus-visible:ring-2 focus-visible:outline-none"
+        />
+        <span className="bg-card text-fg-2 pointer-events-none relative grid size-8 shrink-0 place-items-center rounded-full">
           <Quote aria-hidden="true" className="size-3.5" />
         </span>
-        <span className="min-w-0 flex-1 leading-tight">
-          <span className="block truncate text-[13px] font-medium">{who}</span>
+        <span className="pointer-events-none relative min-w-0 flex-1 leading-tight">
+          <button
+            type="button"
+            aria-pressed={sourceShown}
+            aria-label={`来源 ${who}`}
+            title={sourceShown ? "收起来源" : "长出来源"}
+            onClick={onSource}
+            onFocus={() => onHover(true)}
+            onBlur={() => onHover(false)}
+            className={cn(
+              "pointer-events-auto inline-block max-w-full cursor-pointer truncate rounded text-left align-top text-[13px] font-medium underline-offset-2 hover:underline",
+              sourceShown && "text-accent",
+            )}
+          >
+            {who}
+          </button>
+          <span title={changes} className="text-fg-2 line-clamp-2 text-xs wrap-anywhere">
+            {changes}
+          </span>
           <span className="text-fg-3 block truncate text-[11px] tabular-nums">
             陈述 · {when}
             {inputs > 0 && ` · 依据 ${inputs} 个`}
           </span>
         </span>
-        <Toggle node={node} busy={props.busy} />
-      </button>
+        <span className="pointer-events-none relative">
+          <Toggle node={node} busy={props.busy} />
+        </span>
+      </div>
     </Frame>
   );
 }
 
-/** 一束同类的邻居：写着还剩几个和它们的类型；点一次再放出几个。 */
+/** 一束同类的邻居：写着几个、还剩几个和它们的类型；点一次再放出几个。 */
 function BundleCard({
   node,
   fresh,
@@ -479,7 +528,10 @@ function BundleCard({
         )}
       >
         <span className="min-w-0 flex-1">
-          <span className="block text-[13px] font-medium tabular-nums">还有 {node.members.length} 个</span>
+          <span className="block text-[13px] font-medium tabular-nums">
+            {node.more ? "还有 " : ""}
+            {node.members.length} 个
+          </span>
           <span className="text-fg-3 block truncate text-[11px]">{node.typeName}</span>
         </span>
         {busy && <Loader2 aria-hidden="true" className="text-fg-3 size-3.5 shrink-0 animate-spin" />}

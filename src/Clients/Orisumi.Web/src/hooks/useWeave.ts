@@ -17,11 +17,17 @@ import { parseTime } from "@/lib/time";
 import {
   collapse,
   grow,
+  INPUT,
+  link,
+  linked,
   nextFromBundle,
+  payloadKey,
   plan,
   REVEAL,
   reveal,
+  SOURCE,
   start,
+  unlink,
   type ItemNode,
   type Neighbor,
   type Payload,
@@ -111,7 +117,7 @@ async function resolve(context: Context, version: Version, parent: string | null
  * 一个节点的邻居，还没解析成节点。
  * - 实体：业务字段引用的（右）；记下它的 Observation 的 Observer 和输入（左）；引用它的业务实体（左）；
  *   以它为内容的其他陈述（左）；它写下的 Observation（右）；以它为输入的 Observation（右）。
- * - 结：内容（右）；Observer 和输入（左）；以这份 Observation 为输入的 Observation（右）。
+ * - 结：内容（右）；输入（左）；以这份 Observation 为输入的 Observation（右）。Observer 写在结上，由 toggleSource 长出。
  */
 async function neighborsOf(context: Context, node: ItemNode) {
   const candidates: { version: Version; side: Side; label: string }[] = [];
@@ -121,12 +127,11 @@ async function neighborsOf(context: Context, node: ItemNode) {
     else unreadable += 1;
   };
 
-  async function statement(observation: Version<Observation>) {
-    add(await read(context, observation.content.observerVersionId), "left", "来源");
+  async function inputs(observation: Version<Observation>) {
     const inputSet = await read(context, observation.content.inputSetVersionId);
     if (inputSet && isInputSet(inputSet)) {
       const members = await pool(inputSet.content.members, 8, (versionId) => read(context, versionId));
-      members.forEach((member) => add(member, "left", "依据"));
+      members.forEach((member) => add(member, "left", INPUT));
     }
   }
 
@@ -137,12 +142,12 @@ async function neighborsOf(context: Context, node: ItemNode) {
       if (version.category === "business") add(version, "left", paths.map(referenceLabel).join("、"));
       else if (isObservation(version)) {
         if (version.entityId === merged) continue;
-        if (paths.some((path) => path.endsWith("observerVersionId"))) add(version, "right", "来源");
+        if (paths.some((path) => path.endsWith("observerVersionId"))) add(version, "right", SOURCE);
         else if (paths.some((path) => path.endsWith("contentVersionId"))) add(version, "left", "内容");
       } else if (isInputSet(version)) {
         // 以它为输入的 InputSet，再找到用这个 InputSet 的 Observation。
         for (const user of await readReferrers(context, version.entityId))
-          if (isObservation(user.version)) add(user.version, "right", "依据");
+          if (isObservation(user.version)) add(user.version, "right", INPUT);
       }
     }
   }
@@ -155,13 +160,14 @@ async function neighborsOf(context: Context, node: ItemNode) {
     const targets = await pool(references, 8, (reference) => read(context, reference.versionId));
     targets.forEach((target, i) => add(target, "right", referenceLabel(references[i]!.path)));
     if (observation) {
-      await statement(observation);
+      add(await read(context, observation.content.observerVersionId), "left", SOURCE);
+      await inputs(observation);
       await incoming(observation.entityId, null);
     }
     await incoming(version.entityId, observation?.entityId ?? null);
   } else {
     add(await read(context, payload.observation.content.contentVersionId), "right", "内容");
-    await statement(payload.observation);
+    await inputs(payload.observation);
     await incoming(payload.observation.entityId, null);
   }
 
@@ -261,7 +267,7 @@ export function useWeave(rootId: string) {
         const latest = current.current!;
         const added = settle(latest, grow(latest, key, resolved, bundles));
         const grown = added.filter((item) => item.kind !== "bundle").length;
-        const bundled = bundles.reduce((sum, members) => sum + members.length, 0);
+        const bundled = bundles.reduce((sum, bundle) => sum + bundle.members.length, 0);
         setMessage(
           [
             grown || bundled ? `长出 ${grown} 个` : "没有更多相关的实体",
@@ -302,5 +308,44 @@ export function useWeave(rootId: string) {
     [context],
   );
 
-  return { weave, fresh, busy, message, error: error ?? (types.error as Error | null)?.message ?? null, toggle, open };
+  /** 从结上长出它的 Observer，已经连着时收起。 */
+  const toggleSource = useCallback(
+    async (key: string) => {
+      const now = current.current;
+      const node = now?.nodes.find((item) => item.key === key);
+      const ctx = context();
+      if (!now || !ctx || node?.kind !== "knot" || node.payload.kind !== "knot") return;
+      setBusy(key);
+      try {
+        const observer = await read(ctx, node.payload.observation.content.observerVersionId);
+        const payload = observer ? await resolve(ctx, observer, key) : null;
+        const latest = current.current!;
+        if (!payload) setMessage("读不到这份陈述的 Observer");
+        else if (node.parent === payloadKey(payload)) setMessage("这个结就是从它的来源长出来的");
+        else if (linked(latest, key, payloadKey(payload))) {
+          settle(latest, unlink(latest, key, payloadKey(payload)));
+          setMessage("已收起来源");
+        } else {
+          settle(latest, link(latest, key, [{ payload, side: "left", label: SOURCE }]));
+          setMessage("长出来源");
+        }
+      } catch (failure) {
+        setMessage(failure instanceof Error ? failure.message : String(failure));
+      } finally {
+        setBusy(null);
+      }
+    },
+    [context],
+  );
+
+  return {
+    weave,
+    fresh,
+    busy,
+    message,
+    error: error ?? (types.error as Error | null)?.message ?? null,
+    toggle,
+    toggleSource,
+    open,
+  };
 }
