@@ -170,7 +170,7 @@ struct LegendRow: View {
         let share = usage.duration / max(total, 1)
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 8) {
-                AppIcon(identifiers: usage.identifiers, size: 18)
+                AppIcon(digest: usage.icon, size: 18)
                 Text(usage.name ?? "未知应用").lineLimit(1)
                 Spacer(minLength: 8)
                 Text(Format.duration(usage.duration)).fontWeight(.medium).monospacedDigit()

@@ -265,11 +265,63 @@ namespace Orisumi.Infrastructure.Database.Migrations
                 column: "previous_version_id",
                 unique: true,
                 filter: "previous_version_id IS NOT NULL");
+            migrationBuilder.CreateTable(
+                name: "contents",
+                columns: table => new
+                {
+                    digest = table.Column<string>(type: "text", nullable: false),
+                    size = table.Column<long>(type: "bigint", nullable: false),
+                    data = table.Column<byte[]>(type: "bytea", nullable: false),
+                    uploaded_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("pk_contents", x => x.digest);
+                    table.CheckConstraint("ck_contents_size", "size = octet_length(data)");
+                });
+
+            migrationBuilder.CreateTable(
+                name: "version_contents",
+                columns: table => new
+                {
+                    version_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    digest = table.Column<string>(type: "text", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("pk_version_contents", x => new { x.version_id, x.digest });
+                    table.ForeignKey(
+                        name: "fk_version_contents_contents_digest",
+                        column: x => x.digest,
+                        principalTable: "contents",
+                        principalColumn: "digest");
+                    table.ForeignKey(
+                        name: "fk_version_contents_versions_version_id",
+                        column: x => x.version_id,
+                        principalTable: "versions",
+                        principalColumn: "version_id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateIndex(
+                name: "ix_contents_uploaded_at",
+                table: "contents",
+                column: "uploaded_at");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_version_contents_digest",
+                table: "version_contents",
+                column: "digest");
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropTable(
+                name: "version_contents");
+
+            migrationBuilder.DropTable(
+                name: "contents");
             migrationBuilder.DropTable(
                 name: "deleted_versions");
 

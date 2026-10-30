@@ -18,15 +18,19 @@ public struct Period: Equatable, Identifiable, Sendable {
     public var id: UUID
     public var name: String?
     public var identifiers: [AppIdentifier]
+    /// Digest of the icon read when the period started; nil when it was not read.
+    public var icon: String?
     public var startAt: Date
     /// The last confirmation.
     public var endAt: Date
     public var isActive: Bool
 
-    public init(id: UUID, name: String?, identifiers: [AppIdentifier], startAt: Date, endAt: Date, isActive: Bool = false) {
+    public init(id: UUID, name: String?, identifiers: [AppIdentifier], icon: String? = nil, startAt: Date, endAt: Date,
+                isActive: Bool = false) {
         self.id = id
         self.name = name
         self.identifiers = identifiers
+        self.icon = icon
         self.startAt = startAt
         self.endAt = endAt
         self.isActive = isActive
@@ -50,6 +54,8 @@ public struct Usage: Equatable, Identifiable, Sendable {
     public var id: String
     public var name: String?
     public var identifiers: [AppIdentifier]
+    /// The icon of the latest period that has one.
+    public var icon: String?
     public var duration: TimeInterval
     public var periods: Int
     public var longest: TimeInterval
@@ -72,10 +78,15 @@ public enum Today {
     /// Foreground time per application inside `day`, longest first.
     public static func usage(_ periods: [Period], day: DateInterval, now: Date) -> [Usage] {
         var usage: [String: Usage] = [:]
+        var latestIcon: [String: Date] = [:]
         for period in periods {
             guard let part = period.clipped(to: day, now: now) else { continue }
             var item = usage[period.applicationKey] ?? Usage(id: period.applicationKey, name: period.name,
                                                              identifiers: period.identifiers, duration: 0, periods: 0, longest: 0)
+            if let icon = period.icon, period.startAt >= (latestIcon[period.applicationKey] ?? .distantPast) {
+                item.icon = icon
+                latestIcon[period.applicationKey] = period.startAt
+            }
             item.duration += part.duration
             item.periods += 1
             item.longest = max(item.longest, part.duration)

@@ -22,7 +22,7 @@ public sealed class EntityService(IEntityStore store, TimeProvider timeProvider,
                 catch (ModelViolationException exception)
                 {
                     await transaction.RollbackSavepointAsync(token);
-                    return new SubmissionResult(saved, new(saved.Count, version.VersionId, exception.Rule, exception.Message));
+                    return new SubmissionResult(saved, new(saved.Count, version.VersionId, exception.Rule, exception.Message, exception.Conflict));
                 }
             }
             return new SubmissionResult(saved, null);
@@ -128,8 +128,15 @@ public sealed class EntityService(IEntityStore store, TimeProvider timeProvider,
         }
         if (version.Content is Observation observation)
             await CheckObservationAsync(transaction, observation, current?.Content as Observation, token);
+        var contents = BinaryValue.Collect(version, schemaVersion?.Content as EntitySchema);
+        foreach (var content in contents)
+        {
+            var size = await transaction.ContentSizeAsync(content.Digest, token);
+            if (size is null) throw new ModelViolationException("BINARY-3", "Binary content has not been uploaded.", conflict: true);
+            VersionRules.Require(size == content.Size, "BINARY-3", "Binary content size does not match uploaded bytes.");
+        }
         var saved = new EntityVersion(version, VersionTime.Normalize(timeProvider.GetUtcNow()));
-        await transaction.SaveAsync(saved, references, token);
+        await transaction.SaveAsync(saved, references, contents, token);
         return saved;
     }
 

@@ -20,7 +20,11 @@ public interface IEntityTransaction
     Task<bool> IsVersionDeletedAsync(VersionId id, CancellationToken cancellationToken);
     Task<EntityId?> FindSchemaAsync(string resourceName, CancellationToken cancellationToken);
     Task<bool> HasBusinessVersionsAsync(EntityId schemaId, CancellationToken cancellationToken);
-    Task SaveAsync(EntityVersion version, IReadOnlyList<ResolvedReference> references, CancellationToken cancellationToken);
+    Task SaveAsync(EntityVersion version, IReadOnlyList<ResolvedReference> references, IReadOnlyList<BinaryValue> contents, CancellationToken cancellationToken);
+    Task<long?> ContentSizeAsync(string digest, CancellationToken cancellationToken);
+    Task UploadContentAsync(string digest, byte[] data, DateTimeOffset uploadedAt, CancellationToken cancellationToken);
+    Task<byte[]?> ReadContentAsync(string digest, CancellationToken cancellationToken);
+    Task PruneContentsAsync(DateTimeOffset before, CancellationToken cancellationToken);
     // Removes every version's content; retains only the occupied EntityId and VersionIds.
     Task DeleteAsync(EntityId id, CancellationToken cancellationToken);
 }

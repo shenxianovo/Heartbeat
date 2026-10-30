@@ -6,7 +6,7 @@ using Microsoft.Data.Sqlite;
 namespace Orisumi.Observer.Runtime.Store;
 
 /// <summary>All calls made through ObserverStore.Execute share one durable local transaction.</summary>
-public sealed class LocalTransaction
+public sealed partial class LocalTransaction
 {
     private readonly SqliteConnection _connection;
     private readonly SqliteTransaction _transaction;

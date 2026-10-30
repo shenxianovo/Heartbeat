@@ -5,7 +5,7 @@ import { readAllPages } from "@/api/client";
 import { useSource } from "@/api/source";
 import type { Observation, Version } from "@/api/types";
 import { typeIcon } from "@/components/token/icons";
-import { iconOf, Mark, Token } from "@/components/token/Token";
+import { InfoMark, Mark, Token } from "@/components/token/Token";
 import { Button, Card, Message, PageHeader } from "@/components/ui";
 import { WeaveCanvas } from "@/components/weave/Weave";
 import { useEntityCount, type EntityFilter } from "@/hooks/queries";
@@ -523,7 +523,7 @@ function StartButton({
       onClick={() => void navigate({ search: (prev) => ({ ...prev, root: info.version.entityId }) })}
       className="hover:bg-panel flex w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-0.5 text-left text-[13px]"
     >
-      <Mark role={info.role} color={info.color} icon={iconOf(info)} size="md" />
+      <InfoMark info={info} size="md" />
       <span className="min-w-0 truncate">
         {info.title}
         {detail && <span className="text-fg-3 font-mono text-[11px]"> {detail}</span>}

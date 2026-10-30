@@ -9,4 +9,5 @@ internal sealed record ForegroundApplicationReading(
     int? ProcessId = null,
     DateTimeOffset? ProcessStartedAt = null,
     TimeSpan? Elapsed = null,
-    TimeSpan? Awake = null);
+    TimeSpan? Awake = null,
+    Func<Orisumi.Observer.Sdk.BinaryContent?>? ReadIcon = null);

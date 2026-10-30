@@ -7,9 +7,9 @@ struct ActivityTests {
     static let code = [AppIdentifier(scheme: "macos.bundle-id", value: "com.microsoft.VSCode")]
 
     static func period(_ id: Int, _ name: String, from start: TimeInterval, to end: TimeInterval,
-                       identifiers: [AppIdentifier] = [], active: Bool = false) -> Period {
+                       identifiers: [AppIdentifier] = [], icon: String? = nil, active: Bool = false) -> Period {
         Period(id: UUID(uuidString: String(format: "019e1bbb-ec00-7000-8000-%012d", id))!, name: name, identifiers: identifiers,
-               startAt: day.start + start, endAt: day.start + end, isActive: active)
+               icon: icon, startAt: day.start + start, endAt: day.start + end, isActive: active)
     }
 
     @Test func clipsPeriodsToTheDay() {
@@ -31,6 +31,15 @@ struct ActivityTests {
         #expect(usage.map(\.duration) == [900, 10])
         #expect(usage.first?.periods == 2)
         #expect(usage.first?.longest == 600)
+    }
+
+    @Test func usageShowsTheIconOfTheLatestPeriodThatHasOne() {
+        let periods = [
+            Self.period(2, "Code", from: 1_000, to: 1_300, identifiers: Self.code, icon: "new"),
+            Self.period(1, "Code", from: 0, to: 600, identifiers: Self.code, icon: "old"),
+            Self.period(3, "Code", from: 2_000, to: 2_100, identifiers: Self.code),
+        ]
+        #expect(Today.usage(periods, day: Self.day, now: Self.day.start + 3_000).first?.icon == "new")
     }
 }
 

@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefO
 import { createPortal } from "react-dom";
 import { isObservation, type Observation, type Version } from "@/api/types";
 import { Fields } from "@/components/stack/bodies";
-import { iconOf, Mark, Token } from "@/components/token/Token";
+import { InfoMark, Token } from "@/components/token/Token";
 import { useObservationOf, type EntityInfo } from "@/hooks/useEntityInfo";
 import { useNow } from "@/hooks/useNow";
 import { ago, clock, dayTitle, duration, parseTime } from "@/lib/time";
@@ -138,7 +138,7 @@ function PeekBody({ info, footer }: { info: EntityInfo; footer: ReactNode }) {
   return (
     <div className="grid gap-3 text-[13px]">
       <header className="flex items-center gap-2.5">
-        <Mark role={info.role} color={info.color} icon={iconOf(info)} size="lg" framed />
+        <InfoMark info={info} size="lg" framed />
         <div className="min-w-0">
           <p className="truncate text-[15px] leading-snug font-medium">{info.title}</p>
           <p className="text-fg-3 truncate text-xs">

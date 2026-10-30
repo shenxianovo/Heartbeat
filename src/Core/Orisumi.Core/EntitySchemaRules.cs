@@ -34,7 +34,7 @@ public static partial class EntitySchemaRules
         if (field != value.TryGetProperty("required", out var required)
             || field && required.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) return "SCHEMA-10";
         var kind = type.GetString();
-        if (kind is not ("string" or "boolean" or "integer" or "number" or "reference" or "object" or "array")) return "SCHEMA-12";
+        if (kind is not ("string" or "boolean" or "integer" or "number" or "reference" or "binary" or "object" or "array")) return "SCHEMA-12";
         if (value.EnumerateObject().Any(p => p.Name is not ("type" or "description" or "nullable" or "required" or "fields" or "items"))) return "SCHEMA-12";
         if ((kind == "object") != value.TryGetProperty("fields", out var fields)
             || (kind == "array") != value.TryGetProperty("items", out var items)) return "SCHEMA-14";
@@ -56,6 +56,7 @@ public static partial class EntitySchemaRules
         if (value.ValueKind == JsonValueKind.Null)
             return definition.GetProperty("nullable").GetBoolean() ? null : "SCHEMA-11";
         var kind = definition.GetProperty("type").GetString();
+        if (kind == "binary") return BinaryValue.IsValid(value) ? null : "BINARY-1";
         if (kind == "object") return ObjectViolation(definition.GetProperty("fields"), value);
         if (kind == "array") return ArrayViolation(definition.GetProperty("items"), value);
         var valid = kind switch

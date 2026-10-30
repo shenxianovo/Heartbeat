@@ -9,7 +9,7 @@ import { Content } from "@/components/entity/Content";
 import { coreKind } from "@/components/entity/kinds";
 import { DeleteDialog, VersionList } from "@/components/entity/Panels";
 import { ReferenceMap } from "@/components/entity/ReferenceMap";
-import { iconOf, Mark } from "@/components/token/Token";
+import { InfoMark } from "@/components/token/Token";
 import { Button, Card, Message, Mono, SectionTitle } from "@/components/ui";
 import { useEntity, useEntityVersions } from "@/hooks/queries";
 import { useDescribe } from "@/hooks/useEntityInfo";
@@ -71,7 +71,7 @@ function EntityPage() {
   const typeName = info?.typeName ?? "…";
   const mark = (size: "lg" | "xl") =>
     info ? (
-      <Mark role={info.role} color={info.color} icon={iconOf(info)} size={size} framed />
+      <InfoMark info={info} size={size} framed />
     ) : (
       <span
         className={size === "xl" ? "bg-panel size-14 shrink-0 rounded-2xl" : "bg-panel size-10 shrink-0 rounded-[10px]"}

@@ -26,9 +26,10 @@ internal sealed record ForegroundRegistration(VersionId ObserverSchema, VersionI
                 "value":{"type":"string","description":"标识方案对应的原始值。","required":true,"nullable":false}}}}}
             """)), token);
         var periodSchema = await RegisterSchemaAsync(PeriodSchemaId, new("前台应用时段",
-            "表达某个本机应用连续处于前台的一段活动；内容保存应用引用与当时读到的名称，Observation 保存时段。", "foreground-application-periods", Json("""
+            "表达某个本机应用连续处于前台的一段活动；内容保存应用引用与当时读到的名称和图标，Observation 保存时段。", "foreground-application-periods", Json("""
             {"localApplicationVersionId":{"type":"reference","description":"观测设备上的本机应用。","required":true,"nullable":false},
-             "name":{"type":"string","description":"当时读到的应用名称，没读到时为 null。","required":true,"nullable":true}}
+             "name":{"type":"string","description":"当时读到的应用名称，没读到时为 null。","required":true,"nullable":true},
+             "icon":{"type":"binary","description":"时段开始时读到的应用图标，1024×1024 PNG；读不到时为 null。","required":true,"nullable":true}}
             """)), token);
         await session.RequestAsync("registerInstance", JsonLines.Json(new { schemaVersionId = observerSchema.Value, content = new
         {

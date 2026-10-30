@@ -104,6 +104,19 @@ public sealed class ReferrerApiTests
             next = page.GetProperty("next").GetString();
         } while (next is not null);
         await Assert.That(found.SequenceEqual(new[] { observation.VersionId.Value, extended.VersionId.Value, inputs.VersionId.Value }.Order())).IsTrue();
+
+        var latest = new List<Guid>();
+        next = null;
+        do
+        {
+            var page = await Page(http, target.EntityId, "?versions=all&order=desc&limit=1" + (next is null ? "" : "&after=" + Uri.EscapeDataString(next)));
+            latest.Add(Id(page.GetProperty("referrers").EnumerateArray().Single()));
+            next = page.GetProperty("next").GetString();
+        } while (next is not null);
+        await Assert.That(latest.SequenceEqual(Enumerable.Reverse(found))).IsTrue();
+        var ascending = (await Page(http, target.EntityId, "?versions=all&limit=1")).GetProperty("next").GetString();
+        using var mixed = await http.GetAsync($"/entities/{target.EntityId.Value}/referrers?versions=all&order=desc&after={Uri.EscapeDataString(ascending!)}");
+        await Assert.That(mixed.StatusCode).IsEqualTo(HttpStatusCode.BadRequest);
     }
 
     // HISTORY-6, HISTORY-8: removing the target retains references; removing the referrer removes them.

@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { isUnreadable } from "@/api/client";
 import { useSource } from "@/api/source";
-import type { ListEntitiesQuery } from "@/api/types";
+import type { BinaryValue, ListEntitiesQuery } from "@/api/types";
 
 const retry = (count: number, error: unknown) => !isUnreadable(error) && count < 2;
 
@@ -13,6 +13,22 @@ export function useVersion(versionId: string | null | undefined) {
     queryFn: () => source.getVersion(versionId!),
     enabled: !!versionId,
     staleTime: Infinity,
+    retry,
+  });
+}
+
+/**
+ * 一份二进制内容，按描述中的媒体类型做成页面里可用的地址。摘要确定了字节，所以读到后一直缓存，地址也不回收。
+ */
+export function useContentUrl(value: BinaryValue | null | undefined) {
+  const source = useSource();
+  return useQuery({
+    queryKey: ["content", value?.digest, value?.mediaType],
+    queryFn: async () =>
+      URL.createObjectURL(new Blob([await source.getContent(value!.digest)], { type: value!.mediaType })),
+    enabled: !!value,
+    staleTime: Infinity,
+    gcTime: Infinity,
     retry,
   });
 }

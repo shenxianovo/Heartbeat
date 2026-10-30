@@ -18,12 +18,13 @@ internal sealed partial class PostgresEntityTransaction
     public async Task<IReadOnlyList<Referrer>> ListReferrersAsync(ReferrerQuery query, CancellationToken cancellationToken)
     {
         var current = query.AllVersions ? "" : "AND v.version_id = e.current_version_id";
+        var (after, order) = query.Descending ? ("<", "DESC") : (">", "ASC");
         var versions = await ReadAsync($"""
             SELECT {Columns} FROM version_references r
             JOIN versions v ON v.version_id = r.version_id
             JOIN entities e ON e.entity_id = v.entity_id
-            WHERE r.target_entity_id = $1 AND ($2::uuid IS NULL OR r.version_id > $2) {current}
-            ORDER BY r.version_id LIMIT $3
+            WHERE r.target_entity_id = $1 AND ($2::uuid IS NULL OR r.version_id {after} $2) {current}
+            ORDER BY r.version_id {order} LIMIT $3
             """, cancellationToken, query.Target.Value, Typed(NpgsqlDbType.Uuid, query.After?.Value), query.Limit + 1);
         var references = await ResolveReferencesAsync(versions, cancellationToken);
         return versions.Select(version => new Referrer(version, references[version.VersionId]
@@ -61,7 +62,7 @@ internal sealed partial class PostgresEntityTransaction
         // Only projections are replaced; immutable versions and deletion identities are untouched.
         var versions = await ReadAsync($"SELECT {Columns} FROM versions v ORDER BY ordinal, entity_id", token);
         var references = await ResolveReferencesAsync(versions, token);
-        await ExecuteAsync("DELETE FROM version_references; DELETE FROM observations; DELETE FROM schemas; DELETE FROM entities", token);
+        await ExecuteAsync("DELETE FROM version_contents; DELETE FROM version_references; DELETE FROM observations; DELETE FROM schemas; DELETE FROM entities", token);
         await ExecuteAsync("""
             INSERT INTO entities(entity_id, category, schema_id, current_version_id)
             SELECT DISTINCT ON (v.entity_id) v.entity_id, v.category, s.entity_id, v.version_id
@@ -74,6 +75,10 @@ internal sealed partial class PostgresEntityTransaction
             JOIN versions v ON v.version_id = e.current_version_id WHERE e.category = 'entity_schema'
             """, token);
         foreach (var version in versions) await SaveReferencesAsync(version.VersionId, references[version.VersionId], token);
+        var definitions = versions.Where(version => version.Content is EntitySchema).ToDictionary(version => version.VersionId, version => (EntitySchema)version.Content);
+        foreach (var version in versions)
+            await SaveContentsAsync(version.VersionId, BinaryValue.Collect(version.Submission,
+                version.SchemaVersionId is { } schema ? definitions[schema] : null), token);
         var current = await ReadAsync($"SELECT {Columns} FROM versions v JOIN entities e ON e.current_version_id = v.version_id WHERE v.category = 'observation'", token);
         foreach (var version in current)
         {

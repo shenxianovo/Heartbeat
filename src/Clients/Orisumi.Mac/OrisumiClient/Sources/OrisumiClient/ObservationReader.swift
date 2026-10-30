@@ -90,7 +90,7 @@ public final class ForegroundReader {
                   let content = periods[observation.contentVersionId] else { return nil }
             let application = content.localApplicationVersionId.flatMap { applications[$0] }
             return Period(id: item.version.entityId, name: content.name, identifiers: application?.identifiers ?? [],
-                          startAt: startAt, endAt: endAt, isActive: item.state == .draft)
+                          icon: content.icon?.digest, startAt: startAt, endAt: endAt, isActive: item.state == .draft)
         }
         let error = result.error ?? contentError ?? applicationError
         return Snapshot(items: items, complete: result.complete && error == nil, error: error)
@@ -98,7 +98,12 @@ public final class ForegroundReader {
 
     struct PeriodContent: Decodable, Sendable {
         var name: String?
+        var icon: Binary?
         var localApplicationVersionId: UUID?
+    }
+
+    struct Binary: Decodable, Sendable {
+        var digest: String
     }
 
     struct ApplicationContent: Decodable, Sendable {

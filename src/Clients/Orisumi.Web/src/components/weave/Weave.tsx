@@ -16,7 +16,7 @@ import {
   type Weave,
   type WeaveNode,
 } from "@/lib/weave";
-import { iconOf, Mark } from "../token/Token";
+import { InfoMark } from "../token/Token";
 import { useHighlight, useStack } from "../token/context";
 import { Message } from "../ui";
 
@@ -396,7 +396,7 @@ function EntityCard(props: CardProps) {
         className={cn("bg-card rounded-xl", cardClass(props))}
       >
         {info ? (
-          <Mark role={info.role} color={info.color} icon={iconOf(info)} size="lg" className="!size-8 !rounded-lg" />
+          <InfoMark info={info} size="lg" className="!size-8 !rounded-lg" />
         ) : (
           <span className="bg-panel size-8 shrink-0 rounded-lg" />
         )}

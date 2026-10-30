@@ -21,6 +21,7 @@ public static class DependencyInjection
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<IEntityStore, PostgresEntityStore>();
         services.AddScoped<EntityService>();
+        services.AddScoped<ContentService>();
         services.AddSingleton<IManagementStore, PostgresManagementStore>();
         services.AddSingleton<ObservationPreviewCache>();
         services.AddScoped<ObservationPreviewService>();

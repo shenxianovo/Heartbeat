@@ -23,6 +23,8 @@ export interface OrisumiSource {
   listObservations(query: ListObservationsQuery): Promise<VersionPage>;
   listObservationPreviews(): Promise<ObservationPreviewList>;
   deleteEntity(entityId: string): Promise<void>;
+  /** 按摘要读取二进制内容的字节。 */
+  getContent(digest: string): Promise<Blob>;
 }
 
 export class ApiError extends Error {
@@ -88,6 +90,16 @@ export function createHttpSource(base = "/api"): OrisumiSource {
     listObservations: (params) => request(`/observations${query(params)}`),
     listObservationPreviews: () => request("/observation-previews"),
     deleteEntity: (entityId) => request(`/entities/${encodeURIComponent(entityId)}`, { method: "DELETE" }),
+    getContent: async (digest) => {
+      let response: Response;
+      try {
+        response = await fetch(`${base}/contents/${encodeURIComponent(digest)}`);
+      } catch (cause) {
+        throw new ApiError(0, "连不上 Orisumi API", { detail: String(cause) });
+      }
+      if (!response.ok) throw new ApiError(response.status, `HTTP ${response.status}`);
+      return response.blob();
+    },
   };
 }
 

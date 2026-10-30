@@ -68,6 +68,7 @@ public sealed class LocalObserverSession(ObserverStore runtimeStore) : IObserver
     {
         var operations = parameters.GetProperty("operations");
         if (operations.GetArrayLength() is < 1 or > 512) throw new ArgumentException("A batch requires 1 through 512 operations.");
+        var suppliedContents = local.AcceptContents(parameters);
         var results = new Dictionary<string, Guid>(StringComparer.Ordinal);
         var references = new Dictionary<string, Guid>(StringComparer.Ordinal);
         var versions = new HashSet<Guid>();
@@ -78,6 +79,10 @@ public sealed class LocalObserverSession(ObserverStore runtimeStore) : IObserver
             switch (operation.GetProperty("op").GetString())
             {
                 case "draft":
+                    var draftSchema = operation.TryGetProperty("schemaVersionId", out var declarationId) && declarationId.ValueKind != JsonValueKind.Null
+                        ? new VersionId(declarationId.GetGuid()) : (VersionId?)null;
+                    local.ValidateContents(new(entity, VersionId.New(), null, draftSchema,
+                        VersionJson.ReadContent(operation.GetProperty("category").GetString()!, operation.GetProperty("content"))), suppliedContents);
                     if (operation.TryGetProperty("ifAbsent", out var absent) && absent.GetBoolean() && local.Latest(entity) is { } present)
                     { result = present.Version.VersionId; break; }
                     var content = BindContent(operation, references);
@@ -110,6 +115,7 @@ public sealed class LocalObserverSession(ObserverStore runtimeStore) : IObserver
                 if (operation.GetProperty("op").GetString() == "reference") references.Add(name.GetString()!, result.Value.Value);
             }
         }
+        local.PruneContents();
         local.Metadata("batch:" + requestId, JsonSerializer.Serialize(versions));
         return JsonLines.Json(new { results });
     }));
@@ -176,6 +182,7 @@ public sealed class LocalObserverSession(ObserverStore runtimeStore) : IObserver
             case "discard": local.DiscardRejected(); break;
             default: throw new ArgumentException("Unknown repair action.");
         }
+        local.PruneContents();
         return JsonLines.Json(new { });
     }));
 

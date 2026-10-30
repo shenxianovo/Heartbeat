@@ -206,7 +206,7 @@ struct PeriodRow: View {
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
                 .frame(width: 96, alignment: .leading)
-            AppIcon(identifiers: period.identifiers, size: 16)
+            AppIcon(digest: period.icon, size: 16)
             Text(period.name ?? "未知应用").lineLimit(1)
             if period.isActive {
                 Text("进行中")
@@ -226,27 +226,47 @@ struct PeriodRow: View {
     }
 }
 
-/// The application's own icon, found by bundle identifier or executable path.
+/// The application's icon as recorded in its period, read through Runtime by digest.
 struct AppIcon: View {
-    let identifiers: [AppIdentifier]
+    let digest: String?
     let size: CGFloat
+    @Environment(AppIcons.self) private var icons
 
     var body: some View {
-        if let icon = AppVisuals.icon(for: identifiers) {
-            Image(nsImage: icon).resizable().frame(width: size, height: size)
-        } else {
-            Image(systemName: "app.dashed")
-                .resizable()
-                .foregroundStyle(.secondary)
-                .frame(width: size * 0.8, height: size * 0.8)
-                .frame(width: size, height: size)
+        Group {
+            if let icon = digest.flatMap({ icons.images[$0] }) {
+                Image(nsImage: icon).resizable().interpolation(.high).frame(width: size, height: size)
+            } else {
+                Image(systemName: "app.dashed")
+                    .resizable()
+                    .foregroundStyle(.secondary)
+                    .frame(width: size * 0.8, height: size * 0.8)
+                    .frame(width: size, height: size)
+            }
         }
+        .task(id: digest) { if let digest { await icons.load(digest) } }
+    }
+}
+
+/// Icons read so far. A digest fixes the bytes, so an image once read never changes.
+@MainActor
+@Observable
+final class AppIcons {
+    private let model: RuntimeModel
+    private(set) var images: [String: NSImage] = [:]
+    @ObservationIgnored private var loading: Set<String> = []
+
+    init(model: RuntimeModel) { self.model = model }
+
+    func load(_ digest: String) async {
+        guard images[digest] == nil, loading.insert(digest).inserted else { return }
+        defer { loading.remove(digest) }
+        if let data = try? await model.content(digest: digest), let image = NSImage(data: data) { images[digest] = image }
     }
 }
 
 @MainActor
 enum AppVisuals {
-    private static var icons: [[AppIdentifier]: NSImage?] = [:]
     /// Today's longest applications get these colours in order; the rest share grey.
     private static let palette: [Color] = [.blue, .orange, .purple, .green, .pink, .teal]
 
@@ -254,16 +274,6 @@ enum AppVisuals {
 
     static func color(for key: String?, among keys: [String]) -> Color {
         key.flatMap { keys.firstIndex(of: $0) }.map { palette[$0] } ?? .gray
-    }
-
-    static func icon(for identifiers: [AppIdentifier]) -> NSImage? {
-        if let cached = icons[identifiers] { return cached }
-        let bundle = identifiers.first { $0.scheme == "macos.bundle-id" }?.value
-        let path = bundle.flatMap { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0)?.path }
-            ?? identifiers.first { $0.scheme == "macos.executable-path" }?.value
-        let icon = path.map { NSWorkspace.shared.icon(forFile: $0) }
-        icons[identifiers] = icon
-        return icon
     }
 }
 

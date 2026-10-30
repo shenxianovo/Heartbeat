@@ -5,7 +5,7 @@ import { ApiError } from "@/api/client";
 import { useEntity } from "@/hooks/queries";
 import { useDescribe } from "@/hooks/useEntityInfo";
 import { cn } from "@/lib/utils";
-import { iconOf, Mark } from "../token/Token";
+import { InfoMark } from "../token/Token";
 import { PanelDepth, useHighlight, useStack } from "../token/context";
 import { PanelBody } from "./bodies";
 
@@ -82,17 +82,13 @@ function Panel({
           title={info?.title}
           className="hover:bg-panel flex h-full w-full cursor-pointer flex-col items-center gap-2 py-3"
         >
-          {info && <Mark role={info.role} color={info.color} icon={iconOf(info)} size="md" />}
+          {info && <InfoMark info={info} size="md" />}
           <span className="text-fg-2 text-xs [writing-mode:vertical-rl]">{info?.title ?? "…"}</span>
         </button>
       ) : (
         <>
           <header className="border-line flex items-start gap-3 border-b px-5 pt-5 pb-4">
-            {info ? (
-              <Mark role={info.role} color={info.color} icon={iconOf(info)} size="lg" />
-            ) : (
-              <span className="bg-panel size-10 rounded-[10px]" />
-            )}
+            {info ? <InfoMark info={info} size="lg" /> : <span className="bg-panel size-10 rounded-[10px]" />}
             <div className="min-w-0 flex-1">
               <p className="text-fg-3 text-xs">{info ? `${info.roleName} · ${info.typeName}` : "读取中"}</p>
               <h2 className="truncate text-[18px] leading-snug font-semibold tracking-[-0.01em] break-all">

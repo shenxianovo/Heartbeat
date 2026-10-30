@@ -44,6 +44,37 @@ namespace Orisumi.Infrastructure.Database.Migrations
                     b.ToTable("deleted_versions", (string)null);
                 });
 
+            modelBuilder.Entity("Orisumi.Infrastructure.Database.StoredContent", b =>
+                {
+                    b.Property<string>("Digest")
+                        .HasColumnType("text")
+                        .HasColumnName("digest");
+
+                    b.Property<byte[]>("Data")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("data");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size");
+
+                    b.Property<DateTimeOffset>("UploadedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("uploaded_at");
+
+                    b.HasKey("Digest")
+                        .HasName("pk_contents");
+
+                    b.HasIndex("UploadedAt")
+                        .HasDatabaseName("ix_contents_uploaded_at");
+
+                    b.ToTable("contents", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_contents_size", "size = octet_length(data)");
+                        });
+                });
+
             modelBuilder.Entity("Orisumi.Infrastructure.Database.StoredEntity", b =>
                 {
                     b.Property<Guid>("EntityId")
@@ -306,6 +337,25 @@ namespace Orisumi.Infrastructure.Database.Migrations
                     b.ToTable("versions", (string)null);
                 });
 
+            modelBuilder.Entity("Orisumi.Infrastructure.Database.StoredVersionContent", b =>
+                {
+                    b.Property<Guid>("VersionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("version_id");
+
+                    b.Property<string>("Digest")
+                        .HasColumnType("text")
+                        .HasColumnName("digest");
+
+                    b.HasKey("VersionId", "Digest")
+                        .HasName("pk_version_contents");
+
+                    b.HasIndex("Digest")
+                        .HasDatabaseName("ix_version_contents_digest");
+
+                    b.ToTable("version_contents", (string)null);
+                });
+
             modelBuilder.Entity("Orisumi.Infrastructure.Database.StoredVersionReference", b =>
                 {
                     b.Property<Guid>("TargetEntityId")
@@ -385,6 +435,23 @@ namespace Orisumi.Infrastructure.Database.Migrations
                         .HasForeignKey("SchemaVersionId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .HasConstraintName("fk_versions_versions_schema_version_id");
+                });
+
+            modelBuilder.Entity("Orisumi.Infrastructure.Database.StoredVersionContent", b =>
+                {
+                    b.HasOne("Orisumi.Infrastructure.Database.StoredContent", null)
+                        .WithMany()
+                        .HasForeignKey("Digest")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("fk_version_contents_contents_digest");
+
+                    b.HasOne("Orisumi.Infrastructure.Database.StoredVersion", null)
+                        .WithMany()
+                        .HasForeignKey("VersionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_version_contents_versions_version_id");
                 });
 
             modelBuilder.Entity("Orisumi.Infrastructure.Database.StoredVersionReference", b =>

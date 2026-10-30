@@ -122,6 +122,7 @@ internal sealed partial class RuntimeHost : IAsyncDisposable
                 if (Directory.Exists(directory)) Directory.Delete(directory, true);
                 break;
             }
+            case "content": return await _reader.ContentAsync(_observers.Values, parameters, token);
             case "read": return await _reader.ReadAsync(FindInstance(parameters), parameters, token);
             case "versions": return await RuntimeReader.VersionsAsync(FindInstance(parameters), parameters, token);
             case "shutdown": await StopAsync(); break;

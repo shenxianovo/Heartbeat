@@ -47,7 +47,7 @@ internal static partial class MacOSForegroundApplicationReader
                 processId > 0 ? processId : null,
                 launchDate == 0 ? null : DateTimeOffset.UnixEpoch.AddSeconds(
                     SendDouble(launchDate, RegisterSelector("timeIntervalSince1970"))),
-                elapsed, awake);
+                elapsed, awake, () => ReadIcon(processId));
         }
         finally
         {

@@ -202,6 +202,14 @@ public final class RuntimeModel {
     private struct ObserverList: Decodable { var host: RuntimeHostStatus; var observers: [ObserverStatus] }
     private struct CatalogList: Decodable { var packages: [CatalogPackage] }
     private struct VersionsRequest: Encodable { var instanceId: UUID; var versionIds: [UUID] }
+    private struct ContentRequest: Encodable { var digest: String }
+    private struct ContentResult: Decodable { var data: Data }
+
+    /// The bytes of one binary content, from a local unsent version or from the backend.
+    public func content(digest: String) async throws -> Data {
+        let result: ContentResult = try await call("content", ContentRequest(digest: digest))
+        return result.data
+    }
 }
 
 /// Reading through Runtime, for views.

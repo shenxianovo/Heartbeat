@@ -14,6 +14,20 @@ internal sealed class RuntimeReader(HttpClient http, Func<bool>? canRead = null)
     private readonly Dictionary<string, Snapshot> _snapshots = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Item[]> _lastReads = new(StringComparer.Ordinal);
 
+    internal async Task<JsonElement> ContentAsync(IEnumerable<ManagedObserver> observers, JsonElement parameters, CancellationToken token)
+    {
+        var digest = parameters.GetProperty("digest").GetString()!;
+        if (!BinaryValue.ValidDigest(digest)) throw new ArgumentException("Invalid content digest.");
+        foreach (var observer in observers)
+            if (observer.Store.Execute(local => local.ReadContent(digest)) is { } localData)
+                return JsonLines.Json(new { data = localData });
+        if (canRead?.Invoke() == false) throw new HttpRequestException("Runtime is not connected.");
+        using var response = await http.GetAsync("contents/" + digest, token);
+        if (response.StatusCode == HttpStatusCode.NotFound) throw new KeyNotFoundException("Content is not available.");
+        response.EnsureSuccessStatusCode();
+        return JsonLines.Json(new { data = await response.Content.ReadAsByteArrayAsync(token) });
+    }
+
     public async Task<JsonElement> ReadAsync(ManagedObserver observer, JsonElement parameters, CancellationToken token)
     {
         var from = VersionJson.ParseTime(parameters.GetProperty("from").GetString()!);

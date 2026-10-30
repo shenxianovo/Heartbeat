@@ -85,7 +85,7 @@ internal static class SubmissionContract
             {
                 case "type":
                     if (property.Value.ValueKind != JsonValueKind.String || property.Value.GetString() is not
-                        ("string" or "boolean" or "integer" or "number" or "reference" or "object" or "array"))
+                        ("string" or "boolean" or "integer" or "number" or "reference" or "binary" or "object" or "array"))
                         throw new JsonException("Invalid field type.");
                     break;
                 case "description":

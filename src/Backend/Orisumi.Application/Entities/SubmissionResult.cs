@@ -2,12 +2,12 @@ using Orisumi.Core;
 
 namespace Orisumi.Application.Entities;
 
-public sealed record SubmissionRejection(int Index, VersionId VersionId, string Rule, string Detail);
+public sealed record SubmissionRejection(int Index, VersionId VersionId, string Rule, string Detail, bool Conflict = false);
 public sealed record SubmissionResult(IReadOnlyList<EntityVersion> Saved, SubmissionRejection? Rejection)
 {
     public IReadOnlyList<EntityVersion> RequireSuccess()
     {
-        if (Rejection is { } rejected) throw new ModelViolationException(rejected.Rule, rejected.Detail);
+        if (Rejection is { } rejected) throw new ModelViolationException(rejected.Rule, rejected.Detail, rejected.Conflict);
         return Saved;
     }
 }

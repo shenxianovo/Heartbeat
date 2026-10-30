@@ -13,6 +13,18 @@ public sealed partial class OrisumiDbContext(DbContextOptions<OrisumiDbContext> 
     {
         modelBuilder.HasPostgresExtension("btree_gist");
         ConfigureManagement(modelBuilder);
+        var contents = modelBuilder.Entity<StoredContent>();
+        contents.ToTable("contents", table => table.HasCheckConstraint("ck_contents_size", "size = octet_length(data)"));
+        contents.HasKey(row => row.Digest).HasName("pk_contents");
+        contents.HasIndex(row => row.UploadedAt).HasDatabaseName("ix_contents_uploaded_at");
+        var usages = modelBuilder.Entity<StoredVersionContent>();
+        usages.ToTable("version_contents");
+        usages.HasKey(row => new { row.VersionId, row.Digest }).HasName("pk_version_contents");
+        usages.HasIndex(row => row.Digest).HasDatabaseName("ix_version_contents_digest");
+        usages.HasOne<StoredVersion>().WithMany().HasForeignKey(row => row.VersionId).OnDelete(DeleteBehavior.Cascade)
+            .HasConstraintName("fk_version_contents_versions_version_id");
+        usages.HasOne<StoredContent>().WithMany().HasForeignKey(row => row.Digest).OnDelete(DeleteBehavior.NoAction)
+            .HasConstraintName("fk_version_contents_contents_digest");
         var entities = modelBuilder.Entity<StoredEntity>();
         entities.ToTable("entities");
         entities.HasKey(row => row.EntityId).HasName("pk_entities");

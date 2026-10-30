@@ -18,6 +18,7 @@ if (string.IsNullOrWhiteSpace(connectionString))
 
 builder.Services.AddOrisumiInfrastructure(connectionString);
 builder.Services.AddSingleton<RuntimeCoordinator>();
+builder.Services.AddHostedService<ContentCleanup>();
 builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = true);
 
 builder.Services.ConfigureHttpJsonOptions(options =>
@@ -38,7 +39,7 @@ app.UseExceptionHandler(handler => handler.Run(async context =>
         ManagementException management => ApiProblem.Management(management),
         EntityDeletedException => ApiProblem.Create(410, exception.Message),
         ResourceNotFoundException => ApiProblem.Create(404, exception.Message),
-        ModelViolationException violation => ApiProblem.Create(ApiProblem.RuleStatus(violation.Rule), violation.Message, violation.Rule),
+        ModelViolationException violation => ApiProblem.Create(ApiProblem.RuleStatus(violation.Rule, violation.Conflict), violation.Message, violation.Rule),
         BadHttpRequestException or JsonException =>
             ApiProblem.Create(400, "The request body is missing, malformed or does not match the contract."),
         _ => ApiProblem.Create(500, "The server could not complete the entity operation."),
@@ -57,5 +58,6 @@ app.UseStatusCodePages(async context =>
 app.UseHostCredentials();
 app.MapManagement();
 app.MapEntities();
+app.MapContents();
 app.MapObservationPreviews();
 app.Run();

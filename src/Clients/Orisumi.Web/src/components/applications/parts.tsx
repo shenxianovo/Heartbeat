@@ -5,9 +5,12 @@ import { useSource } from "@/api/source";
 import { isObservation, type Observation, type Version } from "@/api/types";
 import { Mark, Token } from "@/components/token/Token";
 import { useHighlight, useStack } from "@/components/token/context";
+import { useThingImage } from "@/hooks/useIcons";
 import { useNow } from "@/hooks/useNow";
 import {
   installDetails,
+  LOCAL_APPLICATIONS,
+  PRODUCTS,
   keyOf,
   platformOf,
   type Catalog,
@@ -29,8 +32,23 @@ export interface Dragging {
 
 export const DRAG_TYPE = "application/x-orisumi-identifier";
 
-export function ProductMark({ name, size = "md" }: { name: string; size?: "sm" | "md" | "lg" }) {
-  return <Mark role="thing" color={thingColor(name)} icon={Boxes} size={size} />;
+/** 产品的记号：有图标时用它的本机应用最新的图标，还没有保存的产品用类型图标。 */
+export function ProductMark({
+  name,
+  version,
+  size = "md",
+}: {
+  name: string;
+  version?: Version | undefined;
+  size?: "sm" | "md" | "lg";
+}) {
+  const image = useThingImage(version, version ? PRODUCTS : null);
+  return <Mark role="thing" color={thingColor(name)} icon={Boxes} image={image} size={size} />;
+}
+
+function InstallMark({ install, color }: { install: Version; color: string | null }) {
+  const image = useThingImage(install, LOCAL_APPLICATIONS);
+  return <Mark role="thing" color={color} icon={AppWindow} image={image} size="sm" />;
 }
 
 /** 产品列表，带筛选。newName 不为空时，最后一项是用这个名字新建产品。 */
@@ -71,7 +89,7 @@ function ProductPicker({
       <div className="max-h-56 overflow-y-auto">
         {list.map((product) => (
           <MenuItem key={product.version.entityId} onClick={() => onPick(product)}>
-            <ProductMark name={product.name} size="sm" />
+            <ProductMark name={product.name} version={product.version} size="sm" />
             <span className="min-w-0 flex-1 truncate">{product.name}</span>
           </MenuItem>
         ))}
@@ -189,7 +207,7 @@ export function Installs({ installs, color = null }: { installs: Version[]; colo
             highlight.active === install.entityId && "ring-line-3 ring-1",
           )}
         >
-          <Mark role="thing" color={color} icon={AppWindow} size="sm" />
+          <InstallMark install={install} color={color} />
         </button>
       ))}
       {installs.length > 1 && <span className="text-fg-3 ml-0.5 text-[11px] tabular-nums">{installs.length}</span>}
@@ -370,7 +388,7 @@ export function ProductRow({
       style={over ? ({ "--tw-ring-color": color } as CSSProperties) : undefined}
     >
       <div className="flex min-w-0 items-center gap-2.5">
-        <ProductMark name={product.name} />
+        <ProductMark name={product.name} version={product.version} />
         <div className="min-w-0 flex-1">
           {renaming ? (
             <form

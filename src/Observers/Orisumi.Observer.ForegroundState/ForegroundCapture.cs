@@ -17,9 +17,17 @@ internal sealed record ForegroundCapture(
         {
             Id = EntityId.New(),
             Name = reading.Name,
+            Icon = ReadIcon(reading),
         };
         var time = VersionTime.Normalize(reading.ObservedAt);
         return new(application, content, EntityId.New(), time, time, reading.TimeZone);
+    }
+
+    private static Orisumi.Observer.Sdk.BinaryContent? ReadIcon(ForegroundApplicationReading reading)
+    {
+        try { return reading.ReadIcon?.Invoke(); }
+        catch (Exception exception) when (exception is IOException or InvalidOperationException)
+        { return null; }
     }
 
     internal ForegroundCapture Through(DateTimeOffset time) => this with { EndAt = VersionTime.Normalize(time) };

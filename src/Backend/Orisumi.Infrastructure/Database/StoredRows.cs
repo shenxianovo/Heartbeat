@@ -72,3 +72,17 @@ internal sealed class StoredInstance
     public DateTimeOffset? ReportedAt { get; set; }
     public bool Removed { get; set; }
 }
+
+internal sealed class StoredContent
+{
+    public string Digest { get; set; } = null!;
+    public long Size { get; set; }
+    public byte[] Data { get; set; } = null!;
+    public DateTimeOffset UploadedAt { get; set; }
+}
+
+internal sealed class StoredVersionContent
+{
+    public Guid VersionId { get; set; }
+    public string Digest { get; set; } = null!;
+}

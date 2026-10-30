@@ -17,11 +17,24 @@ export interface InputSet {
 
 export interface FieldDefinition {
   description: string;
-  type: "string" | "boolean" | "integer" | "number" | "reference" | "object" | "array";
+  type: "string" | "boolean" | "integer" | "number" | "reference" | "binary" | "object" | "array";
   required?: boolean;
   nullable?: boolean;
   fields?: Record<string, FieldDefinition>;
   items?: FieldDefinition;
+}
+
+/** `binary` 字段的值：字节按摘要单独读取。 */
+export interface BinaryValue {
+  digest: string;
+  mediaType: string;
+  size: number;
+}
+
+export function isBinaryValue(value: unknown): value is BinaryValue {
+  if (typeof value !== "object" || value === null) return false;
+  const { digest, mediaType, size } = value as Record<string, unknown>;
+  return typeof digest === "string" && typeof mediaType === "string" && typeof size === "number";
 }
 
 export interface EntitySchema {
@@ -112,6 +125,7 @@ export interface ListObservationsQuery {
 
 export interface ListReferrersQuery {
   versions?: "current" | "all";
+  order?: "asc" | "desc";
   limit?: number;
   after?: string;
 }

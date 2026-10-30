@@ -54,7 +54,7 @@ struct ObservationReaderTests {
         ]
         reader.versions = [
             codex: #"{"versionId":"\#(codex.uuidString)","entityId":"019e1bbb-ec00-7000-8000-0000000000c1","content":{"name":"Codex","localApplicationVersionId":"\#(application.uuidString)"}}"#,
-            safari: #"{"versionId":"\#(safari.uuidString)","entityId":"019e1bbb-ec00-7000-8000-0000000000c3","content":{"name":"Safari","localApplicationVersionId":null}}"#,
+            safari: #"{"versionId":"\#(safari.uuidString)","entityId":"019e1bbb-ec00-7000-8000-0000000000c3","content":{"name":"Safari","icon":{"digest":"sha256:abababababababababababababababababababababababababababababababab","mediaType":"image/png","size":3},"localApplicationVersionId":null}}"#,
             application: #"{"versionId":"\#(application.uuidString)","entityId":"019e1bbb-ec00-7000-8000-0000000000a1","content":{"identifiers":[{"scheme":"macos.bundle-id","value":"com.openai.codex"}]}}"#,
         ]
         return reader
@@ -68,6 +68,7 @@ struct ObservationReaderTests {
         #expect(today.items.map(\.name) == ["Codex", "Safari"])
         #expect(today.items.map(\.isActive) == [true, false])
         #expect(today.items.first?.bundleId == "com.openai.codex")
+        #expect(today.items.map(\.icon) == [nil, "sha256:abababababababababababababababababababababababababababababababab"])
         #expect(today.items.first?.endAt == RuntimeJSON.parseDate("2026-10-24T16:50:00.5Z"))
         #expect(!today.complete)
         #expect(today.error == "offline")

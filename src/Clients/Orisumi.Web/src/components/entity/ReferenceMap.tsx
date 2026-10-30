@@ -1,7 +1,7 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { isObservation, type FieldDefinition, type Version } from "@/api/types";
-import { iconOf, Mark } from "@/components/token/Token";
+import { InfoMark } from "@/components/token/Token";
 import { Button, Mono } from "@/components/ui";
 import { useReferrers } from "@/hooks/queries";
 import { timeLabel, useDescribe, useEntityInfo, useObservationOf } from "@/hooks/useEntityInfo";
@@ -211,14 +211,7 @@ export function VersionNode({
         className="bg-card border-line hover:border-line-3 hover:bg-panel/40 flex h-[46px] items-center gap-2.5 rounded-xl border px-2.5 transition-colors"
       >
         {info ? (
-          <Mark
-            role={info.role}
-            color={info.color}
-            icon={iconOf(info)}
-            size="lg"
-            className="size-7 rounded-lg"
-            framed
-          />
+          <InfoMark info={info} size="lg" className="size-7 rounded-lg" framed />
         ) : (
           <span className="bg-panel size-7 shrink-0 rounded-lg" />
         )}

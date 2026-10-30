@@ -68,7 +68,7 @@ internal sealed partial class PostgresEntityTransaction(NpgsqlConnection connect
         return ReadAsync($"SELECT {Columns} FROM observations o JOIN versions v ON v.version_id = o.version_id WHERE {string.Join(" AND ", filters)} ORDER BY lower(o.fact_range), o.entity_id LIMIT ${values.Count}", cancellationToken, values.ToArray());
     }
 
-    public async Task SaveAsync(EntityVersion version, IReadOnlyList<ResolvedReference> references, CancellationToken cancellationToken)
+    public async Task SaveAsync(EntityVersion version, IReadOnlyList<ResolvedReference> references, IReadOnlyList<BinaryValue> contents, CancellationToken cancellationToken)
     {
         var schemaId = version.SchemaVersionId is { } schema
             ? await ScalarAsync("SELECT entity_id FROM versions WHERE version_id = $1", cancellationToken, schema.Value) : null;
@@ -81,6 +81,7 @@ internal sealed partial class PostgresEntityTransaction(NpgsqlConnection connect
             version.Category, VersionTime.Normalize(version.RecordedAt),
             Typed(NpgsqlDbType.Jsonb, VersionJson.Content(version.Content).GetRawText()));
         await SaveProjectionsAsync(version, schemaId, references, cancellationToken);
+        await SaveContentsAsync(version.VersionId, contents, cancellationToken);
     }
 
     private async Task SaveProjectionsAsync(EntityVersion version, object? schemaId,
@@ -129,7 +130,13 @@ internal sealed partial class PostgresEntityTransaction(NpgsqlConnection connect
         await ExecuteAsync("DELETE FROM observations WHERE entity_id = $1", cancellationToken, id.Value);
         await ExecuteAsync("DELETE FROM schemas WHERE entity_id = $1", cancellationToken, id.Value);
         await ExecuteAsync("DELETE FROM entities WHERE entity_id = $1", cancellationToken, id.Value);
+        var contentDigests = (string[])(await ScalarAsync("SELECT ARRAY(SELECT DISTINCT digest FROM version_contents WHERE version_id IN (SELECT version_id FROM versions WHERE entity_id = $1))", cancellationToken, id.Value))!;
+        // BINARY-4: remove only content used by this entity, after removing its usages.
+        await ExecuteAsync("""
+            DELETE FROM version_contents WHERE version_id IN (SELECT version_id FROM versions WHERE entity_id = $1)
+            """, cancellationToken, id.Value);
         await ExecuteAsync("DELETE FROM versions WHERE entity_id = $1", cancellationToken, id.Value);
+        await ExecuteAsync("DELETE FROM contents c WHERE digest = ANY($1) AND NOT EXISTS (SELECT 1 FROM version_contents v WHERE v.digest = c.digest)", cancellationToken, (object)contentDigests);
         await ExecuteAsync("UPDATE observer_instances SET removed = true, revision = revision + 1 WHERE entity_id = $1 AND NOT removed", cancellationToken, id.Value);
     }
 

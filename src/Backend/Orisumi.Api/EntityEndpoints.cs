@@ -47,7 +47,7 @@ internal static class EntityEndpoints
         // Parse every envelope before any transaction: a malformed suffix must not save a prefix.
         var result = await service.SubmitAsync(SubmissionContract.Read(body.RootElement), token);
         if (result.Rejection is { } rejected)
-            return ApiProblem.Create(ApiProblem.RuleStatus(rejected.Rule), rejected.Detail, rejected.Rule, rejected.Index, rejected.VersionId.Value);
+            return ApiProblem.Create(ApiProblem.RuleStatus(rejected.Rule, rejected.Conflict), rejected.Detail, rejected.Rule, rejected.Index, rejected.VersionId.Value);
         return Results.Json(new { versions = result.Saved.Select(version => new
         {
             versionId = version.VersionId.Value, recordedAt = VersionTime.Format(version.RecordedAt),
@@ -92,10 +92,14 @@ internal static class EntityEndpoints
         var target = new EntityId(Id(entityId));
         var versions = Parameter(request, "versions");
         if (versions is not (null or "current" or "all")) throw new JsonException("versions must be current or all.");
+        var order = Parameter(request, "order");
+        if (order is not (null or "asc" or "desc")) throw new JsonException("order must be asc or desc.");
+        // The cursor names its order, so a page of one order cannot continue the other.
+        var kind = order == "desc" ? "referrers-desc" : "referrers";
         var after = Parameter(request, "after");
-        VersionId? cursor = after is null ? null : new(Id(Decode(after, "referrers")));
+        VersionId? cursor = after is null ? null : new(Id(Decode(after, kind)));
         var limit = Limit(request);
-        var referrers = await service.ListReferrersAsync(new(target, versions == "all", limit, cursor), token);
+        var referrers = await service.ListReferrersAsync(new(target, versions == "all", limit, cursor, order == "desc"), token);
         if (referrers is null) return ApiProblem.Create(404, "This EntityId has never been saved.");
         return Results.Json(new
         {
@@ -104,7 +108,7 @@ internal static class EntityEndpoints
                 version = VersionJson.Saved(referrer.Version),
                 references = referrer.References.Select(reference => new { path = reference.Position, targetVersionId = reference.Target.Value }),
             }),
-            next = referrers.Count > limit ? Encode("referrers", referrers[limit - 1].Version.VersionId.Value.ToString("D")) : null,
+            next = referrers.Count > limit ? Encode(kind, referrers[limit - 1].Version.VersionId.Value.ToString("D")) : null,
         });
     }
 

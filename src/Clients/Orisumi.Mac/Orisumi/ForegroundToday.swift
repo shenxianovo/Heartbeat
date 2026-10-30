@@ -8,12 +8,19 @@ struct ForegroundToday: View {
     let model: RuntimeModel
     let instanceId: UUID
     @State private var reader = ForegroundReader()
+    @State private var icons: AppIcons
     @State private var snapshot: Snapshot<Period>?
     @State private var readError: String?
     /// The application picked in the legend: the chart highlights it and the period list shows only it.
     @State private var selected: String?
     /// The application under the pointer in the legend.
     @State private var hoveredApp: String?
+
+    init(model: RuntimeModel, instanceId: UUID) {
+        self.model = model
+        self.instanceId = instanceId
+        _icons = State(initialValue: AppIcons(model: model))
+    }
 
     var body: some View {
         TimelineView(.everyMinute) { context in
@@ -63,6 +70,7 @@ struct ForegroundToday: View {
                 }
             }
         }
+        .environment(icons)
         .task(id: instanceId) {
             snapshot = nil
             while !Task.isCancelled {

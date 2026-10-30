@@ -7,7 +7,7 @@ using Microsoft.Data.Sqlite;
 
 namespace Orisumi.Observer.Runtime.Store;
 
-public sealed class ObserverStore : IDisposable
+public sealed partial class ObserverStore : IDisposable
 {
     private readonly string _connectionString;
     private readonly HttpClient _http;
@@ -33,6 +33,8 @@ public sealed class ObserverStore : IDisposable
         command.Transaction = transaction;
         command.CommandText = """
             CREATE TABLE IF NOT EXISTS local_metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS local_contents(digest TEXT PRIMARY KEY, data BLOB NOT NULL);
+            CREATE TABLE IF NOT EXISTS uploaded_contents(digest TEXT PRIMARY KEY, available INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS latest(entity_id TEXT PRIMARY KEY, version_id TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS local_versions(
                 sequence INTEGER PRIMARY KEY AUTOINCREMENT, version_id TEXT NOT NULL UNIQUE,
@@ -179,6 +181,7 @@ public sealed class ObserverStore : IDisposable
                     return SelectBatch(local.Versions());
                 });
                 if (batch.Count == 0) return;
+                if (!await UploadContentsAsync(batch, cancellationToken)) return;
                 var payload = JsonSerializer.SerializeToUtf8Bytes(new { versions = batch.Select(version => VersionJson.Submission(version.Version)) });
                 using var body = new ByteArrayContent(payload);
                 body.Headers.ContentType = new("application/json");
@@ -197,7 +200,7 @@ public sealed class ObserverStore : IDisposable
                     if (confirmed.Length != batch.Count || confirmed.Where((value, index) => value.GetProperty("versionId").GetGuid() != batch[index].Version.VersionId.Value).Any())
                     { Fail("The server returned an invalid confirmation list."); return; }
                     foreach (var value in confirmed) _ = VersionJson.ParseTime(value.GetProperty("recordedAt").GetString()!);
-                    Execute(local => { foreach (var version in batch) local.Confirm(version.Version.VersionId); });
+                    Execute(local => { foreach (var version in batch) local.Confirm(version.Version.VersionId); local.PruneContents(); });
                     continue;
                 }
                 if (response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.Conflict
@@ -211,8 +214,15 @@ public sealed class ObserverStore : IDisposable
                     Execute(local =>
                     {
                         foreach (var version in batch.Take(index)) local.Confirm(version.Version.VersionId);
-                        local.Reject(batch[index].Version.VersionId, rule, detail);
+                        if (response.StatusCode == HttpStatusCode.Conflict && rule == "BINARY-3")
+                        {
+                            foreach (var content in local.Contents(batch[index].Version))
+                                local.SetContentUploaded(content.Digest, false);
+                        }
+                        else local.Reject(batch[index].Version.VersionId, rule, detail);
+                        local.PruneContents();
                     });
+                    if (response.StatusCode == HttpStatusCode.Conflict && rule == "BINARY-3") continue;
                     return;
                 }
                 Fail($"Submission failed without a version result: HTTP {(int)response.StatusCode}.");

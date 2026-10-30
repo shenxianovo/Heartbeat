@@ -1,16 +1,18 @@
 import { useState, type ComponentType, type ReactNode } from "react";
-import { Braces, Hash, Link2, List, ToggleLeft, Type } from "lucide-react";
+import { Braces, File, Hash, Link2, List, ToggleLeft, Type } from "lucide-react";
 import {
+  isBinaryValue,
   isEntitySchema,
   isInputSet,
   isObservation,
+  type BinaryValue,
   type FieldDefinition,
   type InputSet,
   type Observation,
   type Version,
 } from "@/api/types";
 import { Chip, Mono } from "@/components/ui";
-import { useVersion } from "@/hooks/queries";
+import { useContentUrl, useVersion } from "@/hooks/queries";
 import { clock, dateTime, DAY, HOUR, MINUTE, parseTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { VersionChip } from "./VersionChip";
@@ -213,6 +215,7 @@ function Value({ value, definition }: { value: unknown; definition: FieldDefinit
   if (value === undefined) return <span className="text-fg-3">缺省</span>;
   if (value === null) return <span className="text-fg-3">null</span>;
   if (definition?.type === "reference" && typeof value === "string") return <VersionChip versionId={value} />;
+  if (definition?.type === "binary" && isBinaryValue(value)) return <Binary value={value} />;
   if (typeof value === "boolean") return <span className={value ? "text-fg" : "text-fg-2"}>{value ? "是" : "否"}</span>;
   if (typeof value === "number")
     return <span className="text-[17px] font-medium tabular-nums">{value.toLocaleString()}</span>;
@@ -224,12 +227,47 @@ function Value({ value, definition }: { value: unknown; definition: FieldDefinit
   return <span className="break-words">{String(value)}</span>;
 }
 
+/** 二进制内容写出媒体类型和大小，图片直接显示。 */
+function Binary({ value }: { value: BinaryValue }) {
+  const image = value.mediaType.startsWith("image/");
+  const url = useContentUrl(image ? value : null);
+  return (
+    <div className="flex items-center gap-3">
+      {image && (
+        <span className="bg-card grid size-16 shrink-0 place-items-center overflow-hidden rounded-lg">
+          {url.data ? (
+            <img src={url.data} alt="" className="size-full object-contain" />
+          ) : (
+            <File className="text-fg-3 size-5" />
+          )}
+        </span>
+      )}
+      <span className="min-w-0">
+        <span className="block">
+          {value.mediaType} · {bytes(value.size)}
+        </span>
+        <span className="block truncate" title={value.digest}>
+          <Mono className="text-fg-3 text-[11px]">{value.digest}</Mono>
+        </span>
+        {url.isError && <span className="text-fg-3 block text-xs">读不到内容</span>}
+      </span>
+    </div>
+  );
+}
+
+function bytes(size: number): string {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
+}
+
 const TYPE_ICONS: Record<FieldDefinition["type"], ComponentType<{ className?: string }>> = {
   string: Type,
   boolean: ToggleLeft,
   integer: Hash,
   number: Hash,
   reference: Link2,
+  binary: File,
   object: Braces,
   array: List,
 };

@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import { BookOpen, Box, Layers } from "lucide-react";
 import type { Version } from "@/api/types";
 import { useDescribe, useEntityInfo, type EntityInfo } from "@/hooks/useEntityInfo";
+import { useThingImage } from "@/hooks/useIcons";
 import type { Role } from "@/lib/roles";
 import { UNREADABLE } from "@/lib/observers";
 import { cn } from "@/lib/utils";
@@ -23,6 +24,7 @@ export function Mark({
   role,
   color,
   icon: Icon,
+  image,
   size = "md",
   framed,
   className,
@@ -31,15 +33,23 @@ export function Mark({
   color: string | null;
   /** 类型的记号用图标代替首字母。 */
   icon?: ComponentType<{ className?: string }> | undefined;
+  /** 事物自己的图片，例如应用的图标；有图片时代替带类型图标的色块。 */
+  image?: string | undefined;
   size?: keyof typeof MARK_SIZES;
-  framed?: boolean;
-  className?: string;
+  framed?: boolean | undefined;
+  className?: string | undefined;
 }) {
   const base = cn("grid shrink-0 place-items-center font-semibold", MARK_SIZES[size], className);
   if (framed && role !== "thing")
     return (
       <span aria-hidden="true" className={cn(base, "bg-panel")}>
         <Mark role={role} color={color} icon={Icon} size={size} className="size-[58%]" />
+      </span>
+    );
+  if (role === "thing" && image)
+    return (
+      <span aria-hidden="true" className={cn(base, "overflow-hidden bg-transparent")}>
+        <img src={image} alt="" draggable={false} className="size-full object-contain" />
       </span>
     );
   if (role === "thing")
@@ -122,6 +132,33 @@ export function iconOf(info: EntityInfo) {
   return info.role === "thing" ? typeIcon(info.schema?.content.resourceName) : undefined;
 }
 
+/** 一个实体的记号：角色的形状，事物有自己的图标时用它的图标。 */
+export function InfoMark({
+  info,
+  size = "md",
+  framed,
+  className,
+}: {
+  info: EntityInfo;
+  size?: keyof typeof MARK_SIZES;
+  framed?: boolean | undefined;
+  className?: string | undefined;
+}) {
+  const thing = info.role === "thing";
+  const image = useThingImage(thing ? info.version : null, thing ? info.schema?.content.resourceName : null);
+  return (
+    <Mark
+      role={info.role}
+      color={info.color}
+      icon={iconOf(info)}
+      image={image}
+      size={size}
+      framed={framed}
+      className={className}
+    />
+  );
+}
+
 function chip(size: "sm" | "md") {
   return cn(
     "inline-flex max-w-full min-w-0 items-center rounded-md align-middle",
@@ -167,7 +204,7 @@ function LiveToken({
         className,
       )}
     >
-      <Mark role={info.role} color={info.color} icon={iconOf(info)} size={size} />
+      <InfoMark info={info} size={size} />
       <span className="min-w-0 truncate">
         {info.title}
         {detail && <span className="text-fg-3 font-mono text-[11px]"> {detail}</span>}

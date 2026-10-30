@@ -72,7 +72,14 @@ internal sealed class InMemoryEntityStore : IEntityStore, IDisposable
             var schemaVersions = _versions.Where(version => version.EntityId == schemaId).Select(version => version.VersionId).ToHashSet();
             return Task.FromResult(_versions.Any(version => version.SchemaVersionId is { } id && schemaVersions.Contains(id)));
         }
-        public Task SaveAsync(EntityVersion version, IReadOnlyList<ResolvedReference> references, CancellationToken cancellationToken)
+        public Task<long?> ContentSizeAsync(string digest, CancellationToken cancellationToken) => Task.FromResult<long?>(null);
+        public Task UploadContentAsync(string digest, byte[] data, DateTimeOffset uploadedAt, CancellationToken cancellationToken) =>
+            throw new NotSupportedException("Binary persistence is tested against PostgreSQL.");
+        public Task<byte[]?> ReadContentAsync(string digest, CancellationToken cancellationToken) =>
+            throw new NotSupportedException("Binary persistence is tested against PostgreSQL.");
+        public Task PruneContentsAsync(DateTimeOffset before, CancellationToken cancellationToken) =>
+            throw new NotSupportedException("Binary persistence is tested against PostgreSQL.");
+        public Task SaveAsync(EntityVersion version, IReadOnlyList<ResolvedReference> references, IReadOnlyList<BinaryValue> contents, CancellationToken cancellationToken)
         {
             _versions.Add(version);
             return Task.CompletedTask;
