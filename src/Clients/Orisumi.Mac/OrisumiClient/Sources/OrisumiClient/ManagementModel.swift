@@ -17,7 +17,7 @@ public struct ManagedHost: Decodable, Identifiable, Sendable {
 public struct ManagedInstance: Decodable, Identifiable, Sendable {
     public var entityId: UUID
     public var hostId: UUID
-    public var instanceKey: String
+    public var packageId: String
     public var name: String
     public var enabled: Bool
     public var settings: JSONValue

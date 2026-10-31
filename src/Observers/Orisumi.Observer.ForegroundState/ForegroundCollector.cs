@@ -1,16 +1,12 @@
 using System.Diagnostics;
-using System.Text.Json;
-using Orisumi.Core;
 
 namespace Orisumi.Observers.ForegroundState;
 
 internal sealed class ForegroundCollector(
-    EntityId observerId,
-    LocalApplicationRegistry applications,
+    ApplicationKeys applications,
     ForegroundStore store,
     TimeSpan interval,
     Func<ForegroundApplicationReading> read,
-    TextWriter output,
     TextWriter progress)
 {
     private readonly object _gate = new();
@@ -26,18 +22,7 @@ internal sealed class ForegroundCollector(
             var updates = _timeline.Accept(applications.Resolve(reading), reading);
             var active = updates[^1];
             store.Checkpoint(active, updates.Count == 2 ? updates[0] : null);
-            output.WriteLine(JsonSerializer.Serialize(new
-            {
-                type = "checkpoint",
-                observerId = observerId.Value,
-                localApplicationId = active.Application.Id.Value,
-                identifiers = active.Application.Identifiers,
-                contentId = active.Content.Id.Value,
-                observationId = active.ObservationId.Value,
-                startAt = active.StartAt,
-                endAt = active.EndAt,
-                active.Content.Name,
-            }, JsonSerializerOptions.Web));
+
         }
     }
 

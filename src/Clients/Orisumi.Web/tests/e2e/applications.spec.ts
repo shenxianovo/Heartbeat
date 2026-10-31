@@ -1,7 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// 应用页的修改：用路由拦截在内存里模拟后端，保存提交的版本、列出当前版本、删除实体，
-// 检查每次修改提交的版本和页面的结果。
+// 应用页：用路由拦截在内存里模拟后端的读取，检查产品、线索、未归属和判断记录。
 
 interface Version {
   entityId: string;
@@ -16,18 +15,16 @@ interface Version {
 let counter = 0;
 const uuid = () => `0192b056-7300-7000-8000-${(++counter).toString(16).padStart(12, "0")}`;
 
-const PRODUCT_SCHEMA = "019e1bbb-ec00-7000-8000-000000000004";
 const qq = { scheme: "macos.bundle-id", value: "com.tencent.qq" };
 const intl = { scheme: "macos.bundle-id", value: "com.tencent.qq.intl" };
 const lark = { scheme: "macos.bundle-id", value: "com.electron.lark" };
 
 class Backend {
-  readonly entities = new Map<string, Version[]>();
-  readonly submissions: Version[][] = [];
+  readonly versions: Version[] = [];
 
-  add(entityId: string, category: string, schemaVersionId: string | null, content: Record<string, unknown>) {
+  add(category: string, schemaVersionId: string | null, content: Record<string, unknown>) {
     const version = {
-      entityId,
+      entityId: uuid(),
       versionId: uuid(),
       previousVersionId: null,
       category,
@@ -35,25 +32,16 @@ class Backend {
       recordedAt: new Date().toISOString(),
       content,
     };
-    this.entities.set(entityId, [version]);
+    this.versions.push(version);
     return version;
   }
 
-  current(entityId: string) {
-    return this.entities.get(entityId)?.at(-1);
+  schema(resourceName: string, displayName: string) {
+    return this.add("entity_schema", null, { displayName, description: `${displayName}。`, resourceName, fields: {} });
   }
 
   resourceOf(version: Version) {
-    for (const versions of this.entities.values())
-      for (const v of versions)
-        if (v.versionId === version.schemaVersionId) return (v.content as { resourceName: string }).resourceName;
-    return null;
-  }
-
-  products() {
-    return [...this.entities.values()]
-      .map((versions) => versions.at(-1)!)
-      .filter((v) => this.resourceOf(v) === "application-products");
+    return this.versions.find((v) => v.versionId === version.schemaVersionId)?.content.resourceName;
   }
 
   async serve(page: Page) {
@@ -64,57 +52,37 @@ class Backend {
         const url = new URL(request.url());
         const path = url.pathname.replace(/^\/api/, "");
         const notFound = () => route.fulfill({ status: 404, json: { title: "Not Found", status: 404 } });
-        if (request.method() === "POST" && path === "/versions") {
-          const versions = (request.postDataJSON() as { versions: Omit<Version, "recordedAt">[] }).versions.map(
-            (v) => ({ ...v, recordedAt: new Date().toISOString() }),
-          );
-          this.submissions.push(versions);
-          for (const v of versions) this.entities.set(v.entityId, [...(this.entities.get(v.entityId) ?? []), v]);
-          return route.fulfill({
-            json: { versions: versions.map(({ versionId, recordedAt }) => ({ versionId, recordedAt })) },
-          });
-        }
-        if (request.method() === "DELETE") {
-          this.entities.delete(path.split("/")[2]!);
-          return route.fulfill({ status: 204 });
-        }
         if (path === "/observations") return route.fulfill({ json: { versions: [], next: null } });
+        if (path === "/versions/read") {
+          const { versionIds } = request.postDataJSON() as { versionIds: string[] };
+          const results = versionIds.map((versionId) => ({ versionId, status: "deleted" }));
+          return route.fulfill({ json: { results } });
+        }
         if (path === "/entities") {
           const resourceName = url.searchParams.get("resourceName");
           const category = url.searchParams.get("category");
-          const all = [...this.entities.values()].map((versions) => versions.at(-1)!);
-          if (resourceName) {
-            if (!all.some((v) => v.category === "entity_schema" && v.content.resourceName === resourceName))
-              return notFound();
-            return route.fulfill({
-              json: { versions: all.filter((v) => this.resourceOf(v) === resourceName), next: null },
-            });
-          }
-          return route.fulfill({
-            json: { versions: all.filter((v) => !category || v.category === category), next: null },
-          });
+          if (resourceName && !this.versions.some((v) => v.content.resourceName === resourceName)) return notFound();
+          const versions = this.versions.filter((v) =>
+            resourceName ? this.resourceOf(v) === resourceName : !category || v.category === category,
+          );
+          return route.fulfill({ json: { versions, next: null } });
         }
         const [, kind, id, rest] = path.split("/");
         if (kind === "versions") {
-          for (const versions of this.entities.values()) {
-            const found = versions.find((v) => v.versionId === id);
-            if (found) return route.fulfill({ json: found });
-          }
-          return notFound();
+          const found = this.versions.find((v) => v.versionId === id);
+          return found ? route.fulfill({ json: found }) : notFound();
         }
         if (kind === "entities" && id) {
-          const versions = this.entities.get(id);
-          if (!versions) return notFound();
-          if (rest === "versions") return route.fulfill({ json: { versions } });
+          const found = this.versions.find((v) => v.entityId === id);
+          if (!found) return notFound();
+          if (rest === "versions") return route.fulfill({ json: { versions: [found] } });
           if (rest === "referrers") {
-            const targets = new Set(versions.map((v) => v.versionId));
-            const referrers = [...this.entities.values()]
-              .flat()
-              .filter((v) => Object.values(v.content).some((value) => targets.has(value as string)))
+            const referrers = this.versions
+              .filter((v) => Object.values(v.content).includes(found.versionId))
               .map((version) => ({ version, references: [] }));
             return route.fulfill({ json: { referrers, next: null } });
           }
-          return route.fulfill({ json: versions.at(-1) });
+          return route.fulfill({ json: found });
         }
         return notFound();
       },
@@ -124,84 +92,63 @@ class Backend {
 
 function seed() {
   const backend = new Backend();
-  const installs = backend.add(uuid(), "entity_schema", null, {
-    displayName: "本机应用",
-    description: "表示某台设备上的一个应用安装。",
-    resourceName: "local-applications",
-    fields: {},
-  });
-  const products = backend.add(PRODUCT_SCHEMA, "entity_schema", null, {
-    displayName: "应用产品",
-    description: "表示用户认知中的一款软件。",
-    resourceName: "application-products",
-    fields: {},
-  });
+  const observers = backend.schema("application-identity-observers", "应用识别 Observer");
+  const installs = backend.schema("local-applications", "本机应用");
+  const products = backend.schema("application-products", "应用产品");
+  const memberships = backend.schema("application-memberships", "线索归属");
   for (const [clue, path] of [
     [qq, "/Applications/QQ.app/Contents/MacOS/QQ"],
     [intl, "/Applications/QQ Intl.app/Contents/MacOS/QQ"],
     [lark, "/Applications/Lark.app/Contents/MacOS/Lark"],
   ] as const)
-    backend.add(uuid(), "business", installs.versionId, {
+    backend.add("business", installs.versionId, {
       identifiers: [clue, { scheme: "macos.executable-path", value: path }],
     });
-  backend.add(uuid(), "business", products.versionId, { name: "QQ", identifiers: [qq, intl] });
-  backend.add(uuid(), "business", products.versionId, { name: "Lark", identifiers: [lark] });
+  const observer = backend.add("business", observers.versionId, { programVersion: "1.0.0", model: "openai/test" });
+  const product = backend.add("business", products.versionId, { name: "QQ" });
+  backend.add("business", products.versionId, { name: "没有线索的产品" });
+  const deleted = uuid();
+  const clueOfQq = backend.add("business", memberships.versionId, {
+    identifier: qq,
+    productVersionId: product.versionId,
+  });
+  backend.add("business", memberships.versionId, { identifier: intl, productVersionId: product.versionId });
+  backend.add("business", memberships.versionId, { identifier: lark, productVersionId: deleted });
+  backend.add("observation", null, {
+    observerVersionId: observer.versionId,
+    contentVersionId: clueOfQq.versionId,
+    inputSetVersionId: null,
+    startAt: null,
+    endAt: null,
+    timeZone: null,
+  });
   return backend;
 }
 
-test("把线索分到新产品：第一次修改时创建用户本人，产品版本由用户本人陈述", async ({ page }) => {
-  const backend = seed();
-  await backend.serve(page);
+test("产品按线索归属列出，指向已删除产品的线索未归属，没有线索归属的产品不列出", async ({ page }) => {
+  await seed().serve(page);
   await page.goto("/applications");
-  await expect(page.getByText("2 个产品 · 3 个安装")).toBeVisible();
-
-  await page.getByRole("button", { name: /com\.tencent\.qq\.intl/ }).click();
-  await page.getByLabel("选择产品", { exact: true }).fill("QQ 国际版");
-  await page.getByLabel("选择产品", { exact: true }).press("Enter");
-
-  await expect(page.getByRole("status")).toHaveText("已把 com.tencent.qq.intl 归入新产品「QQ 国际版」");
-  await expect(page.getByRole("article", { name: "应用产品 QQ 国际版" })).toBeVisible();
-  const [batch] = backend.submissions;
-  expect(batch!.map((v) => v.category)).toEqual([
-    "entity_schema",
-    "business",
-    "input_set",
-    "business",
-    "business",
-    "observation",
-    "observation",
-  ]);
-  const user = batch![1]!;
-  const observations = batch!.filter((v) => v.category === "observation");
-  expect(observations.every((o) => o.content.observerVersionId === user.versionId && o.content.startAt === null)).toBe(
-    true,
-  );
-  const names = backend.products().map((p) => [p.content.name, (p.content.identifiers as unknown[]).length]);
-  expect(names).toEqual(
-    expect.arrayContaining([
-      ["QQ", 1],
-      ["QQ 国际版", 1],
-    ]),
-  );
+  await expect(page.getByText("1 个产品 · 3 个安装 · 1 条线索未归属")).toBeVisible();
+  const row = page.getByRole("article", { name: "应用产品 QQ" });
+  await expect(row.getByRole("button", { name: /com\.tencent\.qq\.intl/ })).toBeVisible();
+  await expect(page.getByRole("article", { name: "应用产品 没有线索的产品" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "未归属" }).getByText("com.electron.lark")).toBeVisible();
 });
 
-test("拖动线索到另一个产品，再删除空的产品", async ({ page }) => {
-  const backend = seed();
-  await backend.serve(page);
+test("产品面板列出判断记录，一条线索归属一行", async ({ page }) => {
+  await seed().serve(page);
   await page.goto("/applications");
-  const qqCard = page.getByRole("article", { name: "应用产品 QQ" });
-  await qqCard.waitFor();
+  await page.getByRole("button", { name: "QQ", exact: true }).click();
+  const records = page.getByRole("heading", { name: "判断记录" }).locator("xpath=ancestor::section[1]");
+  await expect(records.getByRole("link")).toHaveCount(2);
+  await expect(records.getByRole("link", { name: "com.tencent.qq", exact: true })).toBeVisible();
+});
 
-  await page.getByRole("button", { name: /com\.electron\.lark/ }).dragTo(qqCard);
-  await expect(page.getByRole("status")).toHaveText("已把 com.electron.lark 归入「QQ」");
-  await expect(qqCard.getByRole("button", { name: /com\.electron\.lark/ })).toBeVisible();
-
-  await page.getByRole("button", { name: "Lark 的操作" }).click();
-  await page.getByRole("button", { name: "删除…" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "删除", exact: true }).click();
-  await expect(page.getByRole("status")).toHaveText("已删除「Lark」");
-  await expect(page.getByRole("article", { name: "应用产品 Lark" })).toHaveCount(0);
-  expect(backend.products()).toHaveLength(1);
+test("点线索打开它的线索归属", async ({ page }) => {
+  await seed().serve(page);
+  await page.goto("/applications");
+  await page.getByRole("button", { name: /com\.tencent\.qq$/ }).click();
+  await expect(page).toHaveURL(/stack=/);
 });
 
 test("没有本机应用时的空状态", async ({ page }) => {

@@ -18,6 +18,7 @@ export interface InteractionPart {
 
 export interface InteractionContent {
   sessionVersionId: string;
+  client: string | null;
   kind: InteractionKind;
   actor: Actor | null;
   sourceRole: string | null;
@@ -40,11 +41,13 @@ export interface InteractionContent {
 export interface SessionContent {
   product: string;
   sourceSessionId: string;
+}
+
+/** 写在别的实体上的会话信息：最后写入的标题，以及子 Agent 关系。 */
+export interface SessionMeta {
   title: string | null;
-  client: string | null;
-  parentSessionVersionId: string | null;
+  parentEntityId: string | null;
   agentName: string | null;
-  spawnCallId: string | null;
 }
 
 /** 一次交互和它的事实时间。 */
@@ -66,7 +69,10 @@ export interface SessionGroup {
   entityId: string;
   /** 这一天读到的最新的会话版本。 */
   session: Version<SessionContent> | null;
+  title: string | null;
   parentEntityId: string | null;
+  agentName: string | null;
+  client: string | null;
   interactions: Interaction[];
   first: number;
   last: number;
@@ -89,10 +95,15 @@ export function productName(product: string | null | undefined): string {
   return (product && PRODUCTS[product]) || product || "助手";
 }
 
-export function sessionTitle(session: SessionContent | null | undefined): string {
-  if (!session) return "读不到的会话";
-  if (session.title) return session.title;
-  return session.parentSessionVersionId ? `子 Agent · ${session.agentName ?? session.sourceSessionId}` : "未命名会话";
+export function sessionTitle(group: SessionGroup): string {
+  if (!group.session) return "读不到的会话";
+  if (group.title) return group.title;
+  return group.parentEntityId ? `子 Agent · ${group.agentName ?? group.session.content.sourceSessionId}` : "未命名会话";
+}
+
+/** 会话实体自己的名字：内容只有产品和来源标识，标题在标题实体上。 */
+export function sessionLabel(session: SessionContent): string {
+  return `${productName(session.product)} · ${session.sourceSessionId.slice(0, 8)}`;
 }
 
 /** 交互的名字：消息取第一段文字，工具取工具名或记录种类。 */
@@ -120,12 +131,13 @@ export function toInteraction(observation: Version<Observation>, content: Versio
 }
 
 /**
- * 按会话分组，组内按时间排列。sessions 是会话版本按 VersionId 的索引；
+ * 按会话分组，组内按时间排列。sessions 是会话版本按 VersionId 的索引，metas 是会话信息按 EntityId 的索引；
  * 同一会话这一天引用过几个版本时，取 VersionId 最大的，也就是最新的那一版。
  */
 export function groupSessions(
   interactions: readonly Interaction[],
   sessions: ReadonlyMap<string, Version<SessionContent> | null>,
+  metas: ReadonlyMap<string, SessionMeta>,
 ): SessionGroup[] {
   const groups = new Map<string, SessionGroup>();
   for (const interaction of interactions) {
@@ -137,7 +149,10 @@ export function groupSessions(
       group = {
         entityId,
         session,
-        parentEntityId: null,
+        title: metas.get(entityId)?.title ?? null,
+        parentEntityId: metas.get(entityId)?.parentEntityId ?? null,
+        agentName: metas.get(entityId)?.agentName ?? null,
+        client: null,
         interactions: [],
         first: Infinity,
         last: -Infinity,
@@ -157,11 +172,10 @@ export function groupSessions(
   }
   for (const group of groups.values()) {
     group.interactions.sort(byTime);
+    const latest = [...group.interactions].reverse();
     group.workingDirectory =
-      [...group.interactions].reverse().find((i) => i.version.content.workingDirectory)?.version.content
-        .workingDirectory ?? null;
-    const parent = group.session?.content.parentSessionVersionId;
-    group.parentEntityId = parent ? (sessions.get(parent)?.entityId ?? null) : null;
+      latest.find((i) => i.version.content.workingDirectory)?.version.content.workingDirectory ?? null;
+    group.client = latest.find((i) => i.version.content.client)?.version.content.client ?? null;
   }
   return [...groups.values()].sort((a, b) => b.last - a.last);
 }

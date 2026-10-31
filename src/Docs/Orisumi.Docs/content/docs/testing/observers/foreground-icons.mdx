@@ -11,7 +11,7 @@ export const caseId = 'foreground-icons';
 
 ## 前置条件 [#setup]
 
-前台状态 Observer 使用模拟的读数和模拟的图标，Runtime 的批次提交使用独立的 SQLite 文件。需要后端的行通过 `WebApplicationFactory` 启动 API，连接一个独立的测试数据库，见 [Database](../database.mdx)。
+前台状态 Observer 使用模拟的读数和图标，经 HTTP SDK 上传文件并写入。通过 `WebApplicationFactory` 启动 API，连接一个独立的测试数据库，见 [Database](../database.mdx)。
 
 ## 操作与预期结果 [#steps]
 
@@ -29,7 +29,7 @@ export const caseId = 'foreground-icons';
 
 - 图标随观测内容保存并能读回字节；时段进行中图标改变，当前时段不变，图标只读取一次；之后的时段读到新图标，两段相同的图标只保存一份；本机应用的 EntityId 不变：`IconIsCapturedAtPeriodStartAndSharedWithoutChangingApplicationIdentity`。
 - 读不到图标和读取抛出异常时，`icon` 为 `null`，时段和 Observation 照常保存：`MissingOrFailedIconDoesNotPreventSavingAPeriod`。
-- macOS 上原生读取和绘制图标没有自动测试，按 `src/Observers/Orisumi.Observer.ForegroundState/README.md` 的验证步骤手动检查。
+- macOS 上原生读取和绘制图标没有自动测试。2026-10-31 在临时环境中实际打包运行，停用后从 API 读回 PNG，核对 1024×1024 尺寸和描述中的字节数；这不覆盖真实休眠。
 
 ## 执行结果 [#results]
 

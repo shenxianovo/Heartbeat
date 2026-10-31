@@ -21,12 +21,15 @@ export interface InstanceStatus {
   diagnostic?: string | null;
   appliedRevision?: number;
   pendingChanges?: number;
+  pendingWrites?: number;
+  rejectedWrites?: number;
+  lastRejection?: string | null;
 }
 
 export interface Instance {
   entityId: string;
   hostId: string;
-  instanceKey: string;
+  packageId: string;
   name: string;
   enabled: boolean;
   settings: Record<string, unknown>;
@@ -36,7 +39,7 @@ export interface Instance {
   status: InstanceStatus | null;
 }
 
-export type Action = "catalog" | "install" | "update" | "uninstall" | "retry";
+export type Action = "catalog" | "install" | "update" | "uninstall" | "retry" | "resendRejected";
 
 export interface Operation {
   operationId: string;

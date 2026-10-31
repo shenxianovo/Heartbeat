@@ -69,6 +69,11 @@ struct StatusBanners: View {
                     Button("启用") { Task { await model.setEnabled(observer.packageId, true) } }.disabled(busy)
                 }
             }
+            if observer.writes.rejected > 0 {
+                Banner(tone: .warning, title: "\(observer.writes.rejected) 条写入被拒绝", message: observer.writes.lastRejection) {
+                    Button("重发") { Task { await model.resendRejected(observer.packageId) } }.disabled(busy)
+                }
+            }
             if let diagnostic = observer.diagnostic {
                 Banner(tone: .info, title: "采集提示", message: diagnostic) { EmptyView() }
             }

@@ -44,14 +44,26 @@ Observer 是一个普通进程，任何语言都能写。托管方启动它时�
 | `ORISUMI_DATA_DIR` | 实例的数据目录，由业务代码使用 |
 | `ORISUMI_WRITE_URL` | 本地转发的地址，写入用 |
 | `ORISUMI_API_URL`、`ORISUMI_API_TOKEN` | API 的地址和托管方凭证，读取和需要结果的写入用。还没有接入时凭证为空 |
-| `ORISUMI_DEVICE_ID` | 运行设备：一个[设备](../observers/device-state/device.mdx)实体的 EntityId，托管方没有配置时为空 |
+| `ORISUMI_DEVICE` | 运行设备，一个 JSON 对象。读不到设备标识时为空 |
 | `ORISUMI_SETTINGS` | 配置，一个 JSON 对象，由业务代码解释 |
 
 程序的其余约定只有三条，见 [Protocol · Observer 进程](./protocol.mdx#observer-process)：标准输入关闭时结束，诊断写入标准错误，进程在运行就算启动完成。
 
-运行设备说明程序在哪里执行，由配置或启动参数明确给出，多个托管方可以用同一个设备实体。业务代码用它的 EntityId 作识别范围，用引用写入它的当前版本。事实发生在哪台设备上，由业务内容表达：助手会话 Observer 读本机日志时，交互发生的设备就是运行设备；以后导入别的设备拷来的日志时，两者不同。需要设备的业务没有运行设备时，报告缺少配置并等待，托管方身份和主机名不能代替它。
+运行设备说明程序在哪里执行：
 
-运行上下文变化时，托管方停止程序，再用新的上下文启动它：设置、首次接入、重新接入、API 地址或运行设备变化都走这条路径。
+```json
+{
+  "key": { "scope": null, "scheme": "macos.hardware-uuid", "value": "3F2504E0-4F89-41D3-9A0C-0305E82C3301" },
+  "name": "Shenxianovo-Mac",
+  "platform": "macos"
+}
+```
+
+托管方启动时读取平台的稳定标识，见 [Device · 身份](../observers/device-state/device.mdx#identity)，用户不用配置。用到设备的程序启动时写入[设备](../observers/device-state/device.mdx)：`key` 是识别依据，`name` 和 `platform` 是内容。之后用同一份 `key` 引用它，用 `value` 作本机对象的识别范围。
+
+事实发生在哪台设备上，由业务内容表达：助手会话 Observer 读本机日志时，交互发生的设备就是运行设备；以后导入别的设备拷来的日志时，两者不同。容器这类环境读不到设备标识，需要设备的业务报告诊断并等待，托管方身份和主机名不能代替它。
+
+运行上下文变化时，托管方停止程序，再用新的上下文启动它：设置、首次接入、重新接入或 API 地址变化都走这条路径。
 
 ## 两种运行方式 [#modes]
 

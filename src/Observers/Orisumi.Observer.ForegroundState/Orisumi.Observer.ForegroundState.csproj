@@ -9,6 +9,7 @@
     <ObserverName>Foreground State</ObserverName>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="schemas.json" />
     <ProjectReference Include="../Orisumi.Observer.Sdk/Orisumi.Observer.Sdk.csproj" />
     <ProjectReference Include="../../Core/Orisumi.Core/Orisumi.Core.csproj" />
     <InternalsVisibleTo Include="Orisumi.Integration.Tests" />

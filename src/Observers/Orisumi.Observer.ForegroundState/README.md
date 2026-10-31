@@ -1,12 +1,10 @@
 # Orisumi.Observer.ForegroundState
 
-Orisumi.Observer.ForegroundState 在 macOS 上持续采集前台应用，把本机应用和前台应用时段交给 [Runtime](../../Docs/Orisumi.Docs/content/docs/hosting/runtime.mdx) 保存和发送。业务规则见 [Foreground State](../../Docs/Orisumi.Docs/content/docs/observers/foreground-state/index.mdx)。
+Orisumi.Observer.ForegroundState 在 macOS 上持续采集前台应用，把本机应用和前台应用时段写给 [Runtime](../../Docs/Orisumi.Docs/content/docs/hosting/runtime.mdx) 的本地转发。业务规则见 [Foreground State](../../Docs/Orisumi.Docs/content/docs/observers/foreground-state/index.mdx)。
 
-本文写当前代码的运行方式。目标契约见 [Foreground State](../../Docs/Orisumi.Docs/content/docs/observers/foreground-state/index.mdx)，代码尚未迁移。
+进行中的时段放在内存中。切换应用、休眠或停止时，`ForegroundStore.cs` 写入本机应用和带事实时间的时段。本地转发送达后，读取方才能读到这一段。
 
-进行中的时段放在内存中。切换应用、休眠或停止时，`ForegroundStore.cs` 把本机应用、时段内容和 Observation 一起提交到后端。读取方这时才能读到这一段。
-
-它只引用 `Orisumi.Observer.Sdk` 和 Core，通过标准输入和标准输出与 Runtime 通信，自己不打开 SQLite。程序在主线程运行 AppKit 事件循环，持续读取时才能取得更新后的前台应用。
+它只引用 `Orisumi.Observer.Sdk` 和 Core。程序在主线程运行 AppKit 事件循环，持续读取时才能取得更新后的前台应用。
 
 ## 运行
 
@@ -27,23 +25,15 @@ dotnet run --project src/Observers/Orisumi.Observer.Runtime -- \
 
 ## 启动
 
-程序从 Runtime 的 `init` 读取：
+运行上下文的含义见 [Hosting · 运行上下文](../../Docs/Orisumi.Docs/content/docs/hosting/index.mdx#context)。设置 `intervalMs` 是定时确认的间隔，100 到 60000 毫秒，默认 `1000`。
 
-| 字段 | 用途 |
-| --- | --- |
-| `instanceId` | 程序实例的 EntityId |
-| `packageVersion` | 程序实例内容中的 `programVersion` |
-| `sharedDataDirectory` | 本机应用登记文件 `local-applications.json` 所在的目录，同一个 Runtime 中的程序实例共用 |
-| `settings.intervalMs` | 定时确认的间隔，100 到 60000 毫秒，默认 `1000` |
-
-- 本机应用登记文件损坏时，程序报错并保留原文件；删除后重新分配身份。
-- 启动时，程序登记所需的 EntitySchema 和程序实例，再回复 `ready`。
+- 启动时，程序声明业务类型，写入程序实例和运行设备。读不到运行设备时报告诊断并等待。
 - 读取失败写到标准错误，Runtime 把最近的一条作为采集提示报告给客户端。
-- 收到 `stop` 后，当前时段结束于最后一次确认，提交后以 0 退出。初始化或运行失败时以 1 退出。
+- 标准输入关闭后，当前时段结束于最后一次确认，写入后以 0 退出。初始化或运行失败时以 1 退出。
 
 ## 验证
 
-自动测试覆盖本机应用身份、时段与休眠边界、结束时提交、失败后继续采集，以及图标经 API 保存。测试经 `RuntimeObserverSession` 调用内存 HTTP 后端或真实 API，不调用 macOS 原生接口。Case 见文档站 Testing 分区。
+自动测试覆盖本机应用身份、时段与休眠边界、结束时写入、失败后继续采集，以及图标经 API 保存。测试经 SDK 和真实 API 运行，不调用 macOS 原生接口。Case 见文档站 Testing 分区。
 
 ```sh
 orisumi verify checks --base HEAD --quality

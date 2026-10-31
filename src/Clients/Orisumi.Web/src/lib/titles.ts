@@ -1,5 +1,5 @@
 import type { FieldDefinition } from "@/api/types";
-import { interactionTitle, sessionTitle, type InteractionContent, type SessionContent } from "./conversations";
+import { interactionTitle, sessionLabel, type InteractionContent, type SessionContent } from "./conversations";
 
 // 业务实体在界面上的名字。默认取第一个不是引用的文字字段；自己没有这样的字段时，按 Schema 的 resourceName 在这里登记取法。
 
@@ -9,8 +9,8 @@ type Content = Record<string, unknown>;
 const BY_RESOURCE_NAME: Record<string, (content: Content) => string | undefined> = {
   // 本机应用只保存标识线索，名字在引用它的前台时段里。先用自己的 bundle id。
   "local-applications": (content) => identifier(content, "macos.bundle-id"),
-  // 助手会话的第一个文字字段是产品，名字取标题。
-  "assistant-sessions": (content) => sessionTitle(content as unknown as SessionContent),
+  // 助手会话的第一个文字字段是产品，名字写产品和来源标识。
+  "assistant-sessions": (content) => sessionLabel(content as unknown as SessionContent),
   // 助手交互的文字在片段里。
   "assistant-interactions": (content) => interactionTitle(content as unknown as InteractionContent),
 };

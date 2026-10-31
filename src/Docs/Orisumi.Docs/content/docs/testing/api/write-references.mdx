@@ -1,0 +1,36 @@
+---
+title: "Write References"
+description: "写入中的引用由后端按 Schema 解析"
+---
+
+export const caseId = 'api-write-references';
+
+## 为什么验证 [#why]
+
+写入中的引用由后端按 Schema 解析，普通字符串保留原值。约定见 [引用](../../api/writing.mdx#references)。
+
+## 前置条件 [#setup]
+
+HTTP 用例经真实 API 和独立的 PostgreSQL 数据库运行。Runtime 使用临时数据目录；Observer 的读数、日志和模型回答由测试控制。实际运行的补充证据单独说明，见 [测试分工](../index.mdx#kinds)。
+
+## 操作与预期结果 [#steps]
+
+| 操作 | 预期结果 |
+| --- | --- |
+| 分别用 VersionId、entityId、schemaId 与 key 引用 | 保存为确定的 VersionId |
+| 引用在嵌套对象和数组中 | 按定义逐层解析 |
+| 普通 string 字段像一个 ID | 原样保存 |
+| 不可空引用无法解析 | 这次写入被拒绝，规则 ENTITY-6 |
+| 可空引用无法解析，包括目标已删除 | 保存为 null |
+| 后一次写入引用本请求前面形成的实体 | 引用成功 |
+| 目标更新后重复写入引用它的内容 | 内容相同，沿用原版本 |
+
+## 测试实现 [#implementation]
+
+方法位于 `tests/Orisumi.Integration.Tests/`：
+
+- 三种写法、嵌套、普通字符串、顺序、空值和删除：`WriteApiTests.ReferencesResolveInOrderAndCompareTargetEntitiesAcrossVersions`。
+
+## 执行结果 [#results]
+
+<TestCaseResults caseId={caseId} />

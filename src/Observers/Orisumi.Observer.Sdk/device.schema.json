@@ -1,0 +1,14 @@
+[
+  {
+    "schemaId": "019e1bbb-ec00-7000-8000-00000000000d",
+    "content": {
+      "displayName": "设备",
+      "description": "表示用户的一台设备；设备改名时形成新版本。",
+      "resourceName": "devices",
+      "fields": {
+        "name": { "type": "string", "description": "设备的名称，读不到时为 null", "nullable": true, "required": true },
+        "platform": { "type": "string", "description": "设备的平台：macos、windows、android 或 linux", "nullable": false, "required": true }
+      }
+    }
+  }
+]

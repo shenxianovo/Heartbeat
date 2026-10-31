@@ -1,61 +1,45 @@
+using System.Net;
 using System.Text.Json;
 using Orisumi.Core;
 using Orisumi.Observer.Sdk;
 
 namespace Orisumi.Observers.ApplicationIdentity;
 
-internal sealed class IdentityRepository(IObserverSession session, IdentityWork work)
+internal sealed class IdentityRepository(DataClient data)
 {
-    public async Task<EntityVersion?> ReadAsync(EntityId id, CancellationToken token)
+    internal async Task<EntityVersion[]> ApplicationsAsync(CancellationToken token)
     {
-        var result = await session.RequestAsync("readCurrent", JsonLines.Json(new { entityId = id.Value }), cancellationToken: token);
-        var version = result.GetProperty("version");
-        return version.ValueKind == JsonValueKind.Null ? null : VersionJson.ReadSaved(version);
+        // The foreground Observer declares this type, possibly after this Observer started.
+        try { return (await data.ListAsync("entities?resourceName=local-applications&limit=1000", token)).Select(VersionJson.ReadSaved).ToArray(); }
+        catch (HttpRequestException exception) when (exception.StatusCode == HttpStatusCode.NotFound) { return []; }
     }
-    public async Task<List<EntityVersion>> ListAsync(string resource, CancellationToken token)
+
+    internal async Task<(Product[] Products, Membership[] Memberships)> CatalogAsync(CancellationToken token)
     {
-        var results = new List<EntityVersion>();
-        string? after = null;
-        do
+        var products = (await data.ListAsync("entities?resourceName=application-products&limit=1000", token))
+            .Select(VersionJson.ReadSaved).Select(IdentityData.Product).ToArray();
+        var memberships = (await data.ListAsync("entities?resourceName=application-memberships&limit=1000", token)).Select(VersionJson.ReadSaved).ToArray();
+        var targets = memberships.Select(v => ((BusinessContent)v.Content).Fields.GetProperty("productVersionId").GetGuid()).Distinct().ToArray();
+        var entities = products.ToDictionary(p => p.Version.VersionId.Value, p => p.Version.EntityId);
+        foreach (var chunk in targets.Where(id => !entities.ContainsKey(id)).Chunk(256))
         {
-            var page = await session.RequestAsync("listEntities", JsonLines.Json(new { resourceName = resource, limit = 1000, after }), cancellationToken: token);
-            results.AddRange(page.GetProperty("versions").EnumerateArray().Select(VersionJson.ReadSaved));
-            after = page.GetProperty("next").GetString();
-        } while (after is not null);
-        return results;
-    }
-    public async Task<List<EntityVersion>> PeriodsAsync(EntityId application, CancellationToken token)
-    {
-        var results = new List<EntityVersion>();
-        var schemas = new Dictionary<VersionId, bool>();
-        string? after = null;
-        do
+            var results = await data.VersionsAsync(chunk, token);
+            foreach (var result in results.GetProperty("results").EnumerateArray())
+                if (result.GetProperty("status").GetString() == "found")
+                    entities[result.GetProperty("versionId").GetGuid()] = new(result.GetProperty("version").GetProperty("entityId").GetGuid());
+        }
+        return (products, memberships.Select(version =>
         {
-            var page = await session.RequestAsync("listReferrers", JsonLines.Json(new { entityId = application.Value, limit = 100, after }), cancellationToken: token);
-            foreach (var item in page.GetProperty("referrers").EnumerateArray())
-            {
-                var version = VersionJson.ReadSaved(item.GetProperty("version"));
-                if (version.SchemaVersionId is not { } schemaId) continue;
-                if (!schemas.TryGetValue(schemaId, out var isPeriod))
-                {
-                    var response = await session.RequestAsync("versions", JsonLines.Json(new { versionIds = new[] { schemaId.Value } }), cancellationToken: token);
-                    var saved = response.GetProperty("versions");
-                    isPeriod = saved.GetArrayLength() == 1 && saved[0].GetProperty("entityId").GetGuid() == IdentityData.PeriodSchemaId.Value;
-                    schemas[schemaId] = isPeriod;
-                }
-                if (isPeriod) results.Add(version);
-                if (results.Count == 100) return results;
-            }
-            after = page.GetProperty("next").GetString();
-        } while (after is not null);
-        return results;
+            var fields = ((BusinessContent)version.Content).Fields;
+            var target = fields.GetProperty("productVersionId").GetGuid();
+            return new Membership(version, fields.GetProperty("identifier").Deserialize<ApplicationIdentifier>(IdentityData.Json)!,
+                entities.TryGetValue(target, out var entity) && products.Any(p => p.Version.EntityId == entity) ? entity : null);
+        }).ToArray());
     }
-    public async Task<EntityVersion> EnsureAsync(EntityId id, VersionId? schema, VersionContent content, CancellationToken token)
+
+    internal async Task<EntityVersion[]> PeriodsAsync(EntityId application, CancellationToken token)
     {
-        var current = await ReadAsync(id, token);
-        if (current is not null && JsonElement.DeepEquals(VersionJson.Content(current.Content), VersionJson.Content(content))) return current;
-        await work.SubmitAsync([new(id, VersionId.New(), current?.VersionId, schema, content)], token);
-        return (await ReadAsync(id, token))!;
+        var page = await data.GetAsync($"entities/{application.Value}/referrers?resourceName=foreground-application-periods&path=%2Fcontent%2FlocalApplicationVersionId&limit=100", token);
+        return page.GetProperty("referrers").EnumerateArray().Select(item => VersionJson.ReadSaved(item.GetProperty("version"))).ToArray();
     }
-    public Task SubmitAsync(IEnumerable<VersionSubmission> versions, CancellationToken token) => work.SubmitAsync(versions, token);
 }

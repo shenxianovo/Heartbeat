@@ -7,6 +7,7 @@ import {
   nestSessions,
   partText,
   resolvePointer,
+  sessionTitle,
   toInteraction,
   type Interaction,
   type InteractionContent,
@@ -27,11 +28,6 @@ function session(content: Partial<SessionContent> = {}): Version<SessionContent>
     content: {
       product: "claude-code",
       sourceSessionId: "s",
-      title: null,
-      client: null,
-      parentSessionVersionId: null,
-      agentName: null,
-      spawnCallId: null,
       ...content,
     },
   };
@@ -52,6 +48,7 @@ function interaction(
     recordedAt: at,
     content: {
       sessionVersionId: sessionVersion.versionId,
+      client: null,
       kind: "message",
       actor: "user",
       sourceRole: null,
@@ -93,11 +90,15 @@ function interaction(
 
 describe("groupSessions", () => {
   it("按会话分组，组内按时间排列，最近活动的会话在前", () => {
-    const a = session({ title: "A" });
-    const b = session({ title: "B" });
+    const a = session();
+    const b = session();
     const index = new Map([
       [a.versionId, a],
       [b.versionId, b],
+    ]);
+    const metas = new Map([
+      [a.entityId, { title: "A", parentEntityId: null, agentName: null }],
+      [b.entityId, { title: "B", parentEntityId: null, agentName: null }],
     ]);
     const groups = groupSessions(
       [
@@ -106,8 +107,9 @@ describe("groupSessions", () => {
         interaction(a, "2026-10-31T01:00:00Z", { kind: "tool-call", actor: "assistant" }),
       ],
       index,
+      metas,
     );
-    expect(groups.map((g) => g.session?.content.title)).toEqual(["B", "A"]);
+    expect(groups.map(sessionTitle)).toEqual(["B", "A"]);
     expect(groups[1]!.interactions.map((i) => i.version.content.kind)).toEqual(["tool-call", "message"]);
     expect(groups[1]).toMatchObject({ userMessages: 1, toolCalls: 1, workingDirectory: "/x/heartbeat" });
   });
@@ -120,15 +122,21 @@ describe("groupSessions", () => {
         interaction(a, "2026-10-31T01:00:00Z", { actor: "user" }),
       ],
       new Map([[a.versionId, a]]),
+      new Map(),
     );
     expect(groups[0]!.interactions.map((i) => i.version.content.actor)).toEqual(["user", "assistant"]);
   });
 
   it("子 Agent 的会话排在父会话后面", () => {
-    const parent = session({ title: "父" });
-    const child = session({ parentSessionVersionId: parent.versionId, agentName: "web-fetch" });
-    const other = session({ title: "其他" });
+    const parent = session();
+    const child = session();
+    const other = session();
     const index = new Map([parent, child, other].map((s) => [s.versionId, s]));
+    const metas = new Map([
+      [parent.entityId, { title: "父", parentEntityId: null, agentName: null }],
+      [child.entityId, { title: null, parentEntityId: parent.entityId, agentName: "web-fetch" }],
+      [other.entityId, { title: "其他", parentEntityId: null, agentName: null }],
+    ]);
     const groups = groupSessions(
       [
         interaction(parent, "2026-10-31T01:00:00Z", {}),
@@ -136,11 +144,12 @@ describe("groupSessions", () => {
         interaction(child, "2026-10-31T03:00:00Z", { actor: "agent" }),
       ],
       index,
+      metas,
     );
-    expect(nestSessions(groups).map(({ group, depth }) => [group.session?.content.title ?? "子", depth])).toEqual([
+    expect(nestSessions(groups).map(({ group, depth }) => [sessionTitle(group), depth])).toEqual([
       ["其他", 0],
       ["父", 0],
-      ["子", 1],
+      ["子 Agent · web-fetch", 1],
     ]);
   });
 });

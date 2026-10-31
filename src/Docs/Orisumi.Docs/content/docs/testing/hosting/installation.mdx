@@ -17,24 +17,26 @@ Runtime 使用独立的数据目录，附带目录中有一个测试用的安装
 
 | 操作 | 预期结果 |
 | --- | --- |
-| 第一次启动 Runtime | 附带的包被安装并启用，进程启动，`init` 带着新的程序实例 EntityId |
+| 第一次启动 Runtime | 附带的包被安装并启用，进程启动，环境变量带着新的程序实例 EntityId |
 | 从官方目录安装另一个包 | 下载、校验后安装，状态为启用，进程启动 |
 | 官方目录中的 SHA-256 与下载内容不符 | 安装失败，登记不变 |
 | 包的 `target` 不是本机平台，或 `protocol` 不受支持 | 不安装，`catalog` 中 `compatible` 为 `false` |
 | ZIP 中有路径超出包目录的条目 | 安装失败，包目录之外没有新文件 |
 | 卸载附带的包，再重启 Runtime | 包没有被重新安装；`list` 中它的 `installed` 为 `false` |
-| 修改设置后卸载，再重新安装 | `init` 带着原来的 EntityId 和设置，Observer 直接开始采集 |
+| 修改设置后卸载，再重新安装 | 环境变量带着原来的 EntityId 和设置，Observer 直接开始采集 |
 | 安装和重新安装 | 启用作为一项本机修改记入安装登记，见 [Management · 安装维护与配置](../../hosting/management.mdx#maintenance) |
-| 实例删除后再安装同一个包 | 不带 `newInstance` 时返回 `conflict`；带上时得到新的 EntityId 和实例目录，旧实例目录不被使用 |
+| 实例删除后再安装同一个包 | 直接得到新的 EntityId 和实例目录，旧实例目录不被使用 |
+| 从 HTTPS 或本机 HTTP 地址安装，可选 sha256 | 下载后校验清单；返回 packageId 和 instanceId |
 
 ## 测试实现 [#implementation]
 
 以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
 
-- 附带的包安装后生成 UUIDv7 的程序实例；停用状态跨 Runtime 重启保持；卸载删除程序、保留登记；重装后沿用原来的 EntityId 并启用：`RuntimeHostingTests.UninstallReinstallKeepsIdentityAndDisabledStateSurvivesRestart`。
+- 附带的包安装后生成 UUIDv7 的程序实例；停用状态跨 Runtime 重启保持；卸载删除程序、保留登记，重启后不自动装回；重装后沿用原来的 EntityId 并启用：`RuntimeHostingTests.UninstallReinstallKeepsIdentityAndDisabledStateSurvivesRestart`。
 - SHA-256 不符、ZIP 中路径越界时安装失败，包目录之外没有新文件，登记的版本不变：`RuntimeHostingTests.BadDigestAndArchiveTraversalDoNotChangeInstalledVersion`。
 - 数据目录同时只能由一个 Runtime 使用，损坏的登记保留原样：`RuntimeHostingTests.RuntimeDirectoryHasOneOwnerAndCorruptRegistryIsNotReplaced`。
-- 未覆盖：从官方目录下载安装；`target` 或 `protocol` 不兼容；卸载附带的包后重启不重装；重装沿用设置；安装形成的本机修改；删除实例后新建实例。
+- 从地址安装且不提供摘要，返回安装包和实例身份：`RuntimeHostingTests.InstallFromUrlWithoutDigestReturnsPackageAndInstance`。
+- 未覆盖：从官方目录下载安装；`target` 或 `protocol` 不兼容；重装沿用设置；安装形成的本机修改；可选 sha256 的地址安装校验。删除实例后新建实例由 `RuntimeManagementTests.AcknowledgementRebasesNewerLocalChangesAndNeverRevivesRemovedInstance` 覆盖。
 
 ## 执行结果 [#results]
 

@@ -29,18 +29,18 @@ internal static class Program
             using var downloads = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
             var catalogUrl = parsed.GetValue(catalog);
             using var packages = new PackageStore(parsed.GetValue(data)!, parsed.GetValue(bundled), catalogUrl is null ? null : new Uri(catalogUrl), downloads);
-            await using var host = new RuntimeHost(packages, http, parsed.GetValue(service));
+            await using var host = new RuntimeHost(packages, http, parsed.GetValue(service), DeviceIdentity.Read());
             if (parsed.GetValue(pairing) is { } code) await host.PairAsync(code, parsed.GetValue(name)!, token);
             if (parsed.GetValue(service) && !host.Paired) throw new InvalidOperationException("Service mode requires a pairing code or an existing host identity.");
             await host.InitializeAsync(token, parsed.GetValue(run));
             host.StartSynchronization();
             if (parsed.GetValue(run) is { } package)
             {
-                await host.RequestAsync("setEnabled", Sdk.JsonLines.Json(new { packageId = package, enabled = true }), token);
+                await host.RequestAsync("setEnabled", ClientProtocol.Json(new { instanceId = packages.Observers.Single(item => item.PackageId == package && !item.Removed).InstanceId, enabled = true }), token);
                 string? reported = null;
                 while (true)
                 {
-                    var list = await host.RequestAsync("list", Sdk.JsonLines.Json(new { }), token);
+                    var list = await host.RequestAsync("list", ClientProtocol.Json(new { }), token);
                     var status = list.GetProperty("observers").EnumerateArray().Single(item => item.GetProperty("packageId").GetString() == package);
                     var line = status.GetRawText();
                     if (line != reported) { await Console.Error.WriteLineAsync(line); reported = line; }

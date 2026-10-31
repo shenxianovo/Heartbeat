@@ -1,12 +1,9 @@
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
-using Orisumi.Observer.Sdk;
 
 namespace Orisumi.Observers.AssistantSessions;
 
-internal sealed record EntityEntry(Guid EntityId, Guid? ObservationId = null, string? SessionKey = null, SessionInfo? Session = null);
-
-// Business identities and checkpoints. They change only after the batch that formed them was saved.
+// Reading progress and pending source context are committed after writes are accepted.
 internal sealed class AssistantState : IDisposable
 {
     private readonly SqliteConnection _connection;
@@ -30,12 +27,6 @@ internal sealed class AssistantState : IDisposable
         command.CommandText = "SELECT payload FROM state WHERE key=$key";
         command.Parameters.AddWithValue("$key", key);
         return command.ExecuteScalar() is string json ? JsonSerializer.Deserialize<T>(json, JsonSerializerOptions.Web) : default;
-    }
-
-    internal async Task SubmitAsync(IObserverSession session, JsonElement payload, Dictionary<string, JsonElement> changes, CancellationToken token)
-    {
-        if (payload.GetProperty("operations").GetArrayLength() > 0) await session.RequestAsync("commit", payload, token);
-        Apply(changes);
     }
 
     internal void Apply(Dictionary<string, JsonElement> changes)

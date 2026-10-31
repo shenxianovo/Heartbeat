@@ -58,6 +58,7 @@ public sealed class AssistantMappingTests
         var result = interactions.Single(value => value.Text("sourceId") == "r1#0");
         await Assert.That(result.Text("actor")).IsEqualTo("tool");
         await Assert.That(result.Text("sourceRole")).IsEqualTo("user");
+        await Assert.That(result.GetProperty("toolCallVersionId").ValueKind).IsEqualTo(JsonValueKind.Null);
         await Assert.That(result.GetProperty("isError").GetBoolean()).IsTrue();
         await Assert.That(interactions.Where(value => value.Text("sourceId")!.StartsWith('a')).All(value => value.Text("sourceMessageId") == "response-one")).IsTrue();
         await Assert.That(fixture.Diagnostics.Count).IsEqualTo(0);
@@ -102,7 +103,29 @@ public sealed class AssistantMappingTests
         await fixture.Collector.PollAsync();
         await Assert.That(fixture.Diagnostics.Count).IsEqualTo(0);
         await Assert.That(Content(fixture.Interactions().Single()).Text("sourceId")).IsEqualTo("message-after-metadata");
-        await Assert.That(fixture.Sessions().Select(Content).Last().Text("title")).IsEqualTo("My title");
+        await Assert.That(fixture.Titles().Select(Content).Single().Text("title")).IsEqualTo("My title");
+    }
+
+    [Test, Property("caseId", "assistant-session-reading")]
+    public async Task TitlesAreSeparateAndRepeatedClaudeTitlesDoNotCreateVersions()
+    {
+        using var fixture = new AssistantTestFixture();
+        fixture.Write("codex/session_index.jsonl",
+            Json(new { id = "main", thread_name = "first", updated_at = "2026-10-30T10:00:00Z" }),
+            Json(new { id = "main", thread_name = "second", updated_at = "2026-10-30T11:00:00Z" }));
+        fixture.Write("claude/projects/project/main.jsonl",
+            Json(new { type = "custom-title", sessionId = "main", customTitle = "title" }),
+            Json(new { type = "custom-title", sessionId = "main", customTitle = "title" }));
+        await fixture.Collector.PollAsync();
+        await Assert.That(fixture.Diagnostics.Count).IsEqualTo(0);
+        var titles = fixture.Titles();
+        await Assert.That(titles.Count).IsEqualTo(3);
+        await Assert.That(fixture.Sessions().All(v => Content(v).EnumerateObject().Count() == 2)).IsTrue();
+        await fixture.Collector.PollAsync();
+        await Assert.That(fixture.Titles().Select(v => v.VersionId).SequenceEqual(titles.Select(v => v.VersionId))).IsTrue();
+        var times = fixture.Observations().Select(v => (Observation)v.Content).ToArray();
+        await Assert.That(times.Count(t => t.StartAt == t.EndAt && t.StartAt is not null)).IsEqualTo(2);
+        await Assert.That(times.Count(t => t.StartAt is null && t.EndAt is null)).IsEqualTo(1);
     }
 
     [Test, Arguments("human", "user"), Arguments("peer", "agent"), Arguments("coordinator", "agent"),
@@ -149,7 +172,7 @@ public sealed class AssistantMappingTests
         await fixture.Collector.PollAsync();
         var call = fixture.Interactions().Single(value => Content(value).Text("kind") == "tool-call");
         var result = fixture.Interactions().Single(value => Content(value).Text("kind") == "tool-result");
-        await Assert.That(Content(result).GetProperty("toolCallVersionId").GetGuid()).IsEqualTo(call.Version.VersionId.Value);
+        await Assert.That(Content(result).GetProperty("toolCallVersionId").GetGuid()).IsEqualTo(call.VersionId.Value);
         await Assert.That(Content(call).GetProperty("sourceEntries")[0].Text("digest")).IsEqualTo(Content(result).GetProperty("sourceEntries")[0].Text("digest"));
         await Assert.That(Content(result).GetProperty("parts")[0].GetProperty("text").ValueKind).IsEqualTo(JsonValueKind.Null);
         if (fields.Contains("\"failed\"", StringComparison.Ordinal))
@@ -170,7 +193,7 @@ public sealed class AssistantMappingTests
         await fixture.Collector.PollAsync();
         var calls = fixture.Interactions().Where(value => Content(value).Text("kind") == "tool-call").ToDictionary(value => Content(value).Text("callId")!);
         foreach (var result in fixture.Interactions().Where(value => Content(value).Text("kind") == "tool-result"))
-            await Assert.That(Content(result).GetProperty("toolCallVersionId").GetGuid()).IsEqualTo(calls[Content(result).Text("callId")!].Version.VersionId.Value);
+            await Assert.That(Content(result).GetProperty("toolCallVersionId").GetGuid()).IsEqualTo(calls[Content(result).Text("callId")!].VersionId.Value);
         await Assert.That(Content(calls["a"]).Text("sourceParentId")).IsEqualTo("branch-a");
         await Assert.That(calls.Count).IsEqualTo(2);
     }
@@ -183,12 +206,12 @@ public sealed class AssistantMappingTests
         await File.WriteAllTextAsync(Path.ChangeExtension(path, ".meta.json"), """{"description":"task","agentType":"reader","toolUseId":"spawn"}""");
         fixture.Write("codex/sessions/rollout-child.jsonl", Meta("codex-child", "codex-parent"), Item("UserMessage", "child-user", Fields("""{"content":[{"type":"text","text":"task"}]}""")));
         await fixture.Collector.PollAsync();
-        foreach (var child in fixture.Sessions().Where(value => Content(value).GetProperty("parentSessionVersionId").ValueKind != JsonValueKind.Null))
+        foreach (var child in fixture.Subagents())
         {
             var parentId = Content(child).GetProperty("parentSessionVersionId").GetGuid();
-            await Assert.That(fixture.Sessions().Any(value => value.Version.VersionId.Value == parentId)).IsTrue();
+            await Assert.That(fixture.Sessions().Any(value => value.VersionId.Value == parentId)).IsTrue();
         }
         await Assert.That(fixture.Interactions().Where(value => Content(value).Text("kind") == "message").All(value => Content(value).Text("actor") == "agent")).IsTrue();
-        await Assert.That(fixture.Sessions().Select(Content).Single(value => value.Text("sourceSessionId") == "child").Text("spawnCallId")).IsEqualTo("spawn");
+        await Assert.That(fixture.Subagents().Select(Content).Single(value => value.Text("agentName") == "reader").Text("spawnCallId")).IsEqualTo("spawn");
     }
 }

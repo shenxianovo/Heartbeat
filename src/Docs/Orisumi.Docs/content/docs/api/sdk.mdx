@@ -12,7 +12,7 @@ data = connect()
 await data.use(definitions, self = (types.ForegroundStateObserver, selfContent))
 ```
 
-`connect` 在受托管时从[运行上下文](../hosting/index.mdx#context)读取地址，直接运行时由调用方传入。`data.use` 声明用到的业务类型，写入程序实例自己的描述，见[业务类型](./writing.mdx#types)和[负责的 Observer](./writing.mdx#observer)。它不等后端，所以断网时也能启动。
+`connect` 在受托管时从[运行上下文](../hosting/index.mdx#context)读取地址，直接运行时由调用方传入。`data.use` 声明用到的业务类型，写入程序实例自己的描述，见[业务类型](./writing.mdx#types)和[负责的 Observer](./writing.mdx#observer)。它不等后端，所以断网时也能启动。用到设备的程序接着写入 `data.device.write`，见 [Hosting · 运行上下文](../hosting/index.mdx#context)。
 
 ## 写入 [#write]
 
@@ -36,11 +36,11 @@ onEachSample(sample):
 前台时段引用本机应用：
 
 ```text
-appKey = installationKey(device.entityId, bundleId, executablePath)
+appKey = installationKey(data.device.key.value, bundleId, executablePath)
 
 await data.writeAll([
     item(types.LocalApplication, key = appKey,
-         content = { deviceVersionId: entity(device.entityId), identifiers: nativeIdentifiers }),
+         content = { deviceVersionId: data.device.ref, identifiers: nativeIdentifiers }),
     item(types.ForegroundPeriod,
          content = {
              localApplicationVersionId: ref(types.LocalApplication, appKey),

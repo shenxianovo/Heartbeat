@@ -97,7 +97,7 @@ internal sealed class ObserversCommand(RepositoryContext repository, IProcessRun
             ["target"] = target,
             ["protocol"] = 1,
             ["entry"] = entry,
-            ["scope"] = project.Scope ?? "host",
+            ["scope"] = project.Scope ?? "any",
         }, JsonOptions.Indented);
 
     private Task<int> PublishAsync(string project, string into, string target, CancellationToken token, params string[] extra) =>

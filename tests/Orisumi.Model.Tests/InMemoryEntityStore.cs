@@ -30,13 +30,43 @@ internal sealed class InMemoryEntityStore : IEntityStore, IDisposable
         private readonly List<EntityVersion> _versions = [];
         private readonly HashSet<EntityId> _deletedEntities = [];
         private readonly HashSet<VersionId> _deletedVersions = [];
+        private readonly Dictionary<(EntityId, RecognitionKey), EntityId> _keys = [];
+        private readonly Dictionary<EntityId, WriteStreamState> _streams = [];
         internal State() { }
         internal State(State source)
         {
             _versions.AddRange(source._versions);
+            foreach (var pair in source._keys) _keys.Add(pair.Key, pair.Value);
+            foreach (var pair in source._streams) _streams.Add(pair.Key, pair.Value with { SchemaVersionIds = new(pair.Value.SchemaVersionIds) });
             _deletedEntities.UnionWith(source._deletedEntities);
             _deletedVersions.UnionWith(source._deletedVersions);
         }
+
+        public Task<bool> IsHostInstanceAsync(EntityId id, Guid host, CancellationToken cancellationToken) => Task.FromResult(false);
+        public async Task<T> SavepointAsync<T>(Func<Task<T>> operation, CancellationToken cancellationToken)
+        {
+            var saved = new State(this);
+            try { return await operation(); }
+            catch (ModelViolationException)
+            {
+                _versions.Clear(); _versions.AddRange(saved._versions);
+                _keys.Clear(); foreach (var pair in saved._keys) _keys.Add(pair.Key, pair.Value);
+                _streams.Clear(); foreach (var pair in saved._streams) _streams.Add(pair.Key, pair.Value);
+                throw;
+            }
+        }
+        public Task<EntityId?> FindRecognitionAsync(EntityId schemaId, RecognitionKey key, CancellationToken cancellationToken) =>
+            Task.FromResult(_keys.TryGetValue((schemaId, key), out var id) ? (EntityId?)id : null);
+        public Task RegisterRecognitionAsync(EntityId schemaId, RecognitionKey key, EntityId entityId, CancellationToken cancellationToken)
+        { _keys.TryAdd((schemaId, key), entityId); return Task.CompletedTask; }
+        public Task<WriteStreamState> ReadStreamAsync(EntityId observer, CancellationToken cancellationToken) =>
+            Task.FromResult(_streams.TryGetValue(observer, out var stream) ? stream with { SchemaVersionIds = new(stream.SchemaVersionIds) } : new(0, []));
+        public Task SaveStreamAsync(EntityId observer, WriteStreamState stream, CancellationToken cancellationToken)
+        { _streams[observer] = stream; return Task.CompletedTask; }
+        public Task<EntityVersion?> FindObservationAsync(EntityId observer, EntityId content, CancellationToken cancellationToken) =>
+            Task.FromResult(_versions.LastOrDefault(v => v.Content is Observation o
+                && _versions.Find(v => v.VersionId == o.ObserverVersionId)?.EntityId == observer
+                && _versions.Find(v => v.VersionId == o.ContentVersionId)?.EntityId == content));
 
         public Task<EntityVersion?> ReadCurrentAsync(EntityId id, CancellationToken cancellationToken) =>
             Task.FromResult(_versions.LastOrDefault(version => version.EntityId == id));
@@ -78,6 +108,8 @@ internal sealed class InMemoryEntityStore : IEntityStore, IDisposable
         }
         public Task DeleteAsync(EntityId id, CancellationToken cancellationToken)
         {
+            foreach (var key in _keys.Where(pair => pair.Value == id).Select(pair => pair.Key).ToArray()) _keys.Remove(key);
+            _streams.Remove(id);
             _deletedEntities.Add(id);
             _deletedVersions.UnionWith(_versions.Where(version => version.EntityId == id).Select(version => version.VersionId));
             _versions.RemoveAll(version => version.EntityId == id);

@@ -4,32 +4,6 @@ namespace Orisumi.Application.Entities;
 
 public sealed class EntityService(IEntityStore store, TimeProvider timeProvider)
 {
-    // VERSION-13: any rejection rolls back the whole submission.
-    public async Task<SubmissionResult> SubmitAsync(IEnumerable<VersionSubmission> versions,
-        CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            return new(await store.ExecuteAsync(async (transaction, token) =>
-            {
-                var saved = new List<EntityVersion>();
-                foreach (var version in versions)
-                {
-                    try { saved.Add(await SaveAsync(transaction, VersionTime.Normalize(version), token)); }
-                    catch (ModelViolationException exception)
-                    { throw new RejectedSubmission(new(saved.Count, version.VersionId, exception.Rule, exception.Message, exception.Conflict)); }
-                }
-                return saved;
-            }, cancellationToken), null);
-        }
-        catch (RejectedSubmission rejected) { return new([], rejected.Rejection); }
-    }
-
-    private sealed class RejectedSubmission(SubmissionRejection rejection) : Exception(rejection.Detail)
-    {
-        public SubmissionRejection Rejection { get; } = rejection;
-    }
-
     public Task<EntityVersion?> ReadVersionAsync(VersionId id, CancellationToken cancellationToken = default) =>
         store.ExecuteAsync(async (transaction, token) =>
         {
@@ -80,22 +54,20 @@ public sealed class EntityService(IEntityStore store, TimeProvider timeProvider)
         return await transaction.ListObservationsAsync(query with { SchemaId = schema }, token);
     }, cancellationToken);
 
-    public Task<IReadOnlyList<Referrer>?> ListReferrersAsync(ReferrerQuery query,
+    public Task<IReadOnlyList<Referrer>?> ListReferrersAsync(ReferrerQuery query, string? resourceName = null,
         CancellationToken cancellationToken = default) => store.ExecuteAsync<IReadOnlyList<Referrer>?>(async (transaction, token) =>
     {
         // HISTORY-8: a deleted target still has readable referrers.
         if (!await transaction.EntityExistsAsync(query.Target, token)) return null;
-        return await transaction.ListReferrersAsync(query, token);
+        return await transaction.ListReferrersAsync(query with { SchemaId = await ResolveSchemaAsync(transaction, resourceName, token) }, token);
     }, cancellationToken);
 
     private static async Task<EntityId?> ResolveSchemaAsync(IEntityTransaction transaction, string? resourceName, CancellationToken token) =>
         resourceName is null ? null : await transaction.FindSchemaAsync(resourceName, token) ?? throw new ResourceNotFoundException();
 
-    private async Task<EntityVersion> SaveAsync(IEntityTransaction transaction, VersionSubmission version, CancellationToken token)
+    internal async Task<EntityVersion> SaveAsync(IEntityTransaction transaction, VersionSubmission version, CancellationToken token)
     {
         VersionRules.Require(!await transaction.IsEntityDeletedAsync(version.EntityId, token), "HISTORY-7", "Deleted entities cannot be restored.");
-        VersionRules.Require(!await transaction.IsVersionDeletedAsync(version.VersionId, token), "VERSION-9", "Deleted VersionIds cannot be reused.");
-        VersionRules.Require(await transaction.ReadVersionAsync(version.VersionId, token) is null, "VERSION-9", "VersionIds cannot be reused.");
         EntityVersion? schemaVersion = null;
         if (version.SchemaVersionId is { } schemaId)
             schemaVersion = await transaction.ReadVersionAsync(schemaId, token);
@@ -133,14 +105,10 @@ public sealed class EntityService(IEntityStore store, TimeProvider timeProvider)
         return saved;
     }
 
-    private static async Task CheckPreviousVersionAsync(IEntityTransaction transaction, VersionSubmission version,
+    private static Task CheckPreviousVersionAsync(IEntityTransaction transaction, VersionSubmission version,
         EntityVersion? current, CancellationToken token)
     {
-        if (version.PreviousVersionId == current?.VersionId) return;
-        var owner = version.PreviousVersionId is { } previous
-            ? await transaction.FindVersionEntityAsync(previous, token) : null;
-        VersionRules.Require(current is null || version.PreviousVersionId is not null && owner != version.EntityId,
-            "VERSION-6", "The entity already has a version newer than the submitted predecessor.");
+        if (version.PreviousVersionId == current?.VersionId) return Task.CompletedTask;
         throw new ModelViolationException("VERSION-4", "previousVersionId must be null for a first version or refer to this entity's current version.");
     }
 

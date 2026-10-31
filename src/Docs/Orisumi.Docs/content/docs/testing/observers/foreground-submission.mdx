@@ -1,35 +1,34 @@
 ---
-title: "Foreground Submission"
-description: "进行中的时段留在内存，结束时一次提交"
+title: "Foreground Writes"
+description: "时段结束时交出完整内容和时间"
 ---
 
 export const caseId = 'foreground-submission';
 
 ## 为什么验证 [#why]
 
-前台状态 Observer 在时段结束时形成 Observation。需要确认连续读数只补全内存中的时段，保存后的边界来自最后的证据。约定见 [Foreground State · 提交](../../observers/foreground-state/index.mdx#submission)。
+时段结束时交出完整内容和时间，进行中的时段只在内存。约定见 [写入](../../observers/foreground-state/index.mdx#submission)。
 
 ## 前置条件 [#setup]
 
-使用合成的前台读数和内存 HTTP 后端，经 RuntimeObserverSession 处理批次，不调用 macOS 原生接口。
+HTTP 用例经真实 API 和独立的 PostgreSQL 数据库运行。Runtime 使用临时数据目录；Observer 的读数、日志和模型回答由测试控制。实际运行的补充证据单独说明，见 [测试分工](../index.mdx#kinds)。
 
 ## 操作与预期结果 [#steps]
 
 | 操作 | 预期结果 |
 | --- | --- |
-| 连续确认同一个应用 | 尚未保存 Observation |
-| 结束时段 | 本机应用、时段内容和 Observation 在一个提交中保存；Observation 只有一版 |
-| 再次要求结束已经结束的时段 | 不产生新版本 |
-| 切换时旧时段提交失败，随后新时段结束 | 报告采集诊断；新时段仍能正常保存 |
+| 连续确认同一应用 | 后端尚无这段 Observation |
+| 时段结束或重复结束 | 先写本机应用再写时段；时段与 Observation 各一版，重复结束不再写 |
+| 后端不可用时切换和结束时段 | 本地转发收下，恢复后全部送达 |
 
 ## 测试实现 [#implementation]
 
-以下方法位于 `tests/Orisumi.Integration.Tests/ForegroundSubmissionTests.cs`：
+方法位于 `tests/Orisumi.Integration.Tests/`：
 
-- 进行中不提交、结束只保存一版和重复结束：`OngoingPeriodIsSubmittedOnceWhenItEnds`。
-- 提交失败后继续采集：`FailedSubmissionIsDiagnosedAndCollectionContinues`。
+- 进行中、结束和重复结束：`ForegroundSubmissionTests.OngoingPeriodIsWrittenOnceWhenItEnds`。
+- 离线继续和恢复：`ForegroundSubmissionTests.OfflineCollectionContinuesAndAllPeriodsArriveAfterReconnection`。
 
-轮询之间的事件和休眠边界见 [Application Period Boundaries](./application-period-boundaries.mdx)。
+未覆盖：进行中时段遇到进程异常退出的实际验证。
 
 ## 执行结果 [#results]
 

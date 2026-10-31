@@ -3,7 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Orisumi.Core;
-using Orisumi.Observer.Runtime;
+using Orisumi.Testing;
 using Orisumi.Observer.Sdk;
 using Orisumi.Observers.AssistantSessions;
 
@@ -17,33 +17,37 @@ internal sealed class AssistantTestFixture : IDisposable
     internal string Claude => Path.Combine(Root, "claude");
     internal string Codex => Path.Combine(Root, "codex");
     internal string StateDirectory => Path.Combine(Root, "capture");
-    internal EntityId Owner { get; } = EntityId.New();
-    internal MemoryBackend Backend { get; }
-    internal IObserverSession Session { get; private set; }
+    private readonly TestDatabase? _database;
+    private readonly OrisumiApiFactory? _factory;
+    private readonly Network _network;
+    internal DataClient Data { get; }
+    internal bool Offline { get => _network.Offline; set => _network.Offline = value; }
     internal AssistantState State { get; private set; }
-    internal AssistantRegistration Registration { get; }
     internal AssistantCollector Collector { get; private set; }
     internal List<string> Diagnostics { get; } = [];
 
     internal AssistantTestFixture(HttpMessageHandler? handler = null)
     {
-        Backend = new(handler);
-        _http = Backend.CreateClient();
-        Session = new RuntimeObserverSession(_http, Owner);
+        if (handler is null)
+        {
+            _database = DatabaseFixture.CreateAsync().GetAwaiter().GetResult();
+            _factory = new OrisumiApiFactory(_database.ConnectionString);
+            handler = _factory.Server.CreateHandler();
+        }
+        _network = new(handler);
+        _http = new HttpClient(_network) { BaseAddress = new("http://localhost/") };
+        Data = new DataClient(_http, _http, Ref.Recognize(AssistantRegistration.ObserverSchemaId, new(null, "test", Guid.NewGuid().ToString())));
         State = new(StateDirectory);
-        Registration = AssistantRegistration.RegisterAsync(Session, "0.1.0").GetAwaiter().GetResult();
-        Collector = CreateCollector(Session);
+        AssistantRegistration.RegisterAsync(Data, "0.1.0").GetAwaiter().GetResult();
+        Collector = CreateCollector();
     }
 
-    internal AssistantCollector CreateCollector(IObserverSession session) => new(session, State, Owner,
-        Registration, Claude, Codex, Path.Combine(StateDirectory, "archives"), Diagnostics.Add, () => "Asia/Tokyo", TimeSpan.Zero);
+    internal AssistantCollector CreateCollector() => new(Data, State,
+        Claude, Codex, Path.Combine(StateDirectory, "archives"), Diagnostics.Add, () => "Asia/Tokyo", TimeSpan.Zero);
 
     internal void Restart()
     {
-        State.Dispose();
-        Session = new RuntimeObserverSession(_http, Owner);
-        State = new(StateDirectory);
-        Collector = CreateCollector(Session);
+        State.Dispose(); State = new(StateDirectory); Collector = CreateCollector();
     }
 
     internal string Write(string relative, params byte[][] rows)
@@ -55,11 +59,14 @@ internal sealed class AssistantTestFixture : IDisposable
         return path;
     }
 
-    internal IReadOnlyList<StoredVersion> Interactions() => Versions(Registration.InteractionSchema);
-    internal IReadOnlyList<StoredVersion> Sessions() => Versions(Registration.SessionSchema);
-    private StoredVersion[] Versions(VersionId schema) => Backend.Snapshot().Where(version => version.Version.SchemaVersionId == schema).ToArray();
-    internal IReadOnlyList<StoredVersion> Observations() => Backend.Snapshot().Where(version => version.Version.Content is Observation).ToArray();
-    internal static JsonElement Content(StoredVersion version) => ((BusinessContent)version.Version.Content).Fields;
+    internal IReadOnlyList<EntityVersion> Interactions() => Versions("assistant-interactions");
+    internal IReadOnlyList<EntityVersion> Sessions() => Versions("assistant-sessions");
+    internal IReadOnlyList<EntityVersion> Titles() => Versions("assistant-session-titles");
+    internal IReadOnlyList<EntityVersion> Subagents() => Versions("assistant-subagents");
+    private EntityVersion[] Versions(string resource) => Data.ListAsync("entities?resourceName=" + resource).GetAwaiter().GetResult().Select(VersionJson.ReadSaved).ToArray();
+    internal IReadOnlyList<EntityVersion> Observations() => Data.ListAsync("entities?category=observation").GetAwaiter().GetResult().Select(VersionJson.ReadSaved).ToArray();
+    internal Task<byte[]> Bytes(string digest) => _http.GetByteArrayAsync("contents/" + digest);
+    internal static JsonElement Content(EntityVersion version) => ((BusinessContent)version.Content).Fields;
     internal static byte[] Json(object value) => JsonSerializer.SerializeToUtf8Bytes(value, JsonSerializerOptions.Web);
     internal static byte[] ClaudeMessage(string id, object content, string type = "user", string? actor = "human",
         string? parent = null, string? cwd = "/work", bool meta = false, string sessionId = "main") => Json(new
@@ -88,5 +95,16 @@ internal sealed class AssistantTestFixture : IDisposable
         return value;
     }
 
-    public void Dispose() { State.Dispose(); _http.Dispose(); Backend.Dispose(); _directory.Delete(true); }
+    public void Dispose()
+    {
+        State.Dispose(); _http.Dispose(); _factory?.Dispose();
+        if (_database is not null) _database.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        _directory.Delete(true);
+    }
+    private sealed class Network(HttpMessageHandler inner) : DelegatingHandler(inner)
+    {
+        internal bool Offline { get; set; }
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) =>
+            Offline ? throw new HttpRequestException("offline") : base.SendAsync(request, token);
+    }
 }

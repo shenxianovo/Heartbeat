@@ -5,7 +5,6 @@ namespace Orisumi.Observers.ForegroundState;
 internal sealed record ForegroundCapture(
     LocalApplication Application,
     ForegroundApplicationContent Content,
-    EntityId ObservationId,
     DateTimeOffset StartAt,
     DateTimeOffset EndAt,
     string? TimeZone)
@@ -15,12 +14,11 @@ internal sealed record ForegroundCapture(
     {
         var content = new ForegroundApplicationContent
         {
-            Id = EntityId.New(),
             Name = reading.Name,
             Icon = ReadIcon(reading),
         };
         var time = VersionTime.Normalize(reading.ObservedAt);
-        return new(application, content, EntityId.New(), time, time, reading.TimeZone);
+        return new(application, content, time, time, reading.TimeZone);
     }
 
     private static Orisumi.Observer.Sdk.BinaryContent? ReadIcon(ForegroundApplicationReading reading)

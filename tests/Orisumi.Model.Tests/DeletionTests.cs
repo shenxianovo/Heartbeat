@@ -26,7 +26,6 @@ public sealed class DeletionTests
         await Assert.That(await f.Service.ReadVersionAsync(observation.VersionId)).IsEqualTo(observation);
         await Reject(() => f.Save(target.Submission), "HISTORY-7");
         await Reject(() => f.Save(Next(second)), "HISTORY-7");
-        await Reject(() => f.Save(target.Submission with { EntityId = EntityId.New() }), "VERSION-9");
         await Reject(() => f.Save(New(new InputSet([target.VersionId]))), "ENTITY-6");
         foreach (var id in new[] { target.EntityId, observation.EntityId, inputs.EntityId, observer.EntityId, schema.EntityId }) await f.Service.DeleteAsync(id);
         foreach (var entity in new[] { schema, observer, inputs, observation })

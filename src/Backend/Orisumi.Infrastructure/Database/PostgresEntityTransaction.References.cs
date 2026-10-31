@@ -19,17 +19,32 @@ internal sealed partial class PostgresEntityTransaction
     {
         var current = query.AllVersions ? "" : "AND v.version_id = e.current_version_id";
         var (after, order) = query.Descending ? ("<", "DESC") : (">", "ASC");
-        var versions = await ReadAsync($"""
-            SELECT {Columns} FROM version_references r
-            JOIN versions v ON v.version_id = r.version_id
-            JOIN entities e ON e.entity_id = v.entity_id
-            WHERE r.target_entity_id = $1 AND ($2::uuid IS NULL OR r.version_id {after} $2) {current}
-            ORDER BY r.version_id {order} LIMIT $3
-            """, cancellationToken, query.Target.Value, Typed(NpgsqlDbType.Uuid, query.After?.Value), query.Limit + 1);
-        var references = await ResolveReferencesAsync(versions, cancellationToken);
-        return versions.Select(version => new Referrer(version, references[version.VersionId]
-            .Where(reference => reference.TargetEntityId == query.Target)
-            .Select(reference => new VersionReference(reference.Position, reference.TargetVersionId)).ToArray())).ToArray();
+        var result = new List<Referrer>();
+        var cursor = query.After;
+        while (result.Count <= query.Limit)
+        {
+            var versions = await ReadAsync($"""
+                SELECT {Columns} FROM version_references r
+                JOIN versions v ON v.version_id = r.version_id
+                JOIN entities e ON e.entity_id = v.entity_id
+                WHERE r.target_entity_id = $1 AND ($2::uuid IS NULL OR r.version_id {after} $2) {current}
+                  AND ($4::uuid IS NULL OR e.schema_id = $4)
+                ORDER BY r.version_id {order} LIMIT $3
+                """, cancellationToken, query.Target.Value, Typed(NpgsqlDbType.Uuid, cursor?.Value), query.Limit + 1,
+                Typed(NpgsqlDbType.Uuid, query.SchemaId?.Value));
+            var references = await ResolveReferencesAsync(versions, cancellationToken);
+            foreach (var version in versions)
+            {
+                var matching = references[version.VersionId]
+                    .Where(reference => reference.TargetEntityId == query.Target && (query.Path is null || query.Path == reference.Position))
+                    .Select(reference => new VersionReference(reference.Position, reference.TargetVersionId)).ToArray();
+                if (matching.Length > 0) result.Add(new(version, matching));
+                if (result.Count > query.Limit) return result;
+            }
+            if (versions.Count <= query.Limit) break;
+            cursor = versions[^1].VersionId;
+        }
+        return result;
     }
 
     private async Task<Dictionary<VersionId, ResolvedReference[]>> ResolveReferencesAsync(

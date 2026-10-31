@@ -16,12 +16,19 @@ description: "写入的 HTTP 接口：一次写入说出一个实体的完整内
     {
       "schemaId": "019e1bbb-ec00-7000-8000-000000000002",
       "key": {
-        "scope": "0196f3a1-5d0c-7a11-8e2f-1b2c3d4e5f60",
+        "scope": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
         "scheme": "macos.installation",
         "value": "com.microsoft.VSCode\n/Applications/Visual Studio Code.app/Contents/MacOS/Electron"
       },
       "content": {
-        "deviceVersionId": { "entityId": "0196f3a1-5d0c-7a11-8e2f-1b2c3d4e5f60" },
+        "deviceVersionId": {
+          "schemaId": "019e1bbb-ec00-7000-8000-00000000000d",
+          "key": {
+            "scope": null,
+            "scheme": "macos.hardware-uuid",
+            "value": "3F2504E0-4F89-41D3-9A0C-0305E82C3301"
+          }
+        },
         "identifiers": [
           { "scheme": "macos.bundle-id", "value": "com.microsoft.VSCode" },
           {
@@ -37,7 +44,7 @@ description: "写入的 HTTP 接口：一次写入说出一个实体的完整内
         "localApplicationVersionId": {
           "schemaId": "019e1bbb-ec00-7000-8000-000000000002",
           "key": {
-            "scope": "0196f3a1-5d0c-7a11-8e2f-1b2c3d4e5f60",
+            "scope": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
             "scheme": "macos.installation",
             "value": "com.microsoft.VSCode\n/Applications/Visual Studio Code.app/Contents/MacOS/Electron"
           }
@@ -89,11 +96,11 @@ description: "写入的 HTTP 接口：一次写入说出一个实体的完整内
 
 | 字段 | 含义 |
 | --- | --- |
-| `scope` | 作用范围，由业务规则决定，例如设备的 EntityId 或一个账号。全局有效的标识为 `null` |
+| `scope` | 作用范围，由业务规则决定，例如设备的稳定标识或一个账号。全局有效的标识为 `null` |
 | `scheme` | 标识方案，决定怎样解释 `value`，例如 `macos.installation` |
 | `value` | 标识的值，后端原样比较 |
 
-一份依据最多对应一个实体，见 [IDENTITY-7](../core/rules/identity.mdx#identity-7)。不同设备上路径相同的应用，`scope` 不同，所以是不同的实体。用户删除实体后，依据随它删除，之后的写入形成一个新实体。
+一份依据最多对应一个实体，见 [IDENTITY-7](../core/rules/identity.mdx#identity-7)。三个值的 UTF-8 字节数之和最多 2048。不同设备上路径相同的应用，`scope` 不同，所以是不同的实体。用户删除实体后，依据随它删除，之后的写入形成一个新实体。
 
 没有自然标识的类型不用识别依据，每次写入都新建。
 
@@ -215,7 +222,7 @@ Observation 引用处理这次写入时这个实体的当前版本。所以程�
 | 结果 | 响应 |
 | --- | --- |
 | 请求已处理，包括其中有写入被拒绝 | `200` |
-| 请求体不符合契约，例如 JSON 无效或缺少成员，或者 `schemas` 被拒绝 | `400` 或 `409`，整个请求都不处理 |
+| 请求体不符合契约，例如 JSON 无效、缺少成员或 `observer` 的识别依据过长，或者 `schemas` 被拒绝 | `400` 或 `409`，整个请求都不处理 |
 | `observer` 不是这个托管方的程序实例 | `403`，`code` 为 `host_mismatch` |
 | `observer` 已删除 | `409`，`rule` 为 `HISTORY-7`，整个请求都不处理 |
 
@@ -240,7 +247,7 @@ Observation 引用处理这次写入时这个实体的当前版本。所以程�
 | --- | --- | --- |
 | 请求结构 | JSON、成员和基础值类型，以及 `observer` 的归属 | `400` 或 `403`，整个请求都不处理 |
 | 声明 | `schemas` 中每一版的内容 | `400` 或 `409`，整个请求都不处理 |
-| 每次写入 | 业务类型是否已声明、Schema 字段定义的必写项与组合、引用目标、二进制内容、事实边界、存储支持的字符串与数值范围 | 这次写入被拒绝，其他写入照常处理 |
+| 每次写入 | 业务类型是否已声明、Schema 字段定义的必写项与组合、引用目标、二进制内容、事实边界、识别依据的长度、存储支持的字符串与数值范围 | 这次写入被拒绝，其他写入照常处理 |
 
 例如 `startAt` 晚于 `endAt`，这次写入按 [OBSERVATION-6](../core/model/observation.mdx#observation-6) 被拒绝，请求中的其他写入照常保存。
 

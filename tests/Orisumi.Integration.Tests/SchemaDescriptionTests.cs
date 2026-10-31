@@ -2,6 +2,8 @@ using System.Net;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Orisumi.Core;
+using Orisumi.Testing;
+using System.Net.Http.Json;
 
 namespace Orisumi.Integration.Tests;
 
@@ -14,21 +16,21 @@ public sealed class SchemaDescriptionTests
         await using var database = await DatabaseFixture.CreateAsync();
         await using var factory = new OrisumiApiFactory(database.ConnectionString);
         using var http = factory.CreateClient();
-        var first = EntityApiTests.Schema(fields: Fields().ToJsonString());
-        using var saved = await EntityApiTests.Submit(http, first);
-        await Assert.That(saved.StatusCode).IsEqualTo(HttpStatusCode.OK);
-        var fields = Fields();
-        fields["samples"]!["description"] = "New explanation";
-        var next = first with { VersionId = VersionId.New(), PreviousVersionId = first.VersionId,
-            Content = new EntitySchema("Items", "Items", "items", JsonSerializer.SerializeToElement(fields)) };
-        using var changed = await EntityApiTests.Submit(http, next);
-        changed.EnsureSuccessStatusCode();
-        using var original = await http.GetAsync($"/versions/{first.VersionId.Value}");
-        await Assert.That(JsonElement.DeepEquals((await EntityApiTests.Json(original)).GetProperty("content").GetProperty("fields"),
-            ((EntitySchema)first.Content).Fields)).IsTrue();
-        using var current = await http.GetAsync($"/entities/{first.EntityId.Value}");
-        await Assert.That((await EntityApiTests.Json(current)).GetProperty("content").GetProperty("fields")
+        var writer = new WriteClient(http); await writer.InitializeAsync();
+        var id = await writer.DeclareAsync(fields: Fields().ToJsonString());
+        var first = await http.GetFromJsonAsync<JsonElement>($"/entities/{id.Value}");
+        var fields = Fields(); fields["samples"]!["description"] = "New explanation";
+        await writer.DeclareAsync(fields: fields.ToJsonString(), schemaId: id);
+        using var original = await http.GetAsync($"/versions/{first.GetProperty("versionId").GetGuid()}");
+        await Assert.That(JsonElement.DeepEquals((await WriteClient.JsonAsync(original)).GetProperty("content").GetProperty("fields"),
+            JsonSerializer.SerializeToElement(Fields()))).IsTrue();
+        using var current = await http.GetAsync($"/entities/{id.Value}");
+        await Assert.That((await WriteClient.JsonAsync(current)).GetProperty("content").GetProperty("fields")
             .GetProperty("samples").GetProperty("description").GetString()).IsEqualTo("New explanation");
+        // An old program binds its original Schema version without adding another version.
+        await writer.DeclareAsync(fields: Fields().ToJsonString(), schemaId: id);
+        using var chain = await http.GetAsync($"/entities/{id.Value}/versions");
+        await Assert.That((await WriteClient.JsonAsync(chain)).GetProperty("versions").GetArrayLength()).IsEqualTo(2);
     }
 
     [Test]
@@ -54,20 +56,16 @@ public sealed class SchemaDescriptionTests
             "empty" => JsonValue.Create(""), "blank" => JsonValue.Create(" \t"), "number" => JsonValue.Create(3),
             "null" => null, _ => new JsonObject(),
         };
-        var prefix = EntityApiTests.Schema("prefix");
-        var invalid = EntityApiTests.Schema("invalid", fields.ToJsonString());
-        using var response = await EntityApiTests.Submit(http, prefix, invalid);
+        var writer = new WriteClient(http); await writer.InitializeAsync();
+        var prefix = Guid.CreateVersion7();
+        object Declaration(Guid id, string resource, object definitions) => new { schemaId = id, content = new { displayName = "Test", description = "Test type", resourceName = resource, fields = definitions } };
+        using var response = await http.PostAsJsonAsync("/writes", new { observer = writer.ObserverReference,
+            schemas = new[] { Declaration(prefix, "prefix", new { }), Declaration(Guid.CreateVersion7(), "invalid", fields) }, writes = Array.Empty<object>() });
         await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.BadRequest);
-        var problem = await EntityApiTests.Json(response);
-        var structural = error is "number" or "null" or "object";
-        await Assert.That(problem.TryGetProperty("index", out _)).IsEqualTo(!structural);
-        if (!structural)
-        {
-            await Assert.That(problem.GetProperty("index").GetInt32()).IsEqualTo(1);
+        var problem = await WriteClient.JsonAsync(response);
+        if (error is not ("number" or "null" or "object"))
             await Assert.That(problem.GetProperty("rule").GetString()).IsEqualTo("SCHEMA-10");
-        }
-        // VERSION-13: neither failure stage saves the valid version before it.
-        using var read = await http.GetAsync($"/versions/{prefix.VersionId.Value}");
+        using var read = await http.GetAsync($"/entities/{prefix}");
         await Assert.That(read.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
     }
 

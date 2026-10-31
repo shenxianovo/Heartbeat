@@ -41,7 +41,7 @@ flowchart LR
 
 ## 程序实例 [#instance]
 
-一个助手会话 Observer 读取所在设备上当前用户的日志目录。程序读的是本机日志，所以每次交互的 `deviceVersionId` 取运行上下文中的运行设备，见 [Hosting · 运行上下文](../../hosting/index.mdx#context)。
+一个助手会话 Observer 读取所在设备上当前用户的日志目录。程序读的是本机日志，所以每次交互的 `deviceVersionId` 是运行上下文中的运行设备，程序启动时写入它，见 [Hosting · 运行上下文](../../hosting/index.mdx#context)。
 
 程序实例把采集状态保存在自己的数据目录中（见 [Runtime · 数据目录](../../hosting/runtime.mdx#data)）：
 

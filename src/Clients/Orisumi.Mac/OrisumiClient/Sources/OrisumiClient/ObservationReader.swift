@@ -6,25 +6,18 @@ public struct Snapshot<Item: Sendable>: Sendable {
     public init(items: [Item]) { self.items = items }
 }
 
-/// Reads all pages of one query, starting over once when the snapshot cursor expired.
+/// Reads all pages of one query.
 @MainActor
-func readAll<Content: Decodable & Sendable>(_ query: ReadQuery, from reader: RuntimeReading,
-                                            as: Content.Type) async throws -> ReadResult<Content> {
-    for attempt in 0..<2 {
-        var query = query
-        var items: [RuntimeVersion<Content>] = []
-        do {
-            repeat {
-                let page = try await reader.read(query, as: Content.self)
-                items += page.observations
-                query.cursor = page.next
-            } while query.cursor != nil
-            return ReadResult(observations: items, next: nil)
-        } catch let failure as RuntimeError where failure.code == "conflict" && attempt == 0 {
-            continue
-        }
-    }
-    throw RuntimeError.invalidResponse
+func readAll<Content: Decodable & Sendable>(_ query: ReadQuery, from reader: DataReading,
+                                            as: Content.Type) async throws -> [RuntimeVersion<Content>] {
+    var query = query
+    var items: [RuntimeVersion<Content>] = []
+    repeat {
+        let page = try await reader.read(query, as: Content.self)
+        items += page.versions
+        query.cursor = page.next
+    } while query.cursor != nil
+    return items
 }
 
 /// Referenced contents are refreshed from the backend; missing versions are removed from the cache.
@@ -35,13 +28,13 @@ final class VersionCache<Content: Decodable & Sendable> {
     subscript(id: UUID) -> Content? { contents[id] }
 
     /// Reading failures propagate to the view.
-    func refresh(_ ids: [UUID], instanceId: UUID, from reader: RuntimeReading) async throws {
+    func refresh(_ ids: [UUID], from reader: DataReading) async throws {
         let unique = Array(Set(ids))
         for start in stride(from: 0, to: unique.count, by: 256) {
             let chunk = Array(unique[start..<min(start + 256, unique.count)])
-            let result = try await reader.versions(instanceId: instanceId, chunk, as: Content.self)
-            for version in result.versions { contents[version.versionId] = version.content }
-            for id in result.missing { contents[id] = nil }
+            for item in try await reader.versions(chunk, as: Content.self).results {
+                contents[item.versionId] = item.version?.content
+            }
         }
         // Versions no longer referenced are dropped, so the cache stays the size of one refresh.
         let needed = Set(unique)
@@ -58,15 +51,15 @@ public final class ForegroundReader {
 
     public init() {}
 
-    public func today(instanceId: UUID, day: DateInterval, from reader: RuntimeReading) async throws -> Snapshot<Period> {
-        let result = try await readAll(ReadQuery(instanceId: instanceId, during: day, resourceName: Self.resourceName),
+    public func today(instanceId: UUID, day: DateInterval, from reader: DataReading) async throws -> Snapshot<Period> {
+        let observations = try await readAll(ReadQuery(instanceId: instanceId, during: day, resourceName: Self.resourceName),
                                        from: reader, as: ObservationMembers.self)
-        let contentIds = result.observations.map(\.content.contentVersionId)
-        try await periods.refresh(contentIds, instanceId: instanceId, from: reader)
+        let contentIds = observations.map(\.content.contentVersionId)
+        try await periods.refresh(contentIds, from: reader)
         let applicationIds = contentIds.compactMap { periods[$0]?.localApplicationVersionId }
-        try await applications.refresh(applicationIds, instanceId: instanceId, from: reader)
+        try await applications.refresh(applicationIds, from: reader)
 
-        let items = result.observations.compactMap { item -> Period? in
+        let items = observations.compactMap { item -> Period? in
             let observation = item.content
             // A period whose content was deleted is left out.
             guard let startAt = observation.startAt, let endAt = observation.endAt,
@@ -109,13 +102,12 @@ public final class RecentReader {
     public init() {}
 
     public func recent(instanceId: UUID, now: Date, days: Int = 7, limit: Int = 50,
-                       from reader: RuntimeReading) async throws -> Snapshot<RecentObservation> {
+                       from reader: DataReading) async throws -> Snapshot<RecentObservation> {
         let interval = DateInterval(start: now.addingTimeInterval(-Double(days) * 86_400), end: now)
-        let page = try await reader.read(ReadQuery(instanceId: instanceId, during: interval, limit: limit),
+        let page = try await reader.read(ReadQuery(instanceId: instanceId, during: interval, limit: limit, descending: true),
                                          as: ObservationMembers.self)
-        try await contents.refresh(page.observations.map(\.content.contentVersionId),
-                                               instanceId: instanceId, from: reader)
-        let items = page.observations.map { item in
+        try await contents.refresh(page.versions.map(\.content.contentVersionId), from: reader)
+        let items = page.versions.map { item in
             RecentObservation(id: item.entityId, startAt: item.content.startAt,
                               endAt: item.content.endAt,
                               content: contents[item.content.contentVersionId])

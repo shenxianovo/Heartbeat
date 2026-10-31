@@ -86,8 +86,8 @@ internal static class ManagementEndpoints
         app.MapPut("/runtime/instances/{entityId}", async (string entityId, JsonElement body, HttpContext context,
             IManagementStore store, RuntimeCoordinator coordinator, CancellationToken token) =>
         {
-            Fields(body, ["instanceKey", "name", "scope", "enabled", "settings", "localSequence"]);
-            var registration = new InstanceRegistration(Text(body, "instanceKey"), Text(body, "name"), Choice(body, "scope", "host", "deployment"),
+            Fields(body, ["packageId", "name", "scope", "enabled", "settings", "localSequence"]);
+            var registration = new InstanceRegistration(Text(body, "packageId"), Text(body, "name"), Choice(body, "scope", "any", "deployment"),
                 Boolean(body, "enabled"), Object(body, "settings"), Number(body, "localSequence", 0));
             var result = await store.RegisterAsync(Host(context), EntityEndpoints.Id(entityId), registration, token);
             coordinator.Notify();
@@ -121,14 +121,14 @@ internal static class ManagementEndpoints
         });
         app.MapPost("/hosts/{hostId}/operations", async (string hostId, JsonElement body, RuntimeCoordinator coordinator, CancellationToken token) =>
         {
-            Fields(body, ["action"], ["entityId", "packageId", "newInstance"]);
-            var action = Choice(body, "action", "catalog", "install", "update", "uninstall", "retry");
+            Fields(body, ["action"], ["entityId", "packageId", "url"]);
+            var action = Choice(body, "action", "catalog", "install", "update", "uninstall", "retry", "resendRejected");
             var id = OptionalId(body, "entityId");
             var package = body.TryGetProperty("packageId", out _) ? Text(body, "packageId") : null;
-            if (action == "install" && package is null || action is "update" or "uninstall" or "retry" && id is null)
+            var url = body.TryGetProperty("url", out _) ? Text(body, "url") : null;
+            if (action == "install" && package is null && url is null || action is "update" or "uninstall" && package is null || action is "retry" or "resendRejected" && id is null)
                 throw new JsonException("This action is missing its target.");
-            var fresh = body.TryGetProperty("newInstance", out _) && Boolean(body, "newInstance");
-            return Results.Json(await coordinator.CreateOperationAsync(EntityEndpoints.Id(hostId), new(action, id, package, fresh), token), statusCode: 202);
+            return Results.Json(await coordinator.CreateOperationAsync(EntityEndpoints.Id(hostId), new(action, id, package, url), token), statusCode: 202);
         });
         app.MapGet("/hosts/{hostId}/operations/{operationId}", (string hostId, string operationId, RuntimeCoordinator coordinator) =>
             coordinator.Operation(EntityEndpoints.Id(hostId), EntityEndpoints.Id(operationId)));

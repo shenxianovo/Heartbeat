@@ -7,10 +7,10 @@ using Orisumi.Core;
 
 namespace Orisumi.Observer.Runtime;
 
-internal sealed record PackageManifest(int Format, string Id, string Name, string Version, string Target, int Protocol, string Entry, string Scope = "host");
-internal sealed record CatalogPackage(string Id, string Name, string Description, string Version, string Target, string Url, string Sha256, int Protocol = 1, int Format = 1, string Scope = "host");
+internal sealed record PackageManifest(int Format, string Id, string Name, string Version, string Target, int Protocol, string Entry, string Scope = "any");
+internal sealed record CatalogPackage(string Id, string Name, string Description, string Version, string Target, string Url, string Sha256, int Protocol = 1, int Format = 1, string Scope = "any");
 internal sealed record InstalledObserver(string PackageId, string Name, string Version, Guid InstanceId, bool Installed, bool Enabled, JsonElement Settings,
-    string Scope = "host", long Revision = 0, long NextSequence = 1, bool Removed = false,
+    string Scope = "any", long Revision = 0, long NextSequence = 1, bool Removed = false,
     bool? ServerEnabled = null, JsonElement? ServerSettings = null, LocalChange[]? Changes = null, string? SyncError = null)
 {
     [System.Text.Json.Serialization.JsonIgnore]
@@ -69,8 +69,8 @@ internal sealed partial class PackageStore : IDisposable
         catch { _lock.Dispose(); throw; }
     }
 
-    public InstalledObserver Find(string packageId) => _observers.Values.LastOrDefault(item => item.PackageId == packageId && !item.Removed) ?? _observers.Values.LastOrDefault(item => item.PackageId == packageId)
-        ?? throw new KeyNotFoundException("Observer is not installed.");
+    public InstalledObserver Find(Guid instanceId) => _observers.TryGetValue(instanceId, out var observer) ? observer
+        : throw new KeyNotFoundException("Unknown program instance.");
     public string InstanceDirectory(Guid instance) => Path.Combine(Root, "instances", instance.ToString());
     public string PackageDirectory(string id, string version) => Path.Combine(Root, "packages", id, version);
     public PackageManifest Manifest(InstalledObserver item) => ReadManifest(File.ReadAllText(Path.Combine(PackageDirectory(item.PackageId, item.Version), "observer.json")));
@@ -123,9 +123,18 @@ internal sealed partial class PackageStore : IDisposable
             .Select(group => group.MaxBy(package => Version.Parse(package.Version))!).ToArray();
     }
 
-    public async Task<PackageManifest> PrepareAsync(CatalogPackage package, CancellationToken token)
+    public Task<PackageManifest> PrepareAsync(CatalogPackage package, CancellationToken token) =>
+        PrepareAsync(package.Url, package.Sha256, package.Id, package.Version, token);
+
+    public Task<PackageManifest> PrepareUrlAsync(string url, string? sha256, CancellationToken token)
     {
-        ValidateIdentity(package.Id, package.Version);
+        var uri = new Uri(url, UriKind.Absolute);
+        if (uri.Scheme != "https" && !(uri.IsLoopback && uri.Scheme == "http")) throw new InvalidDataException("Package downloads require HTTPS.");
+        if (sha256 is not null && !DigestPattern().IsMatch(sha256)) throw new InvalidDataException("Invalid SHA-256 digest.");
+        return PrepareAsync(url, sha256, null, null, token);
+    }
+    private async Task<PackageManifest> PrepareAsync(string url, string? sha256, string? expectedId, string? expectedVersion, CancellationToken token)
+    {
         var stage = Path.Combine(Root, "staging", Guid.NewGuid().ToString());
         Directory.CreateDirectory(stage);
         try
@@ -133,14 +142,14 @@ internal sealed partial class PackageStore : IDisposable
             var archive = Path.Combine(stage, "package.zip");
             await using (var file = File.Create(archive))
             {
-                if (new Uri(package.Url).IsFile)
+                if (new Uri(url).IsFile)
                 {
-                    await using var source = File.OpenRead(new Uri(package.Url).LocalPath);
+                    await using var source = File.OpenRead(new Uri(url).LocalPath);
                     await source.CopyToAsync(file, token);
                 }
                 else
                 {
-                    using var response = await _http.GetAsync(package.Url, HttpCompletionOption.ResponseHeadersRead, token);
+                    using var response = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, token);
                     response.EnsureSuccessStatusCode();
                     await using var source = await response.Content.ReadAsStreamAsync(token);
                     var buffer = new byte[81920];
@@ -152,9 +161,10 @@ internal sealed partial class PackageStore : IDisposable
                     }
                 }
             }
-            await using (var file = File.OpenRead(archive))
-                if (!string.Equals(Convert.ToHexString(await SHA256.HashDataAsync(file, token)), package.Sha256, StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidDataException("Package checksum does not match the catalog.");
+            string digest;
+            await using (var file = File.OpenRead(archive)) digest = Convert.ToHexString(await SHA256.HashDataAsync(file, token));
+            if (sha256 is not null && !string.Equals(digest, sha256, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("Package checksum does not match.");
             var unpacked = Path.Combine(stage, "unpacked");
             Directory.CreateDirectory(unpacked);
             using (var zip = ZipFile.OpenRead(archive))
@@ -177,7 +187,7 @@ internal sealed partial class PackageStore : IDisposable
                 }
             }
             var manifest = ReadManifest(await File.ReadAllTextAsync(Path.Combine(unpacked, "observer.json"), token));
-            if (manifest.Id != package.Id || manifest.Version != package.Version || manifest.Target != Target)
+            if (expectedId is not null && manifest.Id != expectedId || expectedVersion is not null && manifest.Version != expectedVersion || manifest.Target != Target)
                 throw new InvalidDataException("Package identity does not match the catalog or this device.");
             if (manifest.Format != 1 || manifest.Protocol != 1) throw new InvalidDataException("Update the Client to use this package protocol.");
             var executable = ChildPath(unpacked, manifest.Entry);
@@ -188,12 +198,12 @@ internal sealed partial class PackageStore : IDisposable
             var digestPath = Path.Combine(destinationDirectory, ".package-sha256");
             if (Directory.Exists(destinationDirectory))
             {
-                if (!File.Exists(digestPath) || !string.Equals(await File.ReadAllTextAsync(digestPath, token), package.Sha256, StringComparison.OrdinalIgnoreCase))
+                if (!File.Exists(digestPath) || !string.Equals(await File.ReadAllTextAsync(digestPath, token), digest, StringComparison.OrdinalIgnoreCase))
                     throw new InvalidDataException("This package version already has different contents.");
             }
             else
             {
-                await File.WriteAllTextAsync(Path.Combine(unpacked, ".package-sha256"), package.Sha256, token);
+                await File.WriteAllTextAsync(Path.Combine(unpacked, ".package-sha256"), digest, token);
                 Directory.Move(unpacked, destinationDirectory);
             }
             return manifest;
@@ -201,11 +211,10 @@ internal sealed partial class PackageStore : IDisposable
         finally { Directory.Delete(stage, true); }
     }
 
-    public InstalledObserver Register(PackageManifest manifest, bool enabled, bool newInstance = false, bool updating = false)
+    public InstalledObserver Register(PackageManifest manifest, bool enabled, bool updating = false)
     {
         var existing = _observers.Values.LastOrDefault(item => item.PackageId == manifest.Id && !item.Removed)
             ?? _observers.Values.LastOrDefault(item => item.PackageId == manifest.Id);
-        if (existing?.Removed == true && !newInstance) throw new InvalidOperationException("The previous instance was deleted; explicitly create a new instance.");
         var observer = existing is { Removed: false }
             ? existing with { Name = manifest.Name, Version = manifest.Version, Installed = true, Scope = manifest.Scope }
             : new(manifest.Id, manifest.Name, manifest.Version, EntityId.New().Value, true, enabled, JsonSerializer.SerializeToElement(new { }), manifest.Scope);
@@ -217,7 +226,7 @@ internal sealed partial class PackageStore : IDisposable
     {
         var manifest = JsonSerializer.Deserialize<PackageManifest>(json, Json) ?? throw new InvalidDataException("Invalid package manifest.");
         ValidateIdentity(manifest.Id, manifest.Version);
-        if (manifest.Scope is not ("host" or "deployment")) throw new InvalidDataException("Invalid package scope.");
+        if (manifest.Scope is not ("any" or "deployment")) throw new InvalidDataException("Invalid package scope.");
         if (string.IsNullOrWhiteSpace(manifest.Name) || string.IsNullOrWhiteSpace(manifest.Target)) throw new InvalidDataException("Package name and target are required.");
         return manifest;
     }

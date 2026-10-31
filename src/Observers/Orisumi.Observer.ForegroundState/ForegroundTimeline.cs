@@ -14,7 +14,7 @@ internal sealed class ForegroundTimeline(TimeSpan maximumGap)
         if (_current is not null && continuous)
         {
             var extended = _current.Through(reading.ObservedAt);
-            if (_current.Application.Id == application.Id && _current.Content.Name == reading.Name
+            if (_current.Application.Key == application.Key && _current.Content.Name == reading.Name
                 && _current.TimeZone == reading.TimeZone)
             {
                 _current = extended;

@@ -1,43 +1,28 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Search, X } from "lucide-react";
-import {
-  ClueChip,
-  DropBar,
-  Installs,
-  ProductHeader,
-  ProductMark,
-  ProductRow,
-  type Dragging,
-} from "@/components/applications/parts";
-import { useStack } from "@/components/token/context";
+import { Search } from "lucide-react";
+import { ClueChip, Installs, ProductHeader, ProductRow } from "@/components/applications/parts";
 import { Token } from "@/components/token/Token";
 import { Card, Message, PageHeader } from "@/components/ui";
-import { editError, productGroup, useApplicationEdit, useCatalog } from "@/hooks/useApplications";
+import { productGroup, useCatalog } from "@/hooks/useApplications";
 import { useDay } from "@/hooks/useDay";
 import { useNow } from "@/hooks/useNow";
 import type { Version } from "@/api/types";
-import { keyOf, unassigned, type Catalog, type Edit, type Identifier } from "@/lib/applications";
+import { keyOf, unassigned, type Catalog, type Identifier } from "@/lib/applications";
 import { groupThings, summarize, type Row } from "@/lib/day";
 import { dayRange } from "@/lib/time";
-import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/applications")({ component: ApplicationsPage });
 
 /**
- * 应用：一张产品表，每个应用产品一行，写出今天的用量、它的跨设备线索和归到它的安装。
- * 线索可以拖到另一行上，也可以点开选择去处；每次修改以用户本人的身份提交。
+ * 应用：一张产品表，每个有线索归属的产品一行，写出今天的用量、它的跨设备线索和归到它的安装。
+ * 点线索进入它的线索归属，判错时在实体页删除。
  */
 function ApplicationsPage() {
   const catalog = useCatalog();
-  const edit = useApplicationEdit();
-  const stack = useStack();
   const now = useNow(60_000);
   const day = useDay(dayRange(now).key);
   const [query, setQuery] = useState("");
-  const [dragging, setDragging] = useState<Dragging | null>(null);
-  const [naming, setNaming] = useState<{ identifier: Identifier; suggestion: string } | null>(null);
-  const [notice, setNotice] = useState<{ text: string; error: boolean } | null>(null);
 
   const usage = useMemo(() => {
     if (!catalog.data || !day.data) return new Map<string, Row>();
@@ -45,25 +30,6 @@ function ApplicationsPage() {
     const summary = summarize(experiences, [], day.range.start, day.range.end);
     return new Map(summary.things.map((row) => [row.key, row]));
   }, [catalog.data, day.data, day.range.start, day.range.end]);
-
-  useEffect(() => {
-    if (!notice || notice.error) return;
-    const timer = setTimeout(() => setNotice(null), 4000);
-    return () => clearTimeout(timer);
-  }, [notice]);
-
-  function apply(change: Edit) {
-    setNotice({ text: "正在保存", error: false });
-    edit.mutate(change, {
-      onSuccess: ({ summary, deleted }) => {
-        setNotice({ text: summary, error: false });
-        // 删掉的产品，它的面板也收起来。
-        const index = stack.ids.findIndex((entityId) => deleted.includes(entityId));
-        if (index >= 0) stack.close(index);
-      },
-      onError: (error) => setNotice({ text: editError(error), error: true }),
-    });
-  }
 
   if (catalog.error && !catalog.data)
     return <Message title="读不到应用" detail={(catalog.error as Error).message} mascot />;
@@ -74,10 +40,9 @@ function ApplicationsPage() {
   const needle = query.trim().toLowerCase();
   const matches = (identifier: Identifier) => identifier.value.toLowerCase().includes(needle);
   const products = [...data.products]
-    .filter((p) => !needle || p.name.toLowerCase().includes(needle) || p.identifiers.some(matches))
+    .filter((p) => !needle || p.name.toLowerCase().includes(needle) || p.memberships.some((m) => matches(m.identifier)))
     .sort((a, b) => a.name.localeCompare(b.name, "zh"));
   const looseClues = loose.clues.filter((clue) => !needle || matches(clue));
-  const busy = edit.isPending;
 
   if (!data.products.length && !data.installs.length)
     return (
@@ -89,7 +54,7 @@ function ApplicationsPage() {
     );
 
   return (
-    <section onDragEnd={() => setDragging(null)}>
+    <section>
       <PageHeader
         title="应用"
         summary={
@@ -112,25 +77,6 @@ function ApplicationsPage() {
         }
       />
 
-      <DropBar
-        dragging={dragging}
-        onDrag={setDragging}
-        onNew={(identifier, owner) => setNaming({ identifier, suggestion: owner?.name ?? lastSegment(identifier) })}
-        onRelease={(identifier) => apply({ kind: "release", identifier })}
-      />
-
-      {naming && (
-        <NewProduct
-          identifier={naming.identifier}
-          suggestion={naming.suggestion}
-          onCancel={() => setNaming(null)}
-          onCreate={(name) => {
-            setNaming(null);
-            apply({ kind: "move", identifier: naming.identifier, to: { name } });
-          }}
-        />
-      )}
-
       {products.length > 0 ? (
         <Card className="rise px-2 pt-3 pb-2">
           <ProductHeader />
@@ -144,10 +90,6 @@ function ApplicationsPage() {
                 from={day.range.start}
                 to={day.range.end}
                 now={now}
-                dragging={dragging}
-                busy={busy}
-                onEdit={apply}
-                onDrag={setDragging}
               />
             ))}
           </div>
@@ -161,36 +103,8 @@ function ApplicationsPage() {
           clues={looseClues}
           withoutClues={needle ? [] : loose.withoutClues.map((install) => install.version)}
           catalog={data}
-          busy={busy}
-          onEdit={apply}
-          onDrag={setDragging}
         />
       )}
-
-      <p
-        role="status"
-        aria-live="polite"
-        className={cn(
-          "pointer-events-none fixed inset-x-0 bottom-5 z-40 flex justify-center transition-opacity duration-200",
-          notice ? "opacity-100" : "opacity-0",
-        )}
-      >
-        {notice && (
-          <span
-            className={cn(
-              "pointer-events-auto flex items-center gap-2 rounded-full px-4 py-2 text-[13px] shadow-lg",
-              notice.error ? "bg-danger text-white" : "bg-fg text-page",
-            )}
-          >
-            {notice.text}
-            {notice.error && (
-              <button type="button" aria-label="关闭提示" onClick={() => setNotice(null)} className="cursor-pointer">
-                <X className="size-3.5" />
-              </button>
-            )}
-          </span>
-        )}
-      </p>
     </section>
   );
 }
@@ -200,36 +114,21 @@ function Unassigned({
   clues,
   withoutClues,
   catalog,
-  busy,
-  onEdit,
-  onDrag,
 }: {
   clues: Identifier[];
   withoutClues: Version[];
   catalog: Catalog;
-  busy: boolean;
-  onEdit: (edit: Edit) => void;
-  onDrag: (dragging: Dragging | null) => void;
 }) {
   return (
     <section aria-label="未归属" className="border-line-2 mt-6 rounded-2xl border border-dashed px-5 py-4">
       <h2 className="text-[13px] font-medium">未归属</h2>
       {clues.length > 0 && (
         <>
-          <p className="text-fg-3 mt-0.5 mb-2 text-xs">
-            应用识别 Observer 还没有认出这些线索。拖到产品上，或点开选择去处。
-          </p>
+          <p className="text-fg-3 mt-0.5 mb-2 text-xs">应用识别 Observer 还没有认出这些线索。</p>
           <ul className="grid gap-1.5 md:grid-cols-2 md:gap-x-6">
             {clues.map((identifier) => (
               <li key={keyOf(identifier)} className="flex min-w-0 items-center gap-2">
-                <ClueChip
-                  identifier={identifier}
-                  owner={null}
-                  catalog={catalog}
-                  busy={busy}
-                  onEdit={onEdit}
-                  onDrag={onDrag}
-                />
+                <ClueChip identifier={identifier} />
                 <span className="flex-1" />
                 <Installs installs={catalog.installsOf(identifier).map((install) => install.version)} />
               </li>
@@ -249,65 +148,4 @@ function Unassigned({
       )}
     </section>
   );
-}
-
-/** 把线索拖到“新建产品”后，给新产品起名字。 */
-function NewProduct({
-  identifier,
-  suggestion,
-  onCreate,
-  onCancel,
-}: {
-  identifier: Identifier;
-  suggestion: string;
-  onCreate: (name: string) => void;
-  onCancel: () => void;
-}) {
-  const [name, setName] = useState(suggestion);
-  return (
-    <form
-      className="pop bg-card border-line-3 mb-3 flex flex-wrap items-center gap-2 rounded-xl border px-4 py-3"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (name.trim()) onCreate(name.trim());
-      }}
-    >
-      <ProductMark name={name || "新产品"} />
-      <input
-        autoFocus
-        value={name}
-        onChange={(event) => setName(event.target.value)}
-        onFocus={(event) => event.currentTarget.select()}
-        onKeyDown={(event) => {
-          if (event.key !== "Escape") return;
-          event.preventDefault();
-          onCancel();
-        }}
-        aria-label="新产品的名字"
-        className="border-line-2 min-w-40 flex-1 rounded-md border bg-transparent px-2 py-1 text-[15px] font-medium outline-none"
-      />
-      <span className="text-fg-3 text-xs">
-        包含 <span className="font-mono">{identifier.value}</span>
-      </span>
-      <button
-        type="button"
-        onClick={onCancel}
-        className="text-fg-2 hover:text-fg cursor-pointer rounded-lg px-2.5 py-1 text-[13px]"
-      >
-        取消
-      </button>
-      <button
-        type="submit"
-        disabled={!name.trim()}
-        className="bg-fg text-page cursor-pointer rounded-lg px-3 py-1 text-[13px] disabled:opacity-40"
-      >
-        新建产品
-      </button>
-    </form>
-  );
-}
-
-/** 线索最后一段，作为新产品名字的初值，例如 com.tencent.mobileqq 是 mobileqq。 */
-function lastSegment(identifier: Identifier): string {
-  return identifier.value.split(/[./]/).filter(Boolean).at(-1) ?? identifier.value;
 }

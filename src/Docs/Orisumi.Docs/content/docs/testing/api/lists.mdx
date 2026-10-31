@@ -1,37 +1,37 @@
 ---
 title: "Lists"
-description: "按类别、业务类型和事实时间列出当前版本，并分页"
+description: "查询用当前版本的事实时间排序"
 ---
 
 export const caseId = 'api-lists';
 
 ## 为什么验证 [#why]
 
-读取方按类型列出实体，按事实时间找出一段时间内的观测。查询只看当前版本中已知的边界，结果的排序和游标决定翻页时是否重复或遗漏。约定见 [API · 列出实体](../../api/reading.mdx#lists)、[按事实时间查询](../../api/reading.mdx#observations) 和 [分页](../../api/reading.mdx#paging)。
+查询用当前版本的事实时间排序，游标绑定查询条件。约定见 [观测查询](../../api/reading.mdx#observations)。
 
 ## 前置条件 [#setup]
 
-通过 `WebApplicationFactory` 启动 API，连接一个独立的测试数据库，见 [Database](../database.mdx)。先提交一个资源名为 `items` 的 EntitySchema、它的业务实体，以及引用这个业务实体的几份 Observation。
+HTTP 用例经真实 API 和独立的 PostgreSQL 数据库运行。Runtime 使用临时数据目录；Observer 的读数、日志和模型回答由测试控制。实际运行的补充证据单独说明，见 [测试分工](../index.mdx#kinds)。
 
 ## 操作与预期结果 [#steps]
 
 | 操作 | 预期结果 |
 | --- | --- |
-| `GET /entities?resourceName=items` | 只返回 `items` 的业务实体 |
-| `GET /entities?category=entity_schema` | 只返回 EntitySchema |
-| `GET /entities?resourceName=missing`，没有 EntitySchema 使用这个资源名 | `404` |
-| 查询 `[from, to)`，Observation 分别是与范围重叠的时段、范围内的时间点、只知道开始、只知道结束、两个边界都未知 | 返回前四份；两个边界都未知的不返回 |
-| 查看上一行的结果顺序 | 按已知的开始边界升序，开始边界未知时用结束边界，相同时按 EntityId 升序 |
-| 为其中一份 Observation 提交新版本，把事实时间移出范围，再查询 | 这份 Observation 不再返回 |
-| 用 `limit=1` 查询，沿 `next` 作为 `after` 翻到最后一页 | 各页合起来与一次查询全部的结果相同，没有重复；最后一页的 `next` 为 `null` |
+| 用 observerEntityId 或 contentEntityId 筛选 | 只返回对应的观测，目标删除后仍能筛选 |
+| 不带时间范围，分别按 asc、desc 查询 | 按已知边界排序，相同时间按 EntityId 升序；两个边界都未知的始终最后 |
+| 给出 from 和 to | 只返回与范围重叠的观测；两者必须成对 |
+| 用 limit=1 沿 next 翻页 | 各页与完整结果一致，不重不漏 |
+| 把游标用于另一组条件或另一种查询 | 400 |
 
 ## 测试实现 [#implementation]
 
-以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
+方法位于 `tests/Orisumi.Integration.Tests/`：
 
-- 本页全部预期：筛选、已知边界、排序、当前版本更新和静态数据分页：`EntityApiTests.ListsFilterCategoriesAndOrderCurrentKnownBoundariesAcrossPages`。
+- 筛选、两种排序、未知时间和游标绑定：`WriteApiTests.ObservationPaginationBindsFiltersAndKeepsUnknownTimesLast`。
+- 目标删除后投影和查询：`ProjectionTests.RebuildPreservesHistoryDeletedTargetsAndAllQueryResults`。
+- 实体列表分页：`SdkTests.FixtureWritesAndReadsThroughHttpAndScriptReimportIsUnchanged`。
 
-分页检查期间没有并发写入；本页结果不覆盖翻页过程中新增、纠正或删除数据的行为。
+未覆盖：翻页期间新增、修改或删除数据；本次没有重新覆盖所有半开区间边界组合。
 
 ## 执行结果 [#results]
 

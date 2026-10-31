@@ -38,6 +38,8 @@ internal sealed class StoredObservation
 {
     public Guid EntityId { get; set; }
     public Guid VersionId { get; set; }
+    public Guid ObserverEntityId { get; set; }
+    public Guid ContentEntityId { get; set; }
     public Guid? ContentSchemaId { get; set; }
     public NpgsqlRange<DateTimeOffset>? FactRange { get; set; }
 }
@@ -62,7 +64,7 @@ internal sealed class StoredInstance
 {
     public Guid EntityId { get; set; }
     public Guid HostId { get; set; }
-    public string InstanceKey { get; set; } = null!;
+    public string PackageId { get; set; } = null!;
     public string Name { get; set; } = null!;
     public bool Enabled { get; set; }
     public string Settings { get; set; } = null!;
@@ -85,4 +87,19 @@ internal sealed class StoredVersionContent
 {
     public Guid VersionId { get; set; }
     public string Digest { get; set; } = null!;
+}
+
+internal sealed class StoredRecognitionKey
+{
+    public Guid SchemaId { get; set; }
+    public string? Scope { get; set; }
+    public string Scheme { get; set; } = null!;
+    public string Value { get; set; } = null!;
+    public Guid EntityId { get; set; }
+}
+internal sealed class StoredWriteStreamState
+{
+    public Guid ObserverEntityId { get; set; }
+    public long LastSequence { get; set; }
+    public string SchemaVersionIds { get; set; } = null!;
 }

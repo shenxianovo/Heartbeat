@@ -11,7 +11,7 @@ export const caseId = 'assistant-session-reading';
 
 ## 前置条件 [#setup]
 
-使用临时的来源目录和独立的 Runtime 数据目录。轮询间隔可以由测试控制，HTTP 后端可按需返回错误。
+使用临时的来源目录和独立的读取进度目录。轮询间隔可以由测试控制，HTTP 后端可按需返回错误。
 
 ## 操作与预期结果 [#steps]
 
@@ -23,10 +23,10 @@ export const caseId = 'assistant-session-reading';
 | 会话文件被复制到另一个路径，或从 `sessions` 移进归档并压缩 | 不形成新的交互 |
 | 文件被截短后重新写入，或被同名的新文件替换 | 从头重读；已有的记录对应到原来的交互，新的记录形成新的交互 |
 | 两条记录文本相同，`uuid` 不同 | 形成两次交互 |
-| 提交失败 | 读取进度保持原样，下轮重读同一段 |
+| 写入失败 | 读取进度保持原样，下轮重读同一段 |
 | 来源清理了旧的会话文件 | 已导入的交互保持不变 |
-| 用户在 Orisumi 中删除一次交互，之后文件被重读 | 这次交互不再提交，也不以新的身份出现 |
-| 用户删除会话，来源又出现新的交互 | 提交因引用已删除实体被拒绝；报告诊断，进度保持原样 |
+| 用户在 Orisumi 中删除一次交互，之后文件被重读 | 识别依据已随删除移除，再读时形成新实体 |
+| 用户删除会话，来源又出现新的交互 | 会话按原来源依据形成新实体，新交互引用它 |
 
 ## 测试实现 [#implementation]
 
@@ -36,8 +36,12 @@ export const caseId = 'assistant-session-reading';
 - 复制、截短、同名替换、文本相同的两条记录，以及来源文件被删除：`AssistantReadingTests.CopyTruncationAndSameSizeReplacementDoNotLoseOrDuplicateOccurrences`。
 - 会话移进归档并压缩，不依赖外部的 zstd 命令，解压的文件读完后删除：`AssistantReadingTests.ZstdArchiveReusesIdentitiesAndDoesNotRequireExternalExecutable`。
 - 导入历史期间新文件每一轮都被读到，历史最终导完：`AssistantReadingTests.LiveInputIsProcessedWhileHistoryAdvancesInBoundedSlices`。
-- 提交失败后进度不变，下轮重读：`AssistantReadingTests.FailedSubmissionKeepsTheCheckpointAndTheNextPollReadsTheSegmentAgain`。
-- 删除交互后重读不换新身份；删除会话后新一段被拒绝并保持进度：`AssistantSubmissionTests.DeletedRecordsAreNotRecreatedAndARejectedSegmentIsReadAgain`，使用真实 API 和独立数据库。
+- 写入失败后进度不变，下轮重读：`AssistantReadingTests.FailedSubmissionKeepsTheCheckpointAndTheNextPollReadsTheSegmentAgain`。
+- 删除交互后重读形成新实体；删除会话后新数据引用新会话：`AssistantSubmissionTests.DeletedSessionIsRecreatedWhenNewSourceDataArrives`，使用真实 API 和独立数据库。
+
+- Codex 的两次改名形成两条标题，Claude Code 重复的同名标题沿用同一实体：`AssistantMappingTests.TitlesAreSeparateAndRepeatedClaudeTitlesDoNotCreateVersions`。
+
+未覆盖：实时采集时补入本机时区，之后从头重读时，时区变为 `null` 形成 Observation 新版本的组合。
 
 ## 执行结果 [#results]
 

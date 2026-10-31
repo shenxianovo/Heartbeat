@@ -1,42 +1,41 @@
 ---
 title: "Deletion"
-description: "删除实体的全部版本，删除后不可读取、不可复活，身份不再复用"
+description: "删除实体时移除它的识别依据"
 ---
 
 export const caseId = 'api-deletion';
 
 ## 为什么验证 [#why]
 
-用户删除数据后，这些数据不能再被读取，离线的 Runtime 补发旧版本也不能让它们复活。仍被业务数据使用的 EntitySchema 不能删除，否则那些数据就无法解释。删除一个受管理的程序实例时，它也不能以旧身份继续运行。约定见 [API · 状态码](../../api/errors.mdx#status)、[Storage · 删除](../../storage/versions.mdx#deletion) 和 [API · 删除实例](../../api/management.mdx#removal)。
+删除实体时移除它的识别依据，明确的 EntityId 不能复活。约定见 [删除](../../storage/versions.mdx#deletion)。
 
 ## 前置条件 [#setup]
 
-通过 `WebApplicationFactory` 启动 API，连接一个独立的测试数据库，见 [Database](../database.mdx)。先提交一个 EntitySchema 和一个有两个版本的业务实体。
+HTTP 用例经真实 API 和独立的 PostgreSQL 数据库运行。Runtime 使用临时数据目录；Observer 的读数、日志和模型回答由测试控制。实际运行的补充证据单独说明，见 [测试分工](../index.mdx#kinds)。
 
 ## 操作与预期结果 [#steps]
 
 | 操作 | 预期结果 |
 | --- | --- |
-| 删除 EntitySchema，业务实体仍在使用它 | `409`，`rule` 为 `HISTORY-9`，见 [HISTORY-9](../../core/rules/history.mdx#history-9) |
-| 删除业务实体 | `204`；读取当前版本、版本链和两个版本都返回 `410`，见 [HISTORY-6](../../core/rules/history.mdx#history-6) |
-| 再次删除同一个实体 | `204` |
-| 原样重发它的首版 | `409`，`rule` 为 `HISTORY-7`，见 [HISTORY-7](../../core/rules/history.mdx#history-7) |
-| 把它首版的 VersionId 用在一个新实体上提交 | `409`，`rule` 为 `VERSION-9`，见 [VERSION-9](../../core/model/version.mdx#version-9) |
-| 再删除 EntitySchema，然后提交使用同一资源名的新 EntitySchema | 删除返回 `204`，新 EntitySchema 保存成功 |
-| 删除从未出现过的 EntityId | `404` |
-| 删除一个已登记的程序实例的实体 | `204`；实例登记的 `removed` 为 `true` |
-| 删除一个已登记、还没有首版的程序实例，再提交它的首版 | 删除经 `DELETE /observer-instances/{entityId}` 返回 `204`；提交 `409`，`rule` 为 `HISTORY-7` |
-| 删除观测内容，Observation 保留 | Observation 的 `contentVersionId` 不变，读取这个版本返回 `410` |
-
-删除后引用方的结果见 [Referrers](./referrers.mdx)。
+| 删除业务实体后按 ID 读取 | 410，批量读取为 deleted |
+| 按原 entityId 再写入 | 409，HISTORY-7 |
+| 按原 key 再写入 | 形成新实体 |
+| 删除已有登记、没有首版的程序实例 | 登记 removed；首版写入按 HISTORY-7 被拒绝 |
+| 带托管方凭证删除实体 | 403 |
+| 删除仍在使用的 EntitySchema | 409，HISTORY-9 |
+| 删除被引用的目标 | 引用方保留原 VersionId |
 
 ## 测试实现 [#implementation]
 
-以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
+方法位于 `tests/Orisumi.Integration.Tests/`：
 
-- Schema 删除限制、实体全部版本删除、重复删除、重放、身份占用、资源名复用和未知身份：`EntityApiTests.DeletionRemovesAllVersionsPreventsReplayAndAllowsResourceReuse`。
-- 删除还没有首版的程序实例后首版按 `HISTORY-7` 被拒绝：`ManagementApiTests.RemovingBeforeFirstVersionReservesIdentityAndStopsLocalChanges`。
-- 未覆盖：经 `DELETE /entities/{entityId}` 删除已登记的程序实例；删除观测内容后读取 `contentVersionId` 返回 `410`。
+- 删除、原身份拒绝和识别依据重建：`WriteApiTests.DeletionRemovesRecognitionAndBatchReadPreservesOrderDuplicatesAndStatus`。
+- 预留实例删除：`ManagementApiTests.RemovingBeforeFirstVersionReservesIdentityAndStopsLocalChanges`。
+- 托管方权限：`ManagementApiTests.CredentialsEnforceOwnershipRevocationAndRePairing`。
+- Schema 删除限制：`WriteApiTests.ConcurrentRecognitionPreservesOneChainAndHttpBoundariesRemainExplicit`。
+- 目标删除后引用：`ReferrerApiTests.ReferencesFilterBeforePagingKeepPathsAndSurviveTargetDeletion`。
+
+未覆盖：本次未重新覆盖删除 Schema 后复用资源名，以及删除和首版写入同时发生。
 
 ## 执行结果 [#results]
 

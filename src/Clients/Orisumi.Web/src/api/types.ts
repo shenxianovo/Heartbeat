@@ -56,11 +56,8 @@ export interface Version<C = unknown> {
   content: C;
 }
 
-/** 提交时的版本：没有 recordedAt。 */
-export type VersionSubmission<C = unknown> = Omit<Version<C>, "recordedAt">;
-
-export interface SubmissionResult {
-  versions: { versionId: string; recordedAt: string }[];
+export interface VersionReadResults {
+  results: { versionId: string; status: "found" | "deleted" | "not_found"; version?: Version }[];
 }
 
 export interface VersionPage {
@@ -112,6 +109,8 @@ export interface ListObservationsQuery {
 
 export interface ListReferrersQuery {
   versions?: "current" | "all";
+  resourceName?: string;
+  path?: string;
   order?: "asc" | "desc";
   limit?: number;
   after?: string;

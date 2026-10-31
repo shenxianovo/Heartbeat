@@ -18,6 +18,16 @@ public struct ObserverStatus: Decodable, Equatable, Identifiable, Sendable {
     public var error: String?
     /// The latest collection diagnostic the Observer wrote; the process may still be running.
     public var diagnostic: String?
+    public var writes: Writes
+    /// What local forwarding holds for this instance.
+    public struct Writes: Decodable, Equatable, Sendable {
+        public var pending: Int
+        public var rejected: Int
+        public var lastRejection: String?
+        public init(pending: Int = 0, rejected: Int = 0, lastRejection: String? = nil) {
+            self.pending = pending; self.rejected = rejected; self.lastRejection = lastRejection
+        }
+    }
 
     public var removed: Bool
     public var settings: JSONValue
@@ -34,7 +44,7 @@ public struct ObserverStatus: Decodable, Equatable, Identifiable, Sendable {
 
     public init(packageId: String, name: String, version: String?, instanceId: UUID, installed: Bool = true,
                 enabled: Bool = true, state: State = .running, error: String? = nil, diagnostic: String? = nil,
-                removed: Bool = false,
+                writes: Writes = .init(), removed: Bool = false,
                 settings: JSONValue = .object([:]), sync: Synchronization = .init()) {
         self.packageId = packageId
         self.name = name
@@ -45,6 +55,7 @@ public struct ObserverStatus: Decodable, Equatable, Identifiable, Sendable {
         self.state = state
         self.error = error
         self.diagnostic = diagnostic
+        self.writes = writes
         self.removed = removed; self.settings = settings; self.sync = sync
     }
 }
@@ -91,22 +102,26 @@ public struct PackageVersion: Comparable, Sendable {
     }
 }
 
-/// A version as Runtime returns it. Only the fields the client reads are decoded.
+/// A version as the API returns it. Only the fields the client reads are decoded.
 public struct RuntimeVersion<Content: Decodable & Sendable>: Decodable, Sendable {
     public var versionId: UUID
     public var entityId: UUID
     public var content: Content
 }
 
-/// Saved Observation versions returned by the backend through Runtime.
+/// One page of `GET /observations`.
 public struct ReadResult<Content: Decodable & Sendable>: Decodable, Sendable {
-    public var observations: [RuntimeVersion<Content>]
+    public var versions: [RuntimeVersion<Content>]
     public var next: String?
 }
 
+/// `POST /versions/read`: each requested version, in order. `version` is nil when it was deleted or never saved.
 public struct VersionsResult<Content: Decodable & Sendable>: Decodable, Sendable {
-    public var versions: [RuntimeVersion<Content>]
-    public var missing: [UUID]
+    public struct Item: Decodable, Sendable {
+        public var versionId: UUID
+        public var version: RuntimeVersion<Content>?
+    }
+    public var results: [Item]
 }
 
 /// The members of an Observation version's content.
@@ -185,7 +200,7 @@ public enum RuntimeJSON {
         return formatter.date(from: text)
     }
 
-    /// An ISO 8601 time with the local offset, as `read` expects.
+    /// An ISO 8601 time with the local offset, as the API expects.
     public static func format(_ date: Date) -> String {
         let formatter = ISO8601DateFormatter()
         formatter.timeZone = .current

@@ -1,31 +1,31 @@
 ---
 title: "Errors"
-description: "错误响应使用 RFC 9457 的格式"
+description: "整次请求的错误使用 Problem Details"
 ---
 
 export const caseId = 'api-errors';
 
 ## 为什么验证 [#why]
 
-调用方按状态码和 `rule` 判断错误的原因，所以每个错误响应都要有相同的结构。约定见 [API · 错误格式](../../api/errors.mdx)。
+整次请求的错误使用 Problem Details，单次写入的拒绝放在结果中。约定见 [错误](../../api/errors.mdx)。
 
 ## 前置条件 [#setup]
 
-通过 `WebApplicationFactory` 启动 API，连接一个独立的测试数据库，见 [Database](../database.mdx)。
+HTTP 用例经真实 API 和独立的 PostgreSQL 数据库运行。Runtime 使用临时数据目录；Observer 的读数、日志和模型回答由测试控制。实际运行的补充证据单独说明，见 [测试分工](../index.mdx#kinds)。
 
 ## 操作与预期结果 [#steps]
 
 | 操作 | 预期结果 |
 | --- | --- |
-| 提交一个带有 `recordedAt` 的版本，得到 `400` | `Content-Type` 为 `application/problem+json`；`type` 为 `about:blank`；`title`、`status` 和 `detail` 都存在，`status` 为 `400` |
-| 读取从未出现过的 EntityId，得到 `404` | 同上，`status` 为 `404` |
-| 用已保存的 VersionId 提交不同的内容，得到 `409` | 同上，`status` 为 `409`，另有 `rule`、`index` 和 `versionId` |
+| 请求结构错误、读取未知身份、删除仍使用的 Schema | 分别为 400、404、409；application/problem+json，带 status、title 和 detail |
+| 合法请求中一条内容不满足 Schema | HTTP 200，结果带 error.status、rule 和 detail，其他写入继续 |
 
 ## 测试实现 [#implementation]
 
-以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
+方法位于 `tests/Orisumi.Integration.Tests/`：
 
-- 本页三种响应的 Problem Details，以及冲突响应的 rule、index 和 versionId：`EntityApiTests.ErrorsHaveProblemDetailsAndConflictIdentifiesRejectedVersion`。
+- HTTP 错误格式：`WriteApiTests.ConcurrentRecognitionPreservesOneChainAndHttpBoundariesRemainExplicit`。
+- 单次写入错误：`WriteApiTests.RejectionRollsBackOnlyItsWriteIncludingKeysInputsAndContent`。
 
 ## 执行结果 [#results]
 

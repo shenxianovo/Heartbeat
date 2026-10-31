@@ -1,7 +1,7 @@
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Orisumi.Observer.Runtime;
-using Orisumi.Observer.Sdk;
 
 namespace Orisumi.Integration.Tests;
 
@@ -30,10 +30,10 @@ public sealed class RuntimeManagementTests
             await host.InitializeAsync(Token);
             host.StartSynchronization();
             await Until(async () => (await Status(host)).GetProperty("sync").GetProperty("revision").GetInt64() > 0);
-            instance = packages.Find("example").InstanceId;
+            instance = packages.Observers.Last(o => o.PackageId == "example").InstanceId;
             network.Offline = true;
-            await host.RequestAsync("setEnabled", JsonLines.Json(new { packageId = "example", enabled = false }), Token);
-            await host.RequestAsync("setSettings", JsonLines.Json(new { packageId = "example", settings = new { interval = 3 } }), Token);
+            await host.RequestAsync("setEnabled", ClientProtocol.Json(new { instanceId = instance, enabled = false }), Token);
+            await host.RequestAsync("setSettings", ClientProtocol.Json(new { instanceId = instance, settings = new { interval = 3 } }), Token);
             var local = await Status(host);
             await Assert.That(local.GetProperty("enabled").GetBoolean()).IsFalse();
             await Assert.That(local.GetProperty("sync").GetProperty("pendingChanges").GetInt32()).IsEqualTo(2);
@@ -45,7 +45,7 @@ public sealed class RuntimeManagementTests
         using var restoredPackages = new PackageStore(directory.Data, directory.Bundled, null, restoredHttp);
         await using var restored = new RuntimeHost(restoredPackages, restoredHttp);
         await restored.InitializeAsync(Token);
-        await Assert.That(restoredPackages.Find("example").Pending.Length).IsEqualTo(2);
+        await Assert.That(restoredPackages.Observers.Last(o => o.PackageId == "example").Pending.Length).IsEqualTo(2);
         restored.StartSynchronization();
         await Until(async () => (await Status(restored)).GetProperty("sync").GetProperty("pendingChanges").GetInt32() == 0);
         var server = await manager.GetFromJsonAsync<JsonElement>($"observer-instances/{instance}", Token);
@@ -58,9 +58,8 @@ public sealed class RuntimeManagementTests
         using var removed = await manager.DeleteAsync($"observer-instances/{instance}", Token);
         removed.EnsureSuccessStatusCode();
         await Until(async () => (await Status(restored)).GetProperty("removed").GetBoolean());
-        await Assert.That(async () => await restored.RequestAsync("install", JsonLines.Json(new { packageId = "example" }), Token)).Throws<InvalidOperationException>();
-        await restored.RequestAsync("install", JsonLines.Json(new { packageId = "example", newInstance = true }), Token);
-        await Assert.That(restoredPackages.Find("example").InstanceId).IsNotEqualTo(instance);
+        await restored.RequestAsync("install", ClientProtocol.Json(new { packageId = "example" }), Token);
+        await Assert.That(restoredPackages.Observers.Last(o => o.PackageId == "example").InstanceId).IsNotEqualTo(instance);
         await Assert.That(restoredPackages.Observers.Count).IsEqualTo(2);
         await Until(async () => {
             var list = await manager.GetFromJsonAsync<JsonElement>("observer-instances", Token);
@@ -68,27 +67,27 @@ public sealed class RuntimeManagementTests
         });
         using var revoked = await manager.PostAsync($"hosts/{identity.HostId}/revoke", null, Token);
         revoked.EnsureSuccessStatusCode();
-        await Until(async () => (await restored.RequestAsync("list", JsonLines.Json(new { }), Token)).GetProperty("host").GetProperty("connection").GetString() == "revoked");
-        await restored.RequestAsync("setEnabled", JsonLines.Json(new { packageId = "example", enabled = false }), Token);
-        await Assert.That(restoredPackages.Find("example").Enabled).IsFalse();
+        await Until(async () => (await restored.RequestAsync("list", ClientProtocol.Json(new { }), Token)).GetProperty("host").GetProperty("connection").GetString() == "revoked");
+        await restored.RequestAsync("setEnabled", ClientProtocol.Json(new { instanceId = restoredPackages.Observers.Last(o => o.PackageId == "example").InstanceId, enabled = false }), Token);
+        await Assert.That(restoredPackages.Observers.Last(o => o.PackageId == "example").Enabled).IsFalse();
     }
 
     [Test, Property("caseId", "runtime-management-sync")]
     public async Task AcknowledgementRebasesNewerLocalChangesAndNeverRevivesRemovedInstance()
     {
-        var item = new InstalledObserver("example", "Example", "1.0.0", Guid.CreateVersion7(), true, true, JsonLines.Json(new { a = 1 }))
-            .Change(enabled: false).Change(settings: JsonLines.Json(new { a = 2 }));
-        var merged = item.Merge(new(item.InstanceId, true, JsonLines.Json(new { a = 9 }), 4, 1, false));
+        var item = new InstalledObserver("example", "Example", "1.0.0", Guid.CreateVersion7(), true, true, ClientProtocol.Json(new { a = 1 }))
+            .Change(enabled: false).Change(settings: ClientProtocol.Json(new { a = 2 }));
+        var merged = item.Merge(new(item.InstanceId, true, ClientProtocol.Json(new { a = 9 }), 4, 1, false));
         await Assert.That(merged.Enabled).IsTrue();
         await Assert.That(merged.Settings.GetProperty("a").GetInt32()).IsEqualTo(2);
         await Assert.That(merged.Pending.Single().Sequence).IsEqualTo(2);
-        var stale = merged.Merge(new(item.InstanceId, false, JsonLines.Json(new { }), 3, 2, false));
+        var stale = merged.Merge(new(item.InstanceId, false, ClientProtocol.Json(new { }), 3, 2, false));
         await Assert.That(stale).IsSameReferenceAs(merged);
-        var removed = merged.Merge(new(item.InstanceId, true, JsonLines.Json(new { }), 5, 1, true));
+        var removed = merged.Merge(new(item.InstanceId, true, ClientProtocol.Json(new { }), 5, 1, true));
         await Assert.That(removed.Pending.Length).IsEqualTo(0);
-        await Assert.That(removed.Merge(new(item.InstanceId, true, JsonLines.Json(new { }), 6, 1, false)).Removed).IsTrue();
+        await Assert.That(removed.Merge(new(item.InstanceId, true, ClientProtocol.Json(new { }), 6, 1, false)).Removed).IsTrue();
     }
-    private static async Task<JsonElement> Status(RuntimeHost host) => (await host.RequestAsync("list", JsonLines.Json(new { }), Token)).GetProperty("observers")[0];
+    private static async Task<JsonElement> Status(RuntimeHost host) => (await host.RequestAsync("list", ClientProtocol.Json(new { }), Token)).GetProperty("observers")[0];
     private static async Task Until(Func<Task<bool>> condition)
     {
         var deadline = DateTime.UtcNow.AddSeconds(15);
@@ -98,6 +97,27 @@ public sealed class RuntimeManagementTests
             await Task.Delay(50, Token);
         }
     }
+    [Test, Property("caseId", "runtime-management-sync")]
+    public async Task ProxyErrorPageCountsAsOffline()
+    {
+        var directory = Directory.CreateTempSubdirectory("orisumi-connection-");
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(directory.FullName, "host.json"),
+                JsonSerializer.Serialize(new { hostId = Guid.CreateVersion7(), credential = "credential", api = "http://localhost/" }));
+            using var http = new HttpClient(new ProxyErrorHandler()) { BaseAddress = new("http://localhost/") };
+            using var connection = new RuntimeConnection(directory.FullName, http, false);
+            await Assert.ThrowsAsync<HttpRequestException>(() => connection.SendAsync(HttpMethod.Post, "runtime/poll", new { }, CancellationToken.None));
+        }
+        finally { directory.Delete(true); }
+    }
+
+    private sealed class ProxyErrorHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.BadGateway) { Content = new StringContent("<html>502</html>", System.Text.Encoding.UTF8, "text/html") });
+    }
+
     private sealed class DisconnectableHandler(HttpMessageHandler inner) : DelegatingHandler(inner)
     {
         public bool Offline { get; set; }

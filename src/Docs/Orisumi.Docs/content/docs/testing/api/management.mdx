@@ -24,7 +24,7 @@ export const caseId = 'api-management';
 | `/runtime/` 下的接口不带凭证，或带错误的凭证 | `401`，`code` 分别为 `credential_required` 和 `credential_invalid` |
 | Mac 首次登记一个实例，用同一个请求重发 | 两次都返回 `revision` 为 1 的同一份登记 |
 | 服务器登记、修改或报告 Mac 的实例 | `403`，`code` 为 `host_mismatch`；登记不变 |
-| Mac 以同一个登记标识登记第二个实例 | `409`，`instance_key_taken` |
+| Mac 以同一个安装包登记第二个实例 | `409`，`package_taken` |
 | Mac 和服务器各登记一个 `scope` 为 `deployment`、登记标识相同的实例 | 第二个 `409`，`deployment_singleton` |
 | Mac 发送序号 1 的停用，再重发序号 1 | 第一次 `revision` 加 1；重发不修改，返回当前的配置 |
 | 管理入口启用实例后，Mac 重发序号 1 的停用 | 返回启用，`revision` 不变 |
@@ -39,24 +39,29 @@ export const caseId = 'api-management';
 | 删除一个已保存首版的实例 | `204`；它的实体返回 `410`，登记的 `removed` 为 `true`，`revision` 加 1 |
 | 删除后，Runtime 登记或同步这个实例 | `410`，`instance_removed` |
 | 删除后，管理入口修改这个实例 | `410` |
-| 删除一个还没有首版的实例，再提交它的首版 | 删除返回 `204`；提交 `409`，`rule` 为 `HISTORY-7` |
+| 删除一个还没有首版的实例，再写入它的首版 | 删除返回 `204`；写入 `409`，`rule` 为 `HISTORY-7` |
 | 用 `DELETE /entities/{entityId}` 删除一个已登记的程序实例 | 登记的 `removed` 为 `true` |
-| 删除和同一实例的首版提交并发 | 两者串行：首版要么在删除前保存后被删除，要么被拒绝 |
-| 删除后，以同一个登记标识登记新的 EntityId | 新登记成功，旧登记仍是已删除 |
+| 删除和同一实例的首版写入并发 | 两者串行：首版要么在删除前保存后被删除，要么被拒绝 |
+| 删除后，以同一个安装包登记新的 EntityId | 新登记成功，旧登记仍是已删除 |
 | 移除 Mac | 它的凭证调用任何接口都返回 `401`，`credential_revoked`；正在等待的长轮询以 `401` 结束 |
 | 用不带 `hostId` 的配对码让 Mac 带着原 `hostId` 接入 | `409`，`pairing_mismatch` |
 | 用为 Mac 签发的配对码重新接入 | 得到新凭证，`hostId` 不变；旧凭证仍返回 `401` |
 | 带托管方凭证删除实体，或调用管理入口的接口 | `403`，`management_only` |
+
+| 以预留的 entityId 写入实例首版 | 保存成功 |
+| 以未预留的 entityId 写入 | 被拒绝，ENTITY-2 |
+| 用另一个托管方的实例作为 observer 写入 | 403，host_mismatch |
 
 ## 测试实现 [#implementation]
 
 以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
 
 - 首次登记的重发、本机修改按序号接受、重复的序号不覆盖之后管理入口的修改、跨字段合并、`sequence_gap`：`ManagementApiTests.LocalChangesAreOrderedAndDuplicateDoesNotOverwriteRemoteChange`。
-- 删除还没有首版的实例后首版按 `HISTORY-7` 被拒绝，登记和同步返回 `410`，删除后仍接受状态报告，同一个登记标识新建实例：`ManagementApiTests.RemovingBeforeFirstVersionReservesIdentityAndStopsLocalChanges`。
+- 删除还没有首版的实例后首版按 `HISTORY-7` 被拒绝，登记和同步返回 `410`，删除后仍接受状态报告，同一个安装包新建实例：`ManagementApiTests.RemovingBeforeFirstVersionReservesIdentityAndStopsLocalChanges`。
 - `deployment_singleton`、`host_mismatch`、`management_only`、移除托管方后凭证全部返回 `401` 并结束正在等待的长轮询、用绑定的配对码重新接入并换掉旧凭证：`ManagementApiTests.CredentialsEnforceOwnershipRevocationAndRePairing`。
 - 离线时 `host_offline`、`expired`、在线操作只交出一次、`unconfirmed`、结束后的结果返回 `404`、API 重启后操作不存在：`ManagementApiTests.OnlineOperationsDeliverOnceExpireAndLoseMemoryOnCoordinatorRestart`。
-- 未覆盖：配对码 10 分钟过期和重启后失效；凭证摘要的存储格式；删除和首版提交并发；长轮询 25 秒超时；跨字段合并中整体替换设置的组合。
+- 预留实体首版、未预留身份、package_taken 和托管方写入归属：`ManagementApiTests.WritesRequireReservedIdentityAndTheOwningHost`。
+- 未覆盖：配对码 10 分钟过期和重启后失效；凭证摘要的存储格式；删除和首版写入并发；长轮询 25 秒超时；跨字段合并中整体替换设置的组合。
 
 ## 执行结果 [#results]
 

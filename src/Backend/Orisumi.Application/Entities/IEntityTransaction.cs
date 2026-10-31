@@ -4,6 +4,13 @@ namespace Orisumi.Application.Entities;
 
 public interface IEntityTransaction
 {
+    Task<bool> IsHostInstanceAsync(EntityId id, Guid host, CancellationToken cancellationToken);
+    Task<T> SavepointAsync<T>(Func<Task<T>> operation, CancellationToken cancellationToken);
+    Task<EntityId?> FindRecognitionAsync(EntityId schemaId, RecognitionKey key, CancellationToken cancellationToken);
+    Task RegisterRecognitionAsync(EntityId schemaId, RecognitionKey key, EntityId entityId, CancellationToken cancellationToken);
+    Task<WriteStreamState> ReadStreamAsync(EntityId observer, CancellationToken cancellationToken);
+    Task SaveStreamAsync(EntityId observer, WriteStreamState stream, CancellationToken cancellationToken);
+    Task<EntityVersion?> FindObservationAsync(EntityId observer, EntityId content, CancellationToken cancellationToken);
     Task<EntityVersion?> ReadCurrentAsync(EntityId id, CancellationToken cancellationToken);
     Task<IReadOnlyList<EntityVersion>> ListEntitiesAsync(EntityQuery query, CancellationToken cancellationToken);
     Task<IReadOnlyList<EntityVersion>> ListObservationsAsync(ObservationQuery query, CancellationToken cancellationToken);

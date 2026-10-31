@@ -25,7 +25,7 @@ internal sealed class RuntimeConnection : IDisposable
         if (File.Exists(_path))
         {
             Identity = JsonSerializer.Deserialize<HostIdentity>(File.ReadAllText(_path), Json)!;
-            _transport.BaseAddress = new Uri(Identity.Api);
+            Identity = Identity with { Api = _transport.BaseAddress!.AbsoluteUri };
             State = "offline";
         }
         Client = new HttpClient(new CredentialHandler(this)) { BaseAddress = _transport.BaseAddress, Timeout = _transport.Timeout };
@@ -38,7 +38,9 @@ internal sealed class RuntimeConnection : IDisposable
             using var forwarded = new HttpRequestMessage(request.Method, request.RequestUri) { Content = request.Content };
             foreach (var header in request.Headers) forwarded.Headers.TryAddWithoutValidation(header.Key, header.Value);
             forwarded.Headers.Authorization = new AuthenticationHeaderValue("Bearer", connection.Identity!.Credential);
-            var response = await connection._transport.SendAsync(forwarded, token);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+            if (!request.RequestUri!.AbsolutePath.EndsWith("/runtime/poll", StringComparison.Ordinal)) timeout.CancelAfter(TimeSpan.FromSeconds(5));
+            var response = await connection._transport.SendAsync(forwarded, timeout.Token);
             if (response.StatusCode == HttpStatusCode.Unauthorized) connection.State = "revoked";
             return response;
         }
@@ -71,6 +73,8 @@ internal sealed class RuntimeConnection : IDisposable
             State = "revoked";
             throw new HttpRequestException("Runtime credentials are no longer valid.", null, response.StatusCode);
         }
+        // A proxy answers 5xx in its own format while the backend restarts.
+        if ((int)response.StatusCode >= 500) throw new HttpRequestException($"Backend answered {(int)response.StatusCode}.", null, response.StatusCode);
         var payload = response.StatusCode == HttpStatusCode.NoContent ? default : await response.Content.ReadFromJsonAsync<JsonElement>(token);
         if (!response.IsSuccessStatusCode)
             throw new ManagementFailure(payload.TryGetProperty("code", out var code) && code.ValueKind == JsonValueKind.String ? code.GetString()! : response.StatusCode == HttpStatusCode.NotFound ? "not_found" : response.StatusCode.ToString(), payload);

@@ -168,11 +168,6 @@ namespace Orisumi.Infrastructure.Database.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("host_id");
 
-                    b.Property<string>("InstanceKey")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("instance_key");
-
                     b.Property<long>("LastLocalSequence")
                         .HasColumnType("bigint")
                         .HasColumnName("last_local_sequence");
@@ -181,6 +176,11 @@ namespace Orisumi.Infrastructure.Database.Migrations
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("name");
+
+                    b.Property<string>("PackageId")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("package_id");
 
                     b.Property<bool>("Removed")
                         .HasColumnType("boolean")
@@ -206,13 +206,13 @@ namespace Orisumi.Infrastructure.Database.Migrations
                     b.HasKey("EntityId")
                         .HasName("pk_observer_instances");
 
-                    b.HasIndex("InstanceKey")
-                        .HasDatabaseName("ix_observer_instances_instance_key")
+                    b.HasIndex("PackageId")
+                        .HasDatabaseName("ix_observer_instances_package_id")
                         .HasFilter("removed = false");
 
-                    b.HasIndex("HostId", "InstanceKey")
+                    b.HasIndex("HostId", "PackageId")
                         .IsUnique()
-                        .HasDatabaseName("ux_observer_instances_host_id_instance_key")
+                        .HasDatabaseName("ux_observer_instances_host_id_package_id")
                         .HasFilter("removed = false");
 
                     b.ToTable("observer_instances", null, t =>
@@ -227,6 +227,10 @@ namespace Orisumi.Infrastructure.Database.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("entity_id");
 
+                    b.Property<Guid>("ContentEntityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("content_entity_id");
+
                     b.Property<Guid?>("ContentSchemaId")
                         .HasColumnType("uuid")
                         .HasColumnName("content_schema_id");
@@ -235,6 +239,10 @@ namespace Orisumi.Infrastructure.Database.Migrations
                         .HasColumnType("tstzrange")
                         .HasColumnName("fact_range");
 
+                    b.Property<Guid>("ObserverEntityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("observer_entity_id");
+
                     b.Property<Guid>("VersionId")
                         .HasColumnType("uuid")
                         .HasColumnName("version_id");
@@ -242,10 +250,16 @@ namespace Orisumi.Infrastructure.Database.Migrations
                     b.HasKey("EntityId")
                         .HasName("pk_observations");
 
+                    b.HasIndex("ContentEntityId")
+                        .HasDatabaseName("ix_observations_content_entity_id");
+
                     b.HasIndex("FactRange")
                         .HasDatabaseName("ix_observations_fact_range");
 
                     NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("FactRange"), "gist");
+
+                    b.HasIndex("ObserverEntityId")
+                        .HasDatabaseName("ix_observations_observer_entity_id");
 
                     b.HasIndex("VersionId")
                         .IsUnique()
@@ -256,7 +270,46 @@ namespace Orisumi.Infrastructure.Database.Migrations
 
                     NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("ContentSchemaId", "FactRange"), "gist");
 
+                    b.HasIndex("ObserverEntityId", "ContentEntityId")
+                        .HasDatabaseName("ix_observations_observer_entity_id_content_entity_id");
+
                     b.ToTable("observations", (string)null);
+                });
+
+            modelBuilder.Entity("Orisumi.Infrastructure.Database.StoredRecognitionKey", b =>
+                {
+                    b.Property<Guid>("EntityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("entity_id");
+
+                    b.Property<Guid>("SchemaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("schema_id");
+
+                    b.Property<string>("Scheme")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("scheme");
+
+                    b.Property<string>("Scope")
+                        .HasColumnType("text")
+                        .HasColumnName("scope");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("value");
+
+                    b.HasIndex("EntityId")
+                        .HasDatabaseName("ix_recognition_keys_entity_id");
+
+                    b.HasIndex("SchemaId", "Scope", "Scheme", "Value")
+                        .IsUnique()
+                        .HasDatabaseName("ux_recognition_keys_schema_id_scope_scheme_value");
+
+                    NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("SchemaId", "Scope", "Scheme", "Value"), false);
+
+                    b.ToTable("recognition_keys", (string)null);
                 });
 
             modelBuilder.Entity("Orisumi.Infrastructure.Database.StoredSchema", b =>
@@ -376,6 +429,28 @@ namespace Orisumi.Infrastructure.Database.Migrations
                         .HasDatabaseName("ix_version_references_version_id");
 
                     b.ToTable("version_references", (string)null);
+                });
+
+            modelBuilder.Entity("Orisumi.Infrastructure.Database.StoredWriteStreamState", b =>
+                {
+                    b.Property<Guid>("ObserverEntityId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("observer_entity_id");
+
+                    b.Property<long>("LastSequence")
+                        .HasColumnType("bigint")
+                        .HasColumnName("last_sequence");
+
+                    b.Property<string>("SchemaVersionIds")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("schema_version_ids");
+
+                    b.HasKey("ObserverEntityId")
+                        .HasName("pk_write_streams");
+
+                    b.ToTable("write_streams", (string)null);
                 });
 
             modelBuilder.Entity("Orisumi.Infrastructure.Database.StoredEntity", b =>

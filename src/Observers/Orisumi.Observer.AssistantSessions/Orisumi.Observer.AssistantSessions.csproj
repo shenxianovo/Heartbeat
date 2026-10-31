@@ -9,6 +9,7 @@
     <ObserverName>Assistant Sessions</ObserverName>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="schemas.json" />
     <PackageReference Include="Microsoft.Data.Sqlite" />
     <PackageReference Include="ZstdSharp.Port" />
     <ProjectReference Include="../Orisumi.Observer.Sdk/Orisumi.Observer.Sdk.csproj" />

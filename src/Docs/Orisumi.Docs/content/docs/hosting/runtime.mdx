@@ -12,7 +12,7 @@ Runtime 是一个 .NET 程序，代码在 `src/Observers/Orisumi.Observer.Runtim
 客户端启动 Runtime 进程，并通过它的标准输入和标准输出通信：
 
 ```sh
-Orisumi.Observer.Runtime --data-dir <目录> --backend <API 地址> --bundled <目录> [--catalog <URL>] [--device <EntityId>]
+Orisumi.Observer.Runtime --data-dir <目录> --backend <API 地址> --bundled <目录> [--catalog <URL>]
 ```
 
 | 参数 | 作用 |
@@ -21,7 +21,6 @@ Orisumi.Observer.Runtime --data-dir <目录> --backend <API 地址> --bundled <�
 | `--backend` | API 的根地址，包括 `/api/` |
 | `--bundled` | 随客户端附带的安装包所在的目录，见 [Packages · 附带的 Observer](./packages.mdx#bundled) |
 | `--catalog` | 官方目录的 HTTPS 地址。省略时只列出附带的安装包 |
-| `--device` | 运行这个 Runtime 的[设备](../observers/device-state/device.mdx)的 EntityId，写进数据目录，之后的启动可以省略。见[运行上下文](./index.mdx#context) |
 
 启动后，Runtime 开始本地转发，安装尚未登记过的附带安装包，再运行所有启用的 Observer。已接入后端时，它同时开始登记、同步和长轮询，见 [Management · 同步](./management.mdx#sync)；还没有接入时，客户端经 [`pair`](./protocol.mdx#management) 交给它配对码。
 

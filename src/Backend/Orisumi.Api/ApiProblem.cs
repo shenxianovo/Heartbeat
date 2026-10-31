@@ -16,7 +16,7 @@ internal static class ApiProblem
 
     internal const string Type = "about:blank";
 
-    internal static int RuleStatus(string rule, bool conflict = false) => conflict || rule is "VERSION-6" or "SCHEMA-5" or "HISTORY-7" or "VERSION-9" or "HISTORY-9" ? 409 : 400;
+    internal static int RuleStatus(string rule, bool conflict = false) => conflict || rule is "SCHEMA-5" or "HISTORY-7" or "HISTORY-9" ? 409 : 400;
 
     internal static IResult Create(int statusCode, string detail, string? rule = null, int? index = null, Guid? versionId = null)
     {

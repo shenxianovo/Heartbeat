@@ -28,13 +28,6 @@ public static partial class VersionJson
         _ => throw new ArgumentException("Unknown content category.", nameof(content)),
     };
 
-    public static JsonElement Submission(VersionSubmission version) => JsonSerializer.SerializeToElement(new
-    {
-        entityId = version.EntityId.Value, versionId = version.VersionId.Value,
-        previousVersionId = version.PreviousVersionId?.Value, category = version.Category,
-        schemaVersionId = version.SchemaVersionId?.Value, content = Content(version.Content),
-    });
-
     public static JsonElement Saved(EntityVersion version) => JsonSerializer.SerializeToElement(new
     {
         entityId = version.EntityId.Value, versionId = version.VersionId.Value,
@@ -43,13 +36,13 @@ public static partial class VersionJson
         content = Content(version.Content),
     });
 
-    public static VersionSubmission ReadSubmission(JsonElement value) => new(
+    private static VersionSubmission ReadVersionData(JsonElement value) => new(
         new(value.GetProperty("entityId").GetGuid()), new(value.GetProperty("versionId").GetGuid()),
         NullableId(value.GetProperty("previousVersionId")), NullableId(value.GetProperty("schemaVersionId")),
         ReadContent(value.GetProperty("category").GetString()!, value.GetProperty("content")));
 
     public static EntityVersion ReadSaved(JsonElement value) =>
-        new(ReadSubmission(value), ParseTime(value.GetProperty("recordedAt").GetString()!));
+        new(ReadVersionData(value), ParseTime(value.GetProperty("recordedAt").GetString()!));
 
     public static VersionContent ReadContent(string category, JsonElement content) => category switch
     {

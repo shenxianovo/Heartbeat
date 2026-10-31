@@ -41,7 +41,7 @@ Orisumi.Web 是 Orisumi 的 Web 控制台，只在本机使用。页面和视图
 
 ## 应用产品
 
-归属和修改的计划在 `src/lib/applications.ts`，是不依赖 React 的纯函数：`buildCatalog` 按线索匹配产品，`planEdit` 把一次修改变成要提交的版本。`useApplicationEdit` 在提交前补上还没保存的应用产品和 User 的 EntitySchema，以及用户本人；两种 EntitySchema 的内容写在 `applications.ts` 中，与文档一致。资源名还没有登记时，列出它返回 `404`，按没有数据处理。
+归属在 `src/lib/applications.ts`，是不依赖 React 的纯函数：`buildCatalog` 按线索归属把线索和本机应用归到产品。`useCatalog` 读出产品、线索归属和本机应用，用 `POST /versions/read` 认出线索归属引用的产品版本。资源名还没有登记时，列出它返回 `404`，按没有数据处理。
 
 ## 接入新的 Observer
 
@@ -76,7 +76,7 @@ npm run test:e2e    # Playwright，自动启动开发服务器，用路由拦截
 `npm run test:e2e:edge` 经本地环境的 Web 入口用真实数据检查页面：
 
 - 页面、同源 `/api` 和 HMR WebSocket。
-- 提交一个 Observer 和一份 Observation，确认它在 Observer 页面有一行，点这一行能打开它的面板。
+- 写入一个 Observer 和一份 Observation，确认它在 Observer 页面有一行，点这一行能打开它的面板。
 - 写入一个事物和引用它的时段，检查日页面的排行、两层面板、Esc 和类型图；再从这个事物开始织，左边长出时段，再长出 Observer，停在 Observer 上时路上的标签亮起。
 
 结束后删除这些实体。先运行 `orisumi env up web`；用 `--temp` 时测试数据留在临时卷中。入口不是 8081 时，用 `WEB_URL` 指定。

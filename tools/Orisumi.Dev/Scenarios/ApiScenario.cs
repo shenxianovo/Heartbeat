@@ -22,14 +22,8 @@ internal sealed class ApiScenario(EnvironmentManager manager) : ISmokeScenario
         var entity = ScenarioEntity.Create();
         await entity.SubmitAsync(http, api, token);
         await entity.ReadAsync(http, api, token);
-        var rejectedId = Guid.CreateVersion7();
-        var body = JsonSerializer.Serialize(new { versions = new[] { new {
-            entityId = Guid.CreateVersion7(), versionId = rejectedId, previousVersionId = (Guid?)null,
-            schemaVersionId = (Guid?)null, category = "input_set", content = new { members = Array.Empty<Guid>() }
-        } } });
-        var problem = await http.RequestAsync("POST", api + "/versions", 400, token, body, problem: true);
-        ScenarioHttp.Require(problem!.Value.GetProperty("rule").GetString() == "INPUTSET-2", "Empty input set must be rejected by INPUTSET-2.");
-        ScenarioHttp.Require(problem.Value.GetProperty("versionId").GetGuid() == rejectedId && problem.Value.GetProperty("index").GetInt32() == 0,
-            "Rejection must identify the rejected version and index.");
+        var body = JsonSerializer.Serialize(new { observer = entity.Observer, writes = new[] { new { schemaId = Guid.CreateVersion7(), content = new { } } } });
+        var result = await http.RequestAsync("POST", api + "/writes", 200, token, body);
+        ScenarioHttp.Require(result!.Value.GetProperty("results")[0].GetProperty("error").GetProperty("rule").GetString() == "SCHEMA-3", "Undeclared type must be rejected by SCHEMA-3.");
     }
 }

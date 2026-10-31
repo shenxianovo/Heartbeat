@@ -1,0 +1,76 @@
+[
+  {
+    "schemaId": "019e1bbb-ec00-7000-8000-000000000005",
+    "content": {
+      "displayName": "应用识别 Observer",
+      "description": "表示一个应用识别 Observer 程序实例，保存它的程序版本和调用的模型；它作为 Observer 对它写入的线索归属负责。",
+      "resourceName": "application-identity-observers",
+      "fields": {
+        "programVersion": {
+          "type": "string",
+          "description": "程序的版本",
+          "nullable": false,
+          "required": true
+        },
+        "model": {
+          "type": "string",
+          "description": "判断时调用的模型，写作供应商和型号，例如 openai/gpt-5-mini",
+          "nullable": false,
+          "required": true
+        }
+      }
+    }
+  },
+  {
+    "schemaId": "019e1bbb-ec00-7000-8000-000000000004",
+    "content": {
+      "displayName": "应用产品",
+      "description": "表示用户认知中的一款软件，内容只有名称，写入后不再变化。属于它的跨设备线索是单独的线索归属。",
+      "resourceName": "application-products",
+      "fields": {
+        "name": {
+          "type": "string",
+          "description": "产品的名称",
+          "nullable": false,
+          "required": true
+        }
+      }
+    }
+  },
+  {
+    "schemaId": "019e1bbb-ec00-7000-8000-00000000000c",
+    "content": {
+      "displayName": "线索归属",
+      "description": "表示一条跨设备线索属于一个应用产品。一条线索一个实体；本机应用的跨设备线索有线索归属时，它属于线索归属指向的产品。",
+      "resourceName": "application-memberships",
+      "fields": {
+        "identifier": {
+          "type": "object",
+          "description": "一项跨设备线索，由 scheme 和 value 共同解释，与本机应用的标识线索相同",
+          "nullable": false,
+          "required": true,
+          "fields": {
+            "scheme": {
+              "type": "string",
+              "description": "线索的种类，例如 macos.bundle-id",
+              "nullable": false,
+              "required": true
+            },
+            "value": {
+              "type": "string",
+              "description": "线索的原始值",
+              "nullable": false,
+              "required": true
+            }
+          }
+        },
+        "productVersionId": {
+          "type": "reference",
+          "description": "线索属于的应用产品",
+          "nullable": false,
+          "required": true
+        }
+      }
+    }
+  }
+]

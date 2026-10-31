@@ -26,7 +26,7 @@ public sealed class ObserversCommandTests
         var foreground = Manifest(Path.Combine(output, "bundled", "foreground-state-0.1.0-linux-x64.zip"));
         await Assert.That(foreground.GetProperty("name").GetString()).IsEqualTo("Foreground State");
         await Assert.That(foreground.GetProperty("entry").GetString()).IsEqualTo("bin/Orisumi.Observer.ForegroundState");
-        await Assert.That(foreground.GetProperty("scope").GetString()).IsEqualTo("host");
+        await Assert.That(foreground.GetProperty("scope").GetString()).IsEqualTo("any");
         var identity = Manifest(Path.Combine(output, "bundled", "application-identity-1.0.0-linux-x64.zip"));
         await Assert.That(identity.GetProperty("scope").GetString()).IsEqualTo("deployment");
         await Assert.That(identity.GetProperty("target").GetString()).IsEqualTo("linux-x64");

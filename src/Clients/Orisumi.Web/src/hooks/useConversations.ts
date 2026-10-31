@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ApiError, readAllPages } from "@/api/client";
+import { ApiError, readAllPages, type OrisumiSource } from "@/api/client";
 import { useSource } from "@/api/source";
 import type { BinaryValue, Observation, Version } from "@/api/types";
 import {
@@ -8,6 +8,7 @@ import {
   toInteraction,
   type InteractionContent,
   type SessionContent,
+  type SessionMeta,
 } from "@/lib/conversations";
 import { dayOf, dayRange } from "@/lib/time";
 import { DAY_INTERVAL } from "./useDay";
@@ -15,6 +16,19 @@ import { useNow } from "./useNow";
 import { pool, readVersion } from "./useTypes";
 
 export const INTERACTIONS = "assistant-interactions";
+const TITLES = "assistant-session-titles";
+const SUBAGENTS = "assistant-subagents";
+
+/** 引用这个会话的某种实体中，最后写入的一个。 */
+async function latestAbout(source: OrisumiSource, sessionEntityId: string, resourceName: string) {
+  const page = await source.listReferrers(sessionEntityId, {
+    resourceName,
+    path: "/content/sessionVersionId",
+    order: "desc",
+    limit: 1,
+  });
+  return page.referrers[0]?.version ?? null;
+}
 
 /**
  * 一天的助手会话：按事实时间读出这一天的交互 Observation，读出每次交互和它的会话，再按会话分组。
@@ -59,12 +73,32 @@ export function useConversations(key: string) {
       const sessionIds = new Set(interactions.map((i) => i.version.content.sessionVersionId));
       const sessions = new Map<string, Version<SessionContent> | null>();
       await pool([...sessionIds], 8, async (id) => {
-        const session = (await read(id)) as Version<SessionContent> | null;
-        sessions.set(id, session);
-        const parent = session?.content.parentSessionVersionId;
-        if (parent && !sessions.has(parent)) sessions.set(parent, (await read(parent)) as Version<SessionContent>);
+        sessions.set(id, (await read(id)) as Version<SessionContent> | null);
       });
-      return groupSessions(interactions, sessions);
+      const entityIds = new Set([...sessions.values()].flatMap((session) => (session ? [session.entityId] : [])));
+      const metas = new Map<string, SessionMeta>();
+      await pool([...entityIds], 8, async (entityId) => {
+        const meta = await client.fetchQuery({
+          queryKey: ["session-meta", entityId],
+          staleTime: 30_000,
+          queryFn: async (): Promise<SessionMeta> => {
+            const [title, subagent] = await Promise.all([
+              latestAbout(source, entityId, TITLES),
+              latestAbout(source, entityId, SUBAGENTS),
+            ]);
+            const relation = subagent?.content as
+              { parentSessionVersionId: string; agentName: string | null } | undefined;
+            const parent = relation ? await read(relation.parentSessionVersionId) : null;
+            return {
+              title: (title?.content as { title: string } | undefined)?.title ?? null,
+              parentEntityId: parent?.entityId ?? null,
+              agentName: relation?.agentName ?? null,
+            };
+          },
+        });
+        metas.set(entityId, meta);
+      });
+      return groupSessions(interactions, sessions, metas);
     },
     enabled: !!observations.data,
     placeholderData: keepPreviousData,

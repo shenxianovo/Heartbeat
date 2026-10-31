@@ -1,25 +1,27 @@
 using Orisumi.Core;
-using Orisumi.Observer.Runtime;
+using Orisumi.Observer.Sdk;
 using Orisumi.Observers.ForegroundState;
+using Orisumi.Testing;
 
 namespace Orisumi.Integration.Tests;
 
-internal sealed class ForegroundTestStore : IDisposable
+internal sealed class ForegroundTestStore(DataClient data, DeviceContext device)
 {
-    private readonly DirectoryInfo _directory = Directory.CreateTempSubdirectory("orisumi-foreground-");
-    private readonly HttpClient _http;
-    internal MemoryBackend Backend { get; } = new();
-    internal string Path => System.IO.Path.Combine(_directory.FullName, "state");
-    internal ForegroundRegistration Registration { get; }
-    internal ForegroundStore Store { get; }
+    internal DataClient Data { get; } = data;
+    internal DeviceContext Device { get; } = device;
     internal List<string> Diagnostics { get; } = [];
-    internal ForegroundTestStore(EntityId observerId)
+    internal ForegroundStore Store { get; private set; } = null!;
+    internal ApplicationKeys Applications { get; } = new(device.Key.Value);
+    internal static async Task<ForegroundTestStore> CreateAsync(HttpClient http, DeviceContext? device = null)
     {
-        _http = Backend.CreateClient();
-        var session = new RuntimeObserverSession(_http, observerId);
-        Registration = ForegroundRegistration.RegisterAsync(session, observerId).GetAwaiter().GetResult();
-        Store = new(session, observerId, Registration, Diagnostics.Add);
+        device ??= new(new(null, "test.device", Guid.NewGuid().ToString()), "device", "macos");
+        var data = new DataClient(http, http, Ref.Recognize(ForegroundRegistration.ObserverSchemaId, new(null, "test", Guid.NewGuid().ToString()))) { Device = device };
+        await ForegroundRegistration.RegisterAsync(data);
+        var fixture = new ForegroundTestStore(data, device);
+        fixture.Store = new(data, device, fixture.Diagnostics.Add);
+        return fixture;
     }
-    internal IReadOnlyList<StoredVersion> Observations() => Backend.Snapshot().Where(version => version.Version.Content is Observation).ToArray();
-    public void Dispose() { _http.Dispose(); Backend.Dispose(); _directory.Delete(recursive: true); }
+    internal async Task<EntityVersion[]> Observations() => (await Data.ListAsync("observations?resourceName=foreground-application-periods")).Select(VersionJson.ReadSaved).ToArray();
+    internal async Task<EntityVersion[]> Periods() => (await Data.ListAsync("entities?resourceName=foreground-application-periods")).Select(VersionJson.ReadSaved).ToArray();
+    internal ForegroundCapture Capture(int second = 0) => ForegroundCapture.Create(Applications.Resolve(ForegroundTimelineTests.Reading(second)), ForegroundTimelineTests.Reading(second));
 }

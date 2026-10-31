@@ -103,7 +103,9 @@ Codex 先写 `Reasoning` 的 `item_completed`，接着写 `id` 相同、带 `enc
 
 ### 重读 [#rereading]
 
-一次交互是一个实体和一份 Observation，形成后不再变化。再次读到一条来源数据时，识别依据和内容都相同，所以什么都不发生。修复解析错误后的纠正这一阶段不做。
+一次交互是一个实体和一份 Observation，内容形成后不再变化。再次读到一条来源数据时，识别依据和内容都相同，所以什么都不发生。
+
+读取进度丢失后从头重读时，实时读到的记录按历史处理，`timeZone` 变为 `null`，这份 Observation 形成新版本，内容不变，见[事实时间](./index.mdx#fact-time)。修复解析错误后的纠正这一阶段不做。
 
 ## 引用 [#references]
 

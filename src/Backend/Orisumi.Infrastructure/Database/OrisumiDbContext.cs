@@ -66,6 +66,19 @@ public sealed partial class OrisumiDbContext(DbContextOptions<OrisumiDbContext> 
         observations.HasIndex(row => row.VersionId).IsUnique().HasDatabaseName("ux_observations_version_id");
         observations.HasIndex(row => new { row.ContentSchemaId, row.FactRange }).HasMethod("gist").HasDatabaseName("ix_observations_content_schema_id_fact_range");
         observations.HasIndex(row => row.FactRange).HasMethod("gist").HasDatabaseName("ix_observations_fact_range");
+        observations.HasIndex(row => row.ObserverEntityId).HasDatabaseName("ix_observations_observer_entity_id");
+        observations.HasIndex(row => row.ContentEntityId).HasDatabaseName("ix_observations_content_entity_id");
+        observations.HasIndex(row => new { row.ObserverEntityId, row.ContentEntityId }).HasDatabaseName("ix_observations_observer_entity_id_content_entity_id");
+        var recognition = modelBuilder.Entity<StoredRecognitionKey>();
+        recognition.ToTable("recognition_keys");
+        recognition.HasNoKey();
+        recognition.HasIndex(row => new { row.SchemaId, row.Scope, row.Scheme, row.Value }).IsUnique().AreNullsDistinct(false)
+            .HasDatabaseName("ux_recognition_keys_schema_id_scope_scheme_value");
+        recognition.HasIndex(row => row.EntityId).HasDatabaseName("ix_recognition_keys_entity_id");
+        var streams = modelBuilder.Entity<StoredWriteStreamState>();
+        streams.ToTable("write_streams");
+        streams.HasKey(row => row.ObserverEntityId).HasName("pk_write_streams");
+        streams.Property(row => row.SchemaVersionIds).HasColumnType("jsonb");
         foreach (var entity in modelBuilder.Model.GetEntityTypes())
         {
             foreach (var property in entity.GetProperties())
@@ -88,9 +101,9 @@ public sealed partial class OrisumiDbContext(DbContextOptions<OrisumiDbContext> 
         instances.Property(row => row.Status).HasColumnType("jsonb");
         instances.HasOne<StoredHost>().WithMany().HasForeignKey(row => row.HostId)
             .OnDelete(DeleteBehavior.NoAction).HasConstraintName("fk_observer_instances_observer_hosts_host_id");
-        instances.HasIndex(row => new { row.HostId, row.InstanceKey }).IsUnique().HasFilter("removed = false")
-            .HasDatabaseName("ux_observer_instances_host_id_instance_key");
-        instances.HasIndex(row => row.InstanceKey).HasFilter("removed = false").HasDatabaseName("ix_observer_instances_instance_key");
+        instances.HasIndex(row => new { row.HostId, row.PackageId }).IsUnique().HasFilter("removed = false")
+            .HasDatabaseName("ux_observer_instances_host_id_package_id");
+        instances.HasIndex(row => row.PackageId).HasFilter("removed = false").HasDatabaseName("ix_observer_instances_package_id");
     }
 
     [GeneratedRegex("([a-z0-9])([A-Z])")]

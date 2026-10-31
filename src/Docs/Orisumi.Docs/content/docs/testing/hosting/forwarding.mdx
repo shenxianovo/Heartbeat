@@ -1,0 +1,41 @@
+---
+title: "Local Forwarding"
+description: "本地转发留住请求并按顺序送到后端"
+---
+
+export const caseId = 'local-forwarding';
+
+## 为什么验证 [#why]
+
+本地转发留住请求并按顺序送到后端，被拒绝的写入留待重发。约定见 [Runtime · 本地转发](../../hosting/runtime.mdx#forwarding)。
+
+## 前置条件 [#setup]
+
+HTTP 用例经真实 API 和独立的 PostgreSQL 数据库运行。Runtime 使用临时数据目录；Observer 的读数、日志和模型回答由测试控制。实际运行的补充证据单独说明，见 [测试分工](../index.mdx#kinds)。
+
+## 操作与预期结果 [#steps]
+
+| 操作 | 预期结果 |
+| --- | --- |
+| 未接入或后端不可用时写入 | 落盘后返回 202；恢复后按序送达 |
+| 请求尚未发送时重启 Runtime | 继续发送留下的请求 |
+| 后端已保存但响应丢失 | 沿用序号重发，不重复保存 |
+| 一条写入被拒绝 | 保留拒绝原因，其他写入继续；状态报告数量和最近原因 |
+| 修正原因后 resendRejected | 形成新请求并送达 |
+| 文件和引用它的内容依次交给转发 | 文件先到后端 |
+| POST 超过 10 MiB 或 PUT 超过 8 MiB | 返回 413，不落盘 |
+| 删除实例 | 丢弃待发送和被拒绝的请求 |
+
+## 测试实现 [#implementation]
+
+方法位于 `tests/Orisumi.Integration.Tests/`：
+
+- 离线、重启、丢失响应：`RuntimeForwardingTests.UnpairedAndOfflineWritesSurviveRestartAndLostResponsesDoNotDuplicate`。
+- 保留拒绝并重发：`RuntimeForwardingTests.RejectionsAreRetainedAndResentAfterSchemaCorrectionWhileOtherWritesContinue`。
+- 文件顺序和上限：`RuntimeForwardingTests.FilesArriveBeforeWritesAndOversizedRequestsAreNotPersisted`。
+
+未覆盖：磁盘写失败返回 507；实际断电；各个退避间隔；删除实例时对两类文件的逐项检查。
+
+## 执行结果 [#results]
+
+<TestCaseResults caseId={caseId} />

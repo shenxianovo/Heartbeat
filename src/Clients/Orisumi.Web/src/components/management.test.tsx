@@ -17,7 +17,7 @@ const host: Host = {
 const initial: Instance = {
   entityId: "019e1bbb-ec00-7000-8000-000000000002",
   hostId: host.hostId,
-  instanceKey: "example",
+  packageId: "example",
   name: "测试 Observer",
   enabled: true,
   settings: {},

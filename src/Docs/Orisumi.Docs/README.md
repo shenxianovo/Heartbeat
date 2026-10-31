@@ -80,7 +80,7 @@ pnpm dev
 
 - 每个分区是 `content/docs/` 下的一个目录。侧边栏的顺序由各目录的 `meta.json` 决定，`---标题---` 添加分组标题，`...目录` 展开一个目录。
 - [content/docs/api/openapi.json](content/docs/api/openapi.json) 是 HTTP 契约，直接编辑。接口页由它生成，地址是 `/api/<operationId>`。
-- 代码块可以在语言后写标题和行高亮，例如 ` ```json title="POST /versions" {3,5} `。
+- 代码块可以在语言后写标题和行高亮，例如 ` ```json title="POST /writes" {3,5} `。
 - 页面历史从 Git 读取，未提交的改动和浅克隆都没有历史。
 
 ### 模型关系图

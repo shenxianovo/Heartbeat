@@ -30,6 +30,7 @@ description: "查询观测，按目标实体反查引用方，按识别依据认
 | `ix_observations_fact_range` | GiST `(fact_range)` | 不限类型的事实时间查询 |
 | `ix_observations_observer_entity_id` | `observer_entity_id` | 按负责的实体查询 |
 | `ix_observations_content_entity_id` | `content_entity_id` | 按观测内容查询 |
+| `ix_observations_observer_entity_id_content_entity_id` | `(observer_entity_id, content_entity_id)` | 写入时找到这个 Observer 对这个实体的 Observation |
 
 多列 GiST 索引需要 `btree_gist` 扩展，由 Initial migration 创建。
 

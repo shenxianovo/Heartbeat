@@ -110,4 +110,6 @@ Core 类型、Observer 和各种 Id 用英文名，其余概念用中文。Obser
 | `草稿`、`冻结`、`提交策略`、`及时提交`、`结束后提交`、`OnCompletion`、`本地回执`、`本地保存` | 已删除。业务代码直接[写入](../api/writing.mdx)，版本由后端形成 |
 | `ObserverStore`、`LocalObserverSession`、`store.sqlite` | 已删除。本地不保存版本，见 [API · Writing](../api/writing.mdx) |
 | `LocalState` | 已删除。客户端从 API 读取已保存的版本，见 [API · Reading](../api/reading.mdx) |
+| `ObserverSession`、`IObserverSession`、`PipeObserverSession`、`RuntimeObserverSession`、`RuntimeReader`、`LocalApplicationRegistry`、`IdentityWork`、`SubmissionContract`、`SameSubmission` | 已删除。业务代码经 [HTTP SDK](../api/sdk.mdx) 写入 [`POST /writes`](../api/writing.mdx)，受托管时经[本地转发](../hosting/runtime.mdx#forwarding)，对象靠[识别依据](../api/writing.mdx#recognition)认出 |
+| `--device`、`ORISUMI_DEVICE_ID` | 运行设备由托管方自动读取，见 [Device · 身份](../observers/device-state/device.mdx#identity) |
 | `服务端托管`、`ServerObserverHost`、`ServerObserverSession`、`IServerObserverStore` | 运行在服务器上的 [Runtime](../hosting/server.mdx)；服务器上的 Observer 和设备上的一样由它托管 |

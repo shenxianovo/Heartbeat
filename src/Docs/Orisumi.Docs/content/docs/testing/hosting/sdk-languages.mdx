@@ -1,31 +1,38 @@
 ---
 title: "SDK Languages"
-description: "用另一种语言写的最小 Observer 经同一个 Runtime 提交"
+description: "HTTP 是全部写入契约"
 ---
 
 export const caseId = 'sdk-languages';
 
 ## 为什么验证 [#why]
 
-各语言的 SDK 只封装管道中的消息，版本形成和后端提交都在 Runtime 中。用一个 .NET 以外的最小 Observer 走一遍协议，确认接入新语言不需要另写保存和发送。约定见 [Protocol · Observer 管道](../../hosting/protocol.mdx#observer-process)。
+HTTP 是全部写入契约，SDK 只处理编码、文件和运行上下文。约定见 [SDK](../../api/sdk.mdx)。
 
 ## 前置条件 [#setup]
 
-一个用 .NET 以外的语言编写的最小 Observer，打成安装包放进附带目录。Runtime 使用独立的数据目录，连接通过 `WebApplicationFactory` 启动的 API。
+HTTP 用例经真实 API 和独立的 PostgreSQL 数据库运行。Runtime 使用临时数据目录；Observer 的读数、日志和模型回答由测试控制。实际运行的补充证据单独说明，见 [测试分工](../index.mdx#kinds)。
 
 ## 操作与预期结果 [#steps]
 
 | 操作 | 预期结果 |
 | --- | --- |
-| 启动 Runtime | 安装这个包；Observer 收到 `init`，回复 `ready` |
-| Observer 登记程序实例和 EntitySchema，提交一个形成 Observation 的批次 | 请求成功；API 中读到程序实例、EntitySchema 和这份 Observation |
-| 停用这个 Observer | 收到 `stop` 后退出；Runtime 报告进程已停止 |
+| Python Observer 从环境读取地址并发 HTTP | 未接入时本地转发也返回 202；标准输入关闭后能完成最后一次写入并退出 |
+| .NET Fixture 声明类型、写入，再直接读后端 | 读到后端保存的版本 |
+| 脚本重复导入相同的带 key 内容和时间 | 不形成新版本或新观测 |
+| 批次超过 10 MiB，内容含嵌套文件 | 顺序拆分，文件先上传 |
+| 读取含未知字段、大整数、省略和 null 的版本 | 保留原始 JSON 和实际 Schema 版本 |
+| 不同程序声明同一类型的新旧 Schema 内容 | 各自继续使用声明的版本 |
 
 ## 测试实现 [#implementation]
 
-以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
+方法位于 `tests/Orisumi.Integration.Tests/`：
 
-- Python 的管道请求、后端不可用的错误响应和停止退出：`RuntimeHostingTests.PythonObserverUsesTheSamePipeAndSubmitsBeforeExitingOnStop`。这个用例中 Runtime 未接入，启动和停止时的提交都收到 `unavailable`；成功提交后从 API 读回尚未覆盖。
+- Python 进程与本地 HTTP：`RuntimeHostingTests.PythonObserverUsesHttpAndWritesBeforeExitingOnStdinClosure`。
+- Fixture 和重复导入：`SdkTests.FixtureWritesAndReadsThroughHttpAndScriptReimportIsUnchanged`。
+- 文件、拆分、停止和保真：`SdkTests.NestedFilesUploadBeforeOrderedBatchesAndReadPreservesJson`。
+
+未覆盖：Python 直接后端的持久自动化测试尚未加入。2026-10-31 已用 Python 标准库在临时环境中写入并读回实例、Schema、Observation，核对新旧 Schema、30 位整数和未知字段；可重复步骤是用两个 Observer 分别声明新旧类型，再读取各自结果中的 VersionId。
 
 ## 执行结果 [#results]
 

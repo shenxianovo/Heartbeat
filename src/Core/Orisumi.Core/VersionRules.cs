@@ -100,19 +100,36 @@ public static class VersionRules
         }
     }
 
-    public static bool SameSubmission(VersionSubmission left, VersionSubmission right) =>
-        left.EntityId == right.EntityId && left.VersionId == right.VersionId
-        && left.PreviousVersionId == right.PreviousVersionId && left.SchemaVersionId == right.SchemaVersionId
-        && (left.Content, right.Content) switch
+    public static async Task<bool> SameBusinessContentAsync(EntitySchema schema, BusinessContent left, BusinessContent right,
+        Func<VersionId, Task<EntityId?>> owner)
+    {
+        var a = System.Text.Json.Nodes.JsonNode.Parse(left.Fields.GetRawText())!;
+        var b = System.Text.Json.Nodes.JsonNode.Parse(right.Fields.GetRawText())!;
+        await Normalize(a, schema.Fields);
+        await Normalize(b, schema.Fields);
+        return JsonElement.DeepEquals(JsonSerializer.SerializeToElement(a), JsonSerializer.SerializeToElement(b));
+
+        async Task Normalize(System.Text.Json.Nodes.JsonNode node, JsonElement fields)
         {
-            (BusinessContent a, BusinessContent b) => JsonElement.DeepEquals(a.Fields, b.Fields),
-            (EntitySchema a, EntitySchema b) => a.DisplayName == b.DisplayName && a.Description == b.Description
-                && a.ResourceName == b.ResourceName && JsonElement.DeepEquals(a.Fields, b.Fields),
-            (InputSet a, InputSet b) => a.Members.Length == b.Members.Length
-                && a.Members.Distinct().Count() == a.Members.Length && a.Members.ToHashSet().SetEquals(b.Members),
-            (Observation a, Observation b) => a == b,
-            _ => false,
-        };
+            foreach (var field in fields.EnumerateObject())
+                if (node[field.Name] is { } value) node[field.Name] = await Value(value, field.Value);
+        }
+        async Task<System.Text.Json.Nodes.JsonNode?> Value(System.Text.Json.Nodes.JsonNode value, JsonElement definition)
+        {
+            switch (definition.GetProperty("type").GetString())
+            {
+                case "reference":
+                    return System.Text.Json.Nodes.JsonValue.Create((await owner(new(value.GetValue<Guid>())))?.Value);
+                case "object": await Normalize(value, definition.GetProperty("fields")); break;
+                case "array":
+                    var array = value.AsArray();
+                    for (var i = 0; i < array.Count; i++)
+                        if (array[i] is { } item) array[i] = await Value(item, definition.GetProperty("items"));
+                    break;
+            }
+            return value.DeepClone();
+        }
+    }
 
     public static void Require(bool condition, string rule, string message)
     {

@@ -36,11 +36,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.start()
         // The menu bar icon needs the Observers' state while the windows are closed, so the list is read less often then.
         polling = Task { [model, navigation] in
+            let rejections = RejectionNotifier()
             await model.refresh()
             await model.refreshCatalog()
+            rejections.update(model.observers)
             while !Task.isCancelled {
                 try? await Task.sleep(for: navigation.windowVisible || navigation.settingsVisible ? .seconds(2) : .seconds(15))
                 await model.refresh()
+                rejections.update(model.observers)
             }
         }
         // SIGTERM (orisumi mac stop, kill) quits like the menu: Runtime stops the Observers first.

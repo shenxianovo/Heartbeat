@@ -1,34 +1,36 @@
 ---
 title: "Transactions"
-description: "拒绝后整次回滚，并发写入不形成分叉"
+description: "一次请求使用一个事务"
 ---
 
 export const caseId = 'storage-transactions';
 
 ## 为什么验证 [#why]
 
-版本与派生引用需要在同一个事务里保存。一次提交被拒绝后，查询不能读到这次提交的任何版本或引用。约定见 [Storage · 事务](../../storage/index.mdx#transactions)。
+一次请求使用一个事务，每次写入使用保存点。约定见 [写入](../../api/writing.mdx#requests) 和 [存储事务](../../storage/index.mdx#transactions)。
 
 ## 前置条件 [#setup]
 
-使用独立的测试数据库，API 由 WebApplicationFactory 启动。并发用例在同一个数据库上创建两个服务实例。
+HTTP 用例经真实 API 和独立的 PostgreSQL 数据库运行。Runtime 使用临时数据目录；Observer 的读数、日志和模型回答由测试控制。实际运行的补充证据单独说明，见 [测试分工](../index.mdx#kinds)。
 
 ## 操作与预期结果 [#steps]
 
 | 操作 | 预期结果 |
 | --- | --- |
-| 一次提交形成目标和引用，后面的版本被拒绝 | 整次回滚，没有留下引用；改正后重新提交，只出现这次保存的引用 |
-| 两个服务同时提交同一个实体的首版，VersionId 不同 | 只有一个保存，另一个因 `VERSION-6` 被拒绝 |
-| 删除过程中注入失败 | 权威表、投影和管理登记一起回滚 |
+| 一条写入保存内容后在 Observation 校验时失败 | 回到这条写入前，内容、识别依据、InputSet 和缓存项都撤销 |
+| 同一请求另有有效写入 | 有效写入保存 |
+| Schema 声明失败后重发同一序号 | 整次请求回滚，序号没有前移 |
+| 多个请求同时使用同一识别依据写相同内容 | 只有一个实体和一个版本 |
 
 ## 测试实现 [#implementation]
 
-以下方法位于 `tests/Orisumi.Integration.Tests/`：
+方法位于 `tests/Orisumi.Integration.Tests/`：
 
-- 拒绝后的引用回滚与改正后保存：`ReferrerApiTests.RejectedSubmissionLeavesNoReferencesAndTheCorrectedOneSavesItsOwn`。
-- 并发首版冲突：`EntityApiTests.ConcurrentFirstVersionsFromTwoServicesConflict`。
+- 保存点和缓存回滚：`WriteApiTests.RejectionRollsBackOnlyItsWriteIncludingKeysInputsAndContent`。
+- Schema、序号与写入的原子性：`WriteApiTests.InputsShareOneSetAndContentAndSchemaFailuresHaveDifferentBoundaries`。
+- 并发识别：`WriteApiTests.ConcurrentRecognitionPreservesOneChainAndHttpBoundariesRemainExplicit`。
 
-未覆盖：删除过程中注入失败；拒绝后逐一检查所有投影表。
+未覆盖：删除中途注入存储失败；逐一核对全部投影表的回滚。
 
 ## 执行结果 [#results]
 

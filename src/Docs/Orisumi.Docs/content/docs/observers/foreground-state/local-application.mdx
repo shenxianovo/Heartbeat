@@ -17,11 +17,11 @@ description: "某台设备上的一个应用安装"
 
 | 识别依据 | 值 |
 | --- | --- |
-| `scope` | 所在设备的 EntityId |
+| `scope` | 所在设备的稳定标识，见 [Device · 身份](../device-state/device.mdx#identity) |
 | `scheme` | `macos.installation` |
 | `value` | 应用包标识和可执行文件路径，用换行连接；读不到包标识时，换行前为空 |
 
-识别范围用设备的实体身份，所以设备改名不改变本机应用的身份，见 [IDENTITY-6](../../core/rules/identity.mdx#identity-6)。
+识别范围是设备的稳定标识，所以设备改名不改变本机应用的身份，见 [IDENTITY-6](../../core/rules/identity.mdx#identity-6)。
 
 | 变化 | 身份 |
 | --- | --- |

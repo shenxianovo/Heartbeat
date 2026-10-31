@@ -3496,14 +3496,14 @@
           "value"
         ],
         "type": "object",
-        "description": "一份识别依据，业务类型取自这次写入的 `schemaId`。",
+        "description": "一份识别依据，业务类型取自这次写入的 `schemaId`。三个值的 UTF-8 字节数之和最多 2048。",
         "properties": {
           "scope": {
             "type": [
               "string",
               "null"
             ],
-            "description": "作用范围，由业务规则决定，例如设备的 EntityId。全局有效的标识为 `null`。"
+            "description": "作用范围，由业务规则决定，例如设备的稳定标识。全局有效的标识为 `null`。"
           },
           "scheme": {
             "type": "string",

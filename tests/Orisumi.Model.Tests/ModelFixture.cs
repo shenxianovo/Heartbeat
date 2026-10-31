@@ -15,16 +15,17 @@ internal sealed class ModelFixture : IDisposable
         new(EntityId.New(), VersionId.New(), null, schema, content);
     internal static VersionSubmission Next(EntityVersion previous, VersionContent? content = null) =>
         previous.Submission with { VersionId = VersionId.New(), PreviousVersionId = previous.VersionId, Content = content ?? previous.Content };
-    internal async Task<EntityVersion> Save(VersionSubmission version) => (await Service.SubmitAsync([version])).RequireSuccess()[0];
+    internal Task<EntityVersion> Save(VersionSubmission version) => Store.ExecuteAsync((transaction, token) => Service.SaveAsync(transaction, VersionTime.Normalize(version), token));
+    internal Task<IReadOnlyList<EntityVersion>> SaveMany(params VersionSubmission[] versions) => Store.ExecuteAsync<IReadOnlyList<EntityVersion>>(async (transaction, token) =>
+    {
+        var saved = new List<EntityVersion>();
+        foreach (var version in versions) saved.Add(await Service.SaveAsync(transaction, VersionTime.Normalize(version), token));
+        return saved;
+    });
     internal Task<EntityVersion> Schema(string resource = "items", string fields = "{}") =>
         Save(New(new EntitySchema("Items", "An item", resource, Json(fields))));
     internal Task<EntityVersion> Business(EntityVersion schema, string content = "{}") =>
         Save(New(new BusinessContent(Json(content)), schema.VersionId));
-    internal static async Task Reject(Func<Task<SubmissionResult>> action, string rule)
-    {
-        var result = await action();
-        await Assert.That(result.Rejection?.Rule).IsEqualTo(rule);
-    }
     internal static async Task Reject(Func<Task> action, string rule)
     {
         try { await action(); }

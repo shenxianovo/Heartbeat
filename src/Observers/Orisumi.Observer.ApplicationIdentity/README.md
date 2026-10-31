@@ -1,10 +1,8 @@
 # Orisumi.Observer.ApplicationIdentity
 
-Orisumi.Observer.ApplicationIdentity 是应用识别 Observer：它读取后端已保存的本机应用和前台时段，把还没归入产品的跨设备线索交给 OpenAI 判断，结果写成应用产品的版本。业务规则见 [Application Identity](../../Docs/Orisumi.Docs/content/docs/observers/application-identity/index.mdx)。
+Orisumi.Observer.ApplicationIdentity 是应用识别 Observer：它读取后端已保存的本机应用和前台时段，把还没归属的跨设备线索交给 OpenAI 判断，结果写成线索归属，需要时新建应用产品。业务规则见 [Application Identity](../../Docs/Orisumi.Docs/content/docs/observers/application-identity/index.mdx)。
 
-本文写当前代码的运行方式。目标契约见 [Application Identity](../../Docs/Orisumi.Docs/content/docs/observers/application-identity/index.mdx)，代码尚未迁移。
-
-它发布为服务器平台的安装包，由以服务方式运行的 Runtime 启动，经 .NET SDK 读写，见 [Hosting · Server](../../Docs/Orisumi.Docs/content/docs/hosting/server.mdx)。
+它发布为服务器平台的安装包，由以服务方式运行的 Runtime 启动，经 .NET SDK 直接读写后端，见 [Hosting · Server](../../Docs/Orisumi.Docs/content/docs/hosting/server.mdx)。
 
 ## 运行
 
@@ -24,4 +22,4 @@ Orisumi.Observer.ApplicationIdentity 是应用识别 Observer：它读取后端�
 
 ## 验证
 
-测试在 `tests/Orisumi.Integration.Tests/` 中，随集成测试运行，见[集成测试 README](../../../tests/Orisumi.Integration.Tests/README.md)。Case 见 [Testing · 应用识别](../../Docs/Orisumi.Docs/content/docs/testing/observers/application-identity.mdx)。`ApplicationIdentityTests` 经真实的 Runtime 请求处理，连接独立的 PostgreSQL，模型用替身；`ApplicationModelTests` 用 HTTP 替身检查 Responses 请求和回答的解析。真实的 OpenAI 调用不在自动测试中，需要时在临时环境中运行并单独保存结果。
+测试在 `tests/Orisumi.Integration.Tests/` 中，随集成测试运行，见[集成测试 README](../../../tests/Orisumi.Integration.Tests/README.md)。Case 见 [Testing · 应用识别](../../Docs/Orisumi.Docs/content/docs/testing/observers/application-identity.mdx)。`ApplicationIdentityTests` 经 SDK 和真实 API，连接独立的 PostgreSQL，模型用替身；`ApplicationModelTests` 用 HTTP 替身检查 Responses 请求和回答的解析。真实的 OpenAI 调用不在自动测试中，需要时在临时环境中运行并单独保存结果。

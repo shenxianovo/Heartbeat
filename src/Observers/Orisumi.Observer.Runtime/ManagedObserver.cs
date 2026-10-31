@@ -1,33 +1,36 @@
 using System.Diagnostics;
 using System.Text.Json;
 using Orisumi.Core;
-using Orisumi.Observer.Sdk;
+using Orisumi.Observer.Runtime.Forwarding;
 
 namespace Orisumi.Observer.Runtime;
 
 internal sealed class ManagedObserver : IAsyncDisposable
 {
     private readonly PackageStore _packages;
-    private readonly RuntimeObserverSession _session;
+    private readonly RuntimeConnection _connection;
+    private readonly string _writeUrl;
+    private readonly string? _device;
+    public WriteQueue Writes { get; }
     private CancellationTokenSource? _runStop;
     private Task? _run;
     private string _state = "stopped";
     private string? _error;
+    private bool _normalExit;
     public InstalledObserver Registration { get; private set; }
-    public RuntimeObserverSession Session => _session;
     public string State => Registration.SyncError is not null && Registration.Scope == "deployment" && Registration.Revision == 0 ? "failed" : _state;
     public string? Error => _error ?? (Registration.Scope == "deployment" && Registration.Revision == 0 ? Registration.SyncError ?? "Waiting for registration." : null);
     public string? Diagnostic { get; private set; }
 
-    public ManagedObserver(PackageStore packages, InstalledObserver registration, HttpClient http, Func<bool>? connected = null)
+    public ManagedObserver(PackageStore packages, InstalledObserver registration, RuntimeConnection connection, ForwardingServer forwarding, string? device)
     {
-        _packages = packages;
+        _packages = packages; _connection = connection; _device = device;
         Registration = registration;
         var directory = packages.InstanceDirectory(registration.InstanceId);
         Directory.CreateDirectory(Path.Combine(directory, "data"));
-        Directory.CreateDirectory(Path.Combine(packages.Root, "shared"));
-        // The backend accepts an instance's versions only after the instance is registered with it.
-        _session = new(http, new EntityId(registration.InstanceId), connected is null ? null : () => connected() && Registration.Revision > 0);
+        Writes = new(directory, connection.Client, () => connection.CanConnect && Registration.Revision > 0);
+        forwarding.Add(registration.InstanceId, Writes);
+        _writeUrl = forwarding.InstanceAddress(registration.InstanceId);
     }
 
     public void Start()
@@ -56,10 +59,11 @@ internal sealed class ManagedObserver : IAsyncDisposable
         {
             TimeSpan running = TimeSpan.Zero;
             var incompatible = false;
+            _normalExit = false;
             try { running = await RunProcessAsync(token); }
             catch (InvalidDataException exception) { _error = exception.Message; incompatible = true; }
             catch (Exception exception) { _error = exception.Message; }
-            if (token.IsCancellationRequested) { _state = "stopped"; return; }
+            if (token.IsCancellationRequested || _normalExit) { _state = "stopped"; return; }
             if (running >= TimeSpan.FromSeconds(60)) failures = 0;
             if (incompatible || failures >= 3) { _state = "failed"; return; }
             _state = "waiting";
@@ -79,91 +83,43 @@ internal sealed class ManagedObserver : IAsyncDisposable
             WorkingDirectory = directory, RedirectStandardInput = true, RedirectStandardOutput = true,
             RedirectStandardError = true, UseShellExecute = false,
         };
+        start.Environment["ORISUMI_INSTANCE_ID"] = Registration.InstanceId.ToString();
+        start.Environment["ORISUMI_PACKAGE_VERSION"] = Registration.Version;
+        start.Environment["ORISUMI_DATA_DIR"] = Path.Combine(_packages.InstanceDirectory(Registration.InstanceId), "data");
+        start.Environment["ORISUMI_WRITE_URL"] = _writeUrl;
+        start.Environment["ORISUMI_API_URL"] = _connection.Client.BaseAddress!.AbsoluteUri;
+        start.Environment["ORISUMI_API_TOKEN"] = _connection.Identity?.Credential ?? "";
+        start.Environment["ORISUMI_DEVICE"] = _device ?? "";
+        start.Environment["ORISUMI_SETTINGS"] = Registration.Settings.GetRawText();
         using var process = Process.Start(start) ?? throw new IOException("Could not start Observer.");
-        _state = "starting";
-        using var writeGate = new SemaphoreSlim(1);
-        using var connection = new CancellationTokenSource();
-        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        long? readyAt = null;
-        async Task WriteAsync(object message, CancellationToken token)
-        {
-            await writeGate.WaitAsync(token);
-            try { await JsonLines.WriteAsync(process.StandardInput, JsonSerializer.Serialize(message, JsonSerializerOptions.Web), token); }
-            finally { writeGate.Release(); }
-        }
-        var reading = Task.Run(async () =>
-        {
-            while (await JsonLines.ReadAsync(process.StandardOutput, connection.Token) is { } line)
-            {
-                using var json = JsonDocument.Parse(line);
-                var request = json.RootElement;
-                var id = request.GetProperty("id").GetString()!;
-                try
-                {
-                    var method = request.GetProperty("method").GetString()!;
-                    JsonElement result;
-                    if (method == "ready")
-                    {
-                        if (!ready.TrySetResult()) throw new InvalidOperationException("Observer already reported ready.");
-                        readyAt = Stopwatch.GetTimestamp();
-                        _state = "running";
-                        _error = null;
-                        result = JsonLines.Json(new { });
-                    }
-                    else result = await _session.RequestAsync(method, request.GetProperty("params"), connection.Token);
-                    await WriteAsync(new { id, result }, connection.Token);
-                }
-                catch (SubmissionRejectedException rejected)
-                {
-                    await WriteAsync(new { id, error = new { code = "rejected", message = rejected.Message, rule = rejected.Rule, versionId = rejected.VersionId } }, connection.Token);
-                }
-                catch (Exception exception) when (exception is not OperationCanceledException || !connection.IsCancellationRequested)
-                {
-                    await WriteAsync(new { id, error = new { code = exception is KeyNotFoundException ? "not_found" : exception is HttpRequestException or OperationCanceledException ? "unavailable" : "invalid_request", message = exception.Message } }, connection.Token);
-                }
-            }
-        }, CancellationToken.None);
+        _state = "running"; _error = null;
+        var started = Stopwatch.GetTimestamp();
+        var output = process.StandardOutput.BaseStream.CopyToAsync(Stream.Null, CancellationToken.None);
         var diagnostics = Task.Run(async () =>
         {
-            while (await process.StandardError.ReadLineAsync(connection.Token) is { } line)
+            while (await process.StandardError.ReadLineAsync() is { } line)
                 if (!string.IsNullOrWhiteSpace(line)) Diagnostic = line.Length <= 2048 ? line : line[..2048];
         }, CancellationToken.None);
         var exit = process.WaitForExitAsync(CancellationToken.None);
-        var stop = Task.Delay(Timeout.InfiniteTimeSpan, stopping);
         try
         {
-            await WriteAsync(new
-            {
-                @event = "init", protocol = 1, instanceId = Registration.InstanceId,
-                dataDirectory = Path.Combine(_packages.InstanceDirectory(Registration.InstanceId), "data"),
-                sharedDataDirectory = Path.Combine(_packages.Root, "shared"), packageVersion = Registration.Version, settings = Registration.Settings,
-            }, connection.Token);
-            var first = await Task.WhenAny(ready.Task, exit, reading, stop, Task.Delay(TimeSpan.FromSeconds(10), CancellationToken.None));
-            if (first != ready.Task && first != stop && !process.HasExited)
-                _error = "Observer did not become ready within 10 seconds.";
-            if (first == ready.Task) await Task.WhenAny(exit, reading, stop);
+            await Task.WhenAny(exit, Task.Delay(Timeout.InfiniteTimeSpan, stopping));
             if (!process.HasExited)
             {
                 _state = "stopping";
-                if (stopping.IsCancellationRequested)
-                {
-                    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-                    try { await WriteAsync(new { @event = "stop" }, timeout.Token); await exit.WaitAsync(timeout.Token); }
-                    catch (Exception exception) when (exception is OperationCanceledException or IOException) { _error = "Observer did not stop within 10 seconds."; }
-                }
-                if (!process.HasExited) process.Kill(entireProcessTree: true);
+                process.StandardInput.Close();
+                try { await exit.WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None); }
+                catch (TimeoutException) { _error = "Observer did not stop within 10 seconds."; process.Kill(entireProcessTree: true); }
             }
             await exit;
-            if (!stopping.IsCancellationRequested) _error ??= "Observer exited with code " + process.ExitCode + ".";
-            return readyAt is { } timestamp ? Stopwatch.GetElapsedTime(timestamp) : TimeSpan.Zero;
+            _normalExit = process.ExitCode == 0;
+            if (!stopping.IsCancellationRequested && !_normalExit) _error = "Observer exited with code " + process.ExitCode + ".";
+            return Stopwatch.GetElapsedTime(started);
         }
         finally
         {
             if (!process.HasExited) process.Kill(entireProcessTree: true);
-            await process.WaitForExitAsync(CancellationToken.None);
-            await connection.CancelAsync();
-            try { await Task.WhenAll(reading, diagnostics); }
-            catch (Exception exception) when (exception is OperationCanceledException or IOException or JsonException or InvalidOperationException or KeyNotFoundException) { _error ??= exception.Message; }
+            await exit; await Task.WhenAll(output, diagnostics);
         }
     }
 
@@ -171,5 +127,6 @@ internal sealed class ManagedObserver : IAsyncDisposable
     {
         await StopAsync();
         _runStop?.Dispose();
+        await Writes.DisposeAsync();
     }
 }

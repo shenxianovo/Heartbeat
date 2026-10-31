@@ -13,18 +13,17 @@ public sealed class ForegroundTimelineTests
     public async Task ContinuousConfirmationExtendsSamePeriodAndSwitchClosesAtNewConfirmation()
     {
         var timeline = new ForegroundTimeline(TimeSpan.FromSeconds(3));
-        var app = new LocalApplication(EntityId.New(), []);
+        var app = new LocalApplication(new(null, "test", Guid.NewGuid().ToString()), []);
         var first = timeline.Accept(app, Reading(0)).Single();
         var extended = timeline.Accept(app, Reading(1)).Single();
-        var switched = timeline.Accept(new LocalApplication(EntityId.New(), []), Reading(2));
-        await Assert.That(first.ObservationId).IsEqualTo(extended.ObservationId);
-        await Assert.That(first.Content.Id).IsEqualTo(extended.Content.Id);
+        var switched = timeline.Accept(new LocalApplication(new(null, "test", Guid.NewGuid().ToString()), []), Reading(2));
+        await Assert.That(ReferenceEquals(first.Content, extended.Content)).IsTrue();
         await Assert.That(first.EndAt).IsEqualTo(Origin);
         await Assert.That(extended.EndAt).IsEqualTo(Origin.AddSeconds(1));
         await Assert.That(switched.Count).IsEqualTo(2);
-        await Assert.That(switched[0].ObservationId).IsEqualTo(first.ObservationId);
+        await Assert.That(ReferenceEquals(switched[0].Content, first.Content)).IsTrue();
         await Assert.That(switched[0].EndAt).IsEqualTo(switched[1].StartAt);
-        await Assert.That(switched[1].Content.Id == first.Content.Id).IsFalse();
+        await Assert.That(ReferenceEquals(switched[1].Content, first.Content)).IsFalse();
     }
 
     [Test]
@@ -32,12 +31,12 @@ public sealed class ForegroundTimelineTests
     public async Task RenameAndTimeZoneChangeSplitContentWithoutReplacingApplicationIdentity()
     {
         var timeline = new ForegroundTimeline(TimeSpan.FromSeconds(3));
-        var app = new LocalApplication(EntityId.New(), []);
+        var app = new LocalApplication(new(null, "test", Guid.NewGuid().ToString()), []);
         var first = timeline.Accept(app, Reading(0)).Single();
         var renamed = timeline.Accept(app, Reading(1) with { Name = null });
         var zoneChanged = timeline.Accept(app, Reading(2) with { Name = null, TimeZone = "Etc/UTC" });
         await Assert.That(renamed.Count).IsEqualTo(2);
-        await Assert.That(renamed[1].Application.Id).IsEqualTo(app.Id);
+        await Assert.That(renamed[1].Application.Key).IsEqualTo(app.Key);
         await Assert.That(renamed[1].Content.Name).IsNull();
         await Assert.That(first.Content.Name).IsEqualTo("App");
         await Assert.That(zoneChanged.Count).IsEqualTo(2);
@@ -55,7 +54,7 @@ public sealed class ForegroundTimelineTests
     public async Task InterruptionsStartNewPeriodWithoutFillingTheGap(string interruption)
     {
         var timeline = new ForegroundTimeline(TimeSpan.FromSeconds(3));
-        var app = new LocalApplication(EntityId.New(), []);
+        var app = new LocalApplication(new(null, "test", Guid.NewGuid().ToString()), []);
         timeline.Accept(app, Reading(0));
         var previous = timeline.Accept(app, Reading(1)).Single();
         var next = interruption switch
@@ -71,7 +70,7 @@ public sealed class ForegroundTimelineTests
         await Assert.That(resumed.Count).IsEqualTo(interruption == "read-failure" ? 1 : 2);
         if (resumed.Count == 2) await Assert.That(resumed[0].EndAt).IsEqualTo(previous.EndAt);
         await Assert.That(previous.EndAt).IsEqualTo(Origin.AddSeconds(1));
-        await Assert.That(resumed[^1].ObservationId == previous.ObservationId).IsFalse();
+        await Assert.That(ReferenceEquals(resumed[^1].Content, previous.Content)).IsFalse();
         await Assert.That(resumed[^1].StartAt).IsEqualTo(next.ObservedAt);
     }
 

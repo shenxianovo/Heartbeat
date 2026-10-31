@@ -1,75 +1,78 @@
 using Orisumi.Core;
+using Orisumi.Observer.Runtime.Forwarding;
+using Orisumi.Observer.Sdk;
 using Orisumi.Observers.ForegroundState;
 
 namespace Orisumi.Integration.Tests;
 
 public sealed class ForegroundSubmissionTests
 {
-    [Test]
-    [Property("caseId", "foreground-submission")]
-    public async Task OngoingPeriodIsSubmittedOnceWhenItEnds()
+    [Test, Property("caseId", "foreground-submission")]
+    public async Task OngoingPeriodIsWrittenOnceWhenItEnds()
     {
-        var observer = EntityId.New();
-        using var local = new ForegroundTestStore(observer);
-        var capture = Capture();
-        local.Store.Checkpoint(capture, null);
+        await using var db = await DatabaseFixture.CreateAsync();
+        await using var factory = new OrisumiApiFactory(db.ConnectionString);
+        using var http = factory.CreateClient();
+        var local = await ForegroundTestStore.CreateAsync(http);
+        var capture = local.Capture(); local.Store.Checkpoint(capture, null);
         var extended = capture.Through(ForegroundTimelineTests.Reading(1).ObservedAt);
         local.Store.Checkpoint(extended, null);
-        await Assert.That(local.Observations().Count).IsEqualTo(0);
-        local.Store.FinishActive();
-        local.Store.FinishActive();
-        var saved = local.Observations().Single();
-        await Assert.That(saved.Version.EntityId.Value).IsEqualTo(capture.ObservationId.Value);
-        await Assert.That(saved.Version.PreviousVersionId).IsNull();
-        var observation = (Observation)saved.Version.Content;
+        await Assert.That((await local.Observations()).Length).IsEqualTo(0);
+        local.Store.FinishActive(); local.Store.FinishActive();
+        var saved = (await local.Observations()).Single();
+        await Assert.That(saved.PreviousVersionId).IsNull();
+        var observation = (Observation)saved.Content;
         await Assert.That(observation.StartAt).IsEqualTo(capture.StartAt);
         await Assert.That(observation.EndAt).IsEqualTo(extended.EndAt);
-        // The period, its content and the local application were one submission.
-        var submission = local.Backend.Posts[^1];
-        await Assert.That(submission.Select(version => version.EntityId)
-            .SequenceEqual(new[] { capture.Application.Id, capture.Content.Id, capture.ObservationId })).IsTrue();
+        await Assert.That(local.Diagnostics.Count).IsEqualTo(0);
     }
 
-    [Test]
-    [Property("caseId", "foreground-submission")]
-    public async Task FailedSubmissionIsDiagnosedAndCollectionContinues()
+    [Test, Property("caseId", "foreground-submission")]
+    public async Task OfflineCollectionContinuesAndAllPeriodsArriveAfterReconnection()
     {
-        var observer = EntityId.New();
-        using var local = new ForegroundTestStore(observer);
-        var first = Capture();
-        var second = Capture();
-        local.Store.Checkpoint(first, null);
-        local.Backend.Offline = true;
-        local.Store.Checkpoint(second, first);
-        await Assert.That(local.Diagnostics.Count).IsEqualTo(1);
-        local.Backend.Offline = false;
-        local.Store.FinishActive();
-        await Assert.That(local.Observations().Single().Version.EntityId.Value).IsEqualTo(second.ObservationId.Value);
+        await using var db = await DatabaseFixture.CreateAsync();
+        await using var factory = new OrisumiApiFactory(db.ConnectionString);
+        using var http = factory.CreateClient();
+        var fixture = await ForegroundTestStore.CreateAsync(http);
+        using var directory = new RuntimeHostingTests.RuntimeDirectory();
+        var connected = false;
+        await using var queue = new WriteQueue(directory.Data, http, () => connected);
+        await using var server = new ForwardingServer(); await server.StartAsync(CancellationToken.None);
+        var id = Guid.CreateVersion7(); server.Add(id, queue);
+        using var local = new HttpClient { BaseAddress = new(server.InstanceAddress(id)) };
+        await using var data = new DataClient(local, http, fixture.Data.Observer);
+        await ForegroundRegistration.RegisterAsync(data);
+        var store = new ForegroundStore(data, fixture.Device, fixture.Diagnostics.Add);
+        var first = fixture.Capture(); var second = fixture.Capture(1);
+        store.Checkpoint(first, null); store.Checkpoint(second, first); store.FinishActive();
+        await Assert.That(queue.Pending).IsEqualTo(3);
+        await Assert.That((await fixture.Periods()).Length).IsEqualTo(0);
+        connected = true;
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        while (queue.Pending != 0) await Task.Delay(25, timeout.Token);
+        await Assert.That(queue.Rejected).IsEqualTo(0);
+        await Assert.That((await fixture.Periods()).Length).IsEqualTo(2);
     }
 
-    [Test]
-    [Property("caseId", "foreground-application-period-boundaries")]
+    [Test, Property("caseId", "foreground-application-period-boundaries")]
     public async Task EventsBetweenPollsArePreservedAndSleepClosesWithoutExtending()
     {
-        var observer = EntityId.New();
-        using var local = new ForegroundTestStore(observer);
-        var collector = new ForegroundCollector(observer, new LocalApplicationRegistry(local.Path + ".apps"),
-            local.Store, TimeSpan.FromSeconds(1), () => ForegroundTimelineTests.Reading(2), TextWriter.Null, TextWriter.Null);
+        await using var db = await DatabaseFixture.CreateAsync();
+        await using var factory = new OrisumiApiFactory(db.ConnectionString);
+        using var http = factory.CreateClient();
+        var local = await ForegroundTestStore.CreateAsync(http);
+        var collector = new ForegroundCollector(local.Applications, local.Store, TimeSpan.FromSeconds(1),
+            () => ForegroundTimelineTests.Reading(2), TextWriter.Null);
         collector.Observe(ForegroundTimelineTests.Reading(0));
-        collector.Observe(ForegroundTimelineTests.Reading(0) with { Name = "B", ObservedAt = ForegroundTimelineTests.Reading(0).ObservedAt.AddMilliseconds(100), Elapsed = TimeSpan.FromMilliseconds(100), Awake = TimeSpan.FromMilliseconds(100) });
-        collector.Observe(ForegroundTimelineTests.Reading(0) with { Name = "C", ObservedAt = ForegroundTimelineTests.Reading(0).ObservedAt.AddMilliseconds(200), Elapsed = TimeSpan.FromMilliseconds(200), Awake = TimeSpan.FromMilliseconds(200) });
-        await Assert.That(local.Observations().Count).IsEqualTo(2);
-        collector.Sleep();
-        collector.Poll();
-        await Assert.That(local.Observations().Count).IsEqualTo(3);
-        collector.Wake();
-        await Assert.That(local.Observations().Count).IsEqualTo(3);
-        collector.Stop();
-        await Assert.That(local.Observations().Count).IsEqualTo(4);
-        var end = ((Observation)local.Observations()[2].Version.Content).EndAt;
-        await Assert.That(end).IsEqualTo(ForegroundTimelineTests.Reading(0).ObservedAt.AddMilliseconds(200));
+        foreach (var ms in new[] { 100, 200 }) collector.Observe(ForegroundTimelineTests.Reading(0) with {
+            Name = ms.ToString(System.Globalization.CultureInfo.InvariantCulture), ObservedAt = ForegroundTimelineTests.Reading(0).ObservedAt.AddMilliseconds(ms),
+            Elapsed = TimeSpan.FromMilliseconds(ms), Awake = TimeSpan.FromMilliseconds(ms) });
+        await Assert.That((await local.Observations()).Length).IsEqualTo(2);
+        collector.Sleep(); collector.Poll();
+        await Assert.That((await local.Observations()).Length).IsEqualTo(3);
+        collector.Wake(); collector.Stop();
+        var observations = await local.Observations();
+        await Assert.That(observations.Length).IsEqualTo(4);
+        await Assert.That(((Observation)observations[2].Content).EndAt).IsEqualTo(ForegroundTimelineTests.Reading(0).ObservedAt.AddMilliseconds(200));
     }
-
-    private static ForegroundCapture Capture() => ForegroundCapture.Create(new LocalApplication(EntityId.New(), []), ForegroundTimelineTests.Reading(0));
-
 }

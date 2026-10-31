@@ -4,17 +4,17 @@ import type {
   ListReferrersQuery,
   ProblemDetails,
   ReferrerPage,
-  SubmissionResult,
   Version,
   VersionList,
   VersionPage,
-  VersionSubmission,
+  VersionReadResults,
 } from "./types";
 
 /** 控制台读写数据的接口，HTTP 实现读写后端。 */
 export interface OrisumiSource {
-  submitVersions(versions: VersionSubmission[]): Promise<SubmissionResult>;
   getVersion(versionId: string): Promise<Version>;
+  /** 一次读取最多 256 个版本。 */
+  readVersions(versionIds: string[]): Promise<VersionReadResults>;
   getEntity(entityId: string): Promise<Version>;
   listEntities(query: ListEntitiesQuery): Promise<VersionPage>;
   listEntityVersions(entityId: string): Promise<VersionList>;
@@ -74,13 +74,13 @@ export function createHttpSource(base = "/api"): OrisumiSource {
   }
 
   return {
-    submitVersions: (versions) =>
-      request("/versions", {
+    getVersion: (versionId) => request(`/versions/${encodeURIComponent(versionId)}`),
+    readVersions: (versionIds) =>
+      request("/versions/read", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ versions }),
+        body: JSON.stringify({ versionIds }),
       }),
-    getVersion: (versionId) => request(`/versions/${encodeURIComponent(versionId)}`),
     getEntity: (entityId) => request(`/entities/${encodeURIComponent(entityId)}`),
     listEntities: (params) => request(`/entities${query(params)}`),
     listEntityVersions: (entityId) => request(`/entities/${encodeURIComponent(entityId)}/versions`),

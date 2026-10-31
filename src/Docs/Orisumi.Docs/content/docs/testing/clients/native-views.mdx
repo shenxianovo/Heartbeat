@@ -1,41 +1,36 @@
 ---
 title: "Native Views"
-description: "客户端经 Runtime 读取已保存的观测，后端不可用时报告错误"
+description: "客户端直接读取 API 中已保存的观测，后端不可用时报告错误"
 ---
 
 export const caseId = 'native-views';
 
 ## 为什么验证 [#why]
 
-客户端通过 Runtime 读取后端保存的数据。Observer 停止后仍能读取，后端删除的内容也要从视图中消失。约定见 [Device Clients · 最近的数据](../../clients/device.mdx#recent) 和 [API · Reading](../../api/reading.mdx)。
+客户端从 Runtime 取得连接信息，直接读取后端保存的数据。Observer 停止后仍能读取，后端删除的内容也要从视图中消失。约定见 [Device Clients · 最近的数据](../../clients/device.mdx#recent) 和 [API · Reading](../../api/reading.mdx)。
 
 ## 前置条件 [#setup]
 
-Runtime 使用独立的数据目录，连接通过 WebApplicationFactory 启动的 API。Swift 单元测试使用与管道契约相同的 JSON 响应。实际客户端检查在 macOS 上运行。
+Swift 单元测试用 API 响应的 JSON。实际客户端检查在 macOS 上运行，连接本地环境的 API。
 
 ## 操作与预期结果 [#steps]
 
 | 操作 | 预期结果 |
 | --- | --- |
-| 提交后读取 | 返回已保存的 Observation 版本 |
-| 后端删除 Observation 后读取 | 结果中没有它 |
-| 停用 Observer 后读取 | 仍能读到已保存的数据 |
-| 后端不可用 | 返回错误 |
-| 翻页期间有新的数据提交 | 各页来自第一页时的快照 |
-| 被引用的内容被删除 | 读取缺失的版本，视图不再显示旧缓存内容 |
+| 读取今天的时段 | 读完全部页，结果按实例筛选 |
+| 被引用的内容被删除 | 读取返回 `deleted`，视图不再显示旧缓存内容 |
 | 读取依赖的内容时出错 | 把错误报告给视图 |
+| 时间带 `+08:00` 这样的偏移 | 查询中编码正确 |
+| 还没有接入 | 不读取，报告还没有接入后端 |
+| 停用 Observer 后读取 | 仍能读到已保存的数据 |
 | 前台状态 Observer 正常停用 | 当前时段结束并保存，客户端可以读取它 |
+| Observer 有被拒绝的写入 | 详情显示数量和最近的原因，可以重发；数量增加时发系统通知 |
 
 ## 测试实现 [#implementation]
 
-以下方法位于 `tests/Orisumi.Integration.Tests/`：
+Swift 的 `ObservationReaderTests` 覆盖响应解码、今天的时段、分页、删除后的缓存更新、读取失败和查询编码。`RuntimeModelTests` 覆盖写入状态的解码和按 `instanceId` 发出的管理请求。`RuntimeIntegrationTests.enableUninstallReinstallKeepIdentityAndTodayReads` 覆盖真实 Runtime 的接入、停用后读取、重装身份与启用状态；设置 `ORISUMI_APP` 时运行。
 
-- 已保存的数据、删除与后端不可用：`RuntimeReadingTests.ReadReturnsSavedObservationsAndLeavesOutDeletedOnes`。
-- 翻页快照：`RuntimeReadingTests.PaginationKeepsOneSnapshotWhileCollectionContinues`。
-
-Swift 的 `ObservationReaderTests` 覆盖管道响应解码、今天的时段、分页、游标过期后重读、删除后的缓存更新，以及读取失败。`RuntimeIntegrationTests.enableUninstallReinstallKeepIdentityAndTodayReads` 覆盖真实 Runtime 的接入、停用后读取、重装身份与启用状态；设置 `ORISUMI_APP` 时运行。
-
-未覆盖：经客户端管道读取指定旧版本。界面按 [macOS](../../clients/macos.mdx) 实际运行检查。
+未覆盖：系统通知和重发按钮只在实际运行中检查。界面按 [macOS](../../clients/macos.mdx) 实际运行检查。
 
 ## 执行结果 [#results]
 

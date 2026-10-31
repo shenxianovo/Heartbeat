@@ -149,7 +149,7 @@ function installProblem(error: string | undefined, operation: Operation | undefi
 
 /** 这个包原来的实例已删除，安装会是一个新的程序实例。 */
 function isFresh(pkg: Package, instances: Instance[]): boolean {
-  const same = instances.filter((instance) => instance.instanceKey === pkg.id);
+  const same = instances.filter((instance) => instance.packageId === pkg.id);
   return same.length > 0 && same.every((instance) => instance.removed);
 }
 

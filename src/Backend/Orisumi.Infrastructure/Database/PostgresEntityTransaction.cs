@@ -47,21 +47,36 @@ internal sealed partial class PostgresEntityTransaction(NpgsqlConnection connect
 
     public Task<IReadOnlyList<EntityVersion>> ListObservationsAsync(ObservationQuery query, CancellationToken cancellationToken)
     {
-        var values = new List<object> { VersionTime.Normalize(query.From), VersionTime.Normalize(query.To) };
-        var filters = new List<string> { "o.fact_range && tstzrange($1, $2, '[)')" };
-        if (query.SchemaId is { } schema)
+        var values = new List<object>();
+        var filters = new List<string> { "true" };
+        if (query.From is { } from && query.To is { } to)
         {
-            values.Add(schema.Value);
-            filters.Add($"o.content_schema_id = ${values.Count}");
+            values.Add(VersionTime.Normalize(from)); values.Add(VersionTime.Normalize(to));
+            filters.Add("o.fact_range && tstzrange($1, $2, '[)')");
         }
+        Add("o.content_schema_id", query.SchemaId);
+        Add("o.observer_entity_id", query.ObserverEntityId);
+        Add("o.content_entity_id", query.ContentEntityId);
+        var order = query.Descending ? "DESC" : "ASC";
         if (query.After is { } after)
         {
-            values.Add(VersionTime.Normalize(after.Time));
             values.Add(after.EntityId.Value);
-            filters.Add($"(lower(o.fact_range), o.entity_id) > (${values.Count - 1}, ${values.Count})");
+            var id = "$" + values.Count;
+            if (after.Time is { } time)
+            {
+                values.Add(VersionTime.Normalize(time));
+                var timestamp = "$" + values.Count;
+                filters.Add($"(o.fact_range IS NULL OR lower(o.fact_range) {(query.Descending ? "<" : ">")} {timestamp} OR (lower(o.fact_range) = {timestamp} AND o.entity_id > {id}))");
+            }
+            else filters.Add($"(o.fact_range IS NULL AND o.entity_id > {id})");
         }
         values.Add(query.Limit + 1);
-        return ReadAsync($"SELECT {Columns} FROM observations o JOIN versions v ON v.version_id = o.version_id WHERE {string.Join(" AND ", filters)} ORDER BY lower(o.fact_range), o.entity_id LIMIT ${values.Count}", cancellationToken, values.ToArray());
+        return ReadAsync($"SELECT {Columns} FROM observations o JOIN versions v ON v.version_id = o.version_id WHERE {string.Join(" AND ", filters)} ORDER BY lower(o.fact_range) {order} NULLS LAST, o.entity_id LIMIT ${values.Count}", cancellationToken, values.ToArray());
+        void Add(string column, EntityId? id)
+        {
+            if (id is not { } value) return;
+            values.Add(value.Value); filters.Add($"{column} = ${values.Count}");
+        }
     }
 
     public async Task SaveAsync(EntityVersion version, IReadOnlyList<ResolvedReference> references, IReadOnlyList<BinaryValue> contents, CancellationToken cancellationToken)
@@ -105,11 +120,14 @@ internal sealed partial class PostgresEntityTransaction(NpgsqlConnection connect
             range = new(lower, true, upper, lower == upper);
         }
         await ExecuteAsync("""
-            INSERT INTO observations(entity_id, version_id, content_schema_id, fact_range) VALUES($1, $2, $3, $4)
+            INSERT INTO observations(entity_id, version_id, content_schema_id, fact_range, observer_entity_id, content_entity_id) VALUES($1, $2, $3, $4, $5, $6)
             ON CONFLICT(entity_id) DO UPDATE SET version_id = excluded.version_id,
-                content_schema_id = excluded.content_schema_id, fact_range = excluded.fact_range
+                content_schema_id = excluded.content_schema_id, fact_range = excluded.fact_range,
+                observer_entity_id = excluded.observer_entity_id, content_entity_id = excluded.content_entity_id
             """, cancellationToken, version.EntityId.Value, version.VersionId.Value,
-            Typed(NpgsqlDbType.Uuid, contentSchema), Typed(NpgsqlDbType.Range | NpgsqlDbType.TimestampTz, range));
+            Typed(NpgsqlDbType.Uuid, contentSchema), Typed(NpgsqlDbType.Range | NpgsqlDbType.TimestampTz, range),
+            (await FindVersionEntityAsync(observation.ObserverVersionId, cancellationToken))!.Value.Value,
+            (await FindVersionEntityAsync(observation.ContentVersionId, cancellationToken))!.Value.Value);
     }
 
     public async Task DeleteAsync(EntityId id, CancellationToken cancellationToken)
@@ -123,6 +141,8 @@ internal sealed partial class PostgresEntityTransaction(NpgsqlConnection connect
               AND EXISTS (SELECT 1 FROM versions c WHERE c.entity_id = $1
                   AND c.version_id = (v.content->>'contentVersionId')::uuid)
             """, cancellationToken, id.Value);
+        await ExecuteAsync("DELETE FROM recognition_keys WHERE entity_id = $1", cancellationToken, id.Value);
+        await ExecuteAsync("DELETE FROM write_streams WHERE observer_entity_id = $1", cancellationToken, id.Value);
         await ExecuteAsync("DELETE FROM observations WHERE entity_id = $1", cancellationToken, id.Value);
         await ExecuteAsync("DELETE FROM schemas WHERE entity_id = $1", cancellationToken, id.Value);
         await ExecuteAsync("DELETE FROM entities WHERE entity_id = $1", cancellationToken, id.Value);

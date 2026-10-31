@@ -1,54 +1,46 @@
 ---
 title: "Application Identity"
-description: "应用识别 Observer 只为新线索调用模型，按回答写入应用产品"
+description: "每条线索的判断写成线索归属"
 ---
 
 export const caseId = 'application-identity';
 
 ## 为什么验证 [#why]
 
-[应用识别 Observer](../../observers/application-identity/index.mdx) 的判断直接生效，所以要确认：已认出的线索不再花钱调用模型；模型的回答准确地变成应用产品的版本；失败时不留下错误的产品；判断的依据可以追溯。
+每条线索的判断写成线索归属，产品只有名称。约定见 [Application Identity](../../observers/application-identity/index.mdx)。
 
 ## 前置条件 [#setup]
 
-API 通过 `WebApplicationFactory` 启动，连接独立的测试数据库。进程内的识别逻辑经 RuntimeObserverSession 读写后端。模型由替身代替，保存调用次数与实际输入；本机应用、前台时段和结果通过 HTTP 读写。
+HTTP 用例经真实 API 和独立的 PostgreSQL 数据库运行。Runtime 使用临时数据目录；Observer 的读数、日志和模型回答由测试控制。实际运行的补充证据单独说明，见 [测试分工](../index.mdx#kinds)。
 
 ## 操作与预期结果 [#steps]
 
 | 操作 | 预期结果 |
 | --- | --- |
-| Mac A 和 Mac B 各有一个本机应用，`macos.bundle-id` 都是 `com.tencent.qq`；目录为空，模型回答新产品 QQ | 模型调用一次；创建一个 QQ 产品，包含这条线索；两个本机应用都属于 QQ，仍是两个实体 |
-| 再运行一轮 | 不调用模型，不提交 |
-| 出现 `android.package-name` 为 `com.tencent.mobileqq` 的本机应用，模型回答属于 QQ | QQ 形成新版本，包含两条线索；产品总数不变 |
-| 出现同一 `macos.bundle-id`、不同可执行文件路径的本机应用 | 直接属于 QQ，不调用模型 |
-| 名称同为 QQ、线索不同的应用，模型回答新产品 | 创建另一个产品，两个同名产品并存 |
-| 发给模型的请求 | 包含平台、待识别的线索、本机应用的全部标识线索、名称和产品目录 |
-| 提交的批次 | InputSet 列出拥有线索的本机应用、读到名称的前台时段和目录中各产品的当前版本；Observation 引用程序实例的当前版本、产品版本和这个 InputSet，`startAt`、`endAt`、`timeZone` 都是 `null` |
-| 模型回答未知 | 不提交；下一轮不调用模型 |
-| 未知的线索出现新的本机应用或新的名称，或进程重启 | 再次调用模型 |
-| 模型请求超时，或回答指向目录中没有的产品 | 不提交，不创建产品；下一轮重试这条线索 |
-| 没有配置 API Key | 不调用模型，不提交，报告诊断 |
-| 一条线索提交成功后继续处理下一条 | 再次读取目录，包含上一条的结果 |
-| 一轮还在等待模型回答时，到了下一轮的时间 | 这一轮结束后才开始下一轮；模型只调用一次，后端只有一个产品 |
-| 在第二个 Runtime 上安装应用识别 Observer | 登记被拒绝，`code` 为 `deployment_singleton`，这个实例不启动 |
-| 在客户端中修改 `intervalSeconds` | 下一轮按新的间隔开始；API Key 不在设置中 |
-| 用户把一条线索移出 QQ | 下一轮重新判断这条线索 |
-| 应用识别 Observer 基于旧版本提交时，用户已经修改了产品 | 提交被拒绝；丢弃这一批，重新读取后再处理，结果保留用户的修改 |
-| 更换模型型号后重启 | 程序实例形成新版本；已经在产品中的线索不重新判断 |
-| 产品形成新版本之后 | 之前的 Observation 和 InputSet 保持原样，仍指向原来的版本 |
+| 两个设备拥有相同线索 | 只调用一次模型，形成一条归属 |
+| 新的平台线索归入已有产品 | 新增归属和它的 Observation，产品版本不变 |
+| 形成一条归属 | 后端由 inputs 形成 InputSet，包含用到的应用、名称时段、产品和归属当前版本 |
+| 模型回答新产品 | 先写产品，取 EntityId，再写归属；下一条立即读到结果 |
+| 产品写入成功、归属失败 | 产品留在目录中，下一轮可以选中它 |
+| 删除一条归属 | 只重新判断这一条线索 |
+| 删除产品 | 指向它的线索重新判断，原归属形成新版本 |
+| 未知的线索输入不变 | 本进程内跳过；新应用、新名称或重启后再判断 |
+| 模型超时或回答非法 | 诊断并在下一轮重试 |
+| 缺少 Key 或更换模型 | 缺少 Key 不识别；模型变化形成 Observer 新版本 |
 
 ## 测试实现 [#implementation]
 
-以下方法位于 `tests/Orisumi.Integration.Tests/`，经 RuntimeObserverSession 连接独立的 PostgreSQL，模型是替身：
+方法位于 `tests/Orisumi.Integration.Tests/`：
 
-- 两台 Mac 和 Android 的 QQ 归入一个产品，再运行一轮或出现同一应用包标识、不同路径的本机应用时不调用模型，同名的不同软件分开，批次中的 InputSet 和 Observation，产品更新后旧的 Observation 不变：`ApplicationIdentityTests.RecognizesOnceAcrossDevicesAndPlatformsAndPreservesEvidence`。
-- 未知只在进程内保留，出现新的本机应用、名称或进程重启后重试：`ApplicationIdentityTests.UnknownIsSkippedWhileRunningUntilNamesApplicationsOrTheProcessChange`。
-- 模型超时和指向目录外的产品不写入，下一轮重试：`ApplicationIdentityTests.ModelFailuresAndInvalidTargetsRetryWithoutCreatingProducts`。
-- 没有 Key 时不写入；更换模型后程序实例形成新版本，已在产品中的线索不重新判断：`ApplicationIdentityTests.MissingKeyDoesNotWriteAndModelChangesVersionTheSameObserver`。
-- 基于旧版本的提交被拒绝后丢弃并重新读取；线索移出产品后重新判断：`ApplicationIdentityTests.StaleProductIsRejectedThenRereadAndRemovedIdentifiersAreRecognizedAgain`。
-- 请求包含线索、全部标识线索、名称和目录，不带外部工具；正常回答的解析：`ApplicationModelTests.SendsStructuredInputWithoutToolsAndReadsTheDecision`。无效或未完成的回答作为失败：`ApplicationModelTests.InvalidOrIncompleteResponseIsADiagnosticFailure`。
-- 第二个 Runtime 安装时的 `deployment_singleton` 由 [Management](../api/management.mdx) 的测试覆盖。
-- 未覆盖：轮次重叠；修改 `intervalSeconds`；真实的 OpenAI 调用。
+- 跨设备、产品不变、输入证据：`ApplicationIdentityTests.RecognizesOnceAcrossDevicesAndPlatformsAndPreservesEvidence`。
+- 撤销和产品删除：`ApplicationIdentityTests.MembershipRetractionRejudgesOnlyThatClueAndProductDeletionVersionsItsMemberships`。
+- 两个请求之间失败：`ApplicationIdentityTests.ProductSurvivesMembershipFailureAndIsAvailableToTheNextDecision`。
+- 未知缓存：`ApplicationIdentityTests.UnknownIsSkippedWhileRunningUntilNamesApplicationsOrTheProcessChange`。
+- 模型失败和非法目标：`ApplicationIdentityTests.ModelFailuresAndInvalidTargetsRetryWithoutCreatingProducts`。
+- 配置和 Observer 版本：`ApplicationIdentityTests.MissingKeyDoesNotIdentifyAndModelChangesVersionTheSameObserver`。
+- 模型 HTTP 编码与结果解析：`ApplicationModelTests.SendsStructuredInputWithoutToolsAndReadsTheDecision`。
+
+未覆盖：真实 OpenAI 调用；轮次不重叠的进程级测试；修改 intervalSeconds 后的实际间隔。
 
 ## 执行结果 [#results]
 

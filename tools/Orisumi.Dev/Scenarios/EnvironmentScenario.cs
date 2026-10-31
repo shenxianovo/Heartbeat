@@ -22,7 +22,7 @@ internal sealed class EnvironmentScenario(RepositoryContext repository, IProcess
             CheckAssignedPorts(new EnvironmentFiles(repository).Read()!.Ports, state);
             var entries = state.Entries!;
             await RoutingAsync(http, entries, token);
-            await http.RequestAsync("POST", entries.Api + "/versions", 413, token, new string('x', 10 * 1024 * 1024 + 1), problem: true);
+            await http.RequestAsync("POST", entries.Api + "/writes", 413, token, new string('x', 10 * 1024 * 1024 + 1), problem: true);
             var entity = ScenarioEntity.Create();
             await entity.SubmitAsync(http, entries.Api, token);
             await manager.DownAsync(token, preserveVolume: true);

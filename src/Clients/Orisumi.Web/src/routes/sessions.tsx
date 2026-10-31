@@ -89,9 +89,9 @@ function Selected({ group, view, onView }: { group: SessionGroup; view: View; on
     <Card className="min-w-0 px-4 py-4 sm:px-5">
       <header className="border-line mb-3 flex flex-wrap items-start gap-x-4 gap-y-3 border-b pb-4">
         <div className="min-w-[min(100%,280px)] flex-1">
-          <h2 className="text-[17px] leading-snug font-semibold">{sessionTitle(session)}</h2>
+          <h2 className="text-[17px] leading-snug font-semibold">{sessionTitle(group)}</h2>
           <p className="text-fg-2 mt-1 text-xs break-all">
-            {[productName(session?.product), session?.client, group.workingDirectory, models.join("、")]
+            {[productName(session?.product), group.client, group.workingDirectory, models.join("、")]
               .filter(Boolean)
               .join(" · ")}
           </p>

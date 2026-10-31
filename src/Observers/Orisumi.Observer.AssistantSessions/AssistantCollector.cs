@@ -1,12 +1,10 @@
 using System.Diagnostics;
 using System.Text.Json;
-using Orisumi.Core;
 using Orisumi.Observer.Sdk;
 
 namespace Orisumi.Observers.AssistantSessions;
 
-internal sealed class AssistantCollector(IObserverSession session, AssistantState state, EntityId observerId,
-    AssistantRegistration registration, string claudeDirectory, string codexDirectory, string cacheDirectory,
+internal sealed class AssistantCollector(DataClient data, AssistantState state, string claudeDirectory, string codexDirectory, string cacheDirectory,
     Action<string> diagnostic, Func<string?>? currentZone = null, TimeSpan? additionalHistoryBudget = null)
 {
     private readonly Dictionary<string, long> _liveEnds = new(StringComparer.Ordinal);
@@ -56,7 +54,7 @@ internal sealed class AssistantCollector(IObserverSession session, AssistantStat
 
     // A failed submission leaves the checkpoint where it was, so the next poll reads the same segment again.
     private static bool IsFailure(Exception exception) => exception is IOException or UnauthorizedAccessException or JsonException
-        or ZstdSharp.ZstdException or HttpRequestException or SubmissionRejectedException or InvalidOperationException or ArgumentException;
+        or ZstdSharp.ZstdException or HttpRequestException or WriteRejectedException or InvalidOperationException or ArgumentException;
 
     internal async Task ReadFileAsync(SourceFile file, CancellationToken token = default)
     {
@@ -75,7 +73,7 @@ internal sealed class AssistantCollector(IObserverSession session, AssistantStat
         var batch = StartBatch(file, context);
         // Completed archives need no decompression on later polls; identity/size/mtime still detect replacement.
         if (compressed && !reset && previous!.Offset == -1)
-        { _unfinished.Remove(file.Path); await state.SubmitAsync(session, batch.Payload, batch.Changes, token); return; }
+        { _unfinished.Remove(file.Path); await SaveAsync(batch, token); return; }
         if (!compressed && !reset && offset == size && modified == previous!.Modified && batch.OperationCount == 0)
         { _unfinished.Remove(file.Path); _liveEnds[file.Path] = offset; return; }
         var expanded = await SourceFiles.ExpandAsync(file.Path, identity + ":" + size + ":" + modified, cacheDirectory, token);
@@ -88,7 +86,7 @@ internal sealed class AssistantCollector(IObserverSession session, AssistantStat
         notes.ForEach(diagnostic);
         var atEnd = offset == length;
         batch.Set(key, new FileProgress(identity, size, modified, compressed && atEnd ? -1 : offset, context));
-        await state.SubmitAsync(session, batch.Payload, batch.Changes, token);
+        await SaveAsync(batch, token);
         if (!atEnd && lines.Count > 0) _unfinished.Add(file.Path);
         else _unfinished.Remove(file.Path);
         if (atEnd)
@@ -113,7 +111,7 @@ internal sealed class AssistantCollector(IObserverSession session, AssistantStat
                     if (file.IsIndex)
                     {
                         using var index = JsonDocument.Parse(line.Bytes);
-                        batch.Session(new("codex", index.RootElement.Required("id"), index.RootElement.Required("thread_name")));
+                        batch.Session(new("codex", index.RootElement.Required("id"), index.RootElement.Required("thread_name")), index.RootElement.Required("updated_at"));
                     }
                     else
                     {
@@ -135,9 +133,15 @@ internal sealed class AssistantCollector(IObserverSession session, AssistantStat
         return (context, offset);
     }
 
+    private async Task SaveAsync(AssistantBatch batch, CancellationToken token)
+    {
+        await data.WriteAllAsync(batch.Writes, token);
+        state.Apply(batch.Changes);
+    }
+
     private AssistantBatch StartBatch(SourceFile file, SourceContext context)
     {
-        var batch = new AssistantBatch(state, observerId, registration);
+        var batch = new AssistantBatch(data.Device?.Ref);
         if (file.Location is { ParentId: not null } subagent && context.Session is { } existing)
         {
             context.Session = existing with { Title = subagent.Title ?? existing.Title, AgentName = subagent.AgentName ?? existing.AgentName,

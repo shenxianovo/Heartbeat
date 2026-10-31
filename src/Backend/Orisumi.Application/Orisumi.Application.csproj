@@ -5,4 +5,5 @@
   <ItemGroup>
     <ProjectReference Include="../../Core/Orisumi.Core/Orisumi.Core.csproj" />
   </ItemGroup>
+  <ItemGroup><InternalsVisibleTo Include="Orisumi.Model.Tests" /></ItemGroup>
 </Project>

@@ -1,190 +1,52 @@
 using System.Net;
 using System.Text.Json;
 using Orisumi.Core;
-using static Orisumi.Integration.Tests.EntityApiTests;
+using Orisumi.Testing;
 
 namespace Orisumi.Integration.Tests;
 
 public sealed class ReferrerApiTests
 {
-    // ENTITY-5, ENTITY-7, SCHEMA-2, SCHEMA-9: only declared content references count.
-    [Test]
-    [Property("caseId", "api-referrers")]
-    public async Task NestedReferencesUseSavedSchemaAndRootJsonPointers()
+    [Test, Property("caseId", "api-referrers")]
+    public async Task ReferencesFilterBeforePagingKeepPathsAndSurviveTargetDeletion()
     {
         await using var database = await DatabaseFixture.CreateAsync();
         await using var factory = new OrisumiApiFactory(database.ConnectionString);
         using var http = factory.CreateClient();
-        var schema = Schema();
-        var target = Business(schema);
-        var targetNext = target with { VersionId = VersionId.New(), PreviousVersionId = target.VersionId };
-        var references = Schema("links", """
-            {"nested":{"type":"object","description":"Test field value.","required":true,"nullable":false,"fields":{
-                "a~/VersionId":{"type":"reference","description":"Test field value.","required":true,"nullable":false}}},
-             "links":{"type":"array","description":"Test field value.","required":true,"nullable":false,"items":{
-                "type":"object","description":"Test field value.","nullable":false,"fields":{
-                    "targetVersionIds":{"type":"array","description":"Test field value.","required":true,"nullable":false,
-                        "items":{"type":"reference","description":"Test field value.","nullable":true}}}}},
-             "optionalVersionId":{"type":"reference","description":"Test field value.","required":false,"nullable":true},
-             "text":{"type":"string","description":"Test field value.","required":true,"nullable":false}}
+        var writer = new WriteClient(http); await writer.InitializeAsync();
+        var items = await writer.DeclareAsync(fields: WriteApiTests.NameFields);
+        var schema = await writer.DeclareAsync("links", """
+            {"a~/VersionId":{"type":"reference","description":"Target","required":true,"nullable":false},
+             "otherVersionId":{"type":"reference","description":"Other","required":true,"nullable":false}}
             """);
-        var link = Business(references, $$"""
-            {"nested":{"a~/VersionId":"{{target.VersionId.Value}}"},
-             "links":[{"targetVersionIds":["{{targetNext.VersionId.Value}}",null,"{{target.VersionId.Value}}"]}],
-             "optionalVersionId":null,"text":"{{target.VersionId.Value}}"}
-            """);
-        var schemaNext = references with { VersionId = VersionId.New(), PreviousVersionId = references.VersionId,
-            Content = new EntitySchema("Links", "Links", "links", JsonSerializer.Deserialize<JsonElement>("{}")) };
-        using var saved = await Submit(http, schema, target, targetNext, references, schemaNext, link);
-        await Assert.That(saved.StatusCode).IsEqualTo(HttpStatusCode.OK);
-        var page = await Page(http, target.EntityId);
-        var entry = page.GetProperty("referrers").EnumerateArray().Single();
-        await Locations(entry, ("/content/nested/a~0~1VersionId", target.VersionId),
-            ("/content/links/0/targetVersionIds/0", targetNext.VersionId), ("/content/links/0/targetVersionIds/2", target.VersionId));
-        using var read = await http.GetAsync($"/versions/{link.VersionId.Value}");
-        await Assert.That(JsonElement.DeepEquals(entry.GetProperty("version"), await Json(read))).IsTrue();
-        await Assert.That(page.GetProperty("next").ValueKind).IsEqualTo(JsonValueKind.Null);
-        // Neither schemaVersionId nor previousVersionId is indexed.
-        await Assert.That((await Page(http, references.EntityId, "?versions=all")).GetProperty("referrers").GetArrayLength()).IsEqualTo(0);
-    }
-
-    // ENTITY-5: Core references retain their roles and input positions.
-    [Test]
-    [Property("caseId", "api-referrers")]
-    public async Task CoreReferencesKeepAllRolesAndInputPositions()
-    {
-        await using var database = await DatabaseFixture.CreateAsync();
-        await using var factory = new OrisumiApiFactory(database.ConnectionString);
-        using var http = factory.CreateClient();
-        var schema = Schema(); var target = Business(schema); var other = Business(schema);
-        var inputs = new VersionSubmission(EntityId.New(), VersionId.New(), null, null, new InputSet([other.VersionId, target.VersionId]));
-        var observation = new VersionSubmission(EntityId.New(), VersionId.New(), null, null,
-            new Observation(target.VersionId, target.VersionId, inputs.VersionId, null, null, null));
-        using var saved = await Submit(http, schema, target, other, inputs, observation);
-        await Assert.That(saved.StatusCode).IsEqualTo(HttpStatusCode.OK);
-        var entries = (await Page(http, target.EntityId)).GetProperty("referrers").EnumerateArray().ToArray();
-        await Assert.That(entries.Length).IsEqualTo(2);
-        await Locations(entries.Single(e => Id(e) == inputs.VersionId.Value), ("/content/members/1", target.VersionId));
-        await Locations(entries.Single(e => Id(e) == observation.VersionId.Value),
-            ("/content/observerVersionId", target.VersionId), ("/content/contentVersionId", target.VersionId));
-        var inputReferrer = (await Page(http, inputs.EntityId)).GetProperty("referrers").EnumerateArray().Single();
-        await Locations(inputReferrer, ("/content/inputSetVersionId", inputs.VersionId));
-    }
-
-    // VERSION-5, ENTITY-7: pagination counts versions, even when each has multiple matching paths.
-    [Test]
-    [Property("caseId", "api-referrers")]
-    public async Task CurrentAndAllPaginateVersionsAfterExtensionAndRetargeting()
-    {
-        await using var database = await DatabaseFixture.CreateAsync();
-        await using var factory = new OrisumiApiFactory(database.ConnectionString);
-        using var http = factory.CreateClient();
-        var schema = Schema(); var target = Business(schema); var other = Business(schema);
-        var observation = new VersionSubmission(EntityId.New(), VersionId.New(), null, null,
-            new Observation(target.VersionId, target.VersionId, null, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, null));
-        var extended = observation with { VersionId = VersionId.New(), PreviousVersionId = observation.VersionId,
-            Content = ((Observation)observation.Content) with { EndAt = DateTimeOffset.UnixEpoch.AddHours(1) } };
-        var inputs = new VersionSubmission(EntityId.New(), VersionId.New(), null, null, new InputSet([target.VersionId]));
-        var moved = inputs with { VersionId = VersionId.New(), PreviousVersionId = inputs.VersionId, Content = new InputSet([other.VersionId]) };
-        using var saved = await Submit(http, schema, target, other, observation, extended, inputs, moved);
-        await Assert.That(saved.StatusCode).IsEqualTo(HttpStatusCode.OK);
-        foreach (var query in new[] { "", "?versions=current" })
-        {
-            var current = (await Page(http, target.EntityId, query)).GetProperty("referrers").EnumerateArray().Single();
-            await Assert.That(Id(current)).IsEqualTo(extended.VersionId.Value);
-            await Assert.That(current.GetProperty("references").GetArrayLength()).IsEqualTo(2);
-        }
-        var found = new List<Guid>(); string? next = null;
-        do
-        {
-            var page = await Page(http, target.EntityId, "?versions=all&limit=1" + (next is null ? "" : "&after=" + Uri.EscapeDataString(next)));
-            var entry = page.GetProperty("referrers").EnumerateArray().Single();
-            found.Add(Id(entry));
-            await Assert.That(entry.GetProperty("references").GetArrayLength()).IsEqualTo(Id(entry) == inputs.VersionId.Value ? 1 : 2);
-            next = page.GetProperty("next").GetString();
-        } while (next is not null);
-        await Assert.That(found.SequenceEqual(new[] { observation.VersionId.Value, extended.VersionId.Value, inputs.VersionId.Value }.Order())).IsTrue();
-
-        var latest = new List<Guid>();
-        next = null;
-        do
-        {
-            var page = await Page(http, target.EntityId, "?versions=all&order=desc&limit=1" + (next is null ? "" : "&after=" + Uri.EscapeDataString(next)));
-            latest.Add(Id(page.GetProperty("referrers").EnumerateArray().Single()));
-            next = page.GetProperty("next").GetString();
-        } while (next is not null);
-        await Assert.That(latest.SequenceEqual(Enumerable.Reverse(found))).IsTrue();
-        var ascending = (await Page(http, target.EntityId, "?versions=all&limit=1")).GetProperty("next").GetString();
-        using var mixed = await http.GetAsync($"/entities/{target.EntityId.Value}/referrers?versions=all&order=desc&after={Uri.EscapeDataString(ascending!)}");
-        await Assert.That(mixed.StatusCode).IsEqualTo(HttpStatusCode.BadRequest);
-    }
-
-    // HISTORY-6, HISTORY-8: removing the target retains references; removing the referrer removes them.
-    [Test]
-    [Property("caseId", "api-referrers")]
-    public async Task TargetDeletionRetainsReferencesAndReferrerDeletionCascades()
-    {
-        await using var database = await DatabaseFixture.CreateAsync();
-        await using var factory = new OrisumiApiFactory(database.ConnectionString);
-        using var http = factory.CreateClient();
-        var schema = Schema(); var target = Business(schema);
-        var inputs = new VersionSubmission(EntityId.New(), VersionId.New(), null, null, new InputSet([target.VersionId]));
-        var next = inputs with { VersionId = VersionId.New(), PreviousVersionId = inputs.VersionId };
-        using var saved = await Submit(http, schema, target, inputs, next);
-        await Assert.That(saved.StatusCode).IsEqualTo(HttpStatusCode.OK);
-        using var deleted = await http.DeleteAsync($"/entities/{target.EntityId.Value}");
-        await Assert.That(deleted.StatusCode).IsEqualTo(HttpStatusCode.NoContent);
-        await Assert.That((await Page(http, target.EntityId)).GetProperty("referrers").GetArrayLength()).IsEqualTo(1);
-        await Assert.That((await Page(http, target.EntityId, "?versions=all")).GetProperty("referrers").GetArrayLength()).IsEqualTo(2);
-        using var removed = await http.DeleteAsync($"/entities/{inputs.EntityId.Value}");
-        await Assert.That(removed.StatusCode).IsEqualTo(HttpStatusCode.NoContent);
-        await Assert.That((await Page(http, target.EntityId, "?versions=all")).GetProperty("referrers").GetArrayLength()).IsEqualTo(0);
-    }
-
-    // VERSION-13: a rejected submission leaves no references; the corrected one saves exactly its own.
-    [Test]
-    [Property("caseId", "storage-transactions")]
-    public async Task RejectedSubmissionLeavesNoReferencesAndTheCorrectedOneSavesItsOwn()
-    {
-        await using var database = await DatabaseFixture.CreateAsync();
-        await using var factory = new OrisumiApiFactory(database.ConnectionString);
-        using var http = factory.CreateClient();
-        var schema = Schema(); var target = Business(schema);
-        var first = new VersionSubmission(EntityId.New(), VersionId.New(), null, null, new InputSet([target.VersionId]));
-        var rejected = new VersionSubmission(EntityId.New(), VersionId.New(), null, null, new InputSet([target.VersionId, VersionId.New()]));
-        var later = first with { EntityId = EntityId.New(), VersionId = VersionId.New() };
-        using var saved = await Submit(http, schema, target, first, rejected, later);
-        await Assert.That((await Json(saved)).GetProperty("index").GetInt32()).IsEqualTo(3);
-        using (var absent = await http.GetAsync($"/entities/{target.EntityId.Value}/referrers")) await Assert.That(absent.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
-        using var corrected = await Submit(http, schema, target, first);
-        await Assert.That(corrected.StatusCode).IsEqualTo(HttpStatusCode.OK);
-        var entry = (await Page(http, target.EntityId, "?versions=all")).GetProperty("referrers").EnumerateArray().Single();
-        await Assert.That(Id(entry)).IsEqualTo(first.VersionId.Value);
-    }
-
-    [Test]
-    [Property("caseId", "api-referrers")]
-    public async Task UnknownTargetReturnsNotFound()
-    {
-        await using var database = await DatabaseFixture.CreateAsync();
-        await using var factory = new OrisumiApiFactory(database.ConnectionString);
-        using var http = factory.CreateClient();
-        using var missing = await http.GetAsync($"/entities/{EntityId.New().Value}/referrers");
-        await Assert.That(missing.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
-    }
-
-    private static Guid Id(JsonElement referrer) => referrer.GetProperty("version").GetProperty("versionId").GetGuid();
-    private static async Task<JsonElement> Page(HttpClient http, EntityId target, string query = "")
-    {
-        using var response = await http.GetAsync($"/entities/{target.Value}/referrers{query}");
-        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.OK);
-        return await Json(response);
-    }
-    private static async Task Locations(JsonElement entry, params (string Path, VersionId Target)[] expected)
-    {
-        var actual = entry.GetProperty("references").EnumerateArray()
-            .Select(r => (r.GetProperty("path").GetString()!, new VersionId(r.GetProperty("targetVersionId").GetGuid()))).ToArray();
-        await Assert.That(actual.Length).IsEqualTo(expected.Length);
-        await Assert.That(actual.ToHashSet().SetEquals(expected)).IsTrue();
+        var target = await writer.WriteAsync(items, new { name = "target" });
+        var other = await writer.WriteAsync(items, new { name = "other" });
+        object Content(VersionId a, VersionId b) => new Dictionary<string, Guid> { ["a~/VersionId"] = a.Value, ["otherVersionId"] = b.Value };
+        var first = await writer.WriteAsync(schema, Content(target.VersionId, target.VersionId), "link");
+        var current = await writer.WriteAsync(schema, Content(other.VersionId, target.VersionId), "link");
+        var third = await writer.WriteAsync(schema, Content(target.VersionId, other.VersionId));
+        var url = $"/entities/{target.EntityId.Value}/referrers";
+        using var all = await http.GetAsync(url + "?versions=all");
+        var entries = (await WriteClient.JsonAsync(all)).GetProperty("referrers");
+        await Assert.That(entries.GetArrayLength()).IsEqualTo(3);
+        await Assert.That(entries[0].GetProperty("references").GetArrayLength()).IsEqualTo(2);
+        using var filtered = await http.GetAsync(url + "?versions=all&resourceName=links&path=/content/a~0~1VersionId&limit=1");
+        var page = await WriteClient.JsonAsync(filtered);
+        await Assert.That(page.GetProperty("referrers")[0].GetProperty("version").GetProperty("versionId").GetGuid()).IsEqualTo(first.VersionId.Value);
+        var cursor = Uri.EscapeDataString(page.GetProperty("next").GetString()!);
+        using var next = await http.GetAsync(url + "?versions=all&resourceName=links&path=/content/a~0~1VersionId&limit=1&after=" + cursor);
+        await Assert.That((await WriteClient.JsonAsync(next)).GetProperty("referrers")[0].GetProperty("version").GetProperty("versionId").GetGuid()).IsEqualTo(third.VersionId.Value);
+        using var changedQuery = await http.GetAsync(url + "?versions=all&resourceName=links&after=" + cursor);
+        await Assert.That(changedQuery.StatusCode).IsEqualTo(HttpStatusCode.BadRequest);
+        using var descending = await http.GetAsync(url + "?order=desc");
+        await Assert.That((await WriteClient.JsonAsync(descending)).GetProperty("referrers").EnumerateArray().Select(e => e.GetProperty("version").GetProperty("versionId").GetGuid()).SequenceEqual([third.VersionId.Value, current.VersionId.Value])).IsTrue();
+        using var deleted = await http.DeleteAsync($"/entities/{target.EntityId.Value}"); deleted.EnsureSuccessStatusCode();
+        using var retained = await http.GetAsync(url + "?versions=all");
+        await Assert.That(JsonElement.DeepEquals(entries, (await WriteClient.JsonAsync(retained)).GetProperty("referrers"))).IsTrue();
+        using var removed = await http.DeleteAsync($"/entities/{third.EntityId.Value}"); removed.EnsureSuccessStatusCode();
+        using var after = await http.GetAsync(url);
+        await Assert.That((await WriteClient.JsonAsync(after)).GetProperty("referrers").GetArrayLength()).IsEqualTo(1);
+        using var unknown = await http.GetAsync($"/entities/{EntityId.New().Value}/referrers");
+        await Assert.That(unknown.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
     }
 }

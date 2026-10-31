@@ -70,12 +70,12 @@ public sealed class PostgresManagementStore(NpgsqlDataSource source, TimeProvide
         }
         if (await db.Set<DeletedVersion>().AnyAsync(row => row.EntityId == id, token))
             throw new ManagementException(410, "instance_removed", "This identity was deleted.");
-        var sameKey = db.Set<StoredInstance>().Where(row => !row.Removed && row.InstanceKey == registration.InstanceKey);
+        var sameKey = db.Set<StoredInstance>().Where(row => !row.Removed && row.PackageId == registration.PackageId);
         if (await sameKey.AnyAsync(row => row.HostId == host, token))
-            throw new ManagementException(409, "instance_key_taken", "This host already has an instance for this package.");
+            throw new ManagementException(409, "package_taken", "This host already has an instance for this package.");
         if (registration.Scope == "deployment" && await sameKey.AnyAsync(token))
             throw new ManagementException(409, "deployment_singleton", "This deployment already has an instance for this package.");
-        row = new StoredInstance { EntityId = id, HostId = host, InstanceKey = registration.InstanceKey, Name = registration.Name,
+        row = new StoredInstance { EntityId = id, HostId = host, PackageId = registration.PackageId, Name = registration.Name,
             Enabled = registration.Enabled, Settings = registration.Settings.GetRawText(), Revision = 1, LastLocalSequence = registration.LocalSequence };
         db.Add(row);
         return Config(row);
@@ -141,7 +141,7 @@ public sealed class PostgresManagementStore(NpgsqlDataSource source, TimeProvide
     }
     private static ObserverHost Host(StoredHost row) => new(row.HostId, row.Name, row.Kind, row.Revoked, row.LastSeenAt);
     private static JsonElement Json(string value) => JsonSerializer.Deserialize<JsonElement>(value);
-    private static InstanceConfig Config(StoredInstance row) => new(row.EntityId, row.InstanceKey, row.Enabled, Json(row.Settings), row.Revision, row.LastLocalSequence, row.Removed);
-    private static ObserverInstance Instance(StoredInstance row) => new(row.EntityId, row.HostId, row.InstanceKey, row.Name,
+    private static InstanceConfig Config(StoredInstance row) => new(row.EntityId, row.PackageId, row.Enabled, Json(row.Settings), row.Revision, row.LastLocalSequence, row.Removed);
+    private static ObserverInstance Instance(StoredInstance row) => new(row.EntityId, row.HostId, row.PackageId, row.Name,
         row.Enabled, Json(row.Settings), row.Revision, row.Removed, row.Status is null ? null : Json(row.Status), row.ReportedAt);
 }

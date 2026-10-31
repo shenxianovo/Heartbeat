@@ -1,40 +1,38 @@
 ---
 title: "Local Application Identity"
-description: "本机应用的身份随安装线索复用"
+description: "本机应用按设备标识和原始安装线索识别"
 ---
 
 export const caseId = 'foreground-local-application-identity';
 
 ## 为什么验证 [#why]
 
-[本机应用](../../observers/foreground-state/local-application.mdx)的身份要在程序重启后保持不变，同时不同路径或不同设备上的安装要分开。
+本机应用按设备标识和原始安装线索识别，依据由后端保存。约定见 [身份](../../observers/foreground-state/local-application.mdx#identity)。
 
 ## 前置条件 [#setup]
 
-为测试创建独立的登记文件，用户自己的登记文件保持不动。
+HTTP 用例经真实 API 和独立的 PostgreSQL 数据库运行。Runtime 使用临时数据目录；Observer 的读数、日志和模型回答由测试控制。实际运行的补充证据单独说明，见 [测试分工](../index.mdx#kinds)。
 
 ## 操作与预期结果 [#steps]
 
 | 操作 | 预期结果 |
 | --- | --- |
-| 首次遇到带包标识和路径的应用 | 生成并保存一个身份 |
-| 重启前台状态 Observer 后读到相同的线索 | 复用原来的身份 |
-| 只修改应用名称 | 复用原来的身份 |
-| 修改路径或包标识 | 新建身份 |
-| 用另一台设备的登记文件读到相同的线索 | 新建身份 |
-| 缺少路径，同一次运行中再次读到相同的进程和启动时间 | 复用临时身份 |
-| 缺少路径，进程或前台状态 Observer 重启 | 新建身份 |
-| 多个程序实例同时登记三个不同的安装 | 每个安装恰好一个身份，三个都保留 |
+| 同一设备上的两个 Observer 写同一安装 | 共用设备和本机应用，各有观测 |
+| 设备改名或应用名称变化 | 本机应用身份不变，设备新版本不使应用内容形成下一版 |
+| 另一台设备写相同路径 | 形成另一个设备和另一个本机应用 |
+| 包标识或路径变化 | 识别依据变化 |
+| 没有路径 | 仅在本次运行中按进程线索复用；重启或无进程线索时重新生成临时依据 |
+| 删除本机应用后再采集 | 形成新实体 |
+| 读不到运行设备 | 报告诊断并等待，不采集 |
 
 ## 测试实现 [#implementation]
 
-以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
+方法位于 `tests/Orisumi.Integration.Tests/`：
 
-- 首次登记、重启与改名复用，以及路径、包标识或设备不同则新建：`LocalApplicationIdentityTests.RestartAndRenameReuseInstallationButAnotherPathOrDeviceDoesNot`。
-- 缺少路径时按本次运行的进程线索复用，重启后新建：`LocalApplicationIdentityTests.MissingPathUsesOnlyThisProcessLifetimeAndNeverMatchesByName`。
-- 并发登记三个安装，各有一个身份且全部保留：`LocalApplicationIdentityTests.ConcurrentRegistrationsPreserveEveryApplicationAndPublishOneIdentityPerInstallation`。
+- 跨 Observer、设备、改名和删除：`LocalApplicationIdentityTests.TwoObserversShareInstallationButAnotherDeviceAndDeletionCreateNewEntities`。
+- 原始线索与临时依据：`LocalApplicationIdentityTests.InstallationKeysUseRawPathsAndMissingPathsUseOnlyTheProcessLifetime`。
 
-登记文件损坏时的保留由 `LocalApplicationIdentityTests.CorruptRegistryIsNotReplaced` 检查，该方法未关联本 Case，页末报告不包含它。
+未覆盖：两个真实托管方进程同时采集同一安装；缺少设备时等待的进程级自动测试。
 
 ## 执行结果 [#results]
 

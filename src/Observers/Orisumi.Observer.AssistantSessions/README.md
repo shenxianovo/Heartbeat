@@ -1,21 +1,19 @@
 # Orisumi.Observer.AssistantSessions
 
-Orisumi.Observer.AssistantSessions 读取当前用户的 Claude Code 和 Codex 会话日志，把会话和其中的每次交互交给 [Runtime](../../Docs/Orisumi.Docs/content/docs/hosting/runtime.mdx) 保存和发送。业务规则见 [Assistant Sessions](../../Docs/Orisumi.Docs/content/docs/observers/assistant-sessions/index.mdx)。
-
-本文写当前代码的运行方式。目标契约见 [Assistant Sessions](../../Docs/Orisumi.Docs/content/docs/observers/assistant-sessions/index.mdx)，代码尚未迁移。
+Orisumi.Observer.AssistantSessions 读取当前用户的 Claude Code 和 Codex 会话日志，把会话和其中的每次交互写给 [Runtime](../../Docs/Orisumi.Docs/content/docs/hosting/runtime.mdx) 的本地转发。业务规则见 [Assistant Sessions](../../Docs/Orisumi.Docs/content/docs/observers/assistant-sessions/index.mdx)。
 
 首次运行导入现存的全部会话，之后每 5 秒轮询一次。它只读取 `~/.claude` 和 `~/.codex` 下的文件，不启动这两个产品，也不改动它们的配置。
 
 | 文件 | 内容 |
 | --- | --- |
-| `Program.cs` | 连接 Runtime、登记 EntitySchema、每 5 秒轮询 |
+| `Program.cs` | 读取运行上下文、声明业务类型、每 5 秒轮询 |
 | `SourceFiles.cs` | 发现日志文件、文件身份、按段读取完整的行、解压归档 |
 | `ClaudeSource.cs`、`CodexSource.cs` | 两种来源的记录到交互的对应 |
 | `AssistantCollector.cs` | 每一轮的读取顺序和时间预算 |
-| `AssistantBatch.cs` | 组成批次，交给 Runtime 提交 |
-| `AssistantState.cs` | 数据目录中的 `capture.sqlite`：身份登记、读取进度、待配对的推理 |
+| `AssistantBatch.cs` | 组成一段日志的写入 |
+| `AssistantState.cs` | 数据目录中的 `capture.sqlite`：读取进度、待配对的推理 |
 
-它引用 `Orisumi.Observer.Sdk` 和 Core，通过标准输入和标准输出与 Runtime 通信。Codex 归档的 zstd 由随包发布的 ZstdSharp.Port 解压，不需要安装 zstd 命令。
+它引用 `Orisumi.Observer.Sdk` 和 Core。Codex 归档的 zstd 由随包发布的 ZstdSharp.Port 解压，不需要安装 zstd 命令。
 
 ## 运行
 
@@ -38,17 +36,17 @@ dotnet run --project src/Observers/Orisumi.Observer.Runtime -- \
 	--pairing-code <配对码>
 ```
 
-配对码在 Web 控制台的托管页用“接入”签发。Runtime 接入后端后才能提交；尚未接入时，数据请求返回不可用。按 Ctrl+C 停止，结束后删除数据目录。
+配对码在 Web 控制台的托管页用“接入”签发。尚未接入时，写入留在本地转发中，接入后送达。按 Ctrl+C 停止，结束后删除数据目录。
 
 首次运行会导入 `$HOME` 下的全部会话。只想导入几个会话时，把它们复制到一个临时目录的 `.claude/projects/<任意名>/` 或 `.codex/sessions/` 下，再用 `HOME=<临时目录>` 运行。
 
 ## 启动
 
-程序从 Runtime 的 `init` 读取 `instanceId`、`packageVersion` 和 `dataDirectory`，没有设置项。
+运行上下文的含义见 [Hosting · 运行上下文](../../Docs/Orisumi.Docs/content/docs/hosting/index.mdx#context)，没有设置项。
 
-- 启动时，程序登记所需的 EntitySchema 和程序实例，再回复 `ready`。
+- 启动时，程序声明业务类型，写入程序实例和运行设备。
 - 采集诊断写到标准错误，Runtime 把最近的一条作为采集提示报告给客户端。
-- 收到 `stop` 后，程序停止轮询，以 0 退出。初始化或运行失败时以 1 退出。
+- 标准输入关闭后，程序停止轮询，以 0 退出。初始化或运行失败时以 1 退出。
 
 ## 验证
 
@@ -63,5 +61,6 @@ orisumi verify checks --base HEAD --quality
 1. 在 Claude Code 或 Codex 中发一句话，10 秒内 Web 控制台的会话页出现这句话和助手的回复。
 2. 重启程序，已有的交互没有重复。
 3. 标准错误中的诊断只来自确实不认识的记录。
+4. 托管页这个实例的写入没有被拒绝的。
 
 Windows 和 Linux 没有运行验证。

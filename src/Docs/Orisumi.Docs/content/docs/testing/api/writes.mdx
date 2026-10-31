@@ -1,0 +1,43 @@
+---
+title: "Writes"
+description: "后端根据完整内容认出对象并形成版本"
+---
+
+export const caseId = 'api-writes';
+
+## 为什么验证 [#why]
+
+后端根据完整内容认出对象并形成版本，每次写入独立保存。契约见 [Writing](../../api/writing.mdx)。
+
+## 前置条件 [#setup]
+
+HTTP 用例经真实 API 和独立的 PostgreSQL 数据库运行。Runtime 使用临时数据目录；Observer 的读数、日志和模型回答由测试控制。实际运行的补充证据单独说明，见 [测试分工](../index.mdx#kinds)。
+
+## 操作与预期结果 [#steps]
+
+| 操作 | 预期结果 |
+| --- | --- |
+| 不带 `key`，两次写入相同的温度 | 形成两个实体和两份 Observation |
+| 同一 `key` 连续写相同内容、不同内容，再回到首版内容 | 相同内容沿用当前版本；两次变化各形成下一版 |
+| 引用目标只有版本变化，实体不变 | 引用按实体比较，业务内容不形成新版本 |
+| 带 `time` 写入；再重复；再改时间 | 形成 Observation；重复时沿用；时间变化时形成下一版 |
+| 一次写入违反规则，后面的写入有效 | 只回滚失败的写入，其内容、识别依据和 InputSet 都不留下 |
+| 已有实体，写入字段形状不符合 Schema 的内容 | 这次写入按 SCHEMA-2 被拒绝，同一请求的其他写入保存 |
+| 识别依据超过 2048 字节 | 这次写入被拒绝，同一请求的其他写入保存 |
+| 使用本 Observer 未声明的类型 | 这次写入被拒绝 |
+| 重发已处理的序号或更小的序号 | 返回 duplicate，不重新保存 |
+| 请求超过 10 MiB | 返回 413 |
+
+## 测试实现 [#implementation]
+
+方法位于 `tests/Orisumi.Integration.Tests/`：
+
+- 识别、版本、时间和序号：`WriteApiTests.RecognitionVersionsObservationsAndSequenceFollowTheWriteContract`。
+- 形状错误和过长的识别依据：`WriteApiTests.WrongShapeOnAnExistingEntityAndLongKeysRejectOnlyThatWrite`。
+- 逐次回滚：`WriteApiTests.RejectionRollsBackOnlyItsWriteIncludingKeysInputsAndContent`。
+- 输入集合复用与结构错误边界：`WriteApiTests.InputsShareOneSetAndContentAndSchemaFailuresHaveDifferentBoundaries`。
+- 并发识别和 HTTP 大小边界：`WriteApiTests.ConcurrentRecognitionPreservesOneChainAndHttpBoundariesRemainExplicit`。
+
+## 执行结果 [#results]
+
+<TestCaseResults caseId={caseId} />

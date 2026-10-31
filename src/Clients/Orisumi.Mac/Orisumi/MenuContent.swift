@@ -112,6 +112,14 @@ enum ObserverText {
         observer.error.map { [$0] } ?? []
     }
 
+    /// Forwarded requests still waiting and writes the backend rejected; nil when there are neither.
+    static func writes(_ observer: ObserverStatus) -> String? {
+        var parts: [String] = []
+        if observer.writes.pending > 0 { parts.append("\(observer.writes.pending) 个请求等待转发") }
+        if observer.writes.rejected > 0 { parts.append("\(observer.writes.rejected) 条被拒绝") }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
     static func hasFailure(_ model: RuntimeModel) -> Bool {
         if case .failed = model.state { return true }
         return model.observers.contains { $0.state == .failed }

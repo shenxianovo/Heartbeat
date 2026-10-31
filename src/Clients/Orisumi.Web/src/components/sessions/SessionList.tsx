@@ -30,7 +30,7 @@ export function SessionList({ groups, selected }: { groups: SessionGroup[]; sele
               </span>
             </span>
             <span className="text-fg mt-0.5 line-clamp-2 text-[13px] leading-snug font-medium">
-              {sessionTitle(session)}
+              {sessionTitle(group)}
             </span>
             <span className="text-fg-2 mt-1 block truncate text-xs">
               {[

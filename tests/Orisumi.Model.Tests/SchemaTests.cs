@@ -132,9 +132,9 @@ public sealed class SchemaTests
         using (var document = System.Text.Json.JsonDocument.Parse("""{"n":1,"s":"x"}"""))
             business = await f.Save(New(new BusinessContent(document.RootElement), schema.VersionId));
         await Assert.That(await f.Service.ReadVersionAsync(business.VersionId)).IsEqualTo(business);
-        bool Same(string json) => VersionRules.SameSubmission(business.Submission, business.Submission with { Content = new BusinessContent(Json(json)) });
-        await Assert.That(Same("""{"s":"x","n":1.0}""")).IsTrue();
-        await Assert.That(Same("""{"n":1}""")).IsFalse();
-        await Assert.That(Same("""{"n":1,"s":null}""")).IsFalse();
+        Task<bool> Same(string json) => VersionRules.SameBusinessContentAsync((EntitySchema)schema.Content, (BusinessContent)business.Content, new BusinessContent(Json(json)), _ => Task.FromResult<EntityId?>(null));
+        await Assert.That(await Same("""{"s":"x","n":1.0}""")).IsTrue();
+        await Assert.That(await Same("""{"n":1}""")).IsFalse();
+        await Assert.That(await Same("""{"n":1,"s":null}""")).IsFalse();
     }
 }

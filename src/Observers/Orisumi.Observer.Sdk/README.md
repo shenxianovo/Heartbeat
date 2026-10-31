@@ -1,28 +1,20 @@
 # Orisumi.Observer.Sdk
 
-.NET 编写的 Observer 用这个类库连接 [Runtime](../../Docs/Orisumi.Docs/content/docs/hosting/runtime.mdx)。它只处理标准输入和标准输出中的逐行 JSON：读取 `init` 和 `stop`，发出请求，把响应按 `id` 对应回去。目标的职责见 [API · SDK](../../Docs/Orisumi.Docs/content/docs/api/sdk.mdx)，这个类库尚未按它改写。
+.NET 编写的 Observer 用这个类库写入和读取。写入接口是全部契约，这个类库只省掉请求编码、文件上传和运行上下文的读取，方法的语义见 [API · SDK](../../Docs/Orisumi.Docs/content/docs/api/sdk.mdx)。
 
 ## 用法
 
 ```csharp
-await using var session = new PipeObserverSession(Console.In, Console.Out);
-var init = await session.Initialization;
-var instanceId = init.GetProperty("instanceId").GetGuid();
+await using var data = DataClient.Connect();
+await data.UseAsync(definitions, observerSchemaId, new { programVersion = data.PackageVersion });
 
-// 登记之后
-await session.RequestAsync("ready", JsonLines.Json(new { }), cancellationToken: session.Stopping);
-
-// 一次业务变化是一个批次，返回时已保存到后端
-var result = await session.RequestAsync("commit", JsonLines.Json(new { operations }));
+await data.WriteAsync(new(temperatureSchemaId, new { celsius = 21.5 }, Time: FactTime.Point(now, zone)));
 ```
 
-- `session.Stopping` 在收到 `stop` 或管道关闭时取消。业务代码据此结束并提交进行中的事实，然后退出。
-- 写入的内容中有 `binary` 字段时，用 `BinaryContent` 从字节和媒体类型生成描述：`Descriptor` 写进内容，`Payload` 放进同一批次的 `contents`。
-
-```csharp
-var icon = new BinaryContent(png, "image/png");
-await session.RequestAsync("commit", JsonLines.Json(new { operations, contents = new[] { icon.Payload } }));
-```
-
-- 后端拒绝提交时，`RequestAsync` 抛出 `SubmissionRejectedException`，带着 `Rule` 和被拒绝的 `VersionId`；后端不可用时抛出 `HttpRequestException`。
-- 日志和采集诊断写入标准错误，标准输出只写协议消息。
+- `Connect` 在受托管时从运行上下文读取地址，见 [Hosting · 运行上下文](../../Docs/Orisumi.Docs/content/docs/hosting/index.mdx#context)。直接运行时传入后端地址和用识别依据写的 Observer。
+- `data.Stopping` 在标准输入关闭时取消。业务代码据此结束并写入进行中的事实，然后退出。
+- `data.Direct` 连后端地址，同步得到写入结果；被拒绝时抛出 `WriteRejectedException`。写给本地转发时，收下就返回。
+- 内容中的 `binary` 字段写 `BinaryContent`，SDK 先上传字节，再发送写入。
+- 用到设备时，声明 `DeviceContext.Definition`，写入 `data.Device.Write`，用 `data.Device.Ref` 引用它。
+- 业务类型的声明保存为嵌入资源的 JSON，用 `SchemaDefinition.Load` 读取。
+- 日志和采集诊断写入标准错误。

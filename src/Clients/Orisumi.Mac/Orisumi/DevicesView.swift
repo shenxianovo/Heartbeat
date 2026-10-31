@@ -162,6 +162,12 @@ struct LocalInspector: View {
                 if let diagnostic = observer.diagnostic {
                     Text(diagnostic).foregroundStyle(.secondary).textSelection(.enabled)
                 }
+                if let writes = ObserverText.writes(observer) {
+                    LabeledContent("写入", value: writes)
+                }
+                if let rejection = observer.writes.lastRejection {
+                    Text(rejection).foregroundStyle(.red).textSelection(.enabled)
+                }
             }
             if observer.installed && !observer.removed {
                 SettingsSection(settings: observer.settings, disabled: busy) { value in
@@ -181,6 +187,9 @@ struct LocalInspector: View {
                     }
                     if observer.state == .failed {
                         Button("重试") { Task { await model.retry(observer.packageId) } }.disabled(busy)
+                    }
+                    if observer.writes.rejected > 0 {
+                        Button("重发被拒绝的写入") { Task { await model.resendRejected(observer.packageId) } }.disabled(busy)
                     }
                     Button("在窗口中查看") { show() }
                     Button("卸载…") { uninstalling = true }.disabled(busy)
@@ -325,7 +334,7 @@ struct RemoteRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            ObserverIcon(packageId: instance.instanceKey, size: 28)
+            ObserverIcon(packageId: instance.packageId, size: 28)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(instance.name)
@@ -367,7 +376,7 @@ struct RemoteInspector: View {
         let writable = !host.revoked && !instance.removed
         Form {
             Section {
-                InspectorTitle(packageId: instance.instanceKey, name: instance.name, detail: instance.version.map { "版本 \($0)" })
+                InspectorTitle(packageId: instance.packageId, name: instance.name, detail: instance.version.map { "版本 \($0)" })
             }
             Section("状态") {
                 LabeledContent("配置", value: instance.enabled ? "启用" : "停用")
@@ -391,9 +400,9 @@ struct RemoteInspector: View {
                 }
                 Section {
                     HStack {
-                        Button("更新") { run("update") }
+                        Button("更新") { runPackage("update") }
                         Button("重试") { run("retry") }
-                        Button("卸载") { run("uninstall") }
+                        Button("卸载") { runPackage("uninstall") }
                     }
                     .disabled(!host.connected || management.busy)
                 } header: {
@@ -421,6 +430,10 @@ struct RemoteInspector: View {
 
     private func run(_ action: String) {
         Task { await management.execute(host: host.id, action: action, instance: instance.id) }
+    }
+
+    private func runPackage(_ action: String) {
+        Task { await management.execute(host: host.id, action: action, package: instance.packageId) }
     }
 
     private var maintenanceNote: String {
@@ -531,7 +544,7 @@ struct RemotePackageSheet: View {
     }
 
     private func row(_ package: CatalogPackage) -> some View {
-        let same = management.instances.filter { $0.hostId == host.id && $0.instanceKey == package.id }
+        let same = management.instances.filter { $0.hostId == host.id && $0.packageId == package.id }
         let fresh = !same.isEmpty && same.allSatisfy(\.removed)
         let installed = package.installedVersion != nil && !fresh
         return HStack(spacing: 12) {

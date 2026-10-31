@@ -1,5 +1,5 @@
 using System.Text.Json;
-using Orisumi.Observer.Sdk;
+using Orisumi.Observer.Runtime.Forwarding;
 
 namespace Orisumi.Observer.Runtime;
 
@@ -7,19 +7,21 @@ internal sealed partial class RuntimeHost : IAsyncDisposable
 {
     private readonly PackageStore _packages;
     private readonly HttpClient _http;
-    private readonly RuntimeReader _reader;
+    private readonly ForwardingServer _forwarding = new();
+    private readonly string? _device;
     private readonly Dictionary<Guid, ManagedObserver> _observers = new();
 
-    public RuntimeHost(PackageStore packages, HttpClient http, bool service = false)
+    public RuntimeHost(PackageStore packages, HttpClient http, bool service = false, string? device = null)
     {
         _packages = packages;
         _connection = new(packages.Root, http, service);
         _http = _connection.Client;
-        _reader = new(_http, () => _connection.CanConnect);
+        _device = device;
     }
 
     public async Task InitializeAsync(CancellationToken token, string? runPackage = null)
     {
+        await _forwarding.StartAsync(token);
         foreach (var package in _packages.Bundled())
             if (!_packages.Observers.Any(observer => observer.PackageId == package.Id))
             {
@@ -29,15 +31,16 @@ internal sealed partial class RuntimeHost : IAsyncDisposable
             }
         foreach (var registration in _packages.Observers)
         {
-            var observer = new ManagedObserver(_packages, registration, _http, () => _connection.CanConnect);
+            var observer = new ManagedObserver(_packages, registration, _connection, _forwarding, _device);
             _observers.Add(registration.InstanceId, observer);
+            if (registration.Removed) { _forwarding.Remove(registration.InstanceId); await observer.Writes.DeleteAsync(); }
             if (runPackage is null || registration.PackageId == runPackage) observer.Start();
         }
     }
 
     public async Task ServeAsync(TextReader input, TextWriter output, CancellationToken token)
     {
-        while (!token.IsCancellationRequested && await JsonLines.ReadAsync(input, token) is { } line)
+        while (!token.IsCancellationRequested && await ClientProtocol.ReadAsync(input, token) is { } line)
         {
             string? id = null;
             object response;
@@ -65,7 +68,7 @@ internal sealed partial class RuntimeHost : IAsyncDisposable
                 };
                 response = new { id, error = new { code, message = exception.Message } };
             }
-            await JsonLines.WriteAsync(output, JsonSerializer.Serialize(response, JsonSerializerOptions.Web), token);
+            await ClientProtocol.WriteAsync(output, JsonSerializer.Serialize(response, JsonSerializerOptions.Web), token);
             if (shutdown) return;
         }
     }
@@ -80,24 +83,22 @@ internal sealed partial class RuntimeHost : IAsyncDisposable
     {
         switch (method)
         {
-            case "pair": return JsonLines.Json(new { hostId = await _connection.PairAsync(parameters.GetProperty("code").GetString()!, parameters.GetProperty("name").GetString()!, token) });
-            case "list": return JsonLines.Json(new { host = new { hostId = _connection.Identity?.HostId, connection = _connection.State },
+            case "pair": return ClientProtocol.Json(new { hostId = await PairAndRestartAsync(parameters.GetProperty("code").GetString()!, parameters.GetProperty("name").GetString()!, token) });
+            case "list": return ClientProtocol.Json(new { host = new { hostId = _connection.Identity?.HostId, connection = _connection.State },
                 observers = _observers.Values.Select(Status).ToArray() });
             case "catalog":
                 var catalog = await _packages.CatalogAsync(token);
-                return JsonLines.Json(new { packages = catalog.Select(package => new
+                return ClientProtocol.Json(new { packages = catalog.Select(package => new
                 {
                     package.Id, package.Name, package.Description, package.Version, package.Target, package.Format, package.Protocol,
                     installedVersion = Active(package.Id) is { Registration.Installed: true } observer ? observer.Registration.Version : null,
                     compatible = package.Target == PackageStore.Target && package.Protocol == 1 && package.Format == 1,
                 }) });
             case "install": case "update":
-                if (method == "update") _ = Find(parameters);
-                await InstallAsync(parameters.GetProperty("packageId").GetString()!, method == "update", parameters.TryGetProperty("newInstance", out var fresh) && fresh.GetBoolean(), token);
-                break;
+                return await InstallAsync(parameters, method == "update", token);
             case "setEnabled": case "retry": case "setSettings":
             {
-                var observer = Find(parameters);
+                var observer = FindInstance(parameters);
                 if (!observer.Registration.Installed) throw new InvalidOperationException("Install the Observer first.");
                 if (observer.Registration.Removed) throw new InvalidOperationException("This instance was deleted.");
                 if (method == "setSettings" && parameters.GetProperty("settings").ValueKind != JsonValueKind.Object) throw new ArgumentException("settings must be an object.");
@@ -119,15 +120,15 @@ internal sealed partial class RuntimeHost : IAsyncDisposable
                 await observer.StopAsync();
                 var directory = Path.GetDirectoryName(_packages.PackageDirectory(item.PackageId, item.Version))!;
                 if (Directory.Exists(directory)) Directory.Delete(directory, true);
-                break;
+                return ClientProtocol.Json(new { packageId = item.PackageId, instanceId = item.InstanceId });
             }
-            case "content": return await _reader.ContentAsync(parameters, token);
-            case "read": return await _reader.ReadAsync(FindInstance(parameters), parameters, token);
-            case "versions": return await RuntimeReader.VersionsAsync(FindInstance(parameters), parameters, token);
+            case "connection": return ClientProtocol.Json(new { hostId = _connection.Identity?.HostId,
+                api = new { url = _http.BaseAddress!.AbsoluteUri, credential = _connection.Identity?.Credential }, connection = _connection.State });
+            case "resendRejected": return ClientProtocol.Json(new { count = await FindInstance(parameters).Writes.ResendRejectedAsync(token) });
             case "shutdown": await StopAsync(); break;
             default: throw new ArgumentException("Unknown Client method: " + method);
         }
-        return JsonLines.Json(new { });
+        return ClientProtocol.Json(new { });
     }
 
     private ManagedObserver? Active(string id) => _observers.Values.LastOrDefault(observer => observer.Registration.PackageId == id && !observer.Registration.Removed)
@@ -135,34 +136,38 @@ internal sealed partial class RuntimeHost : IAsyncDisposable
     private ManagedObserver Find(JsonElement parameters)
     {
         var observer = Active(parameters.GetProperty("packageId").GetString()!) ?? throw new KeyNotFoundException("Observer is not installed.");
-        if (parameters.TryGetProperty("expectedInstanceId", out var expected) && expected.ValueKind != JsonValueKind.Null
-            && observer.Registration.InstanceId != expected.GetGuid()) throw new InvalidOperationException("The target instance was replaced.");
         return observer;
     }
     private ManagedObserver FindInstance(JsonElement parameters) => _observers.Values.FirstOrDefault(observer => observer.Registration.InstanceId == parameters.GetProperty("instanceId").GetGuid())
         ?? throw new KeyNotFoundException("Unknown program instance.");
 
-    private async Task InstallAsync(string id, bool updating, bool newInstance, CancellationToken token)
+    private async Task<JsonElement> InstallAsync(JsonElement parameters, bool updating, CancellationToken token)
     {
-        var existing = Active(id);
-        if (existing?.Registration.Removed == true && (!newInstance || updating)) throw new InvalidOperationException("The previous instance was deleted; explicitly create a new instance.");
+        var id = parameters.TryGetProperty("packageId", out var packageId) && packageId.ValueKind == JsonValueKind.String ? packageId.GetString() : null;
+        PackageManifest manifest;
+        if (parameters.TryGetProperty("url", out var url) && url.ValueKind == JsonValueKind.String)
+            manifest = await _packages.PrepareUrlAsync(url.GetString()!, parameters.TryGetProperty("sha256", out var hash) ? hash.GetString() : null, token);
+        else
+        {
+            var package = (await _packages.CatalogAsync(token)).FirstOrDefault(package => package.Id == id)
+                ?? throw new KeyNotFoundException("This Observer is not in the official catalog.");
+            manifest = await _packages.PrepareAsync(package, token);
+        }
+        var existing = Active(manifest.Id);
         if (existing?.Registration.Removed == true) existing = null;
-        if (!updating && existing?.Registration.Installed == true) return;
         if (updating && existing?.Registration.Installed != true) throw new InvalidOperationException("Install the Observer first.");
-        var package = (await _packages.CatalogAsync(token)).FirstOrDefault(package => package.Id == id)
-            ?? throw new KeyNotFoundException("This Observer is not in the official catalog.");
-        if (existing?.Registration.Installed == true && Version.Parse(package.Version) <= Version.Parse(existing.Registration.Version)) return;
-        var manifest = await _packages.PrepareAsync(package, token);
+        if (existing?.Registration.Installed == true && Version.Parse(manifest.Version) <= Version.Parse(existing.Registration.Version))
+            return ClientProtocol.Json(new { packageId = manifest.Id, instanceId = existing.Registration.InstanceId });
         if (existing is not null) await existing.StopAsync();
-        var enabled = updating ? existing!.Registration.Enabled : true;
-        var registration = _packages.Register(manifest, enabled, newInstance, updating);
+        var registration = _packages.Register(manifest, updating ? existing!.Registration.Enabled : true, updating);
         if (existing is null)
         {
-            existing = new(_packages, registration, _http, () => _connection.CanConnect);
+            existing = new(_packages, registration, _connection, _forwarding, _device);
             _observers.Add(registration.InstanceId, existing);
         }
         else existing.SetRegistration(registration);
         existing.Start();
+        return ClientProtocol.Json(new { packageId = registration.PackageId, instanceId = registration.InstanceId });
     }
 
     public Task StopAsync() => Task.WhenAll(_observers.Values.Select(observer => observer.StopAsync()));
@@ -171,6 +176,7 @@ internal sealed partial class RuntimeHost : IAsyncDisposable
         await _syncStop.CancelAsync();
         if (_sync is not null) await _sync;
         await Task.WhenAll(_observers.Values.Select(observer => observer.DisposeAsync().AsTask()));
+        await _forwarding.DisposeAsync();
         _syncStop.Dispose(); _gate.Dispose(); _connection.Dispose();
     }
 }

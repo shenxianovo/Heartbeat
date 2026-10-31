@@ -2,12 +2,11 @@ import Foundation
 import Testing
 @testable import OrisumiClient
 
-/// Serves `read` pages and `versions` from tables, and counts version lookups.
+/// Serves pages and versions from tables, and counts version lookups.
 @MainActor
-final class FakeReader: RuntimeReading {
+final class FakeReader: DataReading {
     var pages: [String?: String] = [:]
     var versions: [UUID: String] = [:]
-    var expiredOnce = false
     /// When set, the backend read fails.
     var versionsError: String?
     var queries: [ReadQuery] = []
@@ -15,20 +14,17 @@ final class FakeReader: RuntimeReading {
 
     func read<Content: Decodable & Sendable>(_ query: ReadQuery, as: Content.Type) async throws -> ReadResult<Content> {
         queries.append(query)
-        if query.cursor != nil, expiredOnce {
-            expiredOnce = false
-            throw RuntimeError.remote(code: "conflict", message: "expired")
-        }
         return try RuntimeJSON.decoder.decode(ReadResult<Content>.self, from: Data(pages[query.cursor]!.utf8))
     }
 
-    func versions<Content: Decodable & Sendable>(instanceId: UUID, _ ids: [UUID], as: Content.Type) async throws
-        -> VersionsResult<Content> {
+    func versions<Content: Decodable & Sendable>(_ ids: [UUID], as: Content.Type) async throws -> VersionsResult<Content> {
         lookedUp += ids
         if let versionsError { throw RuntimeError.remote(code: "unavailable", message: versionsError) }
-        let found = ids.compactMap { versions[$0] }
-        let missing = ids.filter { versions[$0] == nil }.map { #""\#($0.uuidString)""# }
-        let text = #"{"versions":[\#(found.joined(separator: ","))],"missing":[\#(missing.joined(separator: ","))]}"#
+        let results = ids.map { id in
+            versions[id].map { #"{"versionId":"\#(id.uuidString)","status":"found","version":\#($0)}"# }
+                ?? #"{"versionId":"\#(id.uuidString)","status":"deleted"}"#
+        }
+        let text = #"{"results":[\#(results.joined(separator: ","))]}"#
         return try RuntimeJSON.decoder.decode(VersionsResult<Content>.self, from: Data(text.utf8))
     }
 }
@@ -48,8 +44,8 @@ struct ObservationReaderTests {
     static func reader() -> FakeReader {
         let reader = FakeReader()
         reader.pages = [
-            nil: #"{"observations":[\#(observation(1, codex))],"next":"page-2"}"#,
-            "page-2": #"{"observations":[\#(observation(2, safari)),\#(observation(3, deleted))],"next":null}"#,
+            nil: #"{"versions":[\#(observation(1, codex))],"next":"page-2"}"#,
+            "page-2": #"{"versions":[\#(observation(2, safari)),\#(observation(3, deleted))],"next":null}"#,
         ]
         reader.versions = [
             codex: #"{"versionId":"\#(codex.uuidString)","entityId":"019e1bbb-ec00-7000-8000-0000000000c1","content":{"name":"Codex","localApplicationVersionId":"\#(application.uuidString)"}}"#,
@@ -59,7 +55,7 @@ struct ObservationReaderTests {
         return reader
     }
 
-    @Test func readsTodaysPeriodsAcrossPagesThroughRuntime() async throws {
+    @Test func readsTodaysPeriodsAcrossPages() async throws {
         let reader = Self.reader()
         let foreground = ForegroundReader()
         let today = try await foreground.today(instanceId: Self.instance, day: ActivityTests.day, from: reader)
@@ -78,7 +74,7 @@ struct ObservationReaderTests {
         #expect(Set(reader.lookedUp) == [Self.codex, Self.safari, Self.deleted, Self.application])
     }
 
-    @Test func forgetsCachedContentThatRuntimeReportsMissing() async throws {
+    @Test func forgetsCachedContentThatWasDeleted() async throws {
         let reader = Self.reader()
         let foreground = ForegroundReader()
         let first = try await foreground.today(instanceId: Self.instance, day: ActivityTests.day, from: reader)
@@ -115,12 +111,12 @@ struct ObservationReaderTests {
         }
     }
 
-    @Test func startsOverWhenTheCursorExpired() async throws {
-        let reader = Self.reader()
-        reader.expiredOnce = true
-        let today = try await ForegroundReader().today(instanceId: Self.instance, day: ActivityTests.day, from: reader)
-        #expect(today.items.count == 2)
-        #expect(reader.queries.map(\.cursor) == [nil, "page-2", nil, "page-2"])
+    @Test func encodesTheObservationQuery() {
+        let day = DateInterval(start: Date(timeIntervalSince1970: 0), duration: 3600)
+        let path = ReadQuery(instanceId: Self.instance, during: day, resourceName: "periods", descending: true, cursor: "a+b=").path
+        #expect(path.hasPrefix("observations?observerEntityId=\(Self.instance.uuidString.lowercased())&from="))
+        #expect(!path.dropFirst("observations?".count).contains("+"))
+        #expect(path.hasSuffix("&limit=200&resourceName=periods&order=desc&after=a%2Bb%3D"))
     }
 
     @Test func readsRecentObservationsWithPlainContent() async throws {

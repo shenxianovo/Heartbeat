@@ -17,7 +17,7 @@ description: "前台应用时段与窗口标题时段"
 | --- | --- | --- |
 | [Foreground State Observer](./foreground-state-observer.mdx) | 程序实例自身：一个前台状态 Observer | `foreground-state-observers` |
 | [Local Application](./local-application.mdx) | 被应用时段引用：设备上的一个应用安装 | `local-applications` |
-| [Device](../device-state/device.mdx) | 被本机应用引用：应用所在的设备，由配置给出 | `devices` |
+| [Device](../device-state/device.mdx) | 被本机应用引用：应用所在的设备，程序启动时写入 | `devices` |
 | [Foreground Application Period](./foreground-application-period.mdx) | 观测内容：应用处于前台的一个时段 | `foreground-application-periods` |
 | [Foreground Window Title](./foreground-window-title.mdx) | 观测内容：窗口标题的一个时段 | 待定 |
 
@@ -43,7 +43,7 @@ flowchart LR
 
 - 一个程序实例对应运行的一个前台状态 Observer。同一台设备上可以有两个，它们共用同样的本机应用，各自形成观测。
 - 程序版本取运行上下文中的安装包版本，见 [Hosting · 运行上下文](../../hosting/index.mdx#context)。
-- 本机应用所在的设备取运行上下文中的运行设备。没有运行设备时，它报告缺少配置并等待，见 [Hosting · 运行上下文](../../hosting/index.mdx#context)。
+- 本机应用所在的设备是运行上下文中的运行设备，程序启动时写入它。读不到运行设备时，它报告诊断并等待，见 [Hosting · 运行上下文](../../hosting/index.mdx#context)。
 
 ## 采集 [#collection]
 
@@ -51,7 +51,7 @@ flowchart LR
 
 - 启动时，读取一次当前状态。
 - macOS 报告应用激活、焦点窗口切换或窗口标题变化时，立即读取。切换应用或焦点窗口后，监听目标随之更新。
-- 默认每秒定时读取一次，确认当前状态。
+- 定时读取，确认当前状态。间隔是设置 `intervalMs`，100 到 60000 毫秒，默认每秒一次。
 
 macOS 唤醒后立即重新读取。休眠、读取失败等情况下时段怎样结束和重新开始，见 [Foreground Application Period · 事实时间](./foreground-application-period.mdx#fact-time)。
 

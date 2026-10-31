@@ -154,12 +154,16 @@ public final class RuntimeModel {
     }
 
     public func retry(_ packageId: String) async {
-        await manage(packageId) { try await self.send("retry", PackageRequest(packageId: packageId)) }
+        await manage(packageId) { try await self.send("retry", InstanceRequest(instanceId: try self.instance(packageId))) }
+    }
+
+    public func resendRejected(_ packageId: String) async {
+        await manage(packageId) { try await self.send("resendRejected", InstanceRequest(instanceId: try self.instance(packageId))) }
     }
 
     public func setEnabled(_ packageId: String, _ enabled: Bool) async {
         await manage(packageId) {
-            try await self.send("setEnabled", EnableRequest(packageId: packageId, enabled: enabled))
+            try await self.send("setEnabled", EnableRequest(instanceId: try self.instance(packageId), enabled: enabled))
         }
     }
 
@@ -167,7 +171,13 @@ public final class RuntimeModel {
         await manage("pairing") { try await self.send("pair", PairRequest(code: code, name: name)) }
     }
     public func setSettings(_ packageId: String, settings: JSONValue) async {
-        await manage(packageId) { try await self.send("setSettings", SettingsRequest(packageId: packageId, settings: settings)) }
+        await manage(packageId) {
+            try await self.send("setSettings", SettingsRequest(instanceId: try self.instance(packageId), settings: settings))
+        }
+    }
+    private func instance(_ packageId: String) throws -> UUID {
+        guard let observer = observer(packageId) else { throw RuntimeError.remote(code: "not_found", message: "Observer 不存在") }
+        return observer.instanceId
     }
     private func manage(_ packageId: String, _ operation: @escaping () async throws -> Void) async {
         guard !busy.contains(packageId) else { return }
@@ -187,68 +197,21 @@ public final class RuntimeModel {
         let _: Ignored = try await call(method, parameters)
     }
 
-    private func call<Result: Decodable>(_ method: String, _ parameters: some Encodable) async throws -> Result {
+    func call<Result: Decodable>(_ method: String, _ parameters: some Encodable) async throws -> Result {
         let data = try await transport.request(method, try JSONEncoder().encode(parameters))
         do { return try RuntimeJSON.decoder.decode(Result.self, from: data) } catch { throw RuntimeError.invalidResponse }
     }
 
-    private struct Empty: Encodable {}
+    struct Empty: Encodable {}
     private struct Ignored: Decodable { init(from decoder: any Decoder) {} }
     private struct PairRequest: Encodable { var code: String; var name: String }
-    private struct SettingsRequest: Encodable { var packageId: String; var settings: JSONValue }
+    private struct SettingsRequest: Encodable { var instanceId: UUID; var settings: JSONValue }
     private struct InstallRequest: Encodable { var packageId: String; var newInstance: Bool }
     private struct PackageRequest: Encodable { var packageId: String }
-    private struct EnableRequest: Encodable { var packageId: String; var enabled: Bool }
+    private struct InstanceRequest: Encodable { var instanceId: UUID }
+    private struct EnableRequest: Encodable { var instanceId: UUID; var enabled: Bool }
     private struct ObserverList: Decodable { var host: RuntimeHostStatus; var observers: [ObserverStatus] }
     private struct CatalogList: Decodable { var packages: [CatalogPackage] }
-    private struct VersionsRequest: Encodable { var instanceId: UUID; var versionIds: [UUID] }
-    private struct ContentRequest: Encodable { var digest: String }
-    private struct ContentResult: Decodable { var data: Data }
-
-    /// The bytes of one binary content, from a local unsent version or from the backend.
-    public func content(digest: String) async throws -> Data {
-        let result: ContentResult = try await call("content", ContentRequest(digest: digest))
-        return result.data
-    }
-}
-
-/// Reading through Runtime, for views.
-@MainActor
-public protocol RuntimeReading: AnyObject {
-    func read<Content: Decodable & Sendable>(_ query: ReadQuery, as: Content.Type) async throws -> ReadResult<Content>
-    func versions<Content: Decodable & Sendable>(instanceId: UUID, _ ids: [UUID], as: Content.Type) async throws
-        -> VersionsResult<Content>
-}
-
-public struct ReadQuery: Encodable, Equatable, Sendable {
-    public var instanceId: UUID
-    public var from: String
-    public var to: String
-    public var resourceName: String?
-    public var limit: Int
-    public var cursor: String?
-
-    public init(instanceId: UUID, during interval: DateInterval, resourceName: String? = nil, limit: Int = 200,
-                cursor: String? = nil) {
-        self.instanceId = instanceId
-        self.from = RuntimeJSON.format(interval.start)
-        self.to = RuntimeJSON.format(interval.end)
-        self.resourceName = resourceName
-        self.limit = limit
-        self.cursor = cursor
-    }
-}
-
-extension RuntimeModel: RuntimeReading {
-    public func read<Content: Decodable & Sendable>(_ query: ReadQuery, as: Content.Type) async throws
-        -> ReadResult<Content> {
-        try await call("read", query)
-    }
-
-    public func versions<Content: Decodable & Sendable>(instanceId: UUID, _ ids: [UUID], as: Content.Type) async throws
-        -> VersionsResult<Content> {
-        try await call("versions", VersionsRequest(instanceId: instanceId, versionIds: ids))
-    }
 }
 
 /// What the add sheet offers for one package.

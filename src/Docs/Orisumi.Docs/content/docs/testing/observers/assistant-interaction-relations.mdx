@@ -22,9 +22,9 @@ export const caseId = 'assistant-interaction-relations';
 | 调用之后没有结果 | 只有调用的交互 |
 | 工具结果的 `is_error` 为 `true`，或 Codex 的 `status` 为 `failed` | 形成 `isError` 为 `true` 的 `tool-result` |
 | Claude Code 中回到第二句话重新提问，形成两条分支 | 两条分支的交互都保留，各自的 `sourceParentId` 与来源相同 |
-| Claude Code 的子 Agent 文件，`meta.json` 带 `toolUseId` | 形成子 Agent 的会话，`parentSessionVersionId` 指向父会话，`spawnCallId` 等于父会话中调用的 `callId` |
+| Claude Code 的子 Agent 文件，`meta.json` 带 `toolUseId` | 形成两个会话和子 Agent 关系，关系的 `parentSessionVersionId` 指向父会话，`spawnCallId` 等于父会话中调用的 `callId` |
 | Codex 的子 Agent rollout，`source.subagent` 带父会话的标识 | 同上；子 Agent 会话中的 `UserMessage` 的 `actor` 为 `agent` |
-| 子 Agent 的文件先于父会话的文件被读到 | 父会话先形成，子 Agent 的会话再引用它 |
+| 子 Agent 的文件先于父会话的文件被读到 | 先形成两个会话，再由关系引用它们 |
 
 ## 测试实现 [#implementation]
 
@@ -36,6 +36,8 @@ export const caseId = 'assistant-interaction-relations';
 - 两种来源的子 Agent 先于父会话读到、`spawnCallId`、子 Agent 会话中消息的发出方：`AssistantMappingTests.ChildFilesBeforeParentsKeepParentIdentityAndSpawnCall`。
 
 未覆盖：调用之后没有结果。
+
+子 Agent 关系保存在 `assistant-subagents`，会话只含 product 和 sourceSessionId。调用不存在时的空引用另由 `AssistantMappingTests.ClaudeSeparatesRolesAndPreservesMixedContentAndResponseBlocks` 检查。
 
 ## 执行结果 [#results]
 

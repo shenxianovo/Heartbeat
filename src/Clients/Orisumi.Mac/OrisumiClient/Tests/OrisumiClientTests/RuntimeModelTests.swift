@@ -42,9 +42,9 @@ struct RuntimeModelTests {
     static let list = """
         {"host":{"hostId":null,"connection":"unpaired"},"observers":[
           {"packageId":"foreground-state","name":"Foreground State","version":"0.1.0","instanceId":"\(instance)","installed":true,
-           "removed":false,"settings":{},"sync":{"revision":0,"pendingChanges":0,"error":null},"enabled":true,"state":"running","error":null,"diagnostic":"Accessibility denied"},
+           "removed":false,"settings":{},"sync":{"revision":0,"pendingChanges":0,"error":null},"enabled":true,"state":"running","error":null,"diagnostic":"Accessibility denied","writes":{"pending":2,"rejected":1,"lastRejection":"SCHEMA-2"}},
           {"packageId":"old","name":"Old","version":null,"instanceId":"019e1bbb-ec00-7000-8000-0000000000f2","installed":false,
-           "removed":false,"settings":{},"sync":{"revision":0,"pendingChanges":0,"error":null},"enabled":false,"state":"stopped","error":null}
+           "removed":false,"settings":{},"sync":{"revision":0,"pendingChanges":0,"error":null},"enabled":false,"state":"stopped","error":null,"writes":{"pending":0,"rejected":0,"lastRejection":null}}
         ]}
         """
 
@@ -58,6 +58,7 @@ struct RuntimeModelTests {
         #expect(model.installed.map(\.packageId) == ["foreground-state"])
         #expect(model.uninstalled.map(\.packageId) == ["old"])
         #expect(model.observer("foreground-state")?.diagnostic == "Accessibility denied")
+        #expect(model.observer("foreground-state")?.writes == .init(pending: 2, rejected: 1, lastRejection: "SCHEMA-2"))
     }
 
     @Test func sendsManagementRequestsAndRefreshesAfterwards() async {
@@ -69,8 +70,10 @@ struct RuntimeModelTests {
             """)
         let model = RuntimeModel(transport: transport)
         model.start()
+        await model.refresh()
         await model.setEnabled("foreground-state", false)
-        #expect(transport.requests.contains { $0.method == "setEnabled" && $0.parameters.contains(#""enabled":false"#) })
+        #expect(transport.requests.contains { $0.method == "setEnabled" && $0.parameters.contains(#""enabled":false"#)
+            && $0.parameters.contains(Self.instance.uppercased()) })
         #expect(transport.requests.suffix(2).map(\.method) == ["list", "catalog"])
         #expect(model.update(for: "foreground-state")?.version == "0.2.0")
         #expect(model.busy.isEmpty)

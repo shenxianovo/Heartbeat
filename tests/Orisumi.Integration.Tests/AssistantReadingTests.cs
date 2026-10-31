@@ -61,13 +61,13 @@ public sealed class AssistantReadingTests
         using var fixture = new AssistantTestFixture();
         var path = fixture.Write("codex/sessions/rollout-main.jsonl", Meta(), Item("UserMessage", "user", Fields("""{"content":[{"type":"text","text":"hello"}]}""")));
         await fixture.Collector.PollAsync();
-        var original = fixture.Interactions().Select(value => value.Version.VersionId).ToArray();
+        var original = fixture.Interactions().Select(value => value.VersionId).ToArray();
         var archive = Path.Combine(fixture.Codex, "archived_sessions", "rollout-main.jsonl.zst");
         Directory.CreateDirectory(Path.GetDirectoryName(archive)!);
         using (var compressor = new Compressor()) await File.WriteAllBytesAsync(archive, compressor.Wrap(await File.ReadAllBytesAsync(path)).ToArray());
         File.Delete(path);
         await fixture.Collector.PollAsync();
-        await Assert.That(fixture.Interactions().Select(value => value.Version.VersionId).SequenceEqual(original)).IsTrue();
+        await Assert.That(fixture.Interactions().Select(value => value.VersionId).SequenceEqual(original)).IsTrue();
         await Assert.That(Directory.GetFiles(Path.Combine(fixture.StateDirectory, "archives")).Length).IsEqualTo(0);
         fixture.Restart();
         await fixture.Collector.PollAsync();
@@ -95,11 +95,11 @@ public sealed class AssistantReadingTests
     {
         using var fixture = new AssistantTestFixture();
         var path = fixture.Write("claude/projects/project/main.jsonl", ClaudeMessage("u1", "one"));
-        fixture.Backend.Offline = true;
+        fixture.Offline = true;
         await fixture.Collector.PollAsync();
         await Assert.That(fixture.Diagnostics.Count).IsEqualTo(1);
         await Assert.That(fixture.State.Read<FileProgress>(AssistantState.Key("file", path))).IsNull();
-        fixture.Backend.Offline = false;
+        fixture.Offline = false;
         await fixture.Collector.PollAsync();
         await Assert.That(fixture.Interactions().Count).IsEqualTo(1);
         await Assert.That(fixture.State.Read<FileProgress>(AssistantState.Key("file", path))!.Offset).IsEqualTo(new FileInfo(path).Length);
@@ -135,7 +135,7 @@ public sealed class AssistantReadingTests
         await Assert.That(reasoning.GetProperty("sourceEntries").GetArrayLength()).IsEqualTo(2);
         await Assert.That(string.Join(',', reasoning.GetProperty("parts").EnumerateArray().Select(part => part.Text("type")))).IsEqualTo("summary,text,opaque");
         var descriptor = reasoning.GetProperty("sourceEntries")[1];
-        var bytes = fixture.Backend.Contents[descriptor.Text("digest")!];
+        var bytes = await fixture.Bytes(descriptor.Text("digest")!);
         await Assert.That(bytes.SequenceEqual(raw)).IsTrue();
     }
 }

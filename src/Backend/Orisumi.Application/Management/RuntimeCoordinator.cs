@@ -118,7 +118,7 @@ public sealed class RuntimeCoordinator(IManagementStore store, TimeProvider cloc
                         operation.Delivered = clock.GetUtcNow();
                         operation.Value = operation.Value with { State = "delivered" };
                         var value = operation.Value;
-                        operations.Add(new(value.OperationId, value.Action, value.EntityId, value.PackageId, value.NewInstance));
+                        operations.Add(new(value.OperationId, value.Action, value.EntityId, value.PackageId, value.Url));
                     }
                 }
                 if (instances.Length > 0 || operations.Count > 0 || clock.GetUtcNow() >= end) return new(instances, operations);
@@ -154,7 +154,7 @@ public sealed class RuntimeCoordinator(IManagementStore store, TimeProvider cloc
             Prune();
             if (!ConnectedUnderLock(host)) throw new ManagementException(409, "host_offline", "The host is offline.");
             operation = new(Guid.CreateVersion7(), host, request.Action, request.EntityId, request.PackageId,
-                request.NewInstance, "queued", null, null);
+                request.Url, "queued", null, null);
             _operations.Add(operation.OperationId, new(operation, clock.GetUtcNow()));
         }
         Notify();

@@ -1,3 +1,4 @@
+using Orisumi.Testing;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -9,7 +10,7 @@ namespace Orisumi.Integration.Tests;
 public sealed class AssistantSubmissionTests
 {
     [Test, Property("caseId", "assistant-raw-entries")]
-    public async Task RawBytesAndPointersRoundTripThroughRuntimeAndRealApi()
+    public async Task RawBytesAndPointersRoundTripThroughSdkAndRealApi()
     {
         await using var database = await DatabaseFixture.CreateAsync();
         await using var factory = new OrisumiApiFactory(database.ConnectionString);
@@ -26,14 +27,14 @@ public sealed class AssistantSubmissionTests
         fixture.Write("codex/sessions/rollout-main.jsonl", Meta(), Item("UserMessage", "local-image", fields),
             Item("CommandExecution", "call", Fields("""{"command":["echo","ok"],"aggregated_output":"complete output","status":"completed","exit_code":0}""")));
         await fixture.Collector.PollAsync();
-        var versions = fixture.Interactions().Select(value => value.Version).ToArray();
+        var versions = fixture.Interactions().Select(value => value).ToArray();
         // Only the missing local image is diagnosed; every batch was saved.
         await Assert.That(fixture.Diagnostics.All(message => message.Contains("missing.png", StringComparison.Ordinal))).IsTrue();
         foreach (var version in versions)
         {
             using var response = await http.GetAsync("versions/" + version.VersionId.Value);
             response.EnsureSuccessStatusCode();
-            var saved = (await EntityApiTests.Json(response)).GetProperty("content");
+            var saved = (await WriteClient.JsonAsync(response)).GetProperty("content");
             var originals = new List<JsonDocument>();
             try
             {
@@ -69,7 +70,7 @@ public sealed class AssistantSubmissionTests
     }
 
     [Test, Property("caseId", "assistant-session-reading")]
-    public async Task DeletedRecordsAreNotRecreatedAndARejectedSegmentIsReadAgain()
+    public async Task DeletedSessionIsRecreatedWhenNewSourceDataArrives()
     {
         await using var database = await DatabaseFixture.CreateAsync();
         await using var factory = new OrisumiApiFactory(database.ConnectionString);
@@ -77,20 +78,18 @@ public sealed class AssistantSubmissionTests
         using var fixture = new AssistantTestFixture(factory.Server.CreateHandler());
         var path = fixture.Write("claude/projects/project/main.jsonl", ClaudeMessage("first", "hello"));
         await fixture.Collector.PollAsync();
-        var original = fixture.Interactions().Single().Version;
+        var original = fixture.Interactions().Single();
         using (var deleted = await http.DeleteAsync("entities/" + original.EntityId.Value)) deleted.EnsureSuccessStatusCode();
         File.Copy(path, Path.Combine(Path.GetDirectoryName(path)!, "copy.jsonl"));
         await fixture.Collector.PollAsync();
         await Assert.That(fixture.Interactions().Count).IsEqualTo(1);
         using (var read = await http.GetAsync("entities/" + original.EntityId.Value)) await Assert.That(read.StatusCode).IsEqualTo(HttpStatusCode.Gone);
-        var conversation = fixture.Sessions().Single().Version;
+        var conversation = fixture.Sessions().Single();
         using (var deleted = await http.DeleteAsync("entities/" + conversation.EntityId.Value)) deleted.EnsureSuccessStatusCode();
-        var checkpoint = fixture.State.Read<Orisumi.Observers.AssistantSessions.FileProgress>(Orisumi.Observers.AssistantSessions.AssistantState.Key("file", path))!.Offset;
         await File.AppendAllTextAsync(path, Encoding.UTF8.GetString(ClaudeMessage("second", "later")) + "\n");
         await fixture.Collector.PollAsync();
-        await fixture.Collector.PollAsync();
-        await Assert.That(fixture.Interactions().Count).IsEqualTo(1);
-        await Assert.That(fixture.Diagnostics.Count).IsEqualTo(2);
-        await Assert.That(fixture.State.Read<Orisumi.Observers.AssistantSessions.FileProgress>(Orisumi.Observers.AssistantSessions.AssistantState.Key("file", path))!.Offset).IsEqualTo(checkpoint);
+        await Assert.That(fixture.Interactions().Count).IsEqualTo(2);
+        await Assert.That(fixture.Sessions().Single().EntityId == conversation.EntityId).IsFalse();
+        await Assert.That(fixture.Diagnostics.Count).IsEqualTo(0);
     }
 }

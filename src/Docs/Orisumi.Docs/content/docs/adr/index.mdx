@@ -45,7 +45,7 @@ ADR 用英文 slug 命名，例如 `entity-model.mdx`，没有编号。引用时
 | Model | [二进制内容](./binary-content.mdx) | 业务字段可以是二进制内容：版本保存摘要、媒体类型和大小，字节按摘要单独保存、先于版本上传，随使用它的版本保留和移除 |
 | Model | [删除](./deletion.mdx) | 删除以实体为单位，只移除选中实体的全部版本，删除后不可复活 |
 | Hosting | [单向写入与托管的分工](./data-capability.mdx) | 业务代码只发送实体的完整内容，后端负责认出对象和形成版本；一个 HTTP 接口就是写入的全部契约，托管方管理运行，并在断网时留住写入 |
-| Hosting | [Runtime 与进程托管](./observer-runtime.mdx) | 设备和服务器运行同一个 Runtime，Runtime 启动各 Observer 的进程，经标准输入输出交出运行上下文；实例身份和业务数据目录由 Runtime 保管，与程序文件分开 |
+| Hosting | [Runtime 与进程托管](./observer-runtime.mdx) | 设备和服务器运行同一个 Runtime，Runtime 启动各 Observer 的进程，经环境变量交出运行上下文，用本地转发收下写入；实例身份和业务数据目录由 Runtime 保管，与程序文件分开 |
 | Hosting | [Observer 的统一管理](./observer-management.mdx) | 后端为每个 Runtime 和程序实例保存管理登记；启停和设置离线先生效、按字段同步，后端接受的顺序决定结果；安装维护只在线执行；Runtime 主动连接后端，凭配对得到的凭证接入 |
 | Hosting | [设备端客户端](./device-client.mdx) | 原生客户端通过 Runtime 托管本机的 Observer：从官方目录单独安装 ZIP 包，启停、更新和有限重启；专用视图原生实现，随客户端发布；陈述由各 Observer 负责 |
 | Backend | [后端运行与本地环境](./backend-runtime.mdx) | 四个后端项目组成一个进程，Aspire 编排本地环境，NGINX 提供同源入口 |

@@ -13,6 +13,7 @@ const ACTIONS: { action: Action; label: string; done: string }[] = [
   { action: "update", label: "更新", done: "已更新" },
   { action: "retry", label: "重试", done: "已重新启动" },
   { action: "uninstall", label: "卸载", done: "已卸载" },
+  { action: "resendRejected", label: "重发被拒绝的写入", done: "已重新排队" },
 ];
 
 /** 一个程序实例的面板：配置、同步、运行和连接四项分开写，下面是设置、维护和删除。 */
@@ -97,15 +98,17 @@ export function InstancePanel({
               {connectionText(host, now)}
             </span>
           </Fact>
+          {writesText(instance) && <Fact label="写入">{writesText(instance)}</Fact>}
           {instance.status?.version && (
             <Fact label="版本">
               <span className="font-mono text-xs">{instance.status.version}</span>
             </Fact>
           )}
         </dl>
-        {(problem(instance) || instance.status?.diagnostic) && (
+        {(problem(instance) || instance.status?.lastRejection || instance.status?.diagnostic) && (
           <div className="space-y-1 text-xs leading-relaxed">
             {problem(instance) && <p className="text-danger">{problem(instance)}</p>}
+            {instance.status?.lastRejection && <p className="text-danger">{instance.status.lastRejection}</p>}
             {instance.status?.diagnostic && <p className="text-fg-3">{instance.status.diagnostic}</p>}
           </div>
         )}
@@ -122,6 +125,14 @@ export function InstancePanel({
       </footer>
     </aside>
   );
+}
+
+/** 等待转发的请求和被拒绝的写入；都没有时不显示。 */
+function writesText(instance: Instance): string | null {
+  const parts = [];
+  if (instance.status?.pendingWrites) parts.push(`${instance.status.pendingWrites} 个请求等待转发`);
+  if (instance.status?.rejectedWrites) parts.push(`${instance.status.rejectedWrites} 条被拒绝`);
+  return parts.length ? parts.join(" · ") : null;
 }
 
 function Fact({ label, children }: { label: string; children: ReactNode }) {
@@ -198,15 +209,24 @@ function Maintenance({ host, instance }: { host: Host; instance: Instance }) {
   return (
     <Section title="维护">
       <div className="flex gap-2">
-        {ACTIONS.map(({ action, label }) => (
-          <Button
-            key={action}
-            disabled={!host.connected || running}
-            onClick={() => void start(action, { entityId: instance.entityId })}
-          >
-            {label}
-          </Button>
-        ))}
+        {ACTIONS.filter(({ action }) => action !== "resendRejected" || instance.status?.rejectedWrites).map(
+          ({ action, label }) => (
+            <Button
+              key={action}
+              disabled={!host.connected || running}
+              onClick={() =>
+                void start(
+                  action,
+                  action === "update" || action === "uninstall"
+                    ? { packageId: instance.packageId }
+                    : { entityId: instance.entityId },
+                )
+              }
+            >
+              {label}
+            </Button>
+          ),
+        )}
       </div>
       <p className={cn("text-xs", operation?.state === "failed" || error ? "text-danger" : "text-fg-3")}>
         {error ??
