@@ -1,0 +1,57 @@
+---
+title: "Device"
+description: "用户的一台设备，被本机应用和其他业务类型引用"
+---
+
+设备表示用户的一台设备，例如这台 Mac。它是一个普通的业务实体，可以在任何观测之前就存在：[本机应用](../foreground-state/local-application.mdx)引用它，表示应用安装在哪台设备上；[助手交互](../assistant-sessions/assistant-interaction.mdx)引用它，表示交互发生在哪台设备上。
+
+这种业务类型由使用它的 Observer 共用，写在设备状态 Observer 下，是因为被观测的正是它。设备状态 Observer 尚未实现，其他 Observer 照样使用它。
+
+<ObserverStructure node="DEVICE" />
+
+## 粒度 [#granularity]
+
+一个实体对应一台设备。同一台设备上的多个托管方共用这个实体：Mac 上的客户端 Runtime 和同一台 Mac 上的开发 Runtime，形成的本机应用引用同一个设备。
+
+## 身份 [#identity]
+
+设备的身份是它的 EntityId。托管方身份 `hostId` 和主机名都会变：重装客户端得到新的托管方，改名得到新的主机名，它们都不代表设备。
+
+| 变化 | 身份 |
+| --- | --- |
+| 设备改名 | 沿用，形成新版本 |
+| 同一台设备上新接入一个托管方 | 沿用 |
+| 重装系统或客户端 | 沿用 |
+| 另一台设备 | 新建 |
+
+设备的新版本不改变引用它的实体的身份，旧的引用仍指向当时的版本，见 [ENTITY-4](../../core/model/entity.mdx#entity-4)。
+
+程序经运行上下文拿到设备的 EntityId，它来自托管方的配置或启动参数，见 [Hosting · 运行上下文](../../hosting/index.mdx#context)。业务用 EntityId 作识别范围，读取确定的版本写入引用。自动取得稳定的设备标识是另外的设备接入工作，见[待定](#open)；有了明确的设备引用，使用它的业务就能工作。
+
+## EntitySchema [#schema]
+
+| 项目 | 值 |
+| --- | --- |
+| SchemaId | `019e1bbb-ec00-7000-8000-00000000000a` |
+| 显示名称 | 设备 |
+| 说明 | 表示用户的一台设备；设备改名时形成新版本。 |
+| 资源名 | `devices` |
+
+| 字段 | 类型 | 必填 | 可空 | description |
+| --- | --- | --- | --- | --- |
+| `name` | `string` | 是 | 是 | 设备的名称，读不到时为 `null` |
+| `platform` | `string` | 是 | 否 | 设备的平台：`macos`、`windows`、`android` 或 `linux` |
+
+## 示例 [#example]
+
+```json
+{
+  "name": "Shenxianovo-Mac",
+  "platform": "macos"
+}
+```
+
+## 待定 [#open]
+
+- 稳定的设备标识怎样自动取得，它的识别依据是什么。
+- 新的托管方第一次运行时，怎样自动关联到已有的设备。

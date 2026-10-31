@@ -16,33 +16,41 @@ description: "Claude Code 与 Codex 本机会话中的交互"
 | [Assistant Sessions Observer](./assistant-sessions-observer.mdx) | 程序实例自身：一台设备上的助手会话 Observer | `assistant-sessions-observers` |
 | [Assistant Session](./assistant-session.mdx) | 被交互引用：来源中的一个会话，包括子 Agent 的会话 | `assistant-sessions` |
 | [Assistant Interaction](./assistant-interaction.mdx) | 观测内容：会话中的一次交互 | `assistant-interactions` |
+| [Assistant Session Title](./assistant-session-title.mdx) | 观测内容：会话的一次标题 | `assistant-session-titles` |
+| [Assistant Subagent](./assistant-subagent.mdx) | 关系实体：子 Agent 的会话和发起它的会话 | `assistant-subagents` |
 
 ```mermaid
 flowchart LR
   O[交互 Observation] -->|observerVersionId| R[助手会话 Observer]
   O -->|contentVersionId| I[Assistant Interaction]
   I -->|sessionVersionId| S[Assistant Session]
+  I -->|deviceVersionId| D[Device]
   I -->|toolCallVersionId| I
-  S -->|parentSessionVersionId| S
+  T[会话标题 Observation] -->|contentVersionId| L[Assistant Session Title]
+  L -->|sessionVersionId| S
+  G[Assistant Subagent] -->|sessionVersionId| S
+  G -->|parentSessionVersionId| S
   click O "/core/model/observation"
   click R "/observers/assistant-sessions/assistant-sessions-observer"
   click I "/observers/assistant-sessions/assistant-interaction"
   click S "/observers/assistant-sessions/assistant-session"
+  click D "/observers/device-state/device"
+  click L "/observers/assistant-sessions/assistant-session-title"
+  click G "/observers/assistant-sessions/assistant-subagent"
 ```
 
 ## 程序实例 [#instance]
 
-一台设备上运行一个助手会话 Observer，它读取这台设备上当前用户的日志目录。交互发生的设备就是这个程序实例所在的设备，读取方从 `observerVersionId` 指向的版本读到它的平台和主机名。
+一个助手会话 Observer 读取所在设备上当前用户的日志目录。程序读的是本机日志，所以每次交互的 `deviceVersionId` 取运行上下文中的运行设备，见 [Hosting · 运行上下文](../../hosting/index.mdx#context)。
 
-程序实例把采集状态保存在自己数据目录的 `capture.sqlite` 中（见 [Runtime · 数据目录](../../hosting/runtime.mdx#data)）：
+程序实例把采集状态保存在自己的数据目录中（见 [Runtime · 数据目录](../../hosting/runtime.mdx#data)）：
 
 | 状态 | 内容 |
 | --- | --- |
-| 身份登记 | 来源身份到 EntityId 的映射，见 [Assistant Interaction · 身份](./assistant-interaction.mdx#identity) 和 [Assistant Session · 身份](./assistant-session.mdx#identity) |
 | 读取进度 | 每个日志文件已处理到的位置，以及读到这里时的来源上下文：所在的会话和一轮、模型、工作目录、来源给出的时区，见[读取进度](#progress) |
 | 待配对的推理 | Codex 已读到一半、还没有形成交互的推理，见 [Assistant Interaction · Codex](./assistant-interaction.mdx#codex) |
 
-这些状态只在本机，后端保存的只有提交的版本。
+这些状态只在本机，业务对象的身份由识别依据保存在后端，见 [Assistant Interaction · 身份](./assistant-interaction.mdx#identity) 和 [Assistant Session · 身份](./assistant-session.mdx#identity)。一份日志目前只由一个程序实例读取。
 
 ## 采集 [#collection]
 
@@ -60,7 +68,7 @@ flowchart LR
 每一轮做三件事：
 
 1. 列出来源目录，找到新出现的文件和大小有变化的文件。
-2. 最近有变化的文件各读一段，把新增的完整记录形成交互并提交。一段最多 16 行或 512 KiB。
+2. 最近有变化的文件各读一段，把新增的完整记录写入。一段最多 16 行或 512 KiB。
 3. 在这一轮开始后的 3 秒内，继续按段导入还没读完的历史文件，各文件轮流进行。
 
 所以首次导入大量历史时，新的交互每一轮仍然会被读到。两轮之间相隔 5 秒。读取方看到新交互的时间还取决于来源写入日志的时机和积压的数量。
@@ -73,7 +81,7 @@ flowchart LR
 - 文件变短，或者设备号和 inode 变了，就从头重读这个文件。
 - 文件移动到新位置（例如 Codex 把会话移进归档目录）时，按新文件从头读。
 
-重读和重复出现的记录形成相同的来源身份，身份登记把它们对应到已有的实体，所以不会形成重复的交互，见 [Assistant Interaction · 身份](./assistant-interaction.mdx#identity)。
+重读和重复出现的记录得到相同的识别依据，对应到已有的实体，所以不会形成重复的交互，见 [Assistant Interaction · 重读](./assistant-interaction.mdx#rereading)。
 
 ### 诊断 [#diagnostics]
 
@@ -90,7 +98,7 @@ flowchart LR
 | --- | --- |
 | Assistant Interaction | 来源记下的时刻：一次输入、一次工具调用或一次结果是时间点，助手的回复和推理在来源给出开始时间时是时段，见 [Assistant Interaction · 事实时间](./assistant-interaction.mdx#fact-time) |
 
-会话没有事实时间。会话持续多久、一轮花了多久，由读取方从交互的时间计算。
+会话没有事实时间。会话持续多久、一轮花了多久，由读取方从交互的时间计算。会话标题的事实时间见 [Assistant Session Title · 事实时间](./assistant-session-title.mdx#fact-time)。
 
 `timeZone` 按下面的顺序取值：
 
@@ -98,22 +106,21 @@ flowchart LR
 2. 记录是在程序实例运行期间写入的：上一轮已经读到这个文件的末尾，这一轮读到了新增的记录。这时取本机当前的 IANA 时区。
 3. 其余情况为 `null`，包括首次导入的历史，以及程序实例停止期间写入的记录。
 
-## 提交 [#submission]
+## 写入 [#submission]
 
-助手会话 Observer 使用 [.NET](../../hosting/dotnet.mdx) 的 SDK。来源在一次交互完成后才写入日志，所以读到的交互都已完整，形成后随即提交。
+助手会话 Observer 使用 [.NET 的 SDK](../../api/sdk.mdx#dotnet)，写给本地转发。来源在一次交互完成后才写入日志，所以读到的交互都已完整，形成后随即写入。
 
-一个文件中一段连续的新记录组成一个批次（见 [Submission · 批次](../../hosting/submission.mdx#batch)）：
+一个文件中一段连续的新数据放进一个请求，按行的顺序：
 
-| 业务事件 | 批次中的操作 |
+| 读到 | 写入 |
 | --- | --- |
-| 第一次读到一个会话 | 写入会话的首版 |
-| 会话的标题或子 Agent 信息变化 | 写入会话的新版本；之后的交互引用新版本 |
-| 读到一次交互 | 原始记录的字节随批次交出；写入交互和它的 Observation |
-| 读到工具结果，调用已经形成 | 引用调用的交互，写进结果的 `toolCallVersionId` |
+| 一个会话 | [会话](./assistant-session.mdx)，带识别依据。子 Agent 的会话同时写入父会话和[子 Agent 关系](./assistant-subagent.mdx) |
+| 一次标题 | [会话标题](./assistant-session-title.mdx)，带识别依据和时间 |
+| 一次交互 | [交互](./assistant-interaction.mdx)，带识别依据和时间；引用写会话和调用的识别依据；原始记录的字节先上传 |
 
-业务代码为新出现的来源身份分配 EntityId，组成批次交给 Runtime。提交成功后，在一次本地事务中写入身份映射和读取进度。
+重读和重复出现的数据得到相同的识别依据，内容也相同，所以什么都不发生。业务代码不查询，也不比较内容，见 [API · 一次写入](../../api/writing.mdx#write)。
 
-提交失败时，身份映射和读取进度都不变，记一条采集诊断，下一轮重新读这一段。程序在提交成功之后、写入进度之前退出时，下次启动会再提交一次这一段，形成重复的交互。
+写入请求被收下后，在本地写入读取进度。程序在这之间退出时，下次启动重读这一段，什么都不发生。读取进度不等后端，所以断网时读取继续，写入留在本地转发中。
 
 ## 实现 [#implementation]
 
@@ -130,7 +137,6 @@ flowchart LR
 ## 待定 [#open]
 
 - Claude Code 用 `--fork-session` 分叉时，复制到新会话的记录是否保留原来的 `uuid`。保留时，复制的历史对应到原来的交互；换成新 `uuid` 时，它们形成新会话中的交互。
-- 读取其他设备拷来或同步来的日志。到时需要表达交互发生的设备，和运行程序实例的设备分开。
+- 读取其他设备拷来或同步来的日志，这时交互发生的设备和运行设备不同。
 - 早于已核实版本的日志格式。其中不认识的记录现在作为诊断计数。
 - Codex 的会话在一轮结束前中断时，读到一半的推理留在待配对的状态中。
-- 用户删除某个会话后，这个会话之后的交互提交被拒绝，它所在的文件停在这一段。

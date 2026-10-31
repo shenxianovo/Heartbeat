@@ -22,7 +22,7 @@ description: "依附于前台应用时段的窗口标题时段"
 
 ## 身份 [#identity]
 
-标题时段通过 `foregroundApplicationPeriodVersionId` 归属一整段前台应用活动。每段应用活动有自己的观测内容，内容在时段中保持不变，所以应用时段延长时，标题的引用不变。
+标题时段通过 `foregroundApplicationPeriodVersionId` 归属一整段前台应用活动。每段应用活动有自己的观测内容，内容在时段中保持不变，所以应用时段延长时，标题的引用不变。标题比应用时段先结束时，业务代码先保存时段的内容，标题引用它，应用时段的 Observation 在时段结束时形成。
 
 要读到这一段活动的时间，查询引用这个观测内容的 Observation。
 

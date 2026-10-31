@@ -70,42 +70,18 @@ description: "应用处于前台的一个时段"
 
 ## 示例 [#example]
 
-VS Code 从 14:00 到 16:00 处于前台。16:00 时段结束，Runtime 先上传图标，再用一次 `POST /versions` 提交观测内容和 Observation。`localApplicationVersionId` 是本机应用首版的 VersionId，`observerVersionId` 是程序实例的一个版本：
+VS Code 从 14:00 到 16:00 处于前台。这一段的观测内容：
 
-```json title="16:00 · POST /versions"
+```json
 {
-  "versions": [
-    {
-      "entityId": "01a12e31-9050-7000-8000-000000000020",
-      "versionId": "01a12e31-9050-7000-8000-000000000120",
-      "previousVersionId": null,
-      "category": "business",
-      "schemaVersionId": "019e1bbb-ec00-7000-8000-000000000101",
-      "content": {
-        "localApplicationVersionId": "01a12e31-9050-7000-8000-000000000101",
-        "name": "Visual Studio Code",
-        "icon": {
-          "digest": "sha256:3a7bd3e2360a3d29eea436fcfb7e44c735d117c42d1c1835420b6b9942dd4f1b",
-          "mediaType": "image/png",
-          "size": 612480
-        }
-      }
-    },
-    {
-      "entityId": "01a12e31-9050-7000-8000-000000000030",
-      "versionId": "01a12e31-9050-7000-8000-000000000130",
-      "previousVersionId": null,
-      "category": "observation",
-      "schemaVersionId": null,
-      "content": {
-        "observerVersionId": "01a12e31-9050-7000-8000-0000000000a1",
-        "contentVersionId": "01a12e31-9050-7000-8000-000000000120",
-        "inputSetVersionId": null,
-        "startAt": "2026-10-06T06:00:00Z",
-        "endAt": "2026-10-06T08:00:00Z",
-        "timeZone": "Asia/Shanghai"
-      }
-    }
-  ]
+  "localApplicationVersionId": "01a12e31-9050-7000-8000-000000000101",
+  "name": "Visual Studio Code",
+  "icon": {
+    "digest": "sha256:3a7bd3e2360a3d29eea436fcfb7e44c735d117c42d1c1835420b6b9942dd4f1b",
+    "mediaType": "image/png",
+    "size": 612480
+  }
 }
 ```
+
+事实时间写在 Observation 上，16:00 的请求见 [API · Writing](../../api/writing.mdx#example)。

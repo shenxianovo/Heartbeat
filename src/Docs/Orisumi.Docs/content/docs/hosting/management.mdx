@@ -1,9 +1,9 @@
 ---
 title: "Management"
-description: "Runtime 怎样接入后端、保存和同步程序实例的配置、报告状态、执行在线操作，以及删除实例和移除托管方之后做什么"
+description: "托管方怎样接入后端、保存和同步程序实例的配置、报告状态、执行在线操作，以及删除实例和移除托管方之后做什么"
 ---
 
-每个 Runtime 在后端有一条托管方登记，它托管的每个程序实例有一条实例登记。客户端经后端查看和修改这些登记，Runtime 执行它们。本页写 Runtime 一侧的做法和登记的含义；HTTP 接口见 [API · Management](../api/management.mdx)，表见 [Storage · Management](../storage/management.mdx)，理由见 [ADR · Observer 的统一管理](../adr/observer-management.mdx)。
+每个托管方在后端有一条托管方登记，它的每个程序实例有一条实例登记。客户端经后端查看和修改这些登记，Runtime 执行它们。本页写 Runtime 一侧的做法和登记的含义；HTTP 接口见 [API · Management](../api/management.mdx)，表见 [Storage · Management](../storage/management.mdx)，理由见 [ADR · Observer 的统一管理](../adr/observer-management.mdx)。
 
 例如用户的 Mac 断网时，用户在菜单栏停用前台状态 Observer。Runtime 先把停用和一项待同步的修改写进安装登记，再停止进程。网络恢复后，Runtime 把这项修改发给后端；后端接受后，Web 控制台显示前台状态 Observer 已停用，Runtime 报告的状态是已停止。
 
@@ -11,23 +11,22 @@ description: "Runtime 怎样接入后端、保存和同步程序实例的配置�
 
 | 身份 | 谁分配 | 用途 |
 | --- | --- | --- |
-| `hostId` | 后端，配对时 | 一个 Runtime，也就是一个数据目录 |
-| 程序实例的 EntityId | Runtime，第一次安装时 | 程序实例在 Core 和管理登记中的身份，见 [OBSERVER-4](../core/model/observer.mdx#observer-4) |
-| 登记标识 `instanceKey` | Runtime | 托管方内找到这个实例的标识。一个 Runtime 中每个安装包最多一个实例，所以登记标识就是安装包的 `id` |
-| 安装包的 `id` | 发布方 | 安装和更新时找到同一个包，见 [Packages · 清单](./packages.mdx#manifest) |
+| `hostId` | 后端，配对时 | 一个托管方，也就是一个 Runtime 的数据目录 |
+| 程序实例的 EntityId | Runtime，创建实例时 | 程序实例在 Core 和管理登记中的身份，见 [OBSERVER-4](../core/model/observer.mdx#observer-4)。启动、停止、设置、重试和删除实例按它寻址 |
+| 安装包的 `id` | 发布方 | 安装、更新和卸载按它寻址，见 [Packages · 清单](./packages.mdx#manifest) |
 
-三者分开：同一个安装包在 Mac 和服务器上各有一个实例；删除实例后再安装，登记标识相同，EntityId 和实例目录是新的。
+一个托管方上一个安装包最多一个未删除的实例，所以同一个安装包在 Mac 和服务器上各有一个实例。删除实例后再安装，安装包相同，EntityId 和实例目录是新的。
 
 ## 接入 [#pairing]
 
-Runtime 用一次性的配对码接入后端。用户在管理入口签发配对码，再把它交给 Runtime：
+托管方用一次性的配对码接入后端。用户在管理入口签发配对码，再把它交给 Runtime：
 
 - 设备上，用户在客户端中输入配对码，客户端经 [`pair`](./protocol.mdx#management) 交给 Runtime。
 - 服务器上，配对码作为 `--pairing-code` 交给以服务方式启动的 Runtime，见 [Server · 接入](./server.mdx#pairing)。
 
 Runtime 调用 `POST /runtime/pair`，把得到的 `hostId`、凭证和 API 地址写进数据目录的 `host.json`，文件只有 Runtime 的用户可以读写。之后它的每个请求都带着这份凭证。
 
-还没有接入的 Runtime 照常运行 Observer，不登记实例；Observer 的提交和读取返回不可用。接入后，它登记全部实例。
+还没有接入的 Runtime 照常运行 Observer，不登记实例；写入留在[本地转发](./runtime.mdx#forwarding)中，读取得到不可用。接入后，它先登记全部实例，开始转发，再用新的[运行上下文](./index.mdx#context)重启它们。
 
 ## 配置 [#configuration]
 
@@ -79,7 +78,7 @@ Runtime 通过[长轮询](../api/management.mdx#poll)收到其他客户端的修
 
 ### 安装维护与配置 [#maintenance]
 
-安装和重新安装把 `enabled` 设为 `true`，作为一项本机修改，和用户手动启用走同一条路。更新和卸载不改变配置。远程发起的安装由 Runtime 执行，同样形成一项本机修改。
+安装和重新安装把受影响的实例的 `enabled` 设为 `true`，作为一项本机修改，和用户手动启用走同一条路。更新和卸载不改变配置。远程发起的安装由 Runtime 执行，同样形成一项本机修改。
 
 ## 状态报告 [#status]
 
@@ -87,29 +86,31 @@ Runtime 用 `PUT /runtime/instances/{entityId}/status` 报告每个实例的状�
 
 | 字段 | 含义 |
 | --- | --- |
-| `packageId`、`version`、`installed` | 安装包和已安装的版本 |
+| `packageId`、`version`、`installed` | 实例所用的安装包和已安装的版本 |
 | `enabled` | 正在执行的启用配置 |
 | `appliedRevision` | 已经合并的后端配置的 `revision` |
 | `pendingChanges` | 待同步的修改数 |
 | `state`、`error`、`diagnostic` | 进程的状态、故障原因和最近一条采集诊断，见 [Runtime · 状态](./runtime.mdx#states) |
+| `pendingWrites`、`rejectedWrites`、`lastRejection` | 本地转发中等待的请求数、被拒绝的写入数和最近的原因，见 [Runtime · 本地转发](./runtime.mdx#forwarding) |
 
 - 状态变化时报告，同一个实例 5 秒内最多一次；连接期间每 60 秒至少报告一次。
 - 接入后、长轮询第一次返回后，报告全部实例。
 
-客户端把四项信息分开显示：
+客户端把五项信息分开显示：
 
 | 信息 | 来源 | 例子 |
 | --- | --- | --- |
 | 配置 | 实例登记的 `enabled`、`settings` | 已请求停用 |
 | 同步 | `revision` 与 `appliedRevision` 是否相同 | 等待设备同步 |
 | 运行 | `status.state` | 已停止 |
+| 写入 | `status.pendingWrites`、`status.rejectedWrites` | 3 次写入被拒绝 |
 | 连接 | 托管方的 `connected` | 设备离线，上次报告于 18 分钟前 |
 
 托管方没有连接时，`status` 只说明 `reportedAt` 那一刻的情况，客户端把运行状态显示为未知，并写出报告的时刻。还没有报告的实例显示为未知。
 
 ## 在线操作 [#operations]
 
-安装、更新、卸载、重试和读取可安装的包，由管理入口发起，经长轮询交给 Runtime：
+安装、更新、卸载、重试、重发被拒绝的写入和读取可安装的包，由管理入口发起，经长轮询交给托管方：
 
 1. Runtime 收到操作后，按本机客户端发起时的同样规则执行，见 [Clients · Device Clients](../clients/device.mdx)。
 2. 执行结束后，用 `POST /runtime/operations/{operationId}/result` 报告结果。报告失败时重试，直到后端返回 `204` 或 `404`。
@@ -122,21 +123,22 @@ Runtime 不保存收到的操作。执行中退出时，这个操作不再继续
 
 1. 停止这个实例的进程，在安装登记中标记它已删除，丢弃它待同步的修改。
 2. 之后不再启动它。
-3. 报告一次状态，`state` 为 `stopped`。客户端据此把“已删除，等待停止”显示为“已停止”。
+3. 删除它的程序文件和 `forwarding/` 中的内容。
+4. 报告一次状态，`state` 为 `stopped`。客户端据此把“已删除，等待停止”显示为“已停止”。
 
 离线的 Runtime 在下次连接时执行这些步骤，在那之前程序实例可能仍在运行。
 
-安装一个实例已删除的包时，Runtime 要求显式新建实例：本机客户端的 `install` 和远程的 `install` 都要带 `newInstance`，否则返回 `conflict`。新实例得到新的 EntityId 和实例目录，旧实例目录保留。
+再次安装这个包时，Runtime 新建一个程序实例：它得到新的 EntityId 和实例目录，旧实例目录保留。
 
 ## 移除托管方 [#revocation]
 
-后端返回 `credential_revoked` 时，Runtime 停止登记、同步和长轮询，在 `list` 中报告连接已撤销，不自动重试。Observer 照常运行，它们的提交返回不可用。
+后端返回 `credential_revoked` 时，Runtime 停止登记、同步和长轮询，在 `list` 中报告连接已撤销，不自动重试。Observer 照常运行，写入留在本地转发中，读取得到 `401`。
 
-用户在管理入口为这个托管方签发重新接入的配对码，交给 Runtime 后，Runtime 用原来的 `hostId` 接入，得到新的凭证，然后继续同步。
+用户在管理入口为这个托管方签发重新接入的配对码，交给 Runtime 后，Runtime 用原来的 `hostId` 接入，得到新的凭证，继续同步和转发，并用新的运行上下文重启运行中的程序实例。
 
 ## 每个部署一个实例 [#singleton]
 
 清单中 `scope` 为 `deployment` 的安装包，在一个部署中最多有一个未删除的实例，例如[应用识别 Observer](../observers/application-identity/index.mdx#instance)。
 
-- Runtime 登记这样的实例时带上 `scope`，后端发现其他托管方已有它的实例，返回 `deployment_singleton`。
+- Runtime 登记这样的实例时带上 `scope`，后端发现这个部署中已有它的实例，返回 `deployment_singleton`。
 - 后端接受登记之前，Runtime 不启动这样的实例；`list` 中它的 `state` 为 `stopped`，`error` 说明等待登记。登记被拒绝时，`state` 为 `failed`，用户可以卸载它。

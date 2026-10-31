@@ -26,8 +26,8 @@ Orisumi 保存一个人经历了什么。经历会过去，软件会更替，但
 
 ```mermaid
 flowchart LR
-  O[Observer] -->|版本| H[托管方]
-  H -->|提交| A[API]
+  H[托管方] -->|运行| O[Observer]
+  O -->|写入| A[API]
   A --> S[(Storage)]
   A -->|读取| C[客户端]
   click O "/observers"
@@ -37,13 +37,15 @@ flowchart LR
   click C "/clients"
 ```
 
+新增一个来源，要写的只有业务规则和读取来源的代码。API 负责把数据组织成实体和版本，托管方负责运行程序，见 [Core · 谁决定什么](../core/index.mdx#responsibility)。
+
 | 分区 | 内容 |
 | --- | --- |
 | [Core](../core/index.mdx) | 所有数据共用的结构与规则，其他分区都遵守它 |
 | [Observers](../observers/index.mdx) | 各 Observer 从来源中读到什么、形成哪些观测，以及怎样接入新的来源 |
-| [Hosting](../hosting/index.mdx) | Runtime 怎样在设备和服务器上运行 Observer，把版本可靠地交给后端，以及怎样接受统一管理 |
-| [API](../api/index.mdx) | 后端的 HTTP 接口 |
-| [Storage](../storage/index.mdx) | 实体、版本和 Observer 的管理登记怎样保存在 PostgreSQL 中 |
+| [Hosting](../hosting/index.mdx) | 托管方怎样在设备和服务器上管理和运行 Observer，以及怎样接受统一管理 |
+| [API](../api/index.mdx) | 后端的 HTTP 接口：所有写入方和读取方共用的数据能力 |
+| [Storage](../storage/index.mdx) | 实体、版本、识别依据和 Observer 的管理登记怎样保存在 PostgreSQL 中 |
 | [Clients](../clients/index.mdx) | 用户使用的 Web 控制台和设备端客户端，以及它们怎样管理各处的 Observer |
 | [ADR](../adr/index.mdx) | 各项决定和它们的理由 |
 | [Testing](../testing/index.mdx) | 验证用例与测试报告 |
@@ -63,7 +65,7 @@ flowchart LR
 <Cards className="md:grid-cols-2">
 <Card title="接入新的来源">
 
-[Observer](../core/model/observer.mdx)、[Identity](../core/rules/identity.mdx)、[Time](../core/rules/time.mdx)、[History](../core/rules/history.mdx)、[Observers · Integration Guide](../observers/integration.mdx)、[Hosting · Submission](../hosting/submission.mdx)
+[Observer](../core/model/observer.mdx)、[Identity](../core/rules/identity.mdx)、[Time](../core/rules/time.mdx)、[History](../core/rules/history.mdx)、[Observers · Integration Guide](../observers/integration.mdx)、[API · Writing](../api/writing.mdx)、[API · SDK](../api/sdk.mdx)
 
 </Card>
 <Card title="编写设备端客户端">

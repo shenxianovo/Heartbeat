@@ -22,7 +22,7 @@ description: "业务字段中的文件：版本保存它的描述，字节按摘
 }
 ```
 
-写入方先用 [`PUT /contents/{digest}`](/api/putContent) 上传这 612,480 个字节，再提交引用它的前台时段。读取方从版本中读到描述，再用 [`GET /contents/{digest}`](/api/getContent) 取得字节，按 `image/png` 显示。
+写入方先用 [`PUT /contents/{digest}`](/api/putContent) 上传这 612,480 个字节，再写入引用它的前台时段。读取方从版本中读到描述，再用 [`GET /contents/{digest}`](/api/getContent) 取得字节，按 `image/png` 显示。
 
 16:00 之后的时段读到同一个图标，描述相同，后端不再保存新的字节。
 
@@ -56,9 +56,9 @@ description: "业务字段中的文件：版本保存它的描述，字节按摘
 
 执行方：后端、写入方
 
-版本中每个 `binary` 值的内容，必须在版本保存前已上传到后端，`size` 与上传的字节数相同。写入方按[示例](#example)的顺序先上传，再提交版本。
+版本中每个 `binary` 值的内容，必须在版本保存前已上传到后端，`size` 与上传的字节数相同。写入方按[示例](#example)的顺序先上传，再写入版本。
 
-内容尚未上传时，后端拒绝这个版本，整次提交都不保存，见 [VERSION-13](./version.mdx#version-13)。
+内容尚未上传时，后端拒绝这个版本，这次写入都不保存，见 [VERSION-13](./version.mdx#version-13)。
 
 ### BINARY-4 随版本保留 [#binary-4]
 
@@ -66,7 +66,7 @@ description: "业务字段中的文件：版本保存它的描述，字节按摘
 
 还有已保存的版本使用一份内容时，后端保留它。使用它的最后一个版本删除时，后端同时移除这份内容，不留副本，见 [HISTORY-6](../rules/history.mdx#history-6)。
 
-已上传、还没有版本使用的内容，后端保留一段时间供提交使用，时长见 [Storage · Contents](../../storage/contents.mdx#staging)。
+已上传、还没有版本使用的内容，后端保留一段时间供写入使用，时长见 [Storage · Contents](../../storage/contents.mdx#staging)。
 
 ### BINARY-5 读取内容 [#binary-5]
 

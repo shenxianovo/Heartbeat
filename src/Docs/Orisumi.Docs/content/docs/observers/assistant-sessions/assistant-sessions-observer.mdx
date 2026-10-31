@@ -13,7 +13,7 @@ description: "一个助手会话 Observer 程序实例"
 
 ## 身份 [#identity]
 
-EntityId 由 Runtime 保存，重启、升级和重装后沿用，见 [OBSERVER-4](../../core/model/observer.mdx#observer-4)。平台、主机名或程序版本变化时，形成同一个实体的新版本；之后的 Observation 引用新版本。
+EntityId 由托管方保存，重启、升级和重装后沿用，见 [OBSERVER-4](../../core/model/observer.mdx#observer-4)。平台、主机名或程序版本变化时，形成同一个实体的新版本；之后的 Observation 引用新版本。
 
 ## EntitySchema [#schema]
 
@@ -21,7 +21,7 @@ EntityId 由 Runtime 保存，重启、升级和重装后沿用，见 [OBSERVER-
 | --- | --- |
 | SchemaId | `019e1bbb-ec00-7000-8000-000000000007` |
 | 显示名称 | 助手会话 Observer |
-| 说明 | 表示一个助手会话 Observer 程序实例，保存它运行的平台、主机名和程序版本；它读取所在设备上 Claude Code 和 Codex 的会话日志，作为 Observer 对其中每次交互的观测负责。交互发生在这个程序实例所在的设备上。 |
+| 说明 | 表示一个助手会话 Observer 程序实例，保存它运行的平台、主机名和程序版本；它读取所在设备上 Claude Code 和 Codex 的会话日志，作为 Observer 对其中每次交互的观测负责。 |
 | 资源名 | `assistant-sessions-observers` |
 
 | 字段 | 类型 | 必填 | 可空 | description |

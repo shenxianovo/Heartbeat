@@ -1,22 +1,22 @@
 ---
 title: "Management"
-description: "Observer 管理登记的两张表：每个 Runtime 一行的 observer_hosts，每个受管理的程序实例一行的 observer_instances"
+description: "Observer 管理登记的两张表：每个托管方一行的 observer_hosts，每个受管理的程序实例一行的 observer_instances"
 ---
 
-后端为每个 Runtime 和它托管的每个程序实例保存一条管理登记。这两张表是管理数据的权威位置，不是 Core 的投影。登记的含义和同步规则见 [Hosting · Management](../hosting/management.mdx)，为什么这样设计见 [ADR · Observer 的统一管理](../adr/observer-management.mdx)。
+后端为每个托管方和它的每个程序实例保存一条管理登记。这两张表是管理数据的权威位置，不是 Core 的投影。登记的含义和同步规则见 [Hosting · Management](../hosting/management.mdx)，为什么这样设计见 [ADR · Observer 的统一管理](../adr/observer-management.mdx)。
 
-例如用户的 Mac 和服务器各运行一个 Runtime，`observer_hosts` 中有两行。Mac 上的前台状态 Observer 和服务器上的应用识别 Observer 在 `observer_instances` 中各有一行，记着用户希望它们是否启用、设置是什么，以及它们的 Runtime 最近一次报告的状态。
+例如用户的 Mac 和服务器各运行一个托管方，`observer_hosts` 中有两行。Mac 上的前台状态 Observer 和服务器上的应用识别 Observer 在 `observer_instances` 中各有一行，记着用户希望它们是否启用、设置是什么，以及它们的托管方最近一次报告的状态。
 
 ## observer_hosts [#observer-hosts]
 
-每个 Runtime 一行，设备上和服务器上的都在这里。
+每个托管方一行，设备上和服务器上的都在这里。
 
 | 列 | 类型 | 含义 |
 | --- | --- | --- |
 | `host_id` | `uuid` | 托管方身份，主键 `pk_observer_hosts`。配对时由后端生成的 UUIDv7 |
 | `name` | `text` | 显示的名称，例如“我的 Mac” |
 | `kind` | `text` | `device` 或 `server`，检查约束 `ck_observer_hosts_kind` |
-| `last_seen_at` | `timestamptz`，可空 | 后端最近一次收到这个 Runtime 带凭证的请求的时刻 |
+| `last_seen_at` | `timestamptz`，可空 | 后端最近一次收到这个托管方带凭证的请求的时刻 |
 | `credential_hash` | `text` | 托管方凭证的 SHA-256，十六进制小写。后端不保存凭证本身 |
 | `revoked` | `boolean` | 是否已移除。为 `true` 时，后端拒绝这个凭证的全部请求 |
 
@@ -25,7 +25,7 @@ description: "Observer 管理登记的两张表：每个 Runtime 一行的 obser
 | 配对 | 新建一行，`revoked` 为 `false` |
 | 重新接入 | 替换 `credential_hash`，`revoked` 置为 `false` |
 | 管理入口 | `name`；移除托管方时把 `revoked` 置为 `true` |
-| Runtime 的请求 | `last_seen_at`，同一个托管方每分钟最多更新一次 |
+| 托管方的请求 | `last_seen_at`，同一个托管方每分钟最多更新一次 |
 
 行不删除。托管方移除后，它的实例登记和已保存的数据都保留。
 
@@ -37,29 +37,29 @@ description: "Observer 管理登记的两张表：每个 Runtime 一行的 obser
 | --- | --- | --- |
 | `entity_id` | `uuid` | 程序实例的 EntityId，主键 `pk_observer_instances` |
 | `host_id` | `uuid` | 所属的托管方，外键 `fk_observer_instances_observer_hosts_host_id` |
-| `instance_key` | `text` | 托管方内的登记标识 |
+| `package_id` | `text` | 这个实例所用的安装包 |
 | `name` | `text` | 显示的名称 |
 | `enabled` | `boolean` | 后端已接受的启用配置 |
 | `settings` | `jsonb` | 后端已接受的设置，JSON 对象，检查约束 `ck_observer_instances_settings` |
 | `revision` | `bigint` | 配置的修订号，首次登记时为 1 |
-| `last_local_sequence` | `bigint` | 已接受的所属 Runtime 本机修改的最大序号，没有时为 0 |
+| `last_local_sequence` | `bigint` | 已接受的所属托管方本机修改的最大序号，没有时为 0 |
 | `status` | `jsonb`，可空 | 最近一次状态报告；还没有报告时为 `NULL` |
 | `reported_at` | `timestamptz`，可空 | 后端收到最近一次状态报告的时刻 |
 | `removed` | `boolean` | 是否已删除实例 |
 
 | 约束或索引 | 内容 | 用途 |
 | --- | --- | --- |
-| `ux_observer_instances_host_id_instance_key` | `(host_id, instance_key)`，只含 `removed = false` 的行 | 一个托管方的一个登记标识最多一个未删除的实例 |
-| `ix_observer_instances_instance_key` | `instance_key`，只含 `removed = false` 的行 | 首次登记每个部署只能有一个实例的安装包时，检查其他托管方 |
+| `ux_observer_instances_host_id_package_id` | `(host_id, package_id)`，只含 `removed = false` 的行 | 一个托管方上一个安装包最多一个未删除的实例 |
+| `ix_observer_instances_package_id` | `package_id`，只含 `removed = false` 的行 | 首次登记每个部署只能有一个实例的安装包时，检查已有的实例 |
 
 - `entity_id` 没有指向 `entities` 的外键：程序实例先登记，之后才保存首版，而 `entities` 是投影。
-- 已删除的行保留。同一个登记标识可以先后有几个已删除的实例，最多一个未删除的。
+- 已删除的行保留。
 - `status` 的结构见 [Hosting · 状态报告](../hosting/management.mdx#status)，后端只检查它是一个 JSON 对象。
 
 | 写入 | 列 |
 | --- | --- |
 | 首次登记 | 新建一行：`revision` 为 1，配置和 `last_local_sequence` 取自登记请求 |
-| Runtime 的本机修改 | `enabled` 或 `settings`、`last_local_sequence`，`revision` 加 1 |
+| 托管方的本机修改 | `enabled` 或 `settings`、`last_local_sequence`，`revision` 加 1 |
 | 管理入口的修改 | `enabled` 或 `settings`，`revision` 加 1 |
 | 状态报告 | `status`、`reported_at` |
 | 删除实例 | `removed` 置为 `true`，`revision` 加 1 |
@@ -68,7 +68,7 @@ description: "Observer 管理登记的两张表：每个 Runtime 一行的 obser
 
 ## 首版的检查 [#first-version]
 
-提交一个首版时，后端在同一个事务中检查它的 EntityId：在 `observer_instances` 中有 `removed = true` 的行，就按 [HISTORY-7](../core/rules/history.mdx#history-7) 拒绝。这样，在保存首版之前就被删除的程序实例，它的 EntityId 也不再接受版本。已保存过版本的实例由 `deleted_versions` 占用身份，见 [Versions · deleted_versions](./versions.mdx#deleted-versions)。
+写入带 `entityId` 而这个实体还没有版本时，后端在同一个事务中检查它：在 `observer_instances` 中没有行，这次写入被拒绝，结果是 `400`；有 `removed = true` 的行，按 [HISTORY-7](../core/rules/history.mdx#history-7) 拒绝；带托管方凭证时，`host_id` 还要是这个托管方。这样，在保存首版之前就被删除的程序实例，它的 EntityId 也不再接受版本。已保存过版本的实例由 `deleted_versions` 占用身份，见 [Versions · deleted_versions](./versions.mdx#deleted-versions)。
 
 ## 删除实例 [#removal]
 
@@ -77,4 +77,4 @@ description: "Observer 管理登记的两张表：每个 Runtime 一行的 obser
 1. 把 `observer_instances` 中的行标记为 `removed = true`，`revision` 加 1。
 2. 实例已经保存过版本时，按 [Versions · 删除](./versions.mdx#deletion) 删除它的实体。
 
-两步都在提交和删除共用的 advisory lock 之下，所以没有提交能在检查之后、标记之前保存这个 EntityId 的版本，见 [Overview · 事务](./index.mdx#transactions)。
+两步都在写入和删除共用的 advisory lock 之下，所以没有写入能在检查之后、标记之前保存这个 EntityId 的版本，见 [Overview · 事务](./index.mdx#transactions)。

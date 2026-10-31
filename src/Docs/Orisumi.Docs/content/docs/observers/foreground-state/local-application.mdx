@@ -3,7 +3,7 @@ title: "Local Application"
 description: "某台设备上的一个应用安装"
 ---
 
-本机应用表示某台设备上的一个应用安装，例如这台 Mac 上的 VS Code。它有自己的 EntityId，可以在任何观测之前就存在。[前台应用时段](./foreground-application-period.mdx)通过 `localApplicationVersionId` 引用它。
+本机应用表示某台设备上的一个应用安装，例如这台 Mac 上的 VS Code。它有自己的 EntityId，可以在任何观测之前就存在，用 `deviceVersionId` 引用所在的[设备](../device-state/device.mdx)。[前台应用时段](./foreground-application-period.mdx)通过 `localApplicationVersionId` 引用它。
 
 <ObserverStructure node="LOCAL_APPLICATION" />
 
@@ -13,13 +13,23 @@ description: "某台设备上的一个应用安装"
 
 ## 身份 [#identity]
 
-在 macOS 上，前台状态 Observer 按应用包标识和可执行文件路径的原始值识别安装：两者都相同，就复用原来的身份。比较区分大小写，名称、路径别名和软件品牌都不参与判断。
+在 macOS 上，同一台设备上应用包标识和可执行文件路径的原始值都相同，就是同一个安装。比较区分大小写，名称、路径别名和软件品牌都不参与判断。身份与观察它的 Observer 无关，所以两个托管方上的前台状态 Observer 共用一个本机应用。内容只有不变的标识线索，所以它们写入的内容相同。
+
+| 识别依据 | 值 |
+| --- | --- |
+| `scope` | 所在设备的 EntityId |
+| `scheme` | `macos.installation` |
+| `value` | 应用包标识和可执行文件路径，用换行连接；读不到包标识时，换行前为空 |
+
+识别范围用设备的实体身份，所以设备改名不改变本机应用的身份，见 [IDENTITY-6](../../core/rules/identity.mdx#identity-6)。
 
 | 变化 | 身份 |
 | --- | --- |
 | 应用名称变化 | 复用；新名称保存在观测内容中 |
 | 应用退出后重新启动 | 复用 |
-| 前台状态 Observer 重启或升级 | 复用，身份来自登记文件 |
+| 前台状态 Observer 重启或升级 | 复用 |
+| 同一台设备上的另一个托管方读到它 | 复用 |
+| 设备改名 | 复用 |
 | 应用原地升级 | 复用 |
 | 在原路径卸载后重装，包标识相同 | 复用 |
 | 应用移动，或可执行文件路径变化 | 新建 |
@@ -31,20 +41,17 @@ description: "某台设备上的一个应用安装"
 
 识别时宁可多建身份。名称会随语言和版本变化，两个不同的安装也可能同名；多出来的身份按跨设备线索归到同一个[应用产品](../application-identity/application-product.mdx)，错误合并的身份却无法拆开。
 
-### 登记文件 [#registry]
-
-本机应用的登记文件保存原生线索到 EntityId 的映射，是这一映射的权威来源。它是 Runtime 共用数据目录中的 `local-applications.json`，见 [Runtime · 数据目录](../../hosting/runtime.mdx#data)；同一个 Runtime 中的多个程序实例共用它，与程序实例的身份分开保存。
-
-- 登记文件只属于创建它的设备。
-- 文件损坏时，前台状态 Observer 报告错误并保留原文件。
-- 删除文件后，下次采集重新分配身份。
-- 创建和更新文件时使用互斥锁和原子替换。
-
-运行方式见 `src/Observers/Orisumi.Observer.ForegroundState/README.md`。
+用户删除一个本机应用后，识别依据随它删除。之后读到同一个安装时，它是一个新的本机应用，见 [IDENTITY-7](../../core/rules/identity.mdx#identity-7)。
 
 ## 引用 [#references]
 
-本机应用没有引用。两台 Mac 上的 VS Code 是两个本机应用，它们的应用包标识相同，所以属于同一个应用产品，见 [Application Identity · 归属](../application-identity/index.mdx#membership)。
+| 字段 | 目标 |
+| --- | --- |
+| `deviceVersionId` | 应用所在的[设备](../device-state/device.mdx) |
+
+设备改名时形成设备的新版本，已有的本机应用版本仍引用当时那一版。
+
+两台 Mac 上的 VS Code 是两个本机应用，它们的应用包标识相同，所以属于同一个应用产品，见 [Application Identity · 归属](../application-identity/index.mdx#membership)。
 
 ## EntitySchema [#schema]
 
@@ -57,6 +64,7 @@ description: "某台设备上的一个应用安装"
 
 | 字段 | 类型 | 必填 | 可空 | description |
 | --- | --- | --- | --- | --- |
+| `deviceVersionId` | `reference` | 是 | 否 | 应用所在的设备 |
 | `identifiers` | `array` | 是 | 否 | 平台标识线索，顺序无意义；没有线索时为 `[]` |
 | `identifiers[]` | `object` | 不适用 | 否 | 一项平台标识线索，由 scheme 和 value 共同解释 |
 | `identifiers[].scheme` | `string` | 是 | 否 | 线索的种类：macos.bundle-id 是应用包标识，macos.executable-path 是可执行文件路径，android.package-name 是 Android 应用的包名 |
@@ -78,27 +86,19 @@ Android 上的前台状态 Observer 尚未实现，`android.package-name` 目前
 
 ## 示例 [#example]
 
-首次读到 VS Code 时，`POST /versions` 中的本机应用首版。`schemaVersionId` 是本机应用 EntitySchema 的一个 Schema 版本：
+首次读到 VS Code 时，本机应用的首版内容：
 
-```json title="POST /versions"
+```json
 {
-  "versions": [
+  "deviceVersionId": "0196f3a1-5d0c-7a11-8e2f-1b2c3d4e5f61",
+  "identifiers": [
+    { "scheme": "macos.bundle-id", "value": "com.microsoft.VSCode" },
     {
-      "entityId": "01a12e31-9050-7000-8000-000000000001",
-      "versionId": "01a12e31-9050-7000-8000-000000000101",
-      "previousVersionId": null,
-      "category": "business",
-      "schemaVersionId": "019e1bbb-ec00-7000-8000-000000000102",
-      "content": {
-        "identifiers": [
-          { "scheme": "macos.bundle-id", "value": "com.microsoft.VSCode" },
-          {
-            "scheme": "macos.executable-path",
-            "value": "/Applications/Visual Studio Code.app/Contents/MacOS/Electron"
-          }
-        ]
-      }
+      "scheme": "macos.executable-path",
+      "value": "/Applications/Visual Studio Code.app/Contents/MacOS/Electron"
     }
   ]
 }
 ```
+
+写入它的请求见 [API · Writing](../../api/writing.mdx#example)。

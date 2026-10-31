@@ -1,6 +1,6 @@
 ---
 title: "Reading"
-description: "怎样读取版本、实体和二进制内容，按类型、事实时间和引用关系列出数据，以及怎样分页"
+description: "怎样读取版本、实体和二进制内容，按类型、Observer、内容、事实时间和引用关系列出数据，以及怎样分页"
 ---
 
 读取的接口只返回已保存的版本。已删除的实体和版本返回 `410`，读取方把它列为不可读取，见 [HISTORY-8](../core/rules/history.mdx#history-8)。
@@ -10,10 +10,19 @@ description: "怎样读取版本、实体和二进制内容，按类型、事实
 | 读取 | 接口 |
 | --- | --- |
 | 一个版本 | [`GET /versions/{versionId}`](/api/getVersion) |
+| 一组版本 | [`POST /versions/read`](/api/readVersions)，一次 1 到 256 个 |
 | 实体的当前版本 | [`GET /entities/{entityId}`](/api/getEntity)，见 [VERSION-5](../core/model/version.mdx#version-5) |
 | 实体的版本链 | [`GET /entities/{entityId}/versions`](/api/listEntityVersions)，从首版到当前版排列，一次返回全部版本 |
 
 推断引用的是读取时的那一版，所以追溯时按 VersionId 读取，读到的是当时的内容，见 [ENTITY-4](../core/model/entity.mdx#entity-4)。
+
+批量读取时，响应按请求的顺序逐项返回，请求中重复的项也各有一项：
+
+| `status` | 含义 |
+| --- | --- |
+| `found` | 带着这个版本的完整内容，不用当前版本代替 |
+| `not_found` | 这个身份从未出现过 |
+| `deleted` | 版本已被删除，见 [HISTORY-8](../core/rules/history.mdx#history-8) |
 
 ## 内容 [#contents]
 
@@ -32,19 +41,30 @@ description: "怎样读取版本、实体和二进制内容，按类型、事实
 | `category` | 这一类内容的实体，例如 `entity_schema` 列出全部 EntitySchema |
 | `resourceName` | 这种业务类型的实体，类型由当前使用这个资源名的 EntitySchema 决定，见 [SCHEMA-5](../core/model/schema.mdx#schema-5) |
 
-## 按事实时间查询 [#observations]
+## 查询观测 [#observations]
 
-晚上，推断 Observer 用 [`GET /observations`](/api/listObservations) 读取当天的前台时段。它列出 Observation 的当前版本：`from` 和 `to` 必须给出，表示范围 `[from, to)`；`resourceName` 可以省略，给出时只返回观测内容属于这种业务类型的 Observation。
+晚上，推断 Observer 用 [`GET /observations`](/api/listObservations) 读取当天的前台时段。它列出 Observation 的当前版本，条件都可以省略，给出的条件一起生效：
 
-匹配只看当前版本中已知的边界：
+| 参数 | 只返回 |
+| --- | --- |
+| `from`、`to` | 事实时间与范围 `[from, to)` 相交的。两者同时给出或同时省略 |
+| `observerEntityId` | 由这个实体负责的，包含它的任意版本 |
+| `contentEntityId` | 观测内容属于这个实体的，包含它的任意版本 |
+| `resourceName` | 观测内容属于这种业务类型的 |
+
+`observerEntityId` 和 `contentEntityId` 按版本的归属匹配，目标实体已删除时照常返回。不同 Observer 可以各有一份 Observation，见 [OBSERVATION-3](../core/model/observation.mdx#observation-3)。
+
+给出 `from` 和 `to` 时，匹配只看当前版本中已知的边界：
 
 | 已知的边界 | 返回的条件 |
 | --- | --- |
 | 两个都已知 | 时段 `[startAt, endAt)` 与范围有重叠；时间点 `t` 满足 `from ≤ t < to` |
 | 只知道一个 | 把这个边界当作时间点 `t`，满足 `from ≤ t < to` |
-| 两个都未知 | 不返回，这样的 Observation 按实体或类型找到 |
+| 两个都未知 | 不返回 |
 
-结果按已知的开始边界升序排列，开始边界未知时用结束边界，相同时按 EntityId 升序。
+省略时间范围时，两个边界都未知的 Observation 也返回。
+
+结果按已知的开始边界排序，开始边界未知时用结束边界，`order` 为 `asc`（默认）或 `desc`；相同时按 EntityId 升序。两个边界都未知的排在最后，两种顺序都一样。
 
 观测内容被删除、Observation 保留时，这份 Observation 照常出现在不带 `resourceName` 的结果中，不再出现在原内容类型的结果中。它的 `contentVersionId` 不变，读取这个版本返回 `410`，见 [HISTORY-8](../core/rules/history.mdx#history-8)。
 
@@ -83,6 +103,7 @@ description: "怎样读取版本、实体和二进制内容，按类型、事实
 ```
 
 - 目标按实体匹配：引用 VS Code 任何一个版本的都算，见 [ENTITY-7](../core/model/entity.mdx#entity-7)。`targetVersionId` 给出引用的是哪一版。
+- `path` 只返回在这个位置引用目标的版本。`resourceName` 只返回这种业务类型的引用方，例如应用识别 Observer 只读引用本机应用的前台时段。
 - 只匹配 `content` 中的引用：Core 类型的引用成员，以及业务字段中的 `reference`，见 [ENTITY-5](../core/model/entity.mdx#entity-5)。前一版本通过版本链读取，使用某个 EntitySchema 的数据通过 `resourceName` 列出。
 - 每一项是引用方的完整版本。`references` 列出其中引用目标的每个位置，`path` 是从版本根部写起的 JSON Pointer（[RFC 6901](https://www.rfc-editor.org/rfc/rfc6901.html)），例如 InputSet 的第四个成员是 `/content/members/3`。
 - `versions` 默认为 `current`，只返回当前版本仍引用目标的实体，每个实体一个版本。`versions=all` 返回每一个引用过目标的版本，包括后来改为引用别处的旧版本；一份延长过多次的 Observation，每个版本各占一项。
@@ -91,4 +112,4 @@ description: "怎样读取版本、实体和二进制内容，按类型、事实
 
 ## 分页 [#paging]
 
-列出实体、按事实时间查询和列出引用方三个接口都分页。`limit` 是一页最多返回的版本数，默认 100，最大 1000；列出引用方时，一个版本连同它的全部位置算一项。响应中的 `next` 是下一页的游标，把它作为 `after` 传入就得到下一页；没有下一页时，`next` 为 `null`。游标的内容由后端决定，调用方原样传回。
+列出实体、查询观测和列出引用方三个接口都分页。`limit` 是一页最多返回的版本数，默认 100，最大 1000；列出引用方时，一个版本连同它的全部位置算一项。响应中的 `next` 是下一页的游标，把它作为 `after` 传入就得到下一页；没有下一页时，`next` 为 `null`。游标的内容由后端决定，调用方原样传回；它绑定这次查询的条件和顺序，用在别的查询上时返回 `400`。

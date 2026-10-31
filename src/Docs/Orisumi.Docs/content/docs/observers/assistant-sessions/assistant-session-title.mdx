@@ -1,0 +1,65 @@
+---
+title: "Assistant Session Title"
+description: "助手会话的一次标题"
+---
+
+会话标题表示一个[助手会话](./assistant-session.mdx)在来源中的一次标题，例如 Codex 把一个会话命名为“整理文档结构”，之后用户改成“重写 Observer 文档”，这是两条会话标题。它是助手会话 Observer 形成的观测内容，这个标题从什么时候起的时间写在引用它的 Observation 上。
+
+<ObserverStructure node="ASSISTANT_SESSION_TITLE" />
+
+## 粒度 [#granularity]
+
+来源中一次不同的标题对应一个实体，形成后不再变化。标题变化是一条新的会话标题，读取方取事实时间最晚的一条。
+
+| 产品 | 来源 |
+| --- | --- |
+| Claude Code | 日志中的 `custom-title` 和 `agent-name`；子 Agent 取 `meta.json` 的 `description` |
+| Codex | `session_index.jsonl` 的 `thread_name`。这个文件只追加，每次改名有一行 |
+
+## 身份 [#identity]
+
+| 识别依据 | 值 |
+| --- | --- |
+| `scope` | `null` |
+| `scheme` | `codex.session-title` 或 `claude-code.session-title` |
+| `value` | Codex 是会话 `id` 和 `updated_at`，Claude Code 是 `sessionId` 和标题，都用换行连接 |
+
+Claude Code 的标题行没有时间和标识，同一行反复写入，所以用标题本身区分。标题回到之前用过的值时，这次变化不形成新的实体。
+
+## 引用 [#references]
+
+| 字段 | 目标 |
+| --- | --- |
+| `sessionVersionId` | 这个标题所属的[会话](./assistant-session.mdx) |
+
+## 事实时间 [#fact-time]
+
+| 产品 | 事实时间 |
+| --- | --- |
+| Codex | 时间点：`updated_at` |
+| Claude Code | 未知，两个边界都是 `null` |
+
+`timeZone` 为 `null`。
+
+## EntitySchema [#schema]
+
+| 项目 | 值 |
+| --- | --- |
+| SchemaId | `019e1bbb-ec00-7000-8000-00000000000a` |
+| 显示名称 | 助手会话标题 |
+| 说明 | 表示助手会话在来源中的一次标题，形成后不再变化；标题变化是一条新的实体。Observation 保存来源记下的改名时间，来源没有时间时未知。 |
+| 资源名 | `assistant-session-titles` |
+
+| 字段 | 类型 | 必填 | 可空 | description |
+| --- | --- | --- | --- | --- |
+| `sessionVersionId` | `reference` | 是 | 否 | 这个标题所属的助手会话 |
+| `title` | `string` | 是 | 否 | 来源给出的标题 |
+
+## 示例 [#example]
+
+```json
+{
+  "sessionVersionId": "019e2c41-7a10-7000-8000-0000000001a1",
+  "title": "重写 Observer 文档"
+}
+```

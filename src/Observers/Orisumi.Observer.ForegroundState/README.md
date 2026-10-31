@@ -2,6 +2,8 @@
 
 Orisumi.Observer.ForegroundState 在 macOS 上持续采集前台应用，把本机应用和前台应用时段交给 [Runtime](../../Docs/Orisumi.Docs/content/docs/hosting/runtime.mdx) 保存和发送。业务规则见 [Foreground State](../../Docs/Orisumi.Docs/content/docs/observers/foreground-state/index.mdx)。
 
+本文写当前代码的运行方式。目标契约见 [Foreground State](../../Docs/Orisumi.Docs/content/docs/observers/foreground-state/index.mdx)，代码尚未迁移。
+
 进行中的时段放在内存中。切换应用、休眠或停止时，`ForegroundStore.cs` 把本机应用、时段内容和 Observation 一起提交到后端。读取方这时才能读到这一段。
 
 它只引用 `Orisumi.Observer.Sdk` 和 Core，通过标准输入和标准输出与 Runtime 通信，自己不打开 SQLite。程序在主线程运行 AppKit 事件循环，持续读取时才能取得更新后的前台应用。

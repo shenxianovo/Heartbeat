@@ -10,13 +10,13 @@ description: "怎样在服务器上以服务方式运行 Runtime：启动参数�
 ## 启动 [#startup]
 
 ```sh
-Orisumi.Observer.Runtime --service --data-dir <目录> --backend <API 地址> [--bundled <目录>] [--catalog <URL>] [--pairing-code <配对码>] [--name <名称>]
+Orisumi.Observer.Runtime --service --data-dir <目录> --backend <API 地址> [--bundled <目录>] [--catalog <URL>] [--device <EntityId>] [--pairing-code <配对码>] [--name <名称>]
 ```
 
 | 参数 | 作用 |
 | --- | --- |
 | `--service` | 以服务方式运行：不读取标准输入，收到 `SIGTERM` 或 `SIGINT` 时按 [Runtime · 退出](./runtime.mdx#shutdown) 退出 |
-| `--data-dir`、`--backend`、`--bundled`、`--catalog` | 与[设备上的启动](./runtime.mdx#startup)相同 |
+| `--data-dir`、`--backend`、`--bundled`、`--catalog`、`--device` | 与[设备上的启动](./runtime.mdx#startup)相同 |
 | `--pairing-code` | 数据目录中还没有 `host.json` 时，用它接入后端 |
 | `--name` | 接入时的托管方名称，省略时用主机名 |
 

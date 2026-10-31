@@ -1,47 +1,57 @@
 ---
 title: "Overview"
-description: "托管方是什么，它和 Observer 的业务代码怎样分工，提交的流程，Runtime 在设备和服务器上的两种运行方式，以及它报告的状态"
+description: "托管方负责什么，它交给程序什么，断网时写入怎样留住，Runtime 在设备和服务器上的两种运行方式，以及它报告的状态"
 ---
 
-Observer 的业务代码判断事实、交出业务变化；托管方运行它，保管它的身份，把业务变化形成版本并提交给后端。托管方是 [Runtime](./runtime.mdx)。设备上由设备端客户端启动它，服务器上由服务管理器或容器启动它，两处是同一个程序。
+托管方管理程序实例：安装和更新程序，保管实例的身份和配置，启动、停止程序，并报告它们的状态。程序写入时先交给托管方的[本地转发](./runtime.mdx#forwarding)，由它按顺序交给后端，所以断网时采集继续。托管方不解释这些数据。托管方的当前实现是 [Runtime](./runtime.mdx)，设备上由设备端客户端启动它，服务器上由服务管理器或容器启动它，两处是同一个程序。
 
-[Walkthrough](../start/walkthrough.mdx) 那一天 16:00，用户从 VS Code 切到浏览器。前台状态 Observer 判断 VS Code 的时段到此结束，把这一段交给 Mac 上的 Runtime，由它形成版本并提交给后端。晚上服务器上的 Runtime 运行应用识别 Observer，它读到浏览器这个新的本机应用，形成应用产品，交给的是同一种 Runtime。
+[Walkthrough](../start/walkthrough.mdx) 那一天，Mac 上的 Runtime 启动前台状态 Observer，交给它实例身份和设置。16:00 这一段结束时，前台状态 Observer 把它写给本地转发，由本地转发交给后端。晚上服务器上的 Runtime 启动应用识别 Observer，方式相同。用户在 Web 中停用其中一个，托管方停止它，别的不受影响。
+
+托管是可选的：程序也可以直接运行，见 [API · SDK](../api/sdk.mdx#modes)。
 
 ## 本分区的页面 [#pages]
 
 | 要做的事 | 读 |
 | --- | --- |
-| 编写 Observer | [Submission](./submission.mdx)，以及所用语言的 SDK，例如 [.NET](./dotnet.mdx) |
 | 发布 Observer 的安装包 | [Packages](./packages.mdx) |
 | 编写设备端客户端，或修改 Runtime | [Runtime](./runtime.mdx)、[Protocol](./protocol.mdx)、[Packages](./packages.mdx)、[Management](./management.mdx) |
 | 在服务器上运行 Observer | [Server](./server.mdx) |
 
+编写 Observer 从 [Observers · Integration Guide](../observers/integration.mdx) 开始。
+
 ## 分工 [#division]
 
-| Observer 的业务代码 | 托管方 |
+| 程序 | 托管方 |
 | --- | --- |
-| 定义 EntitySchema，读取来源，形成观测内容和 Observation | 保管程序实例的 EntityId，登记程序实例和所需的 EntitySchema |
-| 决定粒度、业务对象的身份、历史保留，以及事实何时结束 | 生成 VersionId，接好版本链，上传二进制内容，提交到后端 |
-| 处理提交的错误 | 把后端的结果或错误交给业务代码 |
-| 持久保存自己的业务状态 | 提供实例的数据目录，执行管理配置，报告状态 |
+| 决定轮询、监听事件或批量读取，以及正常停止时怎样结束进行中的事实 | 启动和停止程序，意外退出后重启 |
+| 写入程序实例的业务类型和描述，形成观测 | 预留并保管程序实例的 EntityId，交给程序 |
+| 决定写入什么、何时写入 | 留住写入，按顺序交给后端，留住被拒绝的写入并通知用户 |
+| 解释配置：哪些内容影响采集，哪些进入观测或实例的业务版本 | 保管和同步配置，不解释它的内容 |
+| 持久保存自己的业务状态，例如读取进度 | 提供实例的数据目录，报告运行状态 |
 
-后端按 Schema 版本和 Core 的规则校验并保存，见 [Core · 谁决定什么](../core/index.mdx#responsibility)。
+托管方的管理登记和程序实例的业务版本是两件事：登记说明这个实例应当怎样运行，见 [Management](./management.mdx)；业务版本说明它是什么，由程序启动时写入，见 [API · 负责的 Observer](../api/writing.mdx#observer)。
 
-## 流程 [#flow]
+一个托管方上一个安装包一个程序实例。启动、停止和设置按实例寻址，安装、更新和卸载按安装包寻址，见 [Management · 身份](./management.mdx#identities)。业务要求整个部署只有一个实例时，写在这个业务的页面中，例如[应用识别 Observer](../observers/application-identity/index.mdx#instance)。
 
-一次业务变化从形成到保存：
+## 运行上下文 [#context]
 
-```mermaid
-flowchart TD
-  B[业务代码交出一次业务变化：一个批次] --> H[Runtime 形成版本]
-  H --> S[后端校验整次提交]
-  S --> OK[全部保存，Runtime 返回 VersionId]
-  S -. 一个版本被拒绝 .-> J[整次提交都不保存，错误交给业务代码]
-  click H "/hosting/submission#batch"
-  click J "/hosting/submission#result"
-```
+Observer 是一个普通进程，任何语言都能写。托管方启动它时用环境变量交出运行上下文：
 
-提交在业务代码等待时完成。业务代码收到结果时，版本已保存，下一次处理可以读到它们。
+| 环境变量 | 内容 |
+| --- | --- |
+| `ORISUMI_INSTANCE_ID` | 程序实例的 EntityId，作为负责的 Observer 写入 |
+| `ORISUMI_PACKAGE_VERSION` | 程序所用的安装包版本 |
+| `ORISUMI_DATA_DIR` | 实例的数据目录，由业务代码使用 |
+| `ORISUMI_WRITE_URL` | 本地转发的地址，写入用 |
+| `ORISUMI_API_URL`、`ORISUMI_API_TOKEN` | API 的地址和托管方凭证，读取和需要结果的写入用。还没有接入时凭证为空 |
+| `ORISUMI_DEVICE_ID` | 运行设备：一个[设备](../observers/device-state/device.mdx)实体的 EntityId，托管方没有配置时为空 |
+| `ORISUMI_SETTINGS` | 配置，一个 JSON 对象，由业务代码解释 |
+
+程序的其余约定只有三条，见 [Protocol · Observer 进程](./protocol.mdx#observer-process)：标准输入关闭时结束，诊断写入标准错误，进程在运行就算启动完成。
+
+运行设备说明程序在哪里执行，由配置或启动参数明确给出，多个托管方可以用同一个设备实体。业务代码用它的 EntityId 作识别范围，用引用写入它的当前版本。事实发生在哪台设备上，由业务内容表达：助手会话 Observer 读本机日志时，交互发生的设备就是运行设备；以后导入别的设备拷来的日志时，两者不同。需要设备的业务没有运行设备时，报告缺少配置并等待，托管方身份和主机名不能代替它。
+
+运行上下文变化时，托管方停止程序，再用新的上下文启动它：设置、首次接入、重新接入、API 地址或运行设备变化都走这条路径。
 
 ## 两种运行方式 [#modes]
 
@@ -52,15 +62,16 @@ flowchart TD
 | 远程管理 | 经后端，见 [Management](./management.mdx) | 经后端，是唯一的管理方式 |
 | 后端的托管方类型 | `device` | `server` |
 
-两种方式的安装包、数据目录、进程管理、提交和远程管理都相同。
+两种方式的安装包、数据目录、进程管理、本地转发和远程管理都相同。
 
 ## 状态 [#status]
 
-Runtime 为每个程序实例报告两项状态：
+托管方为每个程序实例报告三项状态：
 
 | 状态 | 含义 |
 | --- | --- |
 | 启用 | 程序实例是否应当运行 |
 | 运行 | 程序实例现在是否在运行，以及最近一条采集诊断，见 [OBSERVER-8](../core/model/observer.mdx#observer-8) |
+| 写入 | 本地转发中等待交给后端的请求数，以及被拒绝的写入数和最近的原因 |
 
-两项各自变化。例如程序实例在运行时，来源可能正在读取失败。Runtime 把它们报告给本机客户端，取值见 [Runtime · 状态](./runtime.mdx#states)；也报告给后端，供其他客户端读取，见 [Management · 状态报告](./management.mdx#status)。
+三项各自变化。例如程序实例在运行时，来源可能正在读取失败；断网时写入在等待，采集照常。有写入被拒绝时，客户端通知用户。Runtime 把它们报告给本机客户端，取值见 [Runtime · 状态](./runtime.mdx#states)；也报告给后端，供其他客户端读取，见 [Management · 状态报告](./management.mdx#status)。

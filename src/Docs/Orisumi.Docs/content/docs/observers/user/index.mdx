@@ -3,9 +3,9 @@ title: "User Statements"
 description: "用户本人作为 Observer 的陈述"
 ---
 
-用户本人是拥有这些数据的人。用户确认、否定或陈述一件事时，这份 Observation 的 Observer 是用户本人，见 [OBSERVER-6](../../core/model/observer.mdx#observer-6)。例如用户在 Web 控制台中把 QQ 国际版从 QQ 中分出来，陈述这次修改的 Observation 引用用户本人。
+用户本人是拥有这些数据的人。用户确认、否定或陈述一件事时，这份 Observation 的 Observer 是用户本人，见 [OBSERVER-6](../../core/model/observer.mdx#observer-6)。例如用户否定一条推断时，这份 Observation 引用用户本人。
 
-用户通过 Web 控制台形成陈述：Web 控制台是写入方，用户本人是 Observer。
+用户的陈述和修改这一阶段不做，Web 控制台只读取和删除。
 
 <ObserverStructure node="USER" />
 
@@ -15,12 +15,11 @@ description: "用户本人作为 Observer 的陈述"
 | --- | --- | --- |
 | [User](./user.mdx) | Observer：用户本人 | `users` |
 
-目前用户本人陈述的内容是[应用产品](../application-identity/application-product.mdx)，写法见 [Web · 应用](../../clients/web.mdx#applications)。
-
 ## 用户本人的身份 [#identity]
 
-一个部署只有一个用户。Web 控制台第一次写入用户本人的陈述时，确保 User 的 EntitySchema 已保存，再列出 `users`：没有实体时创建一个，有实体时使用 EntityId 最小的那个。之后的陈述都引用它的当前版本。
+一个部署只有一个用户，所以识别依据是固定的：`scope` 为 `null`，`scheme` 为 `orisumi.user`，`value` 为 `owner`。
 
 ## 待定 [#open]
 
+- 用户的陈述和修改怎样写入，特别是它们和 Observer 写入同一个实体时怎样不互相覆盖。
 - 用户本人和登录身份的关系，以及多个用户时的处理。

@@ -44,13 +44,13 @@ foreground-state-0.1.0-osx-arm64.zip
 | `name` | 显示的名称 |
 | `version` | 包的版本，三段数字，例如 `0.1.0` |
 | `target` | 目标操作系统和架构，用 .NET 的 RID 表示，例如 `osx-arm64`、`osx-x64`、`linux-x64` |
-| `protocol` | 入口使用的 [Observer 管道](./protocol.mdx#observer-pipe)协议版本，目前是 `1` |
+| `protocol` | 入口遵守的 [Observer 进程约定](./protocol.mdx#observer-process)的版本，目前是 `1` |
 | `entry` | 入口在包中的相对路径。Runtime 直接执行它 |
-| `scope` | 可选。`deployment` 表示每个部署最多一个实例，见 [Management · 每个部署一个实例](./management.mdx#singleton)；省略时为 `host`，每个 Runtime 一个实例 |
+| `scope` | 可选。`deployment` 表示每个部署最多一个实例，见 [Management · 每个部署一个实例](./management.mdx#singleton)；省略时为 `any`，每个托管方一个实例 |
 
 Runtime 只安装 `format` 和 `protocol` 都是它支持的版本、`target` 是本机平台的包。
 
-清单是安装协议的数据，不作为实体保存。安装包的 `id`、程序实例的 EntityId 和 SchemaId 是三种不同的标识：同一个安装包在两台设备上各有一个程序实例；程序实例的程序版本写在它的业务版本中，例如 [Foreground State Observer](../observers/foreground-state/foreground-state-observer.mdx)。
+清单是安装协议的数据，不作为实体保存。安装包的 `id`、程序实例的 EntityId 和 SchemaId 是三种不同的标识：同一个安装包在两台设备上是两个程序实例；程序实例的程序版本写在它的业务版本中，例如 [Foreground State Observer](../observers/foreground-state/foreground-state-observer.mdx)。
 
 ## 官方目录 [#catalog]
 
@@ -78,37 +78,43 @@ Runtime 只安装 `format` 和 `protocol` 都是它支持的版本、`target` �
 - `sha256` 是 ZIP 的摘要，Runtime 用它确认下载的内容就是目录中列出的那一份。
 - `format` 和 `protocol` 与清单中的相同，省略时为 `1`。Runtime 据此在下载前判断能否安装。
 
-客户端只从官方目录和附带的安装包安装，用户不能输入任意的 ZIP 或下载地址。官方目录的托管位置尚未确定，见 [Device Clients · 待定](../clients/device.mdx#open)。
+客户端从官方目录和附带的安装包列出可安装的 Observer，用户点一下安装。别人写的 Observer 由用户给出安装包的地址，见[安装](#install)。官方目录的托管位置尚未确定，见 [Device Clients · 待定](../clients/device.mdx#open)。
 
 ## 安装 [#install]
 
-1. Runtime 把 ZIP 下载到临时目录，核对 SHA-256。下载最长 5 分钟。
+安装包来自官方目录、附带的目录，或者用户给出的地址。安装就代表用户信任这个程序，它和用户自己的程序一样运行，不做隔离。
+
+1. Runtime 把 ZIP 下载到临时目录，有 SHA-256 时核对它。下载最长 5 分钟。
 2. 读取清单，检查格式、协议和平台。
 3. 解压到 `packages/<id>/<version>/`。ZIP 最大 256 MiB，解压后合计最大 1 GiB；符号链接和路径超出这个目录的条目让安装失败。
-4. 写入安装登记。第一次安装时，为它生成程序实例的 EntityId 和实例目录。
-5. 启用并启动这个 Observer。
+4. 写入安装登记。这个包还没有未删除的实例时，生成新程序实例的 EntityId 和实例目录。
+5. 启用并启动这个程序实例。
 
 任何一步失败，安装登记不变，这个版本不会运行。
 
 ## 更新 [#update]
 
+更新按安装包进行。
+
 1. 用户确认后，Runtime 按[安装](#install)的前三步准备新版本，这期间旧版本照常运行。准备失败时，旧版本继续运行。
-2. 新版本准备好后，Runtime 停止旧版本的进程，在安装登记中切换到新版本。
+2. 新版本准备好后，Runtime 停止实例的进程，在安装登记中切换到新版本。
 3. 原来启用的，用新版本启动。
 
-身份、设置和实例目录都不变。新版本无法启动时，Runtime 报告故障，不切回旧版本。
+实例的身份、设置和实例目录都不变。新版本无法启动时，Runtime 报告故障，不切回旧版本。
 
 Runtime 在切换登记之前退出时，下次启动读到的仍是旧版本的登记；没有登记的版本目录不会启动。
 
 ## 卸载与重装 [#uninstall]
 
-卸载时，Runtime 停止进程，删除这个包的程序文件，在登记中标记为未安装。程序实例的身份、设置和实例目录保留，见 [Clients · Device Clients](../clients/device.mdx)。
+卸载按安装包进行。Runtime 停止实例的进程，删除这个包的程序文件，在登记中标记为未安装。实例的身份、设置和实例目录保留，见 [Clients · Device Clients](../clients/device.mdx)。
 
-重新安装同一个 `id` 的包时，Runtime 从登记中找回原来的程序实例，Observer 沿用身份和设置，直接开始采集。
+重新安装同一个 `id` 的包时，Runtime 从登记中找回原来未删除的程序实例，它沿用身份和设置，直接开始采集。
+
+安装、重装、更新和卸载的结果都给出这个包和它的实例。
 
 ## 删除实例 [#removal]
 
-删除实例永久结束程序实例的身份，与卸载不同，见 [Management · 删除实例](./management.mdx#removal)。Runtime 停止它的进程，删除程序文件，在登记中标记实例已删除。之后安装同一个 `id` 的包，要显式新建实例：Runtime 生成新的 EntityId 和实例目录，从[安装](#install)的第四步开始，旧实例目录保留。
+删除实例永久结束一个程序实例的身份，与卸载不同，见 [Management · 删除实例](./management.mdx#removal)。Runtime 停止它的进程，在登记中标记实例已删除，删除程序文件。之后再安装同一个 `id` 的包时，Runtime 生成新的 EntityId 和实例目录，旧实例目录保留。
 
 ## 附带的 Observer [#bundled]
 

@@ -12,11 +12,12 @@ Core 类型、Observer 和各种 Id 用英文名，其余概念用中文。Obser
 | 实体（Entity） | 有稳定身份的一项数据，例如一个人、一个本机应用或一份推断。所有数据都是实体 | [Entity](./model/entity.mdx) |
 | EntityId | 实体的身份，UUIDv7 | [ENTITY-1](./model/entity.mdx#entity-1) |
 | 版本（Version） | 实体一次保存的完整内容，保存后不可改写 | [Version](./model/version.mdx) |
-| VersionId | 版本的身份，写入方生成的 UUIDv7 | [VERSION-12](./model/version.mdx#version-12) |
+| VersionId | 版本的身份，后端生成的 UUIDv7 | [VERSION-12](./model/version.mdx#version-12) |
 | 版本链 | 一个实体的全部版本，每个版本指向前一版本 | [VERSION-4](./model/version.mdx#version-4) |
 | 当前版本 | 实体最新保存的版本 | [VERSION-5](./model/version.mdx#version-5) |
 | 已保存 | 版本已被后端保存，可以被引用 | [ENTITY-6](./model/entity.mdx#entity-6) |
-| 提交 | 写入方把一个或多个版本交给后端保存的一次请求，全部保存或全部不保存 | [VERSION-13](./model/version.mdx#version-13) |
+| 写入 | 写入方把一个实体的完整内容交给后端，可以同时形成它的 Observation。全部保存或全部不保存 | [VERSION-13](./model/version.mdx#version-13) |
+| 识别依据 | 认出实体所用的一组值：业务类型、作用范围、标识方案和标识的值 | [IDENTITY-7](./rules/identity.mdx#identity-7) |
 | 引用 | 保存目标 VersionId 的位置，由 Core 或 Schema 版本声明 | [ENTITY-4](./model/entity.mdx#entity-4) |
 | 引用方 | 保存引用的版本，以及它所属的实体 | [ENTITY-8](./model/entity.mdx#entity-8) |
 | 二进制内容 | 业务字段中的一份文件。版本保存它的描述，字节按摘要单独保存 | [Binary](./model/binary.mdx) |
@@ -35,7 +36,7 @@ Core 类型、Observer 和各种 Id 用英文名，其余概念用中文。Obser
 | SchemaId | EntitySchema 的 EntityId，也就是业务类型的身份 | [SCHEMA-1](./model/schema.mdx#schema-1) |
 | Schema 版本 | EntitySchema 的一个版本，业务版本用 `schemaVersionId` 引用它 | [SCHEMA-2](./model/schema.mdx#schema-2) |
 | 资源名 | EntitySchema 的 `resourceName`，同一业务类型的各 Schema 版本相同 | [SCHEMA-5](./model/schema.mdx#schema-5) |
-| 业务规则 | 一种业务类型怎样记下事实：身份、粒度、事实时间、结束条件、原始材料，以及陈述冲突时以谁为准。写在 Observer 文档和 EntitySchema 的 `description` 中 | [Overview · 谁决定什么](./index.mdx#responsibility) |
+| 业务规则 | 一种业务类型怎样记下事实：身份、粒度、事实时间、结束条件、原始材料，以及陈述冲突时以谁为准。写在业务类型页和 EntitySchema 的 `description` 中，由使用这种类型的 Observer 共用 | [Overview · 谁决定什么](./index.mdx#responsibility) |
 | Observation（观测） | Observer 形成的一份陈述，唯一保存事实时间的类型 | [Observation](./model/observation.mdx) |
 | InputSet（输入集） | 一次处理实际用到的版本集合，可以被多份观测共用 | [InputSet](./model/input-set.mdx) |
 
@@ -60,20 +61,20 @@ Core 类型、Observer 和各种 Id 用英文名，其余概念用中文。Obser
 | 术语 | 定义 | 详见 |
 | --- | --- | --- |
 | 用户 | 拥有数据的人。在模型中是业务实体，可以作为 Observer | [OBSERVER-6](./model/observer.mdx#observer-6) |
-| 程序实例 | 独立运行、有自己 EntityId 的程序，例如前台状态 Observer 或推断 Observer | [OBSERVER-5](./model/observer.mdx#observer-5) |
-| 托管方 | 运行程序实例、持久保存它的身份并把它形成的版本交给后端的组件，也就是 Runtime | [Hosting · 流程](../hosting/index.mdx#flow) |
-| Runtime | 运行 Observer 进程的公共组件，持久保存实例身份，把业务代码交来的批次形成版本并提交给后端。设备上由设备端客户端启动，服务器上由服务管理器或容器启动 | [Hosting · Runtime](../hosting/runtime.mdx) |
-| SDK | Observer 的业务代码连接 Runtime 所用的库，每种语言一个，只封装管道中的消息 | [Hosting · 分工](../hosting/index.mdx#division) |
-| 管理登记 | 后端为一个 Runtime 或它的一个程序实例保存的管理数据：身份、配置、最近的状态报告和移除标记。它不是 Core 的实体 | [Hosting · Management](../hosting/management.mdx) |
-| 写入方 | 向后端提交版本的软件：Observer 的业务代码、托管方和用户使用的工具 | [Conventions · 规则的格式](./conventions.mdx#rules) |
-| 读取方 | 读取和追溯数据的软件，例如 Agent 和 Web 控制台 | [Conventions · 规则的格式](./conventions.mdx#rules) |
-| 后端 | 校验并保存版本的服务 | [Overview · 谁决定什么](./index.mdx#responsibility) |
-
-## 提交 [#submission]
-
-| 术语 | 定义 | 详见 |
-| --- | --- | --- |
-| 批次 | 业务代码一次交给 Runtime 的一组有序操作。Runtime 把它形成一次提交 | [Submission · 批次](../hosting/submission.mdx#batch) |
+| 程序 | 实现一项观测工作的一份代码 | [Observer · 程序实例](./model/observer.mdx#instances) |
+| 程序实例 | 由程序承担的 Observer：有自己的 EntityId 和配置的责任身份，例如这台 Mac 上的前台状态 Observer | [OBSERVER-5](./model/observer.mdx#observer-5) |
+| 一次执行 | 程序实例的一次运行 | [Observer · 程序实例](./model/observer.mdx#instances) |
+| 安装包 | 分发程序的 ZIP 文件，一个操作系统和架构一个 | [Hosting · Packages](../hosting/packages.mdx) |
+| 数据能力 | 读写 Core 数据的一组操作：写入、读取、使用文件和删除。由后端的 API 提供 | [API · Writing](../api/writing.mdx) |
+| 托管方 | 管理程序实例和配置、提供运行上下文、启动和停止程序的组件 | [Hosting · Overview](../hosting/index.mdx) |
+| 本地转发 | 托管方的一部分：收下程序的写入请求，按顺序交给后端，留住被拒绝的写入 | [Hosting · 本地转发](../hosting/runtime.mdx#forwarding) |
+| Runtime | 托管方的当前实现，一个运行 Observer 进程的 .NET 程序。设备上由设备端客户端启动，服务器上由服务管理器或容器启动 | [Hosting · Runtime](../hosting/runtime.mdx) |
+| 运行上下文 | 托管方交给程序实例的内容：实例身份、配置、写入和读取的地址、运行设备和停止信号 | [Hosting · 运行上下文](../hosting/index.mdx#context) |
+| SDK | 业务代码使用写入接口的便利库，按语言提供。不用它也能写 Observer | [API · SDK](../api/sdk.mdx) |
+| 管理登记 | 后端为一个托管方或它的一个程序实例保存的管理数据：身份、配置、最近的状态报告和移除标记。它不是 Core 的实体 | [Hosting · Management](../hosting/management.mdx) |
+| 写入方 | 决定写入什么的软件：Observer 的业务代码、托管方和用户使用的工具 | [Conventions · 规则的格式](./conventions.mdx#rules) |
+| 读取方 | 读取和追溯数据的软件，例如 Agent 和 Web 控制台。读取不需要 Observer 身份 | [Conventions · 规则的格式](./conventions.mdx#rules) |
+| 后端 | 提供数据能力、校验并保存版本的服务 | [Overview · 谁决定什么](./index.mdx#responsibility) |
 
 ## 时间 [#time]
 
@@ -105,8 +106,8 @@ Core 类型、Observer 和各种 Id 用英文名，其余概念用中文。Obser
 | `IEntity` | [Entity](./model/entity.mdx) 和 [Version](./model/version.mdx)：身份属于实体，内容和引用属于版本 |
 | `ObservationContent`、`Observation Content` | 观测内容，业务实体在 Observation 中承担的角色 |
 | `观测时间`、`接收时间` | 形成观测的时刻、后端收到请求的时刻，见 [TIME-1](./rules/time.mdx#time-1) |
-| `观测草稿`、`ObservationDraft`、`observation-drafts`、`publishDraft`、`观测预览`、`ObservationPreview`、`observation-previews`、`publishPreview` | 已删除。进行中的事实在业务代码提交它的 Observation 之后才能读到 |
-| `草稿`、`冻结`、`提交策略`、`及时提交`、`结束后提交`、`OnCompletion`、`本地回执`、`本地保存` | 已删除。Runtime 收到[批次](../hosting/submission.mdx#batch)就提交给后端，不在本地保存版本 |
-| `ObserverStore`、`LocalObserverSession`、`store.sqlite` | 已删除。Runtime 不为程序实例保存版本，见 [Submission](../hosting/submission.mdx) |
-| `LocalState` | 已删除。客户端经 Runtime 读取后端已保存的版本，见 [Protocol · 读取](../hosting/protocol.mdx#reading) |
-| `服务端托管`、`ServerObserverHost`、`ServerObserverSession`、`IServerObserverStore` | 运行在服务器上的 [Runtime](../hosting/server.mdx)；服务器上的 Observer 和设备上的一样经 SDK 使用 Runtime |
+| `观测草稿`、`ObservationDraft`、`observation-drafts`、`publishDraft`、`观测预览`、`ObservationPreview`、`observation-previews`、`publishPreview` | 已删除。进行中的事实在业务代码写入它的 Observation 之后才能读到 |
+| `草稿`、`冻结`、`提交策略`、`及时提交`、`结束后提交`、`OnCompletion`、`本地回执`、`本地保存` | 已删除。业务代码直接[写入](../api/writing.mdx)，版本由后端形成 |
+| `ObserverStore`、`LocalObserverSession`、`store.sqlite` | 已删除。本地不保存版本，见 [API · Writing](../api/writing.mdx) |
+| `LocalState` | 已删除。客户端从 API 读取已保存的版本，见 [API · Reading](../api/reading.mdx) |
+| `服务端托管`、`ServerObserverHost`、`ServerObserverSession`、`IServerObserverStore` | 运行在服务器上的 [Runtime](../hosting/server.mdx)；服务器上的 Observer 和设备上的一样由它托管 |

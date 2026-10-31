@@ -1,13 +1,254 @@
 ---
 title: "Writing"
-description: "怎样上传二进制内容、提交一组版本、后端怎样校验并整体保存，以及怎样删除实体"
+description: "写入的 HTTP 接口：一次写入说出一个实体的完整内容，后端认出对象、形成版本和 Observation；以及文件和删除"
 ---
 
-写入有三种：上传二进制内容、提交一组版本，以及删除一个实体。Observer 经 Runtime 提交，Runtime 怎样处理这些响应见 [Hosting · Submission](../hosting/submission.mdx#result)。
+写入只有一个接口：[`POST /writes`](/api/write)。业务代码说出一个实体的完整内容，可选的识别依据、事实时间和实际输入，后端认出对象，形成版本和 Observation。能发 HTTP 就能写 Observer，[SDK](./sdk.mdx) 只是方便。
 
-## 内容 [#contents]
+## 例子 [#example]
 
-16:00 提交的 VS Code 前台时段带着它的图标。Runtime 先用 [`PUT /contents/{digest}`](/api/putContent) 上传图标的字节，再提交时段，见 [BINARY-3](../core/model/binary.mdx#binary-3)。请求体是原始字节，`Content-Type` 为 `application/octet-stream`，最大 8 MiB（8,388,608 字节）。
+[Walkthrough](../start/walkthrough.mdx) 那一天 16:00，用户切到浏览器，VS Code 这一段结束。前台状态 Observer 先上传图标（见[文件](#contents)），再写入本机应用和这一段：
+
+```json title="POST /writes"
+{
+  "observer": { "entityId": "0196f3a2-7c1e-7d40-9b1a-2f6c8e4d5a01" },
+  "writes": [
+    {
+      "schemaId": "019e1bbb-ec00-7000-8000-000000000002",
+      "key": {
+        "scope": "0196f3a1-5d0c-7a11-8e2f-1b2c3d4e5f60",
+        "scheme": "macos.installation",
+        "value": "com.microsoft.VSCode\n/Applications/Visual Studio Code.app/Contents/MacOS/Electron"
+      },
+      "content": {
+        "deviceVersionId": { "entityId": "0196f3a1-5d0c-7a11-8e2f-1b2c3d4e5f60" },
+        "identifiers": [
+          { "scheme": "macos.bundle-id", "value": "com.microsoft.VSCode" },
+          {
+            "scheme": "macos.executable-path",
+            "value": "/Applications/Visual Studio Code.app/Contents/MacOS/Electron"
+          }
+        ]
+      }
+    },
+    {
+      "schemaId": "019e1bbb-ec00-7000-8000-000000000001",
+      "content": {
+        "localApplicationVersionId": {
+          "schemaId": "019e1bbb-ec00-7000-8000-000000000002",
+          "key": {
+            "scope": "0196f3a1-5d0c-7a11-8e2f-1b2c3d4e5f60",
+            "scheme": "macos.installation",
+            "value": "com.microsoft.VSCode\n/Applications/Visual Studio Code.app/Contents/MacOS/Electron"
+          }
+        },
+        "name": "Visual Studio Code",
+        "icon": {
+          "digest": "sha256:3a7bd3e2360a3d29eea436fcfb7e44c735d117c42d1c1835420b6b9942dd4f1b",
+          "mediaType": "image/png",
+          "size": 612480
+        }
+      },
+      "time": {
+        "startAt": "2026-10-06T14:00:00+08:00",
+        "endAt": "2026-10-06T16:00:00+08:00",
+        "timeZone": "Asia/Shanghai"
+      }
+    }
+  ]
+}
+```
+
+第一次写入按识别依据认出 VS Code：这个本机应用已有且内容相同，什么都不做；第一次读到时新建它。第二次写入形成时段内容的首版，引用本机应用的当前版本，同时形成 Observation，负责的是这一版前台状态 Observer。
+
+## 一次写入 [#write]
+
+| 字段 | 含义 |
+| --- | --- |
+| `schemaId` | 业务类型，这个 Observer 已经[声明](#types) |
+| `key` | 可选。认出实体的[识别依据](#recognition) |
+| `entityId` | 可选。写入一个已知的实体，和 `key` 只出现一个 |
+| `content` | 完整的业务内容，见 [VERSION-1](../core/model/version.mdx#version-1) |
+| `time` | 可选。出现时同时形成 [Observation](#observation) |
+| `inputs` | 可选。处理实际用到的已保存版本，见[观测](#observation) |
+
+| 情况 | 内容实体 |
+| --- | --- |
+| 没有 `key` 和 `entityId` | 新建实体。一次温度读数就是这样 |
+| `key` 还没有对应的实体 | 新建实体，登记这份依据 |
+| 实体已有，Schema 版本和内容都与当前版本相同 | 什么都不做 |
+| 实体已有，有变化 | 形成新版本 |
+
+内容是否相同按[内容相同](./versions.mdx#sameness)判断。写入方给出的是它读到的完整状态，后端把它接在当前版本之后，见 [VERSION-6](../core/model/version.mdx#version-6)。怎样选择 `key` 和内容的范围，见 [IDENTITY-5](../core/rules/identity.mdx#identity-5)。
+
+`entityId` 用于受托管实例写入[自己的描述](#observer)。这个实体已删除时，写入被拒绝，见 [HISTORY-7](../core/rules/history.mdx#history-7)。
+
+## 认出对象 [#recognition]
+
+识别依据是业务规则给出的三个值，业务类型取自 `schemaId`：
+
+| 字段 | 含义 |
+| --- | --- |
+| `scope` | 作用范围，由业务规则决定，例如设备的 EntityId 或一个账号。全局有效的标识为 `null` |
+| `scheme` | 标识方案，决定怎样解释 `value`，例如 `macos.installation` |
+| `value` | 标识的值，后端原样比较 |
+
+一份依据最多对应一个实体，见 [IDENTITY-7](../core/rules/identity.mdx#identity-7)。不同设备上路径相同的应用，`scope` 不同，所以是不同的实体。用户删除实体后，依据随它删除，之后的写入形成一个新实体。
+
+没有自然标识的类型不用识别依据，每次写入都新建。
+
+## 观测 [#observation]
+
+写入带 `time` 时，后端同时形成内容的 Observation：
+
+| 字段 | 含义 |
+| --- | --- |
+| `time.startAt`、`time.endAt`、`time.timeZone` | 含义见 [Observation · 成员](../core/model/observation.mdx#members)，都必须出现，未知时为 `null` |
+| `inputs` | 处理实际用到的已保存版本，写 VersionId，见 [EVIDENCE-1](../core/rules/evidence.mdx#evidence-1)。省略或为 `[]` 时不形成 InputSet，后端不从引用推算输入 |
+
+| 这个 Observer 对这个实体 | Observation |
+| --- | --- |
+| 还没有 Observation | 新建 |
+| 已有，内容版本、时间和输入都相同 | 什么都不做 |
+| 已有，有变化 | 形成它的新版本，见 [OBSERVATION-10](../core/model/observation.mdx#observation-10) |
+
+所以重读同一份日志什么都不发生。进行中的事实也是这样写的：
+
+```text
+一开始就确定 key，开始、确认和结束时各写入一次：
+time = [14:00, null]
+time = [14:00, 14:10]
+time = [14:00, 16:00]
+```
+
+每次写入形成 Observation 的一个新版本，内容不变，见 [TIME-4](../core/rules/time.mdx#time-4)。结束后写入一次是这种写法的特例。写入不带 `time` 时只保存内容，Observation 之后再形成：窗口标题比应用时段先结束时，时段的内容先写入，标题引用它，时段结束时再带着 `time` 写入一次。
+
+一个请求中成员相同的 `inputs` 共用一个 InputSet，成员的顺序不影响比较，见 [INPUTSET-5](../core/model/input-set.mdx#inputset-5)。例如一次模型调用得到十份推断，后端形成一个 InputSet 和十份 Observation。
+
+## 引用 [#references]
+
+业务内容中 `type` 为 `reference` 的字段，有三种写法，Schema 声明的位置才这样解释，其他字符串和对象都按原值保存：
+
+| 写法 | 指向 |
+| --- | --- |
+| 字符串 VersionId | 这个确定的版本 |
+| `{ "entityId": "…" }` | 这个实体此刻的当前版本 |
+| `{ "schemaId": "…", "key": { … } }` | 这份识别依据对应的实体此刻的当前版本 |
+
+读回时都是 VersionId，这个结果不随实体之后的版本改变，见 [ENTITY-4](../core/model/entity.mdx#entity-4)。
+
+引用谁，就先写入谁：同一个 Observer 的写入按顺序处理，所以前面的写入能被后面的引用。目标解析不到时，可空的字段写入 `null`，其他字段让这次写入被拒绝，见 [ENTITY-6](../core/model/entity.mdx#entity-6)。例如工具结果对应的调用不在日志中，`toolCallVersionId` 就是 `null`。
+
+## 业务类型 [#types]
+
+程序启动时，在请求的 `schemas` 中声明它用的业务类型：
+
+```json title="POST /writes"
+{
+  "observer": { "entityId": "0196f3a2-7c1e-7d40-9b1a-2f6c8e4d5a01" },
+  "schemas": [
+    { "schemaId": "019e1bbb-ec00-7000-8000-000000000002", "content": { "displayName": "本机应用", "…": "…" } }
+  ],
+  "writes": []
+}
+```
+
+后端先处理 `schemas`，再处理 `writes`：
+
+| 情况 | 结果 |
+| --- | --- |
+| EntitySchema 还没有版本 | 形成首版 |
+| 版本链中已有内容相同的 Schema 版本 | 使用那一版，版本链不变 |
+| 版本链中没有相同的内容 | 在当前版本之后形成新版本 |
+
+这个 Observer 之后的写入用这一版，直到它声明另一版。所以两台设备上运行着新旧两个版本的前台状态 Observer 时，各自用自己那一版，Schema 不会在两台设备之间来回改写，见 [ENTITY-3](../core/model/entity.mdx#entity-3)。
+
+`schemaId` 是业务类型的常量，由编写它的人生成，UUIDv7 不会重复；共用一种业务类型的程序用同一个 `schemaId` 和同一份内容，见[业务类型的声明](./sdk.mdx#definitions)。
+
+## 负责的 Observer [#observer]
+
+请求的 `observer` 指出负责这些写入的 Observer：
+
+| 写法 | 用于 |
+| --- | --- |
+| `{ "entityId": "…" }` | 受托管的程序实例，EntityId 在运行上下文中 |
+| `{ "schemaId": "…", "key": { … } }` | 直接运行的脚本，用识别依据认出自己 |
+
+Observation 引用处理这次写入时这个实体的当前版本。所以程序启动时先写入自己的描述：
+
+```json
+{ "schemaId": "019e1bbb-ec00-7000-8000-000000000003", "entityId": "0196f3a2-7c1e-7d40-9b1a-2f6c8e4d5a01", "content": { "platform": "macos", "hostName": "Mac", "programVersion": "0.1.0" } }
+```
+
+描述不变时什么都不做，程序升级或模型变化时形成新版本，之后的 Observation 引用新版本。还没有描述的 Observer 不能形成 Observation，这次写入被拒绝。受托管实例的 EntityId 由托管方预留，它用预留的 EntityId 写入首版，见 [ENTITY-2](../core/model/entity.mdx#entity-2)。
+
+每个 Observer 一条写入流，后端按收到的顺序处理。Observer 可以是程序实例，也可以是用户本人。
+
+## 请求和结果 [#requests]
+
+| 字段 | 含义 |
+| --- | --- |
+| `observer` | 负责的 [Observer](#observer) |
+| `sequence` | 可选。这条写入流中请求的序号，由[本地转发](../hosting/runtime.mdx#forwarding)填写。后端保存最后处理的序号，序号不大于它的请求已经处理过，返回 `200`，`duplicate` 为 `true`，什么都不做 |
+| `schemas` | 可选。声明的[业务类型](#types) |
+| `writes` | 这个请求的写入，按顺序处理，可以为空 |
+
+一次写入是一个整体，见 [VERSION-13](../core/model/version.mdx#version-13)。一次写入被拒绝时，同一个请求中的其他写入照常处理。响应按顺序列出每次写入的结果：
+
+```json
+{
+  "results": [
+    { "version": { "entityId": "…", "versionId": "…" }, "changed": false, "observation": null },
+    { "version": { "entityId": "…", "versionId": "…" }, "changed": true, "observation": { "entityId": "…", "versionId": "…" } },
+    { "error": { "status": 409, "rule": "BINARY-3", "detail": "…" } }
+  ]
+}
+```
+
+| 字段 | 含义 |
+| --- | --- |
+| `version` | 这次写入之后内容实体的实际当前版本，完整内容见 [Versions](./versions.mdx) |
+| `changed` | 这次写入是否形成了新版本 |
+| `observation` | 这份 Observation 的当前版本，写入不带 `time` 时为 `null` |
+| `error` | 这次写入被拒绝的原因，字段含义见 [Errors](./errors.mdx#format) |
+
+| 结果 | 响应 |
+| --- | --- |
+| 请求已处理，包括其中有写入被拒绝 | `200` |
+| 请求体不符合契约，例如 JSON 无效或缺少成员，或者 `schemas` 被拒绝 | `400` 或 `409`，整个请求都不处理 |
+| `observer` 不是这个托管方的程序实例 | `403`，`code` 为 `host_mismatch` |
+| `observer` 已删除 | `409`，`rule` 为 `HISTORY-7`，整个请求都不处理 |
+
+错误响应的字段见 [Errors](./errors.mdx)。请求体受 10 MiB 的上限约束。
+
+## 两个地址 [#endpoints]
+
+写入接口有两个地址，请求相同：
+
+| 地址 | 响应 | 用于 |
+| --- | --- | --- |
+| 本地转发，见[运行上下文](../hosting/index.mdx#context) | `202`，没有结果 | 采集程序：只发送，断网时也能写入 |
+| 后端 | `200`，带结果 | 需要结果的程序、直接运行的脚本 |
+
+本地转发收下请求后按顺序交给后端，见 [Runtime · 本地转发](../hosting/runtime.mdx#forwarding)。被拒绝的写入留在那里，托管方通知用户。
+
+## 校验 [#validation]
+
+后端先检查请求的结构，再按顺序处理 `schemas` 和每次写入。业务内容的字段由这个 Observer 声明的 Schema 版本解释。
+
+| 阶段 | 检查 | 失败时 |
+| --- | --- | --- |
+| 请求结构 | JSON、成员和基础值类型，以及 `observer` 的归属 | `400` 或 `403`，整个请求都不处理 |
+| 声明 | `schemas` 中每一版的内容 | `400` 或 `409`，整个请求都不处理 |
+| 每次写入 | 业务类型是否已声明、Schema 字段定义的必写项与组合、引用目标、二进制内容、事实边界、存储支持的字符串与数值范围 | 这次写入被拒绝，其他写入照常处理 |
+
+例如 `startAt` 晚于 `endAt`，这次写入按 [OBSERVATION-6](../core/model/observation.mdx#observation-6) 被拒绝，请求中的其他写入照常保存。
+
+`binary` 值的成员不符合 [BINARY-1](../core/model/binary.mdx#binary-1)，或 `size` 与已上传的字节数不同时，结果是 `400`；内容尚未上传时结果是 `409`，`rule` 为 `BINARY-3`。字符串与数值的存储范围见 [Storage · 内容的表示](../storage/versions.mdx#content)。
+
+## 文件 [#contents]
+
+16:00 这一段带着 VS Code 的图标。调用方先用 [`PUT /contents/{digest}`](/api/putContent) 上传字节，再写入引用它的内容，见 [BINARY-3](../core/model/binary.mdx#binary-3)。请求体是原始字节，`Content-Type` 为 `application/octet-stream`，最大 8 MiB（8,388,608 字节）。业务字段中写入摘要、媒体类型和大小。
 
 | 结果 | 响应 |
 | --- | --- |
@@ -16,43 +257,21 @@ description: "怎样上传二进制内容、提交一组版本、后端怎样校
 | 字节的摘要与路径不同 | `400`，`rule` 为 `BINARY-1` |
 | 超过 8 MiB | `413` |
 
-同样的字节再次上传也返回 `204`。上传超过 24 小时、仍没有版本使用的内容会被移除，见 [Storage · 暂存](../storage/contents.mdx#staging)。
-
-## 提交 [#submission]
-
-16:00 用户切到浏览器，Runtime 用 [`POST /versions`](/api/submitVersions) 提交 VS Code 这一段的前台时段和 Observation。请求体是 `{ "versions": [ … ] }`，至少有一个版本，由写入方按依赖顺序排列：被引用的版本在前。后端按这个顺序校验，全部通过才一起保存，见 [VERSION-13](../core/model/version.mdx#version-13)。
-
-| 结果 | 响应 |
-| --- | --- |
-| 全部版本都已保存 | `200`，按提交的顺序列出每个版本的 `versionId` 和 `recordedAt` |
-| 请求体不符合契约，例如 JSON 无效、缺少成员或带有 `recordedAt` | `400`，不带 `index`，整次提交都不保存 |
-| 某个版本违反 Core 规则，或与已保存的数据冲突 | `400` 或 `409`，带 `rule`、`index` 和 `versionId`，整次提交都不保存 |
-
-错误响应的字段见 [Errors](./errors.mdx)。一次提交中的版本数不设上限，请求体受 10 MiB 的上限约束。
-
-### 校验阶段 [#validation]
-
-后端先检查整批请求的结构，再按顺序检查每个版本。契约的 `VersionSubmission` 用 `category` 选择 `content` 的结构，业务内容的字段仍由所引用的 Schema 版本解释。
-
-| 阶段 | 检查 | 失败时 |
-| --- | --- | --- |
-| 请求结构 | JSON 与版本共有成员、Core 内容的成员和基础值类型、字段配置出现时的值类型，以及存储支持的字符串与数值范围 | `400`，不带 `index` |
-| 版本规则 | UUIDv7、版本链、引用目标、二进制内容、事实边界、InputSet 非空与去重、Schema 字段定义的必写项与组合、业务字段匹配等 Core 规则 | `400` 或 `409`，带 `rule`、`index` 和 `versionId` |
-
-两个阶段失败时，整次提交都不保存。例如第二个版本的 Observation 缺少 `timeZone`，是请求结构错误；第二个版本的 InputSet 的 `members` 是空数组，结构合法，但违反 [INPUTSET-2](../core/model/input-set.mdx#inputset-2)。两种情况下第一个版本都不保存。
-
-`binary` 值的成员不符合 [BINARY-1](../core/model/binary.mdx#binary-1)，或 `size` 与已上传的字节数不同时，返回 `400`；内容尚未上传时返回 `409`，`rule` 为 `BINARY-3`。
-
-字段定义的 `description` 与 `type`、`required`、`nullable` 的必填检查属于 [SCHEMA-10](../core/model/schema.mdx#schema-10)。缺少说明、说明为空字符串或全为空白时，拒绝该版本；说明出现但不是字符串时，是请求结构错误。所以结构检查通过，还要经过版本规则的检查，版本才算合法。字符串与数值的存储范围见 [Storage · 内容的表示](../storage/versions.mdx#content)。
-
-### 被拒绝之后 [#rejections]
-
-基于旧版本的版本被拒绝时（[VERSION-6](../core/model/version.mdx#version-6)），写入方用 [`GET /entities/{entityId}`](/api/getEntity) 读取新的当前版本，再重新处理。
+同样的字节再次上传也返回 `204`。本地转发同样接受这个请求，按顺序先上传，再交出引用它的写入。上传超过 24 小时、仍没有版本使用的内容会被移除，见 [Storage · 暂存](../storage/contents.mdx#staging)。
 
 ## 删除 [#deletion]
 
-第二天，用户在 Web 控制台删掉 16:00 之后的浏览器时段。[`DELETE /entities/{entityId}`](/api/deleteEntity) 删除一个实体的全部版本，返回 `204`。删除一次作用于一个实体，所以这一段的 Observation 和前台时段分两次请求，见 [HISTORY-6](../core/rules/history.mdx#history-6)。
+第二天，用户在 Web 控制台删掉 16:00 之后的浏览器时段。[`DELETE /entities/{entityId}`](/api/deleteEntity) 移除一个实体的全部版本和它的识别依据，返回 `204`。一次作用于一个实体，所以这一段的 Observation 和前台时段是两个删除，见 [HISTORY-6](../core/rules/history.mdx#history-6)。
 
-删除已删除的实体也返回 `204`。删除后实体不再接受新版本，见 [HISTORY-7](../core/rules/history.mdx#history-7)；读取它返回 `410`。
+| 情况 | 结果 |
+| --- | --- |
+| 实体已经删除 | `204` |
+| EntityId 从未出现过 | `404` |
+| 还有业务版本使用这个 EntitySchema | `409`，`rule` 为 `HISTORY-9` |
+| 托管方凭证 | `403`，`code` 为 `management_only` |
 
-实体是一个已登记的程序实例时，删除它同时删除实例，见 [Management · 删除实例](./management.mdx#removal)。Runtime 不能删除实体，带托管方凭证的删除请求返回 `403`。
+已有的引用保留，目标不可读取，见 [HISTORY-8](../core/rules/history.mdx#history-8)。之后的引用不能指向它：字段可空时写入 `null`，否则这次写入被拒绝，见 [ENTITY-6](../core/model/entity.mdx#entity-6)。
+
+删除后实体不再接受新版本，见 [HISTORY-7](../core/rules/history.mdx#history-7)；读取它返回 `410`。业务代码之后读到同一个来源对象时，写入按新对象创建。
+
+实体是一个已登记的程序实例时，删除它同时删除实例，见 [Management · 删除实例](./management.mdx#removal)。

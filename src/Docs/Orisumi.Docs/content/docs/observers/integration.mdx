@@ -1,15 +1,25 @@
 ---
 title: "Integration Guide"
-description: "接入新来源时，依次确定事实、Observer、实体、EntitySchema、身份、时间、历史和提交"
+description: "接入新来源时，依次确定事实、Observer、实体、EntitySchema、身份、时间、历史和写入，再验收"
 ---
 
-接入一个新来源，就是依次回答下面九个问题，前面的结论是后面的前提。已确认的结论写进这个 Observer 的 Observer 页和业务类型页，格式见 [Document Template](./template/index.mdx)；还没确认的写进“待定”。
+接入一个新来源，要写的是业务规则和读取来源的代码。Observer 只发送：说出一个实体的完整内容、识别依据和事实时间，见 [API · Writing](../api/writing.mdx)。实体、版本、引用和 InputSet 怎样组织由后端负责，断网和程序运行由[托管方](../hosting/index.mdx)负责。任何语言都可以，能发 HTTP 请求就行。
+
+下面九个问题依次回答，前面的结论是后面的前提。已确认的结论写进这个 Observer 的 Observer 页和业务类型页，格式见 [Document Template](./template/index.mdx)；还没确认的写进“待定”。
 
 ## 1. 事实 [#fact]
 
 先写清一份观测声称的事实是什么。事实有三种：一次事件，例如消息被编辑；某一刻读到的状态，例如当前的文件内容；一段持续的事实，例如应用处于前台。
 
-然后定粒度：什么时候延续同一份观测，什么时候形成新的观测。用业务例子检验，一次读取多半是在补全已有的观测，见 [IDENTITY-4](../core/rules/identity.mdx#identity-4)。
+然后定粒度，先看来源保不保留历史，见 [IDENTITY-5](../core/rules/identity.mdx#identity-5)：
+
+| 来源 | 建模 | 例子 |
+| --- | --- | --- |
+| 保留历史 | 每条来源数据一个不变的实体，变化是新的实体 | 日志中的一次交互、一次改名、一次访问 |
+| 只给当前状态 | 一个对象一个实体，每次写入完整内容，变化形成新版本 | 日历事件、本机应用 |
+| 错过就没有 | 持续的事实是一个实体，时段结束时写入 | 前台时段 |
+
+一个实体的内容如果只能读到一部分，它只放不变的内容，会变的部分定义为单独的业务类型。例如助手会话只有身份，标题是单独的[会话标题](./assistant-sessions/assistant-session-title.mdx)。用业务例子检验，一次读取多半是在补全已有的观测，见 [IDENTITY-4](../core/rules/identity.mdx#identity-4)。
 
 结论写进 Observer 页的开头和业务类型页的“粒度”。
 
@@ -17,7 +27,7 @@ description: "接入新来源时，依次确定事实、Observer、实体、Enti
 
 确定谁根据证据形成观测、对判断负责。内部模块只提供证据时，负责的是使用它的 Observer；模块独立形成观测时，它是自己的 Observer；只转发已有的观测时，Observer 保持原样。完整的划分见 [OBSERVER-6](../core/model/observer.mdx#observer-6)。
 
-再说明什么情况算独立的程序实例。程序实例的 EntityId 由 Runtime 保存，重启、更新和重装后沿用，见 [Runtime · 数据目录](../hosting/runtime.mdx#data)。结论写进 Observer 页的“程序实例”。
+再说明什么情况算独立的程序实例，见 [OBSERVER-4](../core/model/observer.mdx#observer-4) 和 [OBSERVER-5](../core/model/observer.mdx#observer-5)。结论写进 Observer 页的“程序实例”。
 
 ## 3. 实体 [#entities]
 
@@ -33,15 +43,15 @@ description: "接入新来源时，依次确定事实、Observer、实体、Enti
 
 为业务类型选择稳定的 SchemaId 和唯一的资源名。结构或约束变化时，形成同一 EntitySchema 的新版本；业务含义变化时，新建一个 EntitySchema，见 [SCHEMA-15](../core/model/schema.mdx#schema-15) 和 [SCHEMA-16](../core/model/schema.mdx#schema-16)。
 
-一种业务类型的含义、粒度、身份、时间、EntitySchema 和示例，集中写在同一个业务类型页。
+一种业务类型的含义、粒度、身份、时间、EntitySchema 和示例，集中写在同一个业务类型页。别的 Observer 用同一种业务类型时，共用这些规则。代码使用同一份[业务类型的声明](../api/sdk.mdx#definitions)。
 
 ## 5. 身份 [#identity]
 
-说明来源标识在哪个范围内有效，例如一个账号、一台设备、一个仓库或一个日历，以及来源标识到 EntityId 的映射保存在哪里。范围不同的同名标识属于不同的实体，见 [IDENTITY-6](../core/rules/identity.mdx#identity-6)。
+说明怎样认出同一个对象。来源有稳定的标识时，写明[识别依据](../api/writing.mdx#recognition)：作用范围、标识方案和值怎样组成，例如本机应用的范围是设备，值是包标识和路径，再给出输入输出样例。范围由业务决定，例如一个账号、一台设备、一个仓库或一个日历，范围不同的同名标识属于不同的实体，见 [IDENTITY-6](../core/rules/identity.mdx#identity-6)。
 
-来源没有稳定标识时，写明能用哪些证据识别、怎样识别。证据不足的字段保持未知。
+来源没有稳定标识时，写明能用哪些证据识别、怎样识别，证据不足的字段保持未知。没有自然身份的对象每次新建，例如一次温度读数。
 
-最后区分三种情况：重试或重放沿用原来的 VersionId；补全同一件事实，形成原实体的新版本；新的独立观测使用新的 EntityId。两份内容相同，只说明内容相同；是不是同一次发生，要靠证据判断，见 [IDENTITY-3](../core/rules/identity.mdx#identity-3)。
+重读同一份来源时，相同的依据和内容什么都不发生，所以业务代码不用查询，也不用比较。这要求内容只由来源决定：写入时不混入读取时刻这样每次都变的值。两份内容相同，只说明内容相同；是不是同一次发生，要靠证据判断。
 
 ## 6. 时间 [#time]
 
@@ -59,19 +69,35 @@ description: "接入新来源时，依次确定事实、Observer、实体、Enti
 
 每个版本保存完整内容：新版本中省略的字段，在这一版中就不存在，见 [VERSION-1](../core/model/version.mdx#version-1) 和 [SCHEMA-13](../core/model/schema.mdx#schema-13)。
 
-## 8. 提交 [#submission]
+## 8. 写入 [#submission]
 
-接入时，用所选语言的 SDK 连接 Runtime，把程序实例的信息和所需的 EntitySchema 交给 Runtime，第一份观测形成前就提交。一次业务变化组织成一个批次，见 [Submission · 批次](../hosting/submission.mdx#batch)。说明业务代码何时提交、何时补全、提交失败时怎样处理。
+程序启动时声明用到的业务类型，写入自己的描述，见 [API · 业务类型](../api/writing.mdx#types)。之后每次业务变化写入一次，例如每分钟读一次温度：
 
-在 Observer 页写明用的是哪个 SDK、何时提交，并链接 [Submission](../hosting/submission.mdx)。业务代码和 Runtime 的分工见 [Hosting · 分工](../hosting/index.mdx#division)。
+```text
+await data.write(
+    types.Temperature,
+    { celsius: sample.celsius },
+    time = point(sample.time, sample.timeZone)
+)
+```
 
-在设备上运行的 Observer 由设备端客户端启动的 Runtime 托管。依据全部已保存数据形成观测的 Observer 在服务器上由 Runtime 运行，例如[应用识别 Observer](./application-identity/index.mdx)，见 [Hosting · Server](../hosting/server.mdx)。每个 Observer 为每个支持的平台构建一个安装包，见 [Hosting · Packages](../hosting/packages.mdx)；进程怎样启动、停止和恢复，见 [Runtime · 进程](../hosting/runtime.mdx#process)。
+共用的对象带 `key`，引用写对方的识别依据，被引用的先写入，例子见 [SDK · 引用和识别依据](../api/sdk.mdx#references)。依据已保存的数据形成观测时，`inputs` 列出实际用到的版本。
 
-## 9. 读回 [#read-back]
+写给本地转发时，写入收下就返回，所以读取进度在写入之后保存就行，断网时照常运行。需要结果的程序直接写给后端，见[两个地址](../api/writing.mdx#endpoints)。什么时候写入、何时算事实结束，见 [TIME-4](../core/rules/time.mdx#time-4)，写进 Observer 页的“写入”。
 
-提交业务类型页的示例，再用 `GET /versions/{versionId}` 逐个读回（见 [API · Reading](../api/reading.mdx#versions)），检查保存和读取是否一致：
+## 运行 [#hosting]
+
+需要长期运行的 Observer 打成安装包，由托管方运行。程序是一个普通进程，从环境变量读取[运行上下文](../hosting/index.mdx#context)，标准输入关闭时结束，诊断写入标准错误，见 [Protocol · Observer 进程](../hosting/protocol.mdx#observer-process)。
+
+在设备上运行的 Observer 由设备端客户端启动的 Runtime 托管。依据全部已保存数据形成观测的 Observer 在服务器上运行，例如[应用识别 Observer](./application-identity/index.mdx)，见 [Hosting · Server](../hosting/server.mdx)。每个 Observer 为每个支持的平台构建一个安装包，见 [Hosting · Packages](../hosting/packages.mdx)；进程怎样启动、停止和恢复，见 [Runtime · 进程](../hosting/runtime.mdx#process)。
+
+一次性的脚本不需要这些，直接运行就行，见 [API · SDK](../api/sdk.mdx#modes)。
+
+## 9. 验收 [#read-back]
+
+在本地环境中跑一段真实来源，确认[被拒绝的写入](../hosting/runtime.mdx#forwarding)为空，再用 `GET /versions/{versionId}` 读回业务类型页的示例（见 [API · Reading](../api/reading.mdx#versions)），检查保存和读取是否一致：
 
 - 业务版本的 `schemaVersionId` 指向它所用的 Schema 版本。观测内容的类型由内容版本自己的 `schemaVersionId` 给出。
-- 每个版本都带有后端赋值的 `recordedAt`，提交时不带它。
+- 每个版本都带有后端赋值的 `recordedAt`。
 - 省略的字段和值为 `null` 的字段，读回后仍能区分。
-- 引用的目标在提交前已保存，见 [ENTITY-6](../core/model/entity.mdx#entity-6)。
+- 用同样的识别依据再写入一次，什么都不发生。

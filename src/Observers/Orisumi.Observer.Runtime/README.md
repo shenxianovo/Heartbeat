@@ -2,6 +2,8 @@
 
 Orisumi.Observer.Runtime 运行 Observer 的进程，把它们交来的批次形成版本并提交到后端。设备上由客户端启动，服务器上以服务方式运行。职责和协议见 [Hosting · Runtime](../../Docs/Orisumi.Docs/content/docs/hosting/runtime.mdx) 和 [Hosting · Server](../../Docs/Orisumi.Docs/content/docs/hosting/server.mdx)。
 
+本文写当前代码的运行方式。目标职责和 `--run` 的新用法见 [Hosting · Runtime](../../Docs/Orisumi.Docs/content/docs/hosting/runtime.mdx)，代码尚未迁移。
+
 ## 构建安装包
 
 `orisumi observers pack` 按平台发布 Runtime，并构建给出的 Observer 的安装包：

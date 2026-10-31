@@ -1,0 +1,65 @@
+---
+title: "Assistant Subagent"
+description: "子 Agent 会话和发起它的会话之间的关系"
+---
+
+子 Agent 关系表示一个[助手会话](./assistant-session.mdx)是由另一个会话发起的，例如 Claude Code 为读网页派出一个 `web-fetch`。它是关系实体，见 [ENTITY-9](../../core/model/entity.mdx#entity-9)，由助手会话 Observer 形成。
+
+<ObserverStructure node="ASSISTANT_SUBAGENT" />
+
+## 粒度 [#granularity]
+
+一个子 Agent 的会话对应一个实体。
+
+| 产品 | 子 Agent 的会话 | 发起它的会话 |
+| --- | --- | --- |
+| Claude Code | `subagents/agent-<agentId>.jsonl` 中的记录，带 `agentId` | 文件所在目录的 `sessionId` |
+| Codex | `session_meta` 的 `source.subagent` 存在的 rollout 文件 | `source.subagent.thread_spawn.parent_thread_id` |
+
+先读到子 Agent 的文件时，助手会话 Observer 先写入两个会话，再写入这个关系。会话只有身份，所以父会话的内容和之后读到的相同。
+
+## 身份 [#identity]
+
+| 识别依据 | 值 |
+| --- | --- |
+| `scope` | `null` |
+| `scheme` | `claude-code.subagent` 或 `codex.subagent` |
+| `value` | 子 Agent 会话的 `sourceSessionId` |
+
+## 引用 [#references]
+
+| 字段 | 目标 |
+| --- | --- |
+| `sessionVersionId` | 子 Agent 的会话 |
+| `parentSessionVersionId` | 发起它的会话 |
+
+## 事实时间 [#fact-time]
+
+来源没有单独记下子 Agent 开始的时刻。它不作为观测内容，所以没有事实时间，由读取方从交互的时间计算。
+
+## EntitySchema [#schema]
+
+| 项目 | 值 |
+| --- | --- |
+| SchemaId | `019e1bbb-ec00-7000-8000-00000000000b` |
+| 显示名称 | 子 Agent 关系 |
+| 说明 | 表示一个子 Agent 的会话和发起它的会话之间的关系。一个子 Agent 的会话一个实体。 |
+| 资源名 | `assistant-subagents` |
+
+| 字段 | 类型 | 必填 | 可空 | description |
+| --- | --- | --- | --- | --- |
+| `sessionVersionId` | `reference` | 是 | 否 | 子 Agent 的会话 |
+| `parentSessionVersionId` | `reference` | 是 | 否 | 发起这个子 Agent 的会话 |
+| `agentName` | `string` | 是 | 是 | 子 Agent 的类型或路径：Claude Code `meta.json` 的 `agentType`，Codex 的 `agent_path`。来源没有给出时为 `null` |
+| `spawnCallId` | `string` | 是 | 是 | 父会话中发起这个子 Agent 的工具调用标识，对应父会话中工具调用交互的 `callId`；来源没有给出时为 `null` |
+
+## 示例 [#example]
+
+```json
+{
+  "sessionVersionId": "019e2c41-7a10-7000-8000-0000000001b2",
+  "parentSessionVersionId": "019e2c41-7a10-7000-8000-0000000001a1",
+  "agentName": "web-fetch",
+  "spawnCallId": "toolu_012dcHp4quCzvxk4k8nLxQqy"
+}
+```

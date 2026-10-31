@@ -17,6 +17,7 @@ description: "前台应用时段与窗口标题时段"
 | --- | --- | --- |
 | [Foreground State Observer](./foreground-state-observer.mdx) | 程序实例自身：一个前台状态 Observer | `foreground-state-observers` |
 | [Local Application](./local-application.mdx) | 被应用时段引用：设备上的一个应用安装 | `local-applications` |
+| [Device](../device-state/device.mdx) | 被本机应用引用：应用所在的设备，由配置给出 | `devices` |
 | [Foreground Application Period](./foreground-application-period.mdx) | 观测内容：应用处于前台的一个时段 | `foreground-application-periods` |
 | [Foreground Window Title](./foreground-window-title.mdx) | 观测内容：窗口标题的一个时段 | 待定 |
 
@@ -25,6 +26,7 @@ flowchart LR
   O[应用时段 Observation] -->|observerVersionId| R[前台状态 Observer]
   O -->|contentVersionId| C[Foreground Application Period]
   C -->|localApplicationVersionId| A[Local Application]
+  A -->|deviceVersionId| D[Device]
   T[标题时段 Observation] -->|observerVersionId| R
   T -->|contentVersionId| TC[Foreground Window Title]
   TC -->|foregroundApplicationPeriodVersionId| C
@@ -33,14 +35,15 @@ flowchart LR
   click R "/observers/foreground-state/foreground-state-observer"
   click C "/observers/foreground-state/foreground-application-period"
   click A "/observers/foreground-state/local-application"
+  click D "/observers/device-state/device"
   click TC "/observers/foreground-state/foreground-window-title"
 ```
 
 ## 程序实例 [#instance]
 
-- 一个程序实例对应本机上运行的一个前台状态 Observer，另一台设备上的是另一个程序实例。
-- 程序版本取 Runtime 在 `init` 中交来的安装包版本，见 [Protocol · Observer 管道](../../hosting/protocol.mdx#observer-pipe)。
-- 本机应用的身份保存在单独的登记文件中，见 [Local Application · 登记文件](./local-application.mdx#registry)。
+- 一个程序实例对应运行的一个前台状态 Observer。同一台设备上可以有两个，它们共用同样的本机应用，各自形成观测。
+- 程序版本取运行上下文中的安装包版本，见 [Hosting · 运行上下文](../../hosting/index.mdx#context)。
+- 本机应用所在的设备取运行上下文中的运行设备。没有运行设备时，它报告缺少配置并等待，见 [Hosting · 运行上下文](../../hosting/index.mdx#context)。
 
 ## 采集 [#collection]
 
@@ -58,26 +61,26 @@ macOS 唤醒后立即重新读取。休眠、读取失败等情况下时段怎�
 
 应用时段和标题时段都是时段，各有自己的时间线，边界见 [Foreground Application Period · 事实时间](./foreground-application-period.mdx#fact-time) 和 [Foreground Window Title · 事实时间](./foreground-window-title.mdx#fact-time)。
 
-## 提交 [#submission]
+## 写入 [#submission]
 
-前台状态 Observer 使用 [.NET](../../hosting/dotnet.mdx) 的 SDK。进行中的时段只在内存中补全，时段结束时才提交，所以后端为每个时段保存一个版本，进行中的时段读不到。业务事件对应的操作如下：
+前台状态 Observer 使用 [.NET 的 SDK](../../api/sdk.mdx#dotnet)，写给本地转发。进行中的时段只在内存中补全，时段结束时才写入，所以后端为每个时段保存一个版本，进行中的时段读不到；采样的次数不决定版本的数量。业务事件对应的操作如下：
 
 | 业务事件 | 处理 |
 | --- | --- |
-| 首次确认应用在前台 | 识别本机应用，读取图标，在内存中开始这一段 |
+| 首次确认应用在前台 | 确定本机应用的识别依据，读取图标，在内存中开始这一段 |
 | 再次确认同一段活动 | 把结束边界延到这次确认 |
-| 切换应用，或应用名称、时区变化 | 提交当前时段，开始新的一段 |
-| 读取失败、停止采集或其他中断 | 当前时段结束于最后一次确认，提交它 |
+| 切换应用，或应用名称、时区变化 | 写入当前时段，开始新的一段 |
+| 读取失败、停止采集或其他中断 | 当前时段结束于最后一次确认，写入它 |
 
-一个时段在一个批次中提交：本机应用（已有版本时沿用）、带着图标的观测内容和 Observation，见 [Submission · 批次](../../hosting/submission.mdx#batch)。
+一个时段是一个请求：先写入本机应用，带识别依据；再写入时段内容，引用本机应用，带时间和图标，代码的形状见 [SDK · 引用和识别依据](../../api/sdk.mdx#references)。两次写入都不查询后端，所以断网时照常，见 [Runtime · 本地转发](../../hosting/runtime.mdx#forwarding)。
 
-提交失败时，前台状态 Observer 记一条采集诊断，丢掉这一段，继续采集。程序异常退出时，进行中的时段随之丢失；程序实例的身份不变，新的读数开始新的时段。
+程序异常退出时，进行中的时段随之丢失；程序实例的身份不变，新的读数开始新的时段。以后要让进行中的这一段可读，只改写入的时机：见 [API · 观测](../../api/writing.mdx#observation)。
 
 ## 实现 [#implementation]
 
 | 平台 | 应用时段 | 窗口标题 |
 | --- | --- | --- |
-| macOS | 已实现：本机应用身份、连续时段，时段结束时经 Runtime 提交 | 未实现 |
+| macOS | 已实现：本机应用身份、连续时段，时段结束时写入 | 未实现 |
 | Windows | 未实现 | 未实现 |
 | Android | 未实现 | 未实现 |
 
@@ -85,10 +88,9 @@ macOS 程序在 `src/Observers/Orisumi.Observer.ForegroundState/`，通过 AppKi
 
 用到的 macOS 接口：[应用激活通知](https://developer.apple.com/documentation/appkit/nsworkspace/didactivateapplicationnotification)、[焦点窗口变化通知](https://developer.apple.com/documentation/applicationservices/kaxfocusedwindowchangednotification)、[标题变化通知](https://developer.apple.com/documentation/applicationservices/kaxtitlechangednotification)。
 
-测试 Case：[本机应用身份](../../testing/observers/local-application-identity.mdx)、[时段边界](../../testing/observers/application-period-boundaries.mdx)、[提交](../../testing/observers/foreground-submission.mdx)、[图标](../../testing/observers/foreground-icons.mdx)。
+测试 Case：[本机应用身份](../../testing/observers/local-application-identity.mdx)、[时段边界](../../testing/observers/application-period-boundaries.mdx)、[写入](../../testing/observers/foreground-submission.mdx)、[图标](../../testing/observers/foreground-icons.mdx)。
 
 ## 待定 [#open]
 
 - Android 上来源身份、重复查询与 Activity 生命周期的对应关系。
 - 程序实例本身被用户删除后，前台状态 Observer 怎样继续。
-- 用户删除某个本机应用后，登记文件仍指向它，这个应用的时段提交被拒绝。

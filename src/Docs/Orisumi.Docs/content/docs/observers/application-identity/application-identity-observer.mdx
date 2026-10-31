@@ -3,7 +3,7 @@ title: "Application Identity Observer"
 description: "应用识别 Observer 程序实例"
 ---
 
-应用识别 Observer 程序实例是一个业务实体。它陈述的每个应用产品版本，都由一份 Observation 通过 `observerVersionId` 引用它的一个版本。
+应用识别 Observer 程序实例是一个业务实体。它陈述的每条线索归属，都由一份 Observation 通过 `observerVersionId` 引用它的一个版本。
 
 <ObserverStructure node="APPLICATION_IDENTITY" />
 
@@ -13,7 +13,7 @@ description: "应用识别 Observer 程序实例"
 
 ## 身份 [#identity]
 
-EntityId 由 Runtime 保存，重启和升级后沿用，见 [OBSERVER-4](../../core/model/observer.mdx#observer-4)。程序版本或模型型号变化时，形成同一个实体的新版本，之后的 Observation 引用新版本。所以每份 Observation 都能查到当时用的模型。
+EntityId 由托管方保存，重启和升级后沿用，见 [OBSERVER-4](../../core/model/observer.mdx#observer-4)。程序版本或模型型号变化时，形成同一个实体的新版本，之后的 Observation 引用新版本。所以每份 Observation 都能查到当时用的模型。
 
 ## EntitySchema [#schema]
 
@@ -21,7 +21,7 @@ EntityId 由 Runtime 保存，重启和升级后沿用，见 [OBSERVER-4](../../
 | --- | --- |
 | SchemaId | `019e1bbb-ec00-7000-8000-000000000005` |
 | 显示名称 | 应用识别 Observer |
-| 说明 | 表示一个应用识别 Observer 程序实例，保存它的程序版本和调用的模型；它作为 Observer 对它写入的应用产品负责。 |
+| 说明 | 表示一个应用识别 Observer 程序实例，保存它的程序版本和调用的模型；它作为 Observer 对它写入的线索归属负责。 |
 | 资源名 | `application-identity-observers` |
 
 | 字段 | 类型 | 必填 | 可空 | description |

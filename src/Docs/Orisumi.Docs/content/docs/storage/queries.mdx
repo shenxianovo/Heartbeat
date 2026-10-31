@@ -1,11 +1,11 @@
 ---
 title: "Queries"
-description: "供查询使用的两张投影：按事实时间查询观测，以及按目标实体反查引用方"
+description: "查询观测，按目标实体反查引用方，按识别依据认出实体，以及写入流的处理进度"
 ---
 
-`observations` 和 `version_references` 是投影，保存版本时在同一个保存点中写入，可以随时重建，见 [Overview · 重建](./index.mdx#rebuild)。前者支持 [API · 按事实时间查询](../api/reading.mdx#observations)，后者支持 [API · 引用方](../api/reading.mdx#referrers)。
+`observations` 和 `version_references` 是投影，保存版本时在同一个事务中写入，可以随时重建，见 [Overview · 重建](./index.mdx#rebuild)。前者支持 [API · 查询观测](../api/reading.mdx#observations)，后者支持 [API · 引用方](../api/reading.mdx#referrers)。`recognition_keys` 是权威数据，支持 [API · 认出对象](../api/writing.mdx#recognition)。
 
-## 事实时间 [#fact-time]
+## 观测 [#fact-time]
 
 晚上推断 Observer 读取当天的前台时段，查询落在 `observations` 上。
 
@@ -17,6 +17,8 @@ description: "供查询使用的两张投影：按事实时间查询观测，以
 | --- | --- | --- |
 | `entity_id` | `uuid` | Observation 的 EntityId，主键 `pk_observations` |
 | `version_id` | `uuid` | 它的当前版本 |
+| `observer_entity_id` | `uuid` | 负责的 Observer 所属的实体 |
+| `content_entity_id` | `uuid` | 观测内容所属的实体 |
 | `content_schema_id` | `uuid`，可空 | 观测内容的 SchemaId；观测内容已删除时为 `NULL` |
 | `fact_range` | `tstzrange`，可空 | 用于时间查询的事实时间范围 |
 
@@ -26,10 +28,13 @@ description: "供查询使用的两张投影：按事实时间查询观测，以
 | `ux_observations_version_id` | `version_id`，外键指向 `versions` | 当前版本存在 |
 | `ix_observations_content_schema_id_fact_range` | GiST `(content_schema_id, fact_range)` | 按观测内容的类型和事实时间查询 |
 | `ix_observations_fact_range` | GiST `(fact_range)` | 不限类型的事实时间查询 |
+| `ix_observations_observer_entity_id` | `observer_entity_id` | 按负责的实体查询 |
+| `ix_observations_content_entity_id` | `content_entity_id` | 按观测内容查询 |
 
 多列 GiST 索引需要 `btree_gist` 扩展，由 Initial migration 创建。
 
 - `content_schema_id` 在保存版本时从观测内容所属的实体读取。
+- `observer_entity_id` 和 `content_entity_id` 在保存版本时从目标所属的实体读取，目标删除后保留，所以按实体查询照常返回这份 Observation。
 - 观测内容被删除、Observation 保留时，`content_schema_id` 置为 `NULL`。这份 Observation 仍按事实时间匹配不限类型的查询，不再匹配原内容类型的查询；重建得到同样的结果。Observation 的 `contentVersionId` 保持原样，见 [HISTORY-8](../core/rules/history.mdx#history-8)。
 - Observation 自身删除时，移除这一行。
 
@@ -47,7 +52,7 @@ description: "供查询使用的两张投影：按事实时间查询观测，以
 
 只知道一个边界时，把它当作时间点；两个都未知时不参与时间查询。未知的边界不表示无限延伸，原来哪个边界未知，仍从版本内容中读出。
 
-按事实时间查询 `[from, to)` 时，条件是 `fact_range && tstzrange(from, to, '[)')`，结果与 API 的匹配规则一致。结果按 `lower(fact_range)` 和 `entity_id` 排序，分页游标记录这两个值。
+按事实时间查询 `[from, to)` 时，条件是 `fact_range && tstzrange(from, to, '[)')`，结果与 API 的匹配规则一致。结果按 `lower(fact_range)` 和 `entity_id` 排序，`fact_range` 为 `NULL` 的排在最后，`order` 只改变前者的方向。分页游标记录这两个值和查询的条件。
 
 ## 引用方 [#references]
 
@@ -82,4 +87,46 @@ description: "供查询使用的两张投影：按事实时间查询观测，以
 3. 把这一页全部的目标版本一次查出所属的实体：未删除的从 `versions` 读，已删除的从 `deleted_versions` 读。
 4. 每个版本只返回目标属于查询实体的位置，得到 API 中的 `path` 和 `targetVersionId`。
 
-第 2 到 4 步按一页批量完成，查询次数与一页的版本数无关。
+第 2 到 4 步按一页批量完成，查询次数与一页的版本数无关。请求带 `path` 时，第 4 步只保留这个位置；带 `resourceName` 时，第 1 步按引用方实体在 `entities` 中的 `schema_id` 筛选。
+
+## 识别依据 [#recognition]
+
+一次带 `key` 的写入落在 `recognition_keys` 上：还没有这一行时新建实体并写入一行，已有时认出它对应的实体。
+
+### recognition_keys [#recognition-keys]
+
+每份识别依据一行。
+
+| 列 | 类型 | 含义 |
+| --- | --- | --- |
+| `schema_id` | `uuid` | 业务类型的 SchemaId |
+| `scope` | `text`，可空 | 作用范围，全局有效时为 `NULL` |
+| `scheme` | `text` | 标识方案 |
+| `value` | `text` | 标识的值 |
+| `entity_id` | `uuid` | 对应的实体 |
+
+| 约束或索引 | 内容 | 用途 |
+| --- | --- | --- |
+| `ux_recognition_keys_schema_id_scope_scheme_value` | `(schema_id, scope, scheme, value)`，`NULLS NOT DISTINCT` | 一份识别依据最多对应一个实体，按依据查询 |
+| `ix_recognition_keys_entity_id` | `entity_id` | 删除实体时移除它的识别依据 |
+
+`entity_id` 没有外键：`entities` 是投影，权威表不依赖它。
+
+- 所有操作串行执行，所以两个写入方用同一份依据时，只有一个新建实体，见 [Overview · 事务](./index.mdx#transactions)。
+- 删除实体时移除它的行，见 [Versions · 删除](./versions.mdx#deletion)。之后同样的依据可以对应新的实体。
+
+## 写入流 [#write-streams]
+
+每个 Observer 一条写入流。本地转发重发一个请求时，后端按序号认出它已经处理过；程序声明的 Schema 版本绑定在这条流上。
+
+### write_streams [#write-streams-table]
+
+| 列 | 类型 | 含义 |
+| --- | --- | --- |
+| `observer_entity_id` | `uuid`，主键 | 负责的 Observer |
+| `last_sequence` | `bigint` | 最后处理的请求序号，还没有带序号的请求时为 `0` |
+| `schema_version_ids` | `jsonb` | 这个 Observer 声明的每种业务类型的 Schema 版本：SchemaId 到 VersionId 的对象 |
+
+- 请求的序号不大于 `last_sequence` 时，后端什么都不做。
+- 处理 `schemas` 时写入 `schema_version_ids`，见 [API · 业务类型](../api/writing.mdx#types)。
+- Observer 的实体删除时移除这一行。

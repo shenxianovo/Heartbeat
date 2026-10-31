@@ -7,7 +7,7 @@ description: "二进制内容的两张表：字节怎样按摘要保存，怎样
 
 ## 例子 [#example]
 
-14:00 Runtime 上传 VS Code 的图标，`contents` 多了一行。随后保存的前台时段用到这份内容，`version_contents` 多了一行。16:00 之后 VS Code 的时段用到同一个图标，`version_contents` 每段一行，`contents` 不变。
+14:00 前台状态 Observer 上传 VS Code 的图标，`contents` 多了一行。随后保存的前台时段用到这份内容，`version_contents` 多了一行。16:00 之后 VS Code 的时段用到同一个图标，`version_contents` 每段一行，`contents` 不变。
 
 第二天用户删掉其中一段，它在 `version_contents` 中的行随之移除。图标还有其他时段使用，所以 `contents` 中的行保留。
 
@@ -55,4 +55,4 @@ description: "二进制内容的两张表：字节怎样按摘要保存，怎样
 
 ## 暂存 [#staging]
 
-已上传、没有版本使用的内容是暂存的。后端每小时移除 `uploaded_at` 早于 24 小时前、在 `version_contents` 中没有行的内容。Runtime 在这之后提交用到它的版本时，按 [BINARY-3](../core/model/binary.mdx#binary-3) 被拒绝，重新上传即可。
+已上传、没有版本使用的内容是暂存的。后端每小时移除 `uploaded_at` 早于 24 小时前、在 `version_contents` 中没有行的内容。调用方在这之后写入用到它的内容时，按 [BINARY-3](../core/model/binary.mdx#binary-3) 被拒绝，重新上传即可。

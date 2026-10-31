@@ -25,6 +25,7 @@
 | 文字、用词和导航 | `core/writing.mdx` |
 | 架构决定 | `adr/` |
 | HTTP 契约 | `api/openapi.json` |
+| 数据能力的操作语义和 SDK | `api/` |
 | 单个 Observer 的业务规则和实现决定 | `observers/<observer>/` |
 | 托管方的职责、Runtime 的进程与管道协议、安装包、服务器上的运行、Observer 的统一管理 | `hosting/` |
 | 模块的运行和操作说明 | 模块目录的 `README.md` |

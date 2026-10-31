@@ -51,7 +51,7 @@ description: "版本、删除身份、实体和 EntitySchema 四张表：版本�
 `entity_id` 没有外键。实体至少有一个已保存的版本，所以它的 EntityId 出现在这里就说明它已删除。
 
 - 读取时，身份在 `deleted_versions` 中就返回 `410`，在两张表中都不存在就返回 `404`。
-- 一个 VersionId 不能同时出现在 `versions` 和 `deleted_versions` 中。提交的 VersionId 或 EntityId 出现在 `deleted_versions` 中时，按 [VERSION-9](../core/model/version.mdx#version-9) 或 [HISTORY-7](../core/rules/history.mdx#history-7) 拒绝。
+- 一个 VersionId 不能同时出现在 `versions` 和 `deleted_versions` 中，后端生成 VersionId 时避开两张表，见 [VERSION-9](../core/model/version.mdx#version-9)。操作的 EntityId 出现在 `deleted_versions` 中时，按 [HISTORY-7](../core/rules/history.mdx#history-7) 拒绝。
 - 程序实例在保存首版之前被删除时，它的 EntityId 不在这张表中，由实例登记的移除标记占用，见 [Management · 首版的检查](./management.mdx#first-version)。
 
 ## entities [#entities]
@@ -87,11 +87,11 @@ description: "版本、删除身份、实体和 EntitySchema 四张表：版本�
 
 ## 删除 [#deletion]
 
-第二天用户删掉浏览器的时段。删除一个实体时，在一个事务中：
+第二天用户删掉浏览器的时段。删除一个实体时，在一个事务中执行下面的步骤：
 
 1. 把它每个版本的 `version_id` 和 `entity_id` 写入 `deleted_versions`。
-2. 找出当前版本以它的某个版本为 `contentVersionId` 的 Observation：沿 `version_references` 找到以它为目标、并且是 `observations` 中当前版本的行，再核对这个版本的 `contentVersionId`。把这些行的 `content_schema_id` 置为 `NULL`，见 [Queries · 事实时间](./queries.mdx#fact-time)。
-3. 删除它在 `observations`、`schemas`、`entities` 中的行，以及它的各版本作为引用方在 `version_references` 中的行。
+2. 找出当前版本以它的某个版本为 `contentVersionId` 的 Observation：沿 `version_references` 找到以它为目标、并且是 `observations` 中当前版本的行，再核对这个版本的 `contentVersionId`。把这些行的 `content_schema_id` 置为 `NULL`，见 [Queries · 观测](./queries.mdx#fact-time)。
+3. 删除它在 `observations`、`schemas`、`entities`、`recognition_keys` 中的行，以及它的各版本作为引用方在 `version_references` 中的行。
 4. 删除它的各版本在 `version_contents` 中的行，再删除已没有使用方的内容，见 [Contents · 删除](./contents.mdx#deletion)。
 5. 删除它在 `versions` 中的行。
 6. 它是受管理的程序实例时，把实例登记标记为已移除，见 [Management · 删除实例](./management.mdx#removal)。

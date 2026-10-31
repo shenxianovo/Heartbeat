@@ -35,14 +35,14 @@ description: "逐条记下键盘和鼠标操作（草案）"
 
 每次事件是一个时间点：`startAt = endAt = t`，`t` 是事件发生的时刻。每次事件有自己的身份，时间戳相同的事件分别记下。
 
-## 提交 [#submission]
+## 写入 [#submission]
 
-接入时登记程序实例和 [Input Event 的 EntitySchema](./input-event.mdx#schema)，第一次输入之前就完成登记。之后业务代码为每次事件形成观测内容和 Observation，交给所在平台的 SDK，提交规则见 [Submission](../../hosting/submission.mdx)。
+第一次输入之前，业务代码声明 [Input Event 的 EntitySchema](./input-event.mdx#schema)，写入程序实例的描述。之后用所在平台的 [SDK](../../api/sdk.mdx) 为每次事件形成观测内容和 Observation。
 
 ## 待定 [#open]
 
 - 原生时间值的纪元（进程、开机或 Unix）和精度换算；取不到绝对时刻时怎样处理。
 - 鼠标移动和滚动的粒度。
 - 隐私抑制、空字符串和读取失败的表示。
-- 与设备的关联。
-- 何时提交。
+- 与[设备](../device-state/device.mdx)的关联。
+- 何时写入。

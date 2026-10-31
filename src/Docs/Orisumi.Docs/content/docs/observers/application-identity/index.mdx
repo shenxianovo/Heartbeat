@@ -3,7 +3,7 @@ title: "Application Identity"
 description: "把各设备上的本机应用归到应用产品"
 ---
 
-应用识别 Observer 把各设备、各平台上的本机应用归到用户认知中的同一款软件，也就是应用产品。例如两台 Mac 和一部 Android 手机上的 QQ，都归到 QQ 这个产品。它是一个安装包，在服务器上由 [Runtime](../../hosting/server.mdx) 运行，读取后端已保存的本机应用和前台时段，遇到还没有认出的线索时交给模型判断，再把结果写成应用产品的版本。
+应用识别 Observer 把各设备、各平台上的本机应用归到用户认知中的同一款软件，也就是应用产品。例如两台 Mac 和一部 Android 手机上的 QQ，都归到 QQ 这个产品。它是一个安装包，在服务器上由 [Runtime](../../hosting/server.mdx) 运行，读取后端已保存的本机应用和前台时段，遇到还没有认出的线索时交给模型判断，再把结果写成线索归属。
 
 为什么这样分工，见 [ADR · 应用识别](../../adr/application-identity.mdx)。
 
@@ -14,21 +14,22 @@ description: "把各设备上的本机应用归到应用产品"
 | 业务类型 | 用途 | 资源名 |
 | --- | --- | --- |
 | [Application Identity Observer](./application-identity-observer.mdx) | 程序实例自身：应用识别 Observer | `application-identity-observers` |
-| [Application Product](./application-product.mdx) | 观测内容：一款软件和属于它的跨设备线索 | `application-products` |
+| [Application Product](./application-product.mdx) | 一款软件，内容只有名称 | `application-products` |
+| [Application Membership](./application-membership.mdx) | 观测内容：一条跨设备线索属于哪个产品 | `application-memberships` |
 
 ```mermaid
 flowchart LR
   O[Observation] -->|observerVersionId| R[应用识别 Observer]
-  O -.->|observerVersionId，用户修改时| U[用户本人]
-  O -->|contentVersionId| P[Application Product]
+  O -->|contentVersionId| M[Application Membership]
   O -->|inputSetVersionId| S[InputSet]
+  M -->|productVersionId| P[Application Product]
   S -->|members| A[Local Application]
   S -->|members| C[Foreground Application Period]
-  S -->|members，目录中各产品的当前版本| P
-  A -. 线索的值 .- P
+  S -->|members，目录的当前版本| P
+  A -. 线索的值 .- M
   click O "/core/model/observation"
   click R "/observers/application-identity/application-identity-observer"
-  click U "/observers/user/user"
+  click M "/observers/application-identity/application-membership"
   click P "/observers/application-identity/application-product"
   click S "/core/model/input-set"
   click A "/observers/foreground-state/local-application"
@@ -37,33 +38,39 @@ flowchart LR
 
 ### 归属 [#membership]
 
-Mac A 和 Mac B 上的 QQ 是两个本机应用，它们的应用包标识都是 `com.tencent.qq`。QQ 这个产品的当前版本在 `identifiers` 中列出这条线索，所以两个本机应用都属于 QQ。之后第三台 Mac 装上 QQ，它直接属于 QQ。
+Mac A 和 Mac B 上的 QQ 是两个本机应用，它们的应用包标识都是 `com.tencent.qq`。这条线索有一条线索归属，它指向 QQ 这个产品，所以两个本机应用都属于 QQ。之后第三台 Mac 装上 QQ，它直接属于 QQ。
 
 归属按以下规则确定，Web 控制台和应用识别 Observer 都这样读取：
 
 - 只有跨设备线索参与归属。哪些 scheme 是跨设备线索，见 [Local Application · 标识线索](../foreground-state/local-application.mdx#identifiers)。
-- 本机应用的一条跨设备线索与某个应用产品当前版本中的一项 `identifiers` 的 `scheme` 和 `value` 都相同时，本机应用属于这个产品。比较区分大小写。
-- 一条线索写在一个产品中。匹配到多个产品时，本机应用属于当前版本保存时间最晚的那个。
+- 本机应用的跨设备线索与一条线索归属当前版本的 `identifier` 的 `scheme` 和 `value` 都相同时，本机应用属于 `productVersionId` 指向的产品。比较区分大小写。
+- 指向的产品已删除时，这条线索未归属。
 - 没有匹配到任何产品的本机应用未归属，读取方按本机应用单独显示。
 
-归属总是按产品的当前版本计算。产品形成新版本后，按新版本重新归属；本机应用、前台时段和已有的 Observation 保持不变。
+归属总是按线索归属的当前版本计算。线索归属变化时，本机应用、前台时段和其他线索的 Observation 保持不变。
+
+### 撤销 [#retraction]
+
+一条线索归错时，用户删除这条线索归属，其他线索不受影响。例如 QQ 音乐的 `com.tencent.qqmusicmac` 被判给 QQ，用户在实体页删除这条线索归属，线索回到未归属，下一轮模型再判断一次。这一次又判错时，用户再删除一次，或者等更换模型。
+
+一个产品的线索归属全部删除后，产品留在模型的目录中，模型可以再次选中它。用户删除一个产品时，指向它的线索都未归属，模型判断后这些线索归属形成新版本。
 
 ## 程序实例 [#instance]
 
 - 每个部署运行一个应用识别 Observer：它的安装包在清单中声明 `scope` 为 `deployment`，第二个实例在登记时被拒绝，见 [Management · 每个部署一个实例](../../hosting/management.mdx#singleton)。它逐条处理线索，判断每条线索时都能读到前面的结果。
 - 程序实例的 EntityId 由 Runtime 保存，第一次安装时生成，之后一直沿用，见 [OBSERVER-4](../../core/model/observer.mdx#observer-4)。
-- 启动时，它经 Runtime 登记两种业务类型的 EntitySchema 和程序实例。程序版本或模型型号变化时，Runtime 为程序实例形成新版本，之后的 Observation 引用新版本，见 [Submission · 登记](../../hosting/submission.mdx#registration)。
+- 启动时，它声明两种业务类型，写入自己的描述，见 [API · 负责的 Observer](../../api/writing.mdx#observer)。程序版本或模型型号变化时，程序实例形成新版本，之后的 Observation 引用新版本。
 - 轮次由它自己安排，同一时刻只有一轮，上一轮结束后等待一个间隔再开始下一轮。
 
 ## 处理 [#processing]
 
-应用识别 Observer 默认每 60 秒运行一轮，读取都经 Runtime 读后端已保存的数据，见 [Protocol · 读取后端](../../hosting/protocol.mdx#observer-reading)：
+应用识别 Observer 默认每 60 秒运行一轮，读取后端已保存的数据，见 [API · Reading](../../api/reading.mdx)：
 
-1. 用 `listEntities` 分页读取全部应用产品的当前版本，建立线索到产品的对照。
-2. 用 `listEntities` 分页读取全部本机应用的当前版本，取出跨设备线索。
+1. 用 `GET /entities` 分页读取全部应用产品和线索归属的当前版本，组成产品目录和线索到产品的对照。
+2. 用 `GET /entities` 分页读取全部本机应用的当前版本，取出跨设备线索。
 3. 不在对照中的线索是待识别的线索。逐条处理，每处理完一条就更新对照，再处理下一条。
 
-处理一条线索时，它先收集名称：对拥有这条线索的每个本机应用，用 `listReferrers` 读取引用它的前台应用时段，最多 100 个，取其中的 `name`，去掉空值和重复。接着把线索、名称和产品目录交给模型，按模型的结果写入。
+处理一条线索时，它先收集名称：对拥有这条线索的每个本机应用，用 `GET /entities/{entityId}/referrers` 读取引用它的前台应用时段，最多 100 个，取其中的 `name`，去掉空值和重复。接着把线索、名称和产品目录交给模型，按模型的结果写入。
 
 ### 模型 [#model]
 
@@ -77,7 +84,7 @@ Mac A 和 Mac B 上的 QQ 是两个本机应用，它们的应用包标识都是
 | 待识别的线索 | `macos.bundle-id`、`com.tencent.qq` |
 | 拥有这条线索的本机应用的全部标识线索 | `macos.executable-path`、`/Applications/QQ.app/Contents/MacOS/QQ` |
 | 收集到的名称 | `QQ` |
-| 产品目录：每个产品的 EntityId、`name` 和 `identifiers` | VS Code、微信…… |
+| 产品目录：每个产品的 EntityId、`name` 和属于它的线索 | VS Code、微信…… |
 | 判断标准 | [Application Product · 粒度](./application-product.mdx#granularity) |
 
 模型从三种结果中选一种：
@@ -88,28 +95,20 @@ Mac A 和 Mac B 上的 QQ 是两个本机应用，它们的应用包标识都是
 | 新的产品 | 产品的名称 |
 | 未知 | 无 |
 
-结果为未知时，应用识别 Observer 不提交，在内存中记下这条线索，以及当时拥有它的本机应用和收集到的名称。之后的轮次中，这两项都没有变化时跳过这条线索；出现新的本机应用或新的名称时，重新交给模型。进程重启后，这些记录清空，未知的线索重新交给模型。
-
-### 用户的修改 [#edits]
-
-用户在 Web 控制台中修改应用产品，见 [Web · 应用](../../clients/web.mdx#applications)。应用识别 Observer 按修改后的当前版本工作：
-
-- 用户把一条线索从产品中移出，这条线索在下一轮成为待识别的线索，交给模型重新判断。
-- 用户删除一个产品，它的线索都成为待识别的线索。
-- 已经在产品中的线索，应用识别 Observer 不再处理。
+结果为未知时，应用识别 Observer 不写入，在内存中记下这条线索，以及当时拥有它的本机应用和收集到的名称。之后的轮次中，这两项都没有变化时跳过这条线索；出现新的本机应用或新的名称时，重新交给模型。进程重启后，这些记录清空，未知的线索重新交给模型。
 
 ### 失败 [#failures]
 
-失败作为采集诊断写入标准错误，由 Runtime 报告，见 [OBSERVER-8](../../core/model/observer.mdx#observer-8)。
+失败作为采集诊断写入标准错误，由托管方报告，见 [OBSERVER-8](../../core/model/observer.mdx#observer-8)。
 
 | 情况 | 处理 |
 | --- | --- |
 | 没有配置 API Key | 不调用模型，每轮报告诊断 |
 | 模型的请求失败或超时；回答不符合格式，或指向目录中没有的产品 | 这条线索不写入，下一轮重试 |
 | 读取时后端不可用 | 结束这一轮，下一轮重试 |
-| 提交被拒绝或后端不可用，例如产品在这期间被修改（[VERSION-6](../../core/model/version.mdx#version-6)） | 报告诊断，跳过这条线索，下一轮重试 |
+| 写入被拒绝或后端不可用 | 报告诊断，跳过这条线索，下一轮重试 |
 
-只有模型回答“新的产品”时才创建产品。
+只有模型回答“新的产品”时才创建产品。产品已写入、线索归属的写入失败时，这个产品留在目录中，下一轮模型可以选中它。
 
 ### 配置 [#configuration]
 
@@ -121,38 +120,34 @@ Mac A 和 Mac B 上的 QQ 是两个本机应用，它们的应用包标识都是
 | `model` | 设置 | 调用的 OpenAI 模型，省略时为默认模型 |
 | `intervalSeconds` | 设置 | 两轮之间的间隔，默认 60 |
 
-## 事实时间 [#fact-time]
+## 写入 [#submission]
 
-Observation 的 `startAt`、`endAt` 和 `timeZone` 都是 `null`：这款软件从什么时候起有这条线索，判断时不知道，见 [OBSERVATION-5](../../core/model/observation.mdx#observation-5)。
+应用识别 Observer 使用 [.NET 的 SDK](../../api/sdk.mdx#dotnet)。它要读到自己写入的结果，才能处理下一条线索，所以它直接写给后端，同步得到结果，见 [API · 两个地址](../../api/writing.mdx#endpoints)。
 
-## 提交 [#submission]
+每条线索的结果是一条线索归属：
 
-应用识别 Observer 使用 [.NET](../../hosting/dotnet.mdx) 的 SDK，每条线索的结果交给 Runtime 一个批次。
-
-### 写入 [#writes]
-
-属于已有的产品或新的产品时，应用识别 Observer 向 Runtime 交出一个批次，按顺序包含：
-
-| 版本 | 内容 |
+| 字段 | 内容 |
 | --- | --- |
-| InputSet | 拥有这条线索的本机应用版本、读到名称的前台时段版本，以及目录中每个产品的当前版本 |
-| 应用产品 | 已有的产品：当前版本加上这条线索，形成新版本。新的产品：首版，`identifiers` 只有这条线索 |
-| Observation | Observer 是程序实例的当前版本，观测内容是上面的产品版本，`inputSetVersionId` 指向上面的 InputSet |
+| `key` | 这条线索，见 [Application Membership · 身份](./application-membership.mdx#identity) |
+| `content` | 这条线索和它属于的产品 |
+| `time` | 三个成员都是 `null`，见 [Application Membership · 事实时间](./application-membership.mdx#fact-time) |
+| `inputs` | 实际用到的版本：拥有这条线索的本机应用版本、读到名称的前台时段版本，以及目录中每个产品和线索归属的当前版本 |
 
-- 三个版本在同一次提交中保存。
-- 已有产品的新版本用 `previousVersionId` 指定读到的当前版本，见 [Protocol · 批次的操作](../../hosting/protocol.mdx#operations)。
+模型回答新的产品时，它先写入产品，只有 `content`，得到 EntityId 后再写入线索归属。产品没有识别依据，同一个请求中后面的写入引用不到它，所以这是两个请求。
 
-提交成功后，它才更新对照、处理下一条线索，见 [Submission · 结果](../../hosting/submission.mdx#result)。
+后端用 `inputs` 组织 InputSet，见 [API · 观测](../../api/writing.mdx#observation)。写入成功后，它才更新对照、处理下一条线索。
 
-例如 Android 上第一次出现 QQ：线索 `android.package-name`、`com.tencent.mobileqq` 不在对照中，模型回答属于 QQ。批次中是 InputSet、QQ 的新版本（`identifiers` 多了这条线索）和一份 Observation。
+例如 Android 上第一次出现 QQ：线索 `android.package-name`、`com.tencent.mobileqq` 不在对照中，模型回答属于 QQ。写入形成一条指向 QQ 的线索归属、一个 InputSet 和一份 Observation，QQ 这个产品不变。
 
 ## 实现 [#implementation]
 
-识别的业务代码在 `src/Observers/Orisumi.Observer.ApplicationIdentity/`，用 .NET 编写，经 .NET SDK 连接 Runtime，发布为 `linux-x64` 等服务器平台的安装包。它调用 OpenAI 的 Responses API，默认模型是 `gpt-6.1-terra`。
+识别的业务代码在 `src/Observers/Orisumi.Observer.ApplicationIdentity/`，用 .NET 编写，使用 .NET SDK，发布为 `linux-x64` 等服务器平台的安装包。它调用 OpenAI 的 Responses API，默认模型是 `gpt-6.1-terra`。
 
 测试 Case：[应用识别](../../testing/observers/application-identity.mdx)。
 
 ## 待定 [#open]
 
+- 用户否定一条线索归属后不再自动判断，以及产品改名，随用户的修改一起设计，见 [User Statements · 待定](../user/index.mdx#open)。
+- 更换模型后重新判断全部线索并留下新旧结果。这时线索归属的识别依据要改，同一份证据的独立解释是新的实体，见 [IDENTITY-3](../../core/rules/identity.mdx#identity-3)。
 - 产品目录很大时，只发送一部分候选。
 - OpenAI 以外的模型供应商。

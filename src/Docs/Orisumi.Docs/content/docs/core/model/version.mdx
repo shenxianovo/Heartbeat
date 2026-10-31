@@ -7,7 +7,7 @@ description: "实体一次保存的完整内容，保存后不可改写"
 
 <ModelRelations node="Version" />
 
-- **身份**：`VersionId`，由写入方生成的 UUIDv7，见 [VERSION-12](#version-12)
+- **身份**：`VersionId`，由后端生成的 UUIDv7，见 [VERSION-12](#version-12)
 - **所属**：一个实体，由 `entityId` 指出
 - **决策**：[ADR · 实体模型](../../adr/entity-model.mdx)、[ADR · 身份、时间与更新](../../adr/identity-and-updates.mdx)
 
@@ -98,25 +98,23 @@ description: "实体一次保存的完整内容，保存后不可改写"
 
 实体最新保存的版本是它的当前版本。
 
-### VERSION-6 冲突 [#version-6]
+### VERSION-6 按到达顺序 [#version-6]
 
 执行方：后端、写入方
 
-基于旧版本的新版本是冲突：它的 `previousVersionId` 指向这个实体的较早版本，或者为 `null` 而实体已经有版本。两个写入方都基于同一个版本提交时，先保存的成为下一版，另一个被拒绝；被拒绝的一方基于新的当前版本重新处理。
+同一实体的写入按到达顺序形成版本：写入方给出完整内容，后端把它接在当前版本之后。所以一个实体的内容由一个写入方决定。多个写入方共用的实体只放不变的内容，见 [IDENTITY-5](../rules/identity.mdx#identity-5)。
 
-首版也会冲突。例如同一台设备上的两个程序实例共用本机应用的登记文件，同时为同一个应用提交首版：先保存的成为首版，另一个被拒绝，读取首版后再决定是否形成下一版。
-
-### VERSION-8 相同内容也是新版本 [#version-8]
+### VERSION-8 版本按变化形成 [#version-8]
 
 执行方：后端
 
-内容相同的两次保存是两个版本。例如内容从 A 改成 B 再改回 A，一共形成三个版本。
+写入的内容与当前版本相同时，不形成新版本。内容回到旧值是一次变化：内容从 A 改成 B 再改回 A，一共形成三个版本。
 
 ### VERSION-9 VersionId 不复用 [#version-9]
 
 执行方：后端
 
-VersionId 不得重新分配，实体删除后也一样。提交的版本带着已保存或已删除的 VersionId 时，后端拒绝它。
+VersionId 不得重新分配，实体删除后也一样。
 
 ## 保存时间 [#recorded-at]
 
@@ -124,7 +122,7 @@ VersionId 不得重新分配，实体删除后也一样。提交的版本带着�
 
 执行方：后端
 
-后端在保存一个版本时赋值 `recordedAt`，写入方不得提交它。首版的 `recordedAt` 就是实体首次保存的时刻。
+后端在保存一个版本时赋值 `recordedAt`。首版的 `recordedAt` 就是实体首次保存的时刻。
 
 ### VERSION-11 recordedAt 的含义 [#version-11]
 
@@ -132,18 +130,18 @@ VersionId 不得重新分配，实体删除后也一样。提交的版本带着�
 
 `recordedAt` 只表示后端保存这个版本的时刻。版本的先后由版本链决定，不同版本的 `recordedAt` 可以相同。
 
-## 提交 [#submission]
+## 写入 [#writes]
 
-写入方把一个或多个版本交给后端保存，这一次请求叫提交。
+写入方把一个实体的完整内容交给后端，这是一次写入。一次写入可以同时形成这个内容的 Observation。
 
-### VERSION-12 VersionId 由写入方生成 [#version-12]
+### VERSION-12 VersionId 由后端生成 [#version-12]
 
-执行方：写入方、后端
+执行方：后端
 
-VersionId 是写入方生成的 UUIDv7。写入方在提交前就确定它，所以同一次提交中的版本可以互相引用。
+VersionId 是后端在保存时生成的 UUIDv7。写入方用识别依据或 EntityId 指出引用的目标，后端解析成确定的版本，见 [API · Writing](../../api/writing.mdx#references)。
 
-### VERSION-13 整体保存 [#version-13]
+### VERSION-13 一次写入整体保存 [#version-13]
 
-执行方：后端、写入方
+执行方：后端
 
-一次提交中的版本，由写入方按依赖顺序排列，后端按这个顺序校验，全部通过才一起保存。任何一个版本被拒绝，整次提交都不保存。
+一次写入形成的内容版本、InputSet 和 Observation，全部通过才一起保存。其中一项被拒绝时，这次写入都不保存，其他写入不受影响。

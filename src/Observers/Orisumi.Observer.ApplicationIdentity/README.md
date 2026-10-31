@@ -2,6 +2,8 @@
 
 Orisumi.Observer.ApplicationIdentity 是应用识别 Observer：它读取后端已保存的本机应用和前台时段，把还没归入产品的跨设备线索交给 OpenAI 判断，结果写成应用产品的版本。业务规则见 [Application Identity](../../Docs/Orisumi.Docs/content/docs/observers/application-identity/index.mdx)。
 
+本文写当前代码的运行方式。目标契约见 [Application Identity](../../Docs/Orisumi.Docs/content/docs/observers/application-identity/index.mdx)，代码尚未迁移。
+
 它发布为服务器平台的安装包，由以服务方式运行的 Runtime 启动，经 .NET SDK 读写，见 [Hosting · Server](../../Docs/Orisumi.Docs/content/docs/hosting/server.mdx)。
 
 ## 运行

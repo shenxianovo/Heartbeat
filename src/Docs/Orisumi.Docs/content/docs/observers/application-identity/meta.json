@@ -5,6 +5,7 @@
   "pagesIndex": "index",
   "pages": [
     "application-identity-observer",
-    "application-product"
+    "application-product",
+    "application-membership"
   ]
 }

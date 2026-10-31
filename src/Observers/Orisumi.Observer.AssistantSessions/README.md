@@ -2,6 +2,8 @@
 
 Orisumi.Observer.AssistantSessions 读取当前用户的 Claude Code 和 Codex 会话日志，把会话和其中的每次交互交给 [Runtime](../../Docs/Orisumi.Docs/content/docs/hosting/runtime.mdx) 保存和发送。业务规则见 [Assistant Sessions](../../Docs/Orisumi.Docs/content/docs/observers/assistant-sessions/index.mdx)。
 
+本文写当前代码的运行方式。目标契约见 [Assistant Sessions](../../Docs/Orisumi.Docs/content/docs/observers/assistant-sessions/index.mdx)，代码尚未迁移。
+
 首次运行导入现存的全部会话，之后每 5 秒轮询一次。它只读取 `~/.claude` 和 `~/.codex` 下的文件，不启动这两个产品，也不改动它们的配置。
 
 | 文件 | 内容 |

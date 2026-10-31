@@ -1,18 +1,18 @@
 ---
 title: "Protocol"
-description: "客户端和 Observer 的进程经两条管道与 Runtime 通信的消息格式"
+description: "客户端经管道与 Runtime 通信的消息格式，以及 Observer 进程要遵守的约定"
 ---
 
-客户端和 Observer 的进程都通过标准输入和标准输出与 [Runtime](./runtime.mdx) 通信。客户端管道用于管理 Observer 和读取数据，Observer 管道用于交出批次。本页写两条管道的消息格式；消息的语义见 [Submission](./submission.mdx) 和 [Runtime](./runtime.mdx)。
+客户端通过标准输入和标准输出与 [Runtime](./runtime.mdx) 通信，用于管理 Observer。Observer 的进程不用这条管道，它遵守几条普通的进程约定。本页写管道的消息格式和这些约定；语义见 [Runtime](./runtime.mdx)。
 
 ## 格式 [#format]
 
-两条管道中每行是一个 UTF-8 编码的 JSON，标准输出只写协议消息，日志写入标准错误。字段名用 camelCase，UUID 写成字符串。一行最多 16 MiB，超过时 Runtime 断开连接。
+管道中每行是一个 UTF-8 编码的 JSON，标准输出只写协议消息，日志写入标准错误。字段名用 camelCase，UUID 写成字符串。一行最多 16 MiB，超过时 Runtime 断开连接。
 
 请求带 `id`、`method` 和 `params`：
 
 ```json
-{ "id": "7", "method": "setEnabled", "params": { "packageId": "foreground-state", "enabled": false } }
+{ "id": "7", "method": "setEnabled", "params": { "instanceId": "0196f3a2-7c1e-7d40-9b1a-2f6c8e4d5a01", "enabled": false } }
 ```
 
 Runtime 用同一个 `id` 返回结果或错误：
@@ -22,15 +22,14 @@ Runtime 用同一个 `id` 返回结果或错误：
 ```
 
 ```json
-{ "id": "7", "error": { "code": "not_found", "message": "foreground-state is not installed" } }
+{ "id": "7", "error": { "code": "not_found", "message": "no such instance" } }
 ```
 
 | `code` | 含义 |
 | --- | --- |
 | `invalid_request` | 请求不符合协议 |
-| `not_found` | 安装包、程序实例或版本不存在 |
-| `conflict` | 与当前状态冲突，例如读取的游标已过期，或者安装的包原来的实例已删除 |
-| `rejected` | 后端拒绝了批次形成的提交，见[批次的操作](#operations) |
+| `not_found` | 安装包或程序实例不存在 |
+| `conflict` | 与当前状态冲突，例如安装的包的实例都已删除 |
 | `unavailable` | 暂时无法完成，例如后端不可用或官方目录读取失败 |
 | `internal` | Runtime 的错误 |
 
@@ -44,16 +43,18 @@ Runtime 用同一个 `id` 返回结果或错误：
 | --- | --- | --- |
 | `list` | 无 | 已登记的 Observer 及其状态 |
 | `catalog` | 无 | 可安装的安装包 |
-| `install` | `packageId`，可选 `newInstance` | 安装完成后返回 |
-| `update` | `packageId` | 更新完成后返回 |
-| `setEnabled` | `packageId`、`enabled` | 启用时进程开始启动即返回，不等 `ready`；停用时进程实际退出后返回 |
-| `setSettings` | `packageId`、`settings` | 设置写入安装登记后返回；进程在运行时，Runtime 停止它，再用新的设置启动 |
+| `install` | `packageId`，或者安装包的地址 `url` 和可选的 `sha256` | 安装完成后返回 `packageId` 和 `instanceId` |
+| `update` | `packageId` | 实例切换后返回 `packageId` 和 `instanceId` |
+| `setEnabled` | `instanceId`、`enabled` | 启用时进程开始启动即返回；停用时进程实际退出后返回 |
+| `setSettings` | `instanceId`、`settings` | 设置写入安装登记后返回；进程在运行时，Runtime 停止它，再用新的设置启动 |
 | `pair` | `code`、`name` | 接入后端后返回 `hostId`，见 [Management · 接入](./management.mdx#pairing) |
-| `retry` | `packageId` | 启用并开始新一轮重启 |
-| `uninstall` | `packageId` | 进程停止、程序移除后返回 |
+| `retry` | `instanceId` | 启用并开始新一轮重启 |
+| `resendRejected` | `instanceId` | 被拒绝的写入重新排队后返回重发的数量，见[本地转发](./runtime.mdx#forwarding) |
+| `uninstall` | `packageId` | 进程停止、程序移除后返回 `packageId` 和 `instanceId` |
+| `connection` | 无 | 当前的数据连接，见[连接](#connection) |
 | `shutdown` | 无 | 返回后 Runtime 退出 |
 
-`list` 的结果中，每个 Observer 一项：
+`list` 的结果中，每个程序实例一项：
 
 ```json
 {
@@ -69,6 +70,7 @@ Runtime 用同一个 `id` 返回结果或错误：
       "state": "running",
       "error": null,
       "diagnostic": null,
+      "writes": { "pending": 0, "rejected": 0, "lastRejection": null },
       "removed": false,
       "settings": {},
       "sync": { "revision": 7, "pendingChanges": 0, "error": null }
@@ -79,6 +81,7 @@ Runtime 用同一个 `id` 返回结果或错误：
 
 - `host.connection` 是这个 Runtime 与后端的连接：`unpaired`（还没有接入，`hostId` 为 `null`）、`connected`、`offline` 或 `revoked`（托管方已移除）。
 - 已卸载的程序实例也在列表中，`installed` 为 `false`。已删除的程序实例也在列表中，`removed` 为 `true`。
+- `writes.pending` 是本地转发中等待交给后端的请求数，`writes.rejected` 是被拒绝的写入数，`writes.lastRejection` 是最近一次被拒绝的原因。
 - `enabled` 和 `settings` 是生效的配置。`sync.revision` 是已合并的后端配置的修订号，还没有登记时为 `0`；`sync.pendingChanges` 是待同步的修改数；`sync.error` 说明同步停止的原因，见 [Management · 同步](./management.mdx#sync)。
 
 `catalog` 合并附带的安装包和官方目录，列出本机可用的每个包：
@@ -103,141 +106,32 @@ Runtime 用同一个 `id` 返回结果或错误：
 
 `compatible` 说明本机的 Runtime 能否安装这个包：`target` 是本机平台，`format` 和 `protocol` 是 Runtime 支持的版本。官方目录中省略 `format` 或 `protocol` 时按 `1` 处理。官方目录读取失败时，`catalog` 返回错误，`list` 不受影响。下载地址和摘要只在 Runtime 中使用。
 
-`install` 和 `update` 选择本机平台可用的最高版本。同一个安装包的安装和更新依次进行。安装和重装后 Observer 是启用的；更新保持原来的启用状态。这个包原来的实例已删除时，`install` 必须带 `newInstance: true`，否则返回 `conflict`，见 [Management · 删除实例](./management.mdx#removal)。`setEnabled`、`setSettings` 和安装形成的启用都是本机修改，见 [Management · 本机修改](./management.mdx#local-changes)。停用的 `setEnabled` 和 `uninstall` 等进程实际退出后返回，最多等 10 秒，见 [Runtime · 启动与停止](./runtime.mdx#lifecycle)。
+`install` 和 `update` 选择本机平台可用的最高版本。同一个安装包的安装和更新依次进行。安装和重装后 Observer 是启用的；更新保持原来的启用状态。`setEnabled`、`setSettings` 和安装形成的启用都是本机修改，见 [Management · 本机修改](./management.mdx#local-changes)。停用的 `setEnabled` 和 `uninstall` 等进程实际退出后返回，最多等 10 秒，见 [Runtime · 启动与停止](./runtime.mdx#lifecycle)。
 
-### 读取 [#reading]
+### 连接 [#connection]
 
-客户端经 Runtime 读取后端已保存的数据。后端不可用时，请求返回 `unavailable`。
+客户端的业务读取都走 [API](../api/reading.mdx)，Runtime 只告诉它怎样连接。`connection` 没有参数：
 
-`read` 按事实时间读取一个程序实例的 Observation：
+```json
+{
+  "hostId": "0196f3a0-2b11-7c30-8a1b-1c2d3e4f5a60",
+  "api": { "url": "https://…/api/", "credential": "…" },
+  "connection": "connected"
+}
+```
 
-| 参数 | 含义 |
+- `connection` 的取值与 `list` 的 `host.connection` 相同。还没有接入时，`hostId` 和 `credential` 为 `null`，客户端这时不读取数据。
+- 客户端在 `pair` 之后，以及 `list` 的 `host` 变化时重新取得它。
+
+## Observer 进程 [#observer-process]
+
+Observer 是一个普通进程，这几条约定是它和 Runtime 之间的全部协议：
+
+| 约定 | 内容 |
 | --- | --- |
-| `instanceId` | 程序实例的 EntityId |
-| `from`、`to` | 带时区的 ISO 8601 时间。事实时间与这个范围相交的 Observation |
-| `resourceName` | 可选。只返回观测内容是这种业务类型的 |
-| `limit` | 每页的数量，1 到 1000 |
-| `cursor` | 可选。上一页返回的 `next` |
+| 运行上下文 | 启动时从环境变量读取，见 [Overview · 运行上下文](./index.mdx#context) |
+| 写入 | 发给 `ORISUMI_WRITE_URL`，见 [Runtime · 本地转发](./runtime.mdx#forwarding) |
+| 停止 | 标准输入关闭时结束进行中的事实，然后退出。退出码为 `0` 表示正常退出 |
+| 诊断 | 写入标准错误，每行一条，见 [Runtime · 状态](./runtime.mdx#states) |
 
-```json
-{
-  "observations": [
-    { "versionId": "…", "entityId": "…" }
-  ],
-  "next": null
-}
-```
-
-- `observations` 中每项是 Observation 的版本，结构见 [API · Versions](../api/versions.mdx)。
-- 结果按事实时间的起点从晚到早排列，起点相同的按 EntityId 排列。
-- 第一页时，Runtime 从后端读出全部结果，生成一份快照，之后的页都从这份快照中读取，翻页时不重复也不遗漏。快照保留 2 分钟，Runtime 最多同时保留 32 份，超出时移除最早的一份。快照过期后，`cursor` 返回 `conflict`，客户端从第一页重新读取。
-
-`versions` 按 VersionId 读取被引用的版本，一次最多 256 个：
-
-```json
-{ "versions": [], "missing": [] }
-```
-
-- 返回的是指定的那个版本，不用实体的当前版本代替，见 [ENTITY-4](../core/model/entity.mdx#entity-4)。
-- 版本不存在或已被删除时，它出现在 `missing` 中。
-
-`content` 按摘要读取一份二进制内容，参数是 `digest`：
-
-```json
-{ "data": "iVBORw0KGgoAAAANSUhEUgAA…" }
-```
-
-- `data` 是字节的 Base64，来自 [`GET /contents/{digest}`](/api/getContent)。
-- 后端没有这份内容时返回 `not_found`。
-
-## Observer 管道 [#observer-pipe]
-
-管道绑定启动它的程序实例，消息中不能指定另一个实例。各语言的 SDK 把业务操作编码成这些消息，自己不保存数据；业务代码通过 SDK 调用。
-
-Runtime 启动进程后先发送：
-
-```json
-{
-  "event": "init",
-  "protocol": 1,
-  "instanceId": "0196f3a2-7c1e-7d40-9b1a-2f6c8e4d5a01",
-  "packageVersion": "0.1.0",
-  "dataDirectory": "/…/instances/0196f3a2-7c1e-7d40-9b1a-2f6c8e4d5a01/data",
-  "sharedDataDirectory": "/…/shared",
-  "settings": {}
-}
-```
-
-程序实例的程序版本用 `packageVersion`，所以后端记录的版本与安装包一致。
-
-停止时发送 `{ "event": "stop" }`，Observer 不回复它，提交进行中的事实后退出。
-
-Observer 发出的请求如下。批次的语义见 [Submission · 批次](./submission.mdx#batch)。
-
-| 请求 | 参数 | 结果 |
-| --- | --- | --- |
-| `ready` | 无 | 初始化完成，每次启动一次 |
-| `registerSchema` | `entityId`、`content` | `versionId`。与后端的版本链对齐，见 [Submission · 登记](./submission.mdx#registration) |
-| `registerInstance` | `schemaVersionId`、`content` | `versionId`。登记的是管道绑定的程序实例 |
-| `commit` | `operations`，可选 `contents` | `results`：每个具名操作得到的 VersionId |
-| `readCurrent` | `entityId` | 后端的当前版本，带 `recordedAt`；没有时为 `null` |
-| `versions` | `versionIds`，最多 256 个 | 与客户端管道的 [`versions`](#reading) 相同 |
-| `listEntities` | 可选的 `category`、`resourceName`、`after`、`limit` | 一页实体的当前版本和 `next`，与 [`GET /entities`](/api/listEntities) 相同 |
-| `listReferrers` | `entityId`，可选的 `versions`、`after`、`limit` | 一页引用方和 `next`，与 [`GET /entities/{entityId}/referrers`](/api/listReferrers) 相同 |
-
-### 批次的操作 [#operations]
-
-一个批次有 1 到 512 个操作：
-
-```json
-{
-  "id": "0196f3a3-1b20-7e11-8c4d-5a7b9e2f6c13",
-  "method": "commit",
-  "params": {
-    "operations": [
-      { "op": "reference", "entityId": "0196f3a2-8e21-7b63-a4d5-2f3e4a5b6c7d", "as": "app" },
-      {
-        "op": "write",
-        "entityId": "0196f3a3-0a32-7c74-95e6-3a4f5b6c7d8e",
-        "category": "business",
-        "schemaVersionId": "0196f3a1-ff43-7d85-86f7-4b5a6c7d8e9f",
-        "previousVersionId": null,
-        "content": {
-          "name": "Safari",
-          "icon": { "digest": "sha256:8d2f…", "mediaType": "image/png", "size": 584113 },
-          "localApplicationVersionId": null
-        },
-        "bindings": { "/localApplicationVersionId": "app" },
-        "as": "period"
-      }
-    ],
-    "contents": [
-      { "digest": "sha256:8d2f…", "data": "iVBORw0KGgoAAAANSUhEUgAA…" }
-    ]
-  }
-}
-```
-
-| 操作 | 字段 |
-| --- | --- |
-| `write` | `entityId`、`category`、`content`，可选 `schemaVersionId`、`previousVersionId`、`ifAbsent`、`bindings`、`as` |
-| `reference` | `entityId`、`as` |
-
-- `op` 写明操作的种类，`category` 是版本的类别，与 [API · Versions](../api/versions.mdx#members) 中的相同。
-- `as` 给操作的结果起名，后面的 `bindings` 和结果中的 `results` 用这个名字。
-- `bindings` 把内容中的一个引用位置（JSON Pointer）绑定到前面操作的结果，结果是一个确定的版本。
-- `previousVersionId` 指定新版本的前一版本；为 `null` 时是实体的首版。省略时用实体的当前版本：同一批次中写入过它就用那一版，否则读取后端，后端没有它就是首版。
-- `ifAbsent` 为 `true` 时，实体已有版本就沿用当前版本，不写入。
-- `reference` 得到实体的当前版本，规则与省略 `previousVersionId` 时相同。实体没有版本时，批次返回 `invalid_request`。
-- `content` 是完整的版本内容，Observation 的可空字段也要写出。
-- `contents` 列出批次的写入中用到的每份二进制内容，`data` 是字节的 Base64。写入的 `binary` 值都要在同一批次的 `contents` 中，摘要和大小都要与字节相符，否则整批返回 `invalid_request`。没有用到二进制内容时省略。
-
-后端拒绝这次提交时，请求返回 `rejected`，`message` 是后端的说明，另带 `rule` 和被拒绝的 `versionId`：
-
-```json
-{ "id": "…", "error": { "code": "rejected", "message": "…", "rule": "VERSION-6", "versionId": "0196f3a3-2c41-7d85-a6e7-4b5c6d7e8f90" } }
-```
-
-### 读取后端 [#observer-reading]
-
-`readCurrent`、`listEntities` 和 `listReferrers` 读取后端已保存的数据，`versions` 与客户端管道的相同。后端不可用时返回 `unavailable`。
+配置变化时，Runtime 重启进程，所以程序不需要监听配置。

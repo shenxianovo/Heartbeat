@@ -20,11 +20,11 @@ Observation、EntitySchema 和 InputSet 是 Core 类型，其余实体都是业�
 
 每个实体有一个 EntityId，生成后不再改变。一个 EntityId 只属于一个实体，实体删除后仍然占用。什么算同一个实体由业务规则决定，见 [Identity](../rules/identity.mdx)。
 
-### ENTITY-2 EntityId 由写入方生成 [#entity-2]
+### ENTITY-2 EntityId 的生成 [#entity-2]
 
-执行方：写入方、后端
+执行方：后端
 
-EntityId 是写入方生成的 UUIDv7。
+EntityId 是 UUIDv7。新实体的 EntityId 由后端生成，直接运行的程序实例也一样。受托管的程序实例由托管方预先分配，见 [HISTORY-7](../rules/history.mdx#history-7)；SchemaId 是业务规则给定的常量。
 
 ### ENTITY-3 类型不变 [#entity-3]
 
@@ -58,7 +58,7 @@ EntityId 是写入方生成的 UUIDv7。
 
 执行方：后端
 
-新版本引用的每个目标版本，都必须已保存且未被删除。同一次提交中的多个版本按依赖顺序逐个保存（见 [VERSION-13](./version.mdx#version-13)），所以版本不能引用自己，同一次提交中的两个新版本也不能互相引用。
+新版本引用的每个目标版本，都必须已保存且未被删除。写入按顺序逐个保存，所以版本不能引用自己，两个新版本也不能互相引用。
 
 实体之间仍然可以互相关联：A 的第二版引用 B 的第一版，B 的第一版引用 A 的第一版。
 

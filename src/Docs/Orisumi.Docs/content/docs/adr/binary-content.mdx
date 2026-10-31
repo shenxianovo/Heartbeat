@@ -14,10 +14,10 @@ description: "业务字段可以是二进制内容：版本保存摘要、媒体
 - 业务字段可以声明为 `binary`。值是文件的描述：摘要、媒体类型和大小。
 - 二进制内容以 SHA-256 摘要标识，同样的字节只保存一份。
 - 文件由使用它的业务字段承载，不另设文件实体。例如应用图标是前台时段的 `icon` 字段。
-- 写入方先上传内容，再提交使用它的版本。
+- 写入方先上传内容，再写入使用它的版本。
 - 后端保留仍有已保存版本使用的内容；使用它的最后一个版本删除时，内容一并移除。
 - 后端把内容保存在 PostgreSQL 的 `contents` 表中。
-- 业务代码把字节放在批次中交给 Runtime，字节和版本在同一个本地事务中保存；Runtime 发送版本前先上传它用到的内容。
+- SDK 先上传字节，再写入用到它的内容。
 
 ## 理由 [#rationale]
 
@@ -27,9 +27,9 @@ description: "业务字段可以是二进制内容：版本保存摘要、媒体
 
 文件放在使用它的字段中，删除就跟随使用它的实体：删除一段时段，它的图标在没有其他时段使用后随之移除。用途由字段名表达，例如 `icon`。业务上需要文件有自己的身份时，例如用户整理的一组照片，由对应的 Observer 定义一种带 `binary` 字段的业务类型。
 
-先上传、后提交，与只引用已保存的版本（[ENTITY-6](../core/model/entity.mdx#entity-6)）是同一个顺序：版本保存时，它用到的一切都已在后端。同样的字节再次上传也成功。
+先上传、后写入，与只引用已保存的版本（[ENTITY-6](../core/model/entity.mdx#entity-6)）是同一个顺序：版本保存时，它用到的一切都已在后端。同样的字节再次上传也成功。
 
-业务代码把字节和版本放在同一个批次中交给 Runtime，Runtime 先上传字节再提交版本，见 [Hosting · 批次](../hosting/submission.mdx#batch)。
+业务代码交来字节和媒体类型，SDK 先上传字节再写入内容，见 [API · 文件](../api/sdk.mdx#files)。
 
 一个 1024×1024 的图标几百 KB，去重后总量很小。PostgreSQL 已经是后端唯一的依赖，内容与版本在同一个事务中保存和删除，保留规则直接由事务保证。
 
@@ -44,7 +44,7 @@ description: "业务字段可以是二进制内容：版本保存摘要、媒体
 ## 代价 [#costs]
 
 - 后端要为每个版本记录它用到的内容，删除时据此判断内容是否还有使用方。
-- 上传后长时间没有提交的内容会被清理，Runtime 提交时被拒绝，要重新上传。
+- 上传后长时间没有写入的内容会被清理，写入时被拒绝，要重新上传。
 - 任何读到摘要的读取方都能读取这份内容，内容的读取不区分它被哪个版本使用。
 - 读取方要按描述中的媒体类型解释字节，下载接口本身不带类型。
 - 大文件占用数据库的空间和备份，单份内容受大小上限约束。
@@ -53,5 +53,5 @@ description: "业务字段可以是二进制内容：版本保存摘要、媒体
 
 - [Binary](../core/model/binary.mdx)
 - [API · 内容](../api/writing.mdx#contents)、[Storage · Contents](../storage/contents.mdx)
-- [Hosting · 批次](../hosting/submission.mdx#batch)、[Protocol · 批次的操作](../hosting/protocol.mdx#operations)
+- [API · 文件](../api/writing.mdx#contents)
 - [Foreground Application Period](../observers/foreground-state/foreground-application-period.mdx)

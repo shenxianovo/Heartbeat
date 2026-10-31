@@ -61,7 +61,7 @@ VS Code 从 14:00 起在前台，前台状态 Observer 在 14:05 最后一次确
 
 执行方：后端
 
-同一个观测内容可以被多份 Observation 引用。同一个 Observer 或不同的 Observer 都可以多次观测同一个内容。
+同一个观测内容可以被多份 Observation 引用，每个 Observer 一份。同一个 Observer 再次写入这个内容时，时间或内容有变化就形成它那份 Observation 的新版本。每次读取都要单独成一份观测时，每次读取是一个新的内容实体，例如一次温度读数。
 
 ## 事实时间 [#fact-time]
 
