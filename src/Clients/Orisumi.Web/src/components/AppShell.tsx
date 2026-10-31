@@ -4,6 +4,7 @@ import {
   CalendarDays,
   Check,
   LayoutGrid,
+  MessagesSquare,
   Monitor,
   Moon,
   Network,
@@ -83,6 +84,9 @@ function Sidebar() {
         <NavItem to="/applications" icon={LayoutGrid} exact>
           应用
         </NavItem>
+        <NavItem to="/sessions" icon={MessagesSquare} exact>
+          会话
+        </NavItem>
         <NavItem to="/entities" icon={Network}>
           实体
         </NavItem>
@@ -143,7 +147,7 @@ function NavItem({
   badge,
   children,
 }: {
-  to: "/" | "/applications" | "/entities" | "/observers" | "/hosts";
+  to: "/" | "/applications" | "/sessions" | "/entities" | "/observers" | "/hosts";
   icon: ComponentType<{ className?: string }>;
   exact?: boolean;
   badge?: ReactNode;

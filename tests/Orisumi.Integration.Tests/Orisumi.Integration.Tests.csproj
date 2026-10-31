@@ -12,6 +12,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Orisumi.Observer.Fixture/Orisumi.Observer.Fixture.csproj" />
+    <ProjectReference Include="../../src/Observers/Orisumi.Observer.AssistantSessions/Orisumi.Observer.AssistantSessions.csproj" />
     <ProjectReference Include="../../src/Observers/Orisumi.Observer.Runtime/Orisumi.Observer.Runtime.csproj" />
     <ProjectReference Include="../Orisumi.Testing/Orisumi.Testing.csproj" />
     <ProjectReference Include="../../src/Observers/Orisumi.Observer.ApplicationIdentity/Orisumi.Observer.ApplicationIdentity.csproj" />

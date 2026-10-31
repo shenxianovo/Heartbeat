@@ -4,32 +4,34 @@ Orisumi.Web 是 Orisumi 的 Web 控制台，只在本机使用。页面和视图
 
 ## 页面
 
-| 路由                           | 页面                                                                                                                          |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| `/?date=`                      | [日](../../Docs/Orisumi.Docs/content/docs/clients/web.mdx#day)                                                                |
-| `/entities?root=&type=`        | [实体](../../Docs/Orisumi.Docs/content/docs/clients/web.mdx#entities)：从 `root` 织图；没有 `root` 时是类型图和每个类型的实体 |
-| `/entities/$entityId?version=` | 实体页：内容、引用、版本和删除                                                                                                |
-| `/observers`                   | [Observer](../../Docs/Orisumi.Docs/content/docs/clients/web.mdx#observers)                                                    |
-| `/applications`                | [应用](../../Docs/Orisumi.Docs/content/docs/clients/web.mdx#applications)                                                     |
-| `/hosts`                       | [托管](../../Docs/Orisumi.Docs/content/docs/clients/web.mdx#hosts)                                                            |
-| `/versions/$versionId`         | 读取版本后跳到所属实体，并选中这个版本                                                                                        |
+| 路由                             | 页面                                                                                                                          |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `/?date=`                        | [日](../../Docs/Orisumi.Docs/content/docs/clients/web.mdx#day)                                                                |
+| `/entities?root=&type=`          | [实体](../../Docs/Orisumi.Docs/content/docs/clients/web.mdx#entities)：从 `root` 织图；没有 `root` 时是类型图和每个类型的实体 |
+| `/entities/$entityId?version=`   | 实体页：内容、引用、版本和删除                                                                                                |
+| `/observers`                     | [Observer](../../Docs/Orisumi.Docs/content/docs/clients/web.mdx#observers)                                                    |
+| `/applications`                  | [应用](../../Docs/Orisumi.Docs/content/docs/clients/web.mdx#applications)                                                     |
+| `/sessions?date=&session=&view=` | [会话](../../Docs/Orisumi.Docs/content/docs/clients/web.mdx#sessions)                                                         |
+| `/hosts`                         | [托管](../../Docs/Orisumi.Docs/content/docs/clients/web.mdx#hosts)                                                            |
+| `/versions/$versionId`           | 读取版本后跳到所属实体，并选中这个版本                                                                                        |
 
 根路由读 `stack` 参数，所以任何页面都可以打开右侧的面板。
 
 ## 代码结构
 
-| 内容       | 位置                                                                                                         |
-| ---------- | ------------------------------------------------------------------------------------------------------------ |
-| 角色       | `src/lib/roles.ts`、`src/hooks/useTypes.ts`                                                                  |
-| 一天的数据 | `src/lib/day.ts`、`src/hooks/useDay.ts`                                                                      |
-| 记号和面板 | `src/components/token/`、`src/components/stack/`                                                             |
-| 时间线     | `src/components/day/Timeline.tsx`                                                                            |
-| 实体的名字 | `src/lib/titles.ts`                                                                                          |
-| 应用产品   | `src/lib/applications.ts`、`src/hooks/useApplications.ts`、`src/components/applications/`                    |
-| 托管       | `src/api/management.ts`、`src/hooks/useManagement.ts`、`src/components/hosts/`                               |
-| 织图       | `src/lib/weave.ts`（生长、线束和排布，纯函数）、`src/hooks/useWeave.ts`（读取邻居）、`src/components/weave/` |
-| 侧栏       | `src/components/AppShell.tsx`；“现在”和写入状态来自 `src/hooks/useCurrent.ts`，与日页面共用同一份查询        |
-| 页头和卡片 | `src/components/ui.tsx` 的 `PageHeader` 和 `Card`                                                            |
+| 内容       | 位置                                                                                                                |
+| ---------- | ------------------------------------------------------------------------------------------------------------------- |
+| 角色       | `src/lib/roles.ts`、`src/hooks/useTypes.ts`                                                                         |
+| 一天的数据 | `src/lib/day.ts`、`src/hooks/useDay.ts`                                                                             |
+| 记号和面板 | `src/components/token/`、`src/components/stack/`                                                                    |
+| 时间线     | `src/components/day/Timeline.tsx`                                                                                   |
+| 实体的名字 | `src/lib/titles.ts`                                                                                                 |
+| 应用产品   | `src/lib/applications.ts`、`src/hooks/useApplications.ts`、`src/components/applications/`                           |
+| 助手会话   | `src/lib/conversations.ts`（分组、配对和筛选，纯函数）、`src/hooks/useConversations.ts`、`src/components/sessions/` |
+| 托管       | `src/api/management.ts`、`src/hooks/useManagement.ts`、`src/components/hosts/`                                      |
+| 织图       | `src/lib/weave.ts`（生长、线束和排布，纯函数）、`src/hooks/useWeave.ts`（读取邻居）、`src/components/weave/`        |
+| 侧栏       | `src/components/AppShell.tsx`；“现在”和写入状态来自 `src/hooks/useCurrent.ts`，与日页面共用同一份查询               |
+| 页头和卡片 | `src/components/ui.tsx` 的 `PageHeader` 和 `Card`                                                                   |
 
 主题存在 localStorage 的 `orisumi.theme`，写到 `<html data-theme>`。`src/styles/globals.css` 的表面分四层：page 是纸面，side 是侧栏，card 是卡片，panel 是卡片里的浅色填充；卡片的投影用 `shadow-card`，弹出层用 `shadow-float`。吉祥物出现在空状态、读取和读不到的提示里，侧栏和标签页图标用 `public/mascots/macos-128.png`。
 

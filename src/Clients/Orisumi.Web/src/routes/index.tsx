@@ -1,6 +1,6 @@
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { DayNav } from "@/components/day/DayNav";
 import { Timeline } from "@/components/day/Timeline";
 import { Card, Message } from "@/components/ui";
 import { productGroup, useCatalog } from "@/hooks/useApplications";
@@ -8,7 +8,7 @@ import { useDay } from "@/hooks/useDay";
 import { useNow } from "@/hooks/useNow";
 import { groupThings, summarize, type Experience, type Row } from "@/lib/day";
 import { differences } from "@/lib/roles";
-import { dayOf, dayRange, dayTitle, duration, MINUTE } from "@/lib/time";
+import { dayOf, dayRange, duration } from "@/lib/time";
 
 interface DaySearch {
   date?: string | undefined;
@@ -23,7 +23,6 @@ export const Route = createFileRoute("/")({
 /** 日：那一天在用什么、用了多久。上面是总时长，下面是排行和时间线合在一起的表；点任何东西都在右边推出它的面板。 */
 function DayPage() {
   const search = Route.useSearch();
-  const navigate = Route.useNavigate();
   const now = useNow(1000);
   const todayKey = dayRange(now).key;
   const key = search.date ?? todayKey;
@@ -41,57 +40,12 @@ function DayPage() {
   );
   const details = useMemo(() => sameNameDetails(summary.things), [summary.things]);
 
-  function go(offset: number) {
-    const next = dayRange(range.start + offset * 24 * 60 * MINUTE + 12 * 60 * MINUTE).key;
-    void navigate({ search: (prev) => ({ ...prev, date: next === todayKey ? undefined : next }) });
-  }
-
-  useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      if (event.target instanceof HTMLInputElement || event.metaKey || event.ctrlKey || event.altKey) return;
-      if (event.key === "ArrowLeft") go(-1);
-      if (event.key === "ArrowRight" && !today) go(1);
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  });
-
   const total = summary.things.reduce((sum, row) => sum + row.total, 0);
   return (
     <section>
       <header className="mb-6 flex flex-wrap items-end gap-x-8 gap-y-4">
         <div className="min-w-[min(100%,320px)] flex-1">
-          <div className="-ml-1.5 flex items-center gap-1">
-            <button
-              type="button"
-              aria-label="前一天"
-              onClick={() => go(-1)}
-              className="text-fg-2 hover:text-fg hover:bg-panel cursor-pointer rounded-md p-1"
-            >
-              <ChevronLeft className="size-5" />
-            </button>
-            <h1 className="text-[26px] leading-tight font-semibold tracking-[-0.01em] tabular-nums">
-              {dayTitle(range.start)}
-            </h1>
-            <button
-              type="button"
-              aria-label="后一天"
-              disabled={today}
-              onClick={() => go(1)}
-              className="text-fg-2 hover:text-fg hover:bg-panel cursor-pointer rounded-md p-1 disabled:cursor-default disabled:opacity-30"
-            >
-              <ChevronRight className="size-5" />
-            </button>
-            {!today && (
-              <button
-                type="button"
-                onClick={() => void navigate({ search: (prev) => ({ ...prev, date: undefined }) })}
-                className="border-line-2 text-fg-2 hover:text-fg ml-2 cursor-pointer rounded-md border px-2 py-0.5 text-xs"
-              >
-                回到今天
-              </button>
-            )}
-          </div>
+          <DayNav start={range.start} today={today} />
           {summary.things.length > 0 && <Overview summary={summary} total={total} />}
         </div>
       </header>

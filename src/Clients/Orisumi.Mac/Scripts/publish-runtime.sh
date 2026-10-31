@@ -1,5 +1,5 @@
 #!/bin/sh
-# Xcode build phase: builds Runtime and the foreground state Observer's package with orisumi observers pack, signed,
+# Xcode build phase: builds Runtime and the bundled Observer packages with orisumi observers pack, signed,
 # and copies them into Contents/Helpers/Runtime and Contents/Resources/Observers.
 set -eu
 
@@ -20,7 +20,7 @@ packed="$DERIVED_FILE_DIR/observers"
 cd "$repository"
 env -i HOME="$HOME" PATH="$PATH" TMPDIR="${TMPDIR:-/tmp}" USER="${USER:-}" \
   dotnet run --project "$repository/tools/Orisumi.Dev" -- \
-  observers pack foreground-state --target "$target" --output "$packed" --sign "$sign"
+  observers pack foreground-state assistant-sessions --target "$target" --output "$packed" --sign "$sign"
 
 rm -rf "$contents/Helpers/Runtime" "$contents/Resources/Observers"
 mkdir -p "$contents/Helpers" "$contents/Resources"
