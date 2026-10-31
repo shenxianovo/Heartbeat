@@ -1,0 +1,41 @@
+---
+title: "Assistant Interaction Time"
+description: "交互的事实时间、时区和工作目录取自来源"
+---
+
+export const caseId = 'assistant-interaction-time';
+
+## 为什么验证 [#why]
+
+两种来源记下的时间含义不同，导入历史时程序实例所在的环境也和交互发生时不同。[事实时间](../../observers/assistant-sessions/assistant-interaction.mdx#fact-time)和[时区](../../observers/assistant-sessions/index.mdx#fact-time)只取自能证明它的证据。
+
+## 前置条件 [#setup]
+
+使用合成的会话日志，本机时区可以由测试设置。
+
+## 操作与预期结果 [#steps]
+
+| 输入 | 预期结果 |
+| --- | --- |
+| Claude Code 的用户输入、工具调用和工具结果 | 时间点，取行的 `timestamp` |
+| Claude Code 的助手文字和推理 | `startAt` 为 `null`，`endAt` 为行的 `timestamp` |
+| Codex 的 `AgentMessage`，开始和完成相差 2 秒 | `[started_at_ms, completed_at_ms)` |
+| Codex 的 `CommandExecution` | 调用取 `started_at_ms`，结果取 `completed_at_ms` |
+| Codex 会话中有 `<timezone>Asia/Shanghai</timezone>`，本机时区是 UTC | 导入历史时，之后的交互 `timeZone` 为 `Asia/Shanghai` |
+| 首次导入 Claude Code 的历史 | `timeZone` 为 `null` |
+| 程序实例运行期间，Claude Code 追加了新记录 | `timeZone` 为本机当前的时区 |
+| 同一会话中途切换了工作目录 | 每次交互的 `workingDirectory` 是它自己那一行或那一轮的值 |
+| 记录没有 `cwd` 或模型 | 对应字段为 `null` |
+
+## 测试实现 [#implementation]
+
+以下方法位于 `tests/Orisumi.Integration.Tests/`，使用合成的日志：
+
+- Claude Code 首次导入、运行期间追加和停止期间追加的时区，助手回复只有结束边界，各行自己的工作目录和缺失的 `cwd`：`AssistantTimeTests.ClaudeHistoryLiveAppendAndStoppedAppendHaveDifferentZoneEvidence`。
+- Codex 的 `<timezone>` 优先于本机时区，`AgentMessage` 的时段，工具调用的时间点，每一轮的工作目录和模型：`AssistantTimeTests.CodexEnvironmentAndTurnContextOverrideCollectionEnvironment`。
+
+未覆盖：Claude Code 的用户输入、工具调用和结果各自的时间点取值；Codex 工具结果取 `completed_at_ms`。
+
+## 执行结果 [#results]
+
+<TestCaseResults caseId={caseId} />

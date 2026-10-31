@@ -1,0 +1,42 @@
+---
+title: "Assistant Raw Entries"
+description: "原始记录作为二进制内容提交，片段的位置能在读回后解析"
+---
+
+export const caseId = 'assistant-raw-entries';
+
+## 为什么验证 [#why]
+
+工具输出、上下文和图片只保存在[原始记录](../../observers/assistant-sessions/assistant-interaction.mdx#raw)中。原始记录要完整提交，片段的位置要能在读回的字节中找到内容。
+
+## 前置条件 [#setup]
+
+使用合成的会话日志、独立的 Runtime 数据目录和真实的 API。
+
+## 操作与预期结果 [#steps]
+
+| 输入 | 预期结果 |
+| --- | --- |
+| 提交一次带图片的用户输入，再读回版本和内容 | `sourceEntries` 的字节与来源的那一行相同；`image` 片段的 `pointer` 在读回的 JSON 中指向图片数据 |
+| Codex 一项工具调用形成调用和结果 | 两次交互的 `sourceEntries` 摘要相同，后端只保存一份字节 |
+| 工具输出、上下文的片段 | `text` 为 `null`，按 `pointer` 能取出完整内容 |
+| 对话文字和工具调用的参数 | `text` 与按 `pointer` 取出的值相同 |
+| Codex 的 `local_image` 文件还在 | 片段的 `file` 是文件的字节 |
+| Codex 的 `local_image` 文件已不存在 | 片段的 `file` 为 `null`，交互照常形成 |
+| 内容上传后、版本提交前程序退出 | 重启后补齐内容并提交，交互的附件完整 |
+| Codex 推理的第一行在这一轮读到，第二行在重启后读到 | 形成一次推理，两行都是它的原始记录 |
+| 同一轮结束时，推理只有第一行 | 推理只用第一行形成 |
+
+## 测试实现 [#implementation]
+
+以下方法位于 `tests/Orisumi.Integration.Tests/`：
+
+- 经 Runtime 提交到真实的 API 和独立的测试数据库，再读回：原始记录的字节、按 `pointer` 取值与 `text` 一致、`local_image` 文件存在和不存在、调用和结果共用一份原始记录：`AssistantSubmissionTests.RawBytesAndPointersRoundTripThroughRuntimeAndRealApi`。
+- Codex 的推理跨轮询和重启配对，两行原始记录都保存：`AssistantReadingTests.ReasoningPairSurvivesPollBoundaryAndRestartWithoutLosingOpaqueMaterial`。
+- 一轮结束时推理只有第一行：`AssistantReadingTests.ReasoningWithoutItsResponseItemIsFormedWhenTheTurnEnds`。
+
+未覆盖：内容上传后、版本提交前程序退出，这由 Runtime 负责，见 [Content Handoff](../hosting/content-handoff.mdx)。
+
+## 执行结果 [#results]
+
+<TestCaseResults caseId={caseId} />

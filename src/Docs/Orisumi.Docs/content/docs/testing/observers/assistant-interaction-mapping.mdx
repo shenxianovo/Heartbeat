@@ -1,0 +1,50 @@
+---
+title: "Assistant Interaction Mapping"
+description: "两种来源的记录对应到正确的交互种类和发出方"
+---
+
+export const caseId = 'assistant-interaction-mapping';
+
+## 为什么验证 [#why]
+
+Claude Code 和 Codex 把用户的输入、工具结果和产品注入的上下文写在相似的记录里。[助手交互](../../observers/assistant-sessions/assistant-interaction.mdx#granularity)要按记录的结构区分它们，同一件事在来源中出现两次时只形成一次交互。
+
+## 前置条件 [#setup]
+
+使用合成的 Claude Code 和 Codex 会话日志，结构取自已核实的版本，内容不含真实对话。
+
+## 操作与预期结果 [#steps]
+
+| 输入 | 预期结果 |
+| --- | --- |
+| 两种来源中各有用户输入、助手文字、工具调用、工具结果、推理和指令 | 每条记录形成的 `kind` 和 `actor` 与映射表一致，两种来源的同类交互字段含义相同 |
+| Claude Code 的一行用户输入依次包含文字、图片、文字 | 形成一次交互，`parts` 是三个片段，顺序与来源相同 |
+| Claude Code 的一次 API 响应写成三行 block | 形成三次交互，`sourceMessageId` 相同 |
+| Claude Code `role` 为 `user` 的行中有两个 `tool_result` block | 形成两次 `tool-result`，`actor` 为 `tool`，`sourceRole` 为 `user` |
+| 用户亲手输入 `<system-reminder>` 这样的文字，`origin.kind` 为 `human` | 形成 `actor` 为 `user` 的消息，文字原样保存 |
+| `isMeta` 为 `true` 的行、`isCompactSummary` 为 `true` 的行、`attachment` 行 | 形成 `context`，`actor` 为 `application` |
+| Codex 的同一条用户输入出现在 `UserMessage` 和 `response_item` 中 | 只形成一次 `message` |
+| Codex 注入的 AGENTS.md 和 `<environment_context>`，`role` 为 `user` | 形成 `context`，`actor` 为 `application` |
+| Codex 一项 `CommandExecution` | 形成一次 `tool-call` 和一次 `tool-result`，`sourceId` 相同 |
+| Codex 的 `compacted` 中带着之前的历史 | 形成一次 `context`，历史中的消息不再形成新的交互 |
+| Claude Code 的 `api-request`、`api-request-blob`，Codex 的 `token_count` | 不形成交互 |
+| Claude Code 的 `thinking` block 文字为空、带签名 | 形成推理，片段是空的 `text` 和 `opaque` |
+| Codex 出现不认识的事件类型 | 记下诊断，不形成交互 |
+
+## 测试实现 [#implementation]
+
+以下方法位于 `tests/Orisumi.Integration.Tests/`，使用合成的日志：
+
+- Claude Code 的发出方、文字—图片—文字、两个 `tool_result` block、像系统标记的用户文字、`isMeta` 的行、同一次 API 响应的 block、`api-request-blob`，以及重读不形成新的交互：`AssistantMappingTests.ClaudeSeparatesRolesAndPreservesMixedContentAndResponseBlocks`。
+- `origin.kind` 到发出方的对应，参数为 human、peer、coordinator、task-notification 和没有 `origin`：`AssistantMappingTests.OriginControlsActor`。
+- Codex 的用户输入只形成一次、注入的 AGENTS.md、`additional_tools`、`compacted` 和 `token_count`：`AssistantMappingTests.CodexUsesCompletedItemsAndDoesNotReplayContextSnapshots`。
+- 空的推理文字和签名、空的消息文字：`AssistantMappingTests.EmptyThinkingWithSignatureAndEmptyTextAreValidSourceContent`。
+- 不认识的 Codex 事件作为诊断：`AssistantMappingTests.UnsupportedCodexEventsAreDiagnosedRatherThanSilentlyTreatedAsImported`。
+- Claude Code 的 `mode` 记录不形成交互：`AssistantMappingTests.ClaudeModeRowsAreNotInteractions`。
+- Codex 的工具调用形成调用和结果两次交互：见 [Assistant Interaction Relations](./assistant-interaction-relations.mdx)。
+
+未覆盖：`isCompactSummary` 的行和 `attachment` 行形成上下文；`api-request` 不形成交互。
+
+## 执行结果 [#results]
+
+<TestCaseResults caseId={caseId} />

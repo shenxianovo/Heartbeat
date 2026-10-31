@@ -42,8 +42,14 @@
     "observers/foreground-rejections",
     "observers/foreground-icons",
     "observers/application-identity",
+    "observers/assistant-interaction-mapping",
+    "observers/assistant-interaction-relations",
+    "observers/assistant-session-reading",
+    "observers/assistant-interaction-time",
+    "observers/assistant-raw-entries",
     "---Clients---",
     "clients/native-views",
-    "clients/application-products"
+    "clients/application-products",
+    "clients/assistant-sessions"
   ]
 }

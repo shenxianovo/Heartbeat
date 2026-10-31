@@ -1,0 +1,11 @@
+{
+  "title": "Assistant Sessions",
+  "defaultOpen": false,
+  "collapsible": true,
+  "pagesIndex": "index",
+  "pages": [
+    "assistant-sessions-observer",
+    "assistant-session",
+    "assistant-interaction"
+  ]
+}

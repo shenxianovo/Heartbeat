@@ -1,0 +1,41 @@
+---
+title: "Assistant Sessions Observer"
+description: "一个助手会话 Observer 程序实例"
+---
+
+助手会话 Observer 程序实例是一个业务实体，例如这台 Mac 上运行的助手会话 Observer。它形成的每份 Observation 都通过 `observerVersionId` 引用它的一个版本；读取方从这个版本读到交互发生的设备。
+
+<ObserverStructure node="ASSISTANT_SESSIONS" />
+
+## 粒度 [#granularity]
+
+一个实体对应一个程序实例。程序实例的划分见 [Assistant Sessions · 程序实例](./index.mdx#instance)。
+
+## 身份 [#identity]
+
+EntityId 由 Runtime 保存，重启、升级和重装后沿用，见 [OBSERVER-4](../../core/model/observer.mdx#observer-4)。平台、主机名或程序版本变化时，形成同一个实体的新版本；之后的 Observation 引用新版本。
+
+## EntitySchema [#schema]
+
+| 项目 | 值 |
+| --- | --- |
+| SchemaId | `019e1bbb-ec00-7000-8000-000000000007` |
+| 显示名称 | 助手会话 Observer |
+| 说明 | 表示一个助手会话 Observer 程序实例，保存它运行的平台、主机名和程序版本；它读取所在设备上 Claude Code 和 Codex 的会话日志，作为 Observer 对其中每次交互的观测负责。交互发生在这个程序实例所在的设备上。 |
+| 资源名 | `assistant-sessions-observers` |
+
+| 字段 | 类型 | 必填 | 可空 | description |
+| --- | --- | --- | --- | --- |
+| `platform` | `string` | 是 | 否 | 运行的平台：`macos`、`windows` 或 `linux` |
+| `hostName` | `string` | 是 | 是 | 本机的名称，读不到时为 `null` |
+| `programVersion` | `string` | 是 | 否 | 程序的版本，即安装包的版本 |
+
+## 示例 [#example]
+
+```json
+{
+  "platform": "macos",
+  "hostName": "Shenxianovo-Mac",
+  "programVersion": "0.1.0"
+}
+```

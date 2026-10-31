@@ -1,0 +1,296 @@
+---
+title: "Assistant Interaction"
+description: "助手会话中的一次交互：消息、工具调用与结果、推理或上下文"
+---
+
+助手交互表示会话中的一次交互，例如用户发出的一句话、助手调用 Bash、Bash 返回的结果，或者产品在这一轮注入的 AGENTS.md。它是助手会话 Observer 形成的观测内容，这次交互发生的时间写在引用它的 Observation 上。
+
+一次交互由三部分组成：它是哪种交互（`kind`），由谁发出（`actor`），以及内容（`parts`）。内容的原始记录保存在 `sourceEntries` 中，每份字节只保存一份。
+
+<ObserverStructure node="ASSISTANT_INTERACTION" />
+
+## 粒度 [#granularity]
+
+### 种类与发出方 [#kinds]
+
+| `kind` | 含义 |
+| --- | --- |
+| `message` | 一方对另一方说的话：用户的输入、助手给用户的文字，或另一个 Agent 发来的消息 |
+| `tool-call` | 助手发起的一次工具调用 |
+| `tool-result` | 一次工具调用返回的结果 |
+| `reasoning` | 来源提供的助手推理，可能是可读的推理、摘要或加密的内容 |
+| `context` | 产品交给模型的指令和上下文，例如系统指令、AGENTS.md、环境信息和压缩后的摘要 |
+
+| `actor` | 发出方 |
+| --- | --- |
+| `user` | 使用产品的人 |
+| `assistant` | 这个会话中的助手 |
+| `tool` | 被调用的工具 |
+| `application` | 产品本身，例如 Claude Code 注入的提醒、Codex 注入的环境信息 |
+| `agent` | 另一个 Agent，例如子 Agent 会话中发出任务的父 Agent |
+
+`actor` 依据来源记录的结构判断，结构不足以判断时为 `null`。来源的协议角色原样保存在 `sourceRole` 中：例如 Claude Code 把工具结果放在 `role` 为 `user` 的消息里，这次交互的 `sourceRole` 是 `user`，`actor` 是 `tool`。
+
+### Claude Code [#claude-code]
+
+| 来源记录 | 交互 | `kind` | `actor` |
+| --- | --- | --- | --- |
+| `type` 为 `user` 的行中的 `tool_result` block | 每个 block 一次 | `tool-result` | `tool` |
+| `type` 为 `user` 的行中其余的 block，`isMeta` 和 `isCompactSummary` 都不为 `true` | 一行一次，block 按原顺序成为 `parts` | `message` | 见下表 |
+| `type` 为 `user` 且 `isMeta` 或 `isCompactSummary` 为 `true` 的行 | 一行一次 | `context` | `application` |
+| `type` 为 `assistant` 的行中的 `text` block | 一个 block 一次 | `message` | `assistant` |
+| `type` 为 `assistant` 的行中的 `thinking`、`redacted_thinking` block | 一个 block 一次 | `reasoning` | `assistant` |
+| `type` 为 `assistant` 的行中的 `tool_use`、`server_tool_use` block | 一个 block 一次 | `tool-call` | `assistant` |
+| `type` 为 `attachment` 的行 | 一行一次 | `context` | `application` |
+| `type` 为 `api-request-shape` 的行：系统指令和工具声明 | 一行一次 | `context` | `application` |
+
+用户消息的 `actor` 取自这一行的 `origin.kind`：
+
+| `origin.kind` | `actor` |
+| --- | --- |
+| `human` | `user`；子 Agent 的会话中为 `agent` |
+| `peer`、`coordinator` | `agent` |
+| `task-notification` | `application` |
+| 没有 `origin` | `null` |
+
+在已核实的版本中，Claude Code 每个 block 写成单独的一行，一次 API 响应的各个 block 有相同的 `message.id`，保存在 `sourceMessageId` 中。
+
+### Codex [#codex]
+
+Codex 的 rollout 文件用 `event_msg` 中的 `item_completed` 记下每一项交互，同一项内容还以 `response_item` 出现一次。交互以 `item_completed` 为准，指令和上下文只出现在 `response_item` 和 `session_meta` 中，从那里读取。
+
+| 来源记录 | 交互 | `kind` | `actor` |
+| --- | --- | --- | --- |
+| `session_meta`：`base_instructions` 和会话信息 | 一次 | `context` | `application` |
+| `response_item` 中 `role` 为 `developer` 的 `message` | 一次 | `context` | `application` |
+| `response_item` 中 `role` 为 `user` 的 `message`，`content_item_kinds` 不以 `user.` 开头，例如 `agents_md.instructions`、`environments.environment_context` | 一次 | `context` | `application` |
+| `response_item` 中的 `additional_tools` | 一次 | `context` | `application` |
+| `compacted`：压缩后替换的历史 | 一次 | `context` | `application` |
+| `UserMessage` | 一次 | `message` | `user`；子 Agent 的会话中为 `agent` |
+| `AgentMessage` | 一次，`phase` 保存在同名字段 | `message` | `assistant` |
+| `Reasoning`，连同 `id` 相同的 `response_item` `reasoning` | 一次，见下文 | `reasoning` | `assistant` |
+| `CommandExecution`、`McpToolCall`、`FileChange`、`Extension`、`ImageView` | 一项形成两次：调用和结果 | `tool-call`、`tool-result` | `assistant`、`tool` |
+
+Codex 先写 `Reasoning` 的 `item_completed`，接着写 `id` 相同、带 `encrypted_content` 的 `response_item`。两行都读到后形成一次推理；只读到第一行时，它留在本地的待配对状态中，跨轮询和重启保留。同一轮的 `task_complete` 或 `turn_aborted` 出现时还没有第二行，推理只用第一行形成。
+
+### 不形成交互的记录 [#excluded]
+
+下面的记录是来源的运行信息、请求快照或会话属性，不形成交互：
+
+| 产品 | 记录 |
+| --- | --- |
+| Claude Code | `api-request`、`api-request-blob`（请求快照，内容来自其他记录）；`file-history-snapshot`、`file-history-delta`、`queue-operation`、`last-prompt`、`atis-latch`、`mode`、`relocated`、`type` 为 `system` 的行；`custom-title` 和 `agent-name` 用作[会话](./assistant-session.mdx)的标题 |
+| Codex | `token_count`、`token_usage_record`、`task_started`、`task_complete`、`turn_aborted`、`thread_settings_applied`、`world_state`；`turn_context` 用作交互的 `model` 和 `workingDirectory`；`ContextCompaction` 由 `compacted` 记下；与 `item_completed` 重复的 `response_item` |
+
+## 身份 [#identity]
+
+身份是 `(product, kind, sourceId)`。`sourceId` 是来源给这次交互的标识：
+
+| 产品 | `sourceId` |
+| --- | --- |
+| Claude Code | 行的 `uuid`；`tool_result` block 为 `uuid#<block 序号>`；`api-request-shape` 为 `<sessionId>/<shapeHash>` |
+| Codex | `item_completed` 的 item `id`；`response_item` 的 `id`；`session_meta` 为会话 `id`；`compacted` 为 `window_id` |
+
+这些标识由来源生成，在同一个产品中唯一，所以同一条记录无论从哪个文件、第几次读到，都对应同一次交互。Codex 的一项工具调用以同一个 `id` 形成调用和结果，两者用 `kind` 区分。
+
+每次交互是一个实体和一份 Observation，各有一个版本。文本相同的两次输入有各自的 `sourceId`，是两次交互。
+
+## 引用 [#references]
+
+| 字段 | 目标 |
+| --- | --- |
+| `sessionVersionId` | 交互所在的[会话](./assistant-session.mdx) |
+| `toolCallVersionId` | 工具结果对应的调用。按 `callId` 在同一会话中找到调用；调用不在已读到的记录中时为 `null` |
+
+交互之间的其他关系保存为来源标识：`sourceParentId` 是 Claude Code 的 `parentUuid`，`sourceTurnId` 是一轮的标识，`sourceMessageId` 是一次 API 响应的标识。读取方在同一会话中按这些标识重建顺序和分支。
+
+Claude Code 允许回到之前的某句话重新提问，这时同一会话中会有两条分支：两条分支的记录都保留，各自的 `sourceParentId` 指向分叉的位置。并行的工具调用各有自己的 `callId`，结果按 `callId` 对应到调用。
+
+## 内容 [#content]
+
+### 内容片段 [#parts]
+
+`parts` 按来源中的顺序列出内容片段，“文字、图片、文字”保持三个片段和它们的先后。每个片段用 `entryIndex` 和 `pointer` 指向它在原始记录中的位置：`entryIndex` 是 `sourceEntries` 中的序号，`pointer` 是那一行 JSON 中的 [JSON Pointer](https://www.rfc-editor.org/rfc/rfc6901.html)。
+
+| `type` | 片段 |
+| --- | --- |
+| `text` | 可读的文字：消息、推理、工具输出或上下文 |
+| `summary` | 推理的摘要 |
+| `json` | 结构化的值，例如工具调用的参数 |
+| `image` | 图片 |
+| `opaque` | 来源保存但不可读的内容，例如推理的签名和 `encrypted_content` |
+
+来源给出的文字是空字符串时，片段照样保留，`text` 也是空字符串。例如 Claude Code 的 `thinking` block 可以只有签名、文字为空，它形成一个空的 `text` 片段和一个 `opaque` 片段。
+
+对话文字、推理文字、推理摘要和工具调用的参数同时写进片段的 `text`，读取方直接读到；工具输出、上下文、图片和不可读的内容只在原始记录中，`text` 为 `null`，读取方按位置从原始记录中取出。所以大段的工具输出和重复注入的指令只保存一份。
+
+来源只给出文件路径的图片，例如 Codex 的 `local_image`，读取时文件还在，字节写进片段的 `file`；文件已不存在时，`file` 为 `null`，路径仍在原始记录中。
+
+### 原始记录 [#raw]
+
+`sourceEntries` 保存形成这次交互的来源记录，每个元素是一行 JSON 的字节，不含行尾的换行，媒体类型为 `application/json`。归档的 Codex 会话保存解压后的行。
+
+| 交互 | 原始记录 |
+| --- | --- |
+| Claude Code 的交互 | 所在的那一行 |
+| Codex 的 `item_completed` 交互 | 那一行；推理还包括 `id` 相同的 `response_item` |
+| Codex 的上下文 | 所在的那一行 |
+
+一行形成多次交互时，例如 Codex 的工具调用和结果，它们的原始记录是同一份字节，后端按摘要只保存一份，见 [BINARY-2](../../core/model/binary.mdx#binary-2)。原始记录保留来源的全部字段，包括本页没有提取的字段，以后可以重新解释。
+
+删除一次交互时，只有它用到的原始记录随之删除，见 [HISTORY-6](../../core/rules/history.mdx#history-6)。
+
+## 事实时间 [#fact-time]
+
+| 交互 | Claude Code | Codex |
+| --- | --- | --- |
+| `message`，由 `user` 或 `agent` 发出 | 时间点：行的 `timestamp` | 时间点：`started_at_ms` |
+| `message`，由 `assistant` 发出；`reasoning` | `startAt` 为 `null`，`endAt` 为行的 `timestamp` | `[started_at_ms, completed_at_ms)`，两者相同时为时间点 |
+| `tool-call` | 时间点：行的 `timestamp` | 时间点：`started_at_ms` |
+| `tool-result` | 时间点：行的 `timestamp` | 时间点：`completed_at_ms` |
+| `context` | 时间点：行的 `timestamp` | 时间点：行的 `timestamp` |
+
+在已核实的版本中，Claude Code 在一个 block 完成时写入这一行，所以助手回复和推理只知道完成的时刻，开始未知。Codex 记下每一项开始和完成的毫秒时间。
+
+`timeZone` 的取值见 [Assistant Sessions · 事实时间](./index.mdx#fact-time)。`inputSetVersionId` 为 `null`：交互直接读取来源日志形成，见 [EVIDENCE-1](../../core/rules/evidence.mdx#evidence-1)。
+
+## EntitySchema [#schema]
+
+| 项目 | 值 |
+| --- | --- |
+| SchemaId | `019e1bbb-ec00-7000-8000-000000000009` |
+| 显示名称 | 助手交互 |
+| 说明 | 表示 Claude Code 或 Codex 会话中的一次交互：一条消息、一次工具调用、一次工具结果、一段推理或一份交给模型的上下文。来源中的每次交互对应一个实体，形成后不再改变。内容按来源顺序列为片段，原始记录以二进制内容保存。事实时间取自来源记下的时刻：输入、调用、结果和上下文是时间点，助手的回复和推理在来源给出开始时间时是时段，否则只有结束边界。 |
+| 资源名 | `assistant-interactions` |
+
+| 字段 | 类型 | 必填 | 可空 | description |
+| --- | --- | --- | --- | --- |
+| `sessionVersionId` | `reference` | 是 | 否 | 交互所在的助手会话 |
+| `kind` | `string` | 是 | 否 | 交互的种类：`message`、`tool-call`、`tool-result`、`reasoning` 或 `context` |
+| `actor` | `string` | 是 | 是 | 发出方：`user`、`assistant`、`tool`、`application` 或 `agent`；来源结构不足以判断时为 `null` |
+| `sourceRole` | `string` | 是 | 是 | 来源记录中的协议角色，原样保存，例如 `user`、`assistant`、`developer`；记录没有角色时为 `null` |
+| `sourceKind` | `string` | 是 | 否 | 来源中表示这次交互的记录种类：Claude Code 的 block 类型、`attachment/<类型>` 或行的 `type`；Codex 的 item 类型或行的 `type` |
+| `sourceId` | `string` | 是 | 否 | 来源给这次交互的标识，与产品和 `kind` 一起构成交互的身份 |
+| `sourceVersion` | `string` | 是 | 是 | 写下记录的来源程序版本：Claude Code 行的 `version`，Codex 会话的 `cli_version`；没有时为 `null` |
+| `sourceTurnId` | `string` | 是 | 是 | 交互所在一轮的标识：Claude Code 的 `promptId`，Codex 的 `turn_id`；没有时为 `null` |
+| `sourceParentId` | `string` | 是 | 是 | 来源记下的上一条记录：Claude Code 的 `parentUuid`；没有时为 `null` |
+| `sourceMessageId` | `string` | 是 | 是 | 一次 API 响应的标识，同一响应的各个 block 相同：Claude Code 的 `message.id`；没有时为 `null` |
+| `callId` | `string` | 是 | 是 | 工具调用的标识，调用和结果相同：Claude Code 的 `tool_use` `id` 和 `tool_use_id`，Codex 的 item `id`；其他交互为 `null` |
+| `toolCallVersionId` | `reference` | 是 | 是 | 工具结果对应的调用交互；其他交互，或调用不在已读到的记录中时为 `null` |
+| `toolName` | `string` | 是 | 是 | 工具名称：Claude Code 的 `name`，Codex `McpToolCall` 的 `tool`；来源只用记录种类表示工具时为 `null`，种类见 `sourceKind` |
+| `toolServer` | `string` | 是 | 是 | 提供工具的 MCP 服务器：Codex `McpToolCall` 的 `server`；没有时为 `null` |
+| `isError` | `boolean` | 是 | 是 | 工具结果是否为来源报告的失败：Claude Code 的 `is_error`，Codex 的 `status` 为 `failed`；其他交互为 `null` |
+| `exitCode` | `integer` | 是 | 是 | 命令的退出码：Codex `CommandExecution` 的 `exit_code`；没有时为 `null` |
+| `phase` | `string` | 是 | 是 | 助手消息的阶段，原样保存：Codex `AgentMessage` 的 `phase`，例如 `commentary`、`final_answer`；没有时为 `null` |
+| `model` | `string` | 是 | 是 | 产生这次交互的模型：Claude Code 的 `message.model`，Codex 这一轮 `turn_context` 的 `model`；没有时为 `null` |
+| `workingDirectory` | `string` | 是 | 是 | 交互发生时的工作目录：Claude Code 行的 `cwd`，Codex 这一轮 `turn_context` 的 `cwd`；没有时为 `null` |
+| `parts` | `array` | 是 | 否 | 内容片段，按来源中的顺序排列；没有内容时为空数组 |
+| `parts[]` | `object` | 不适用 | 否 | 一个内容片段及它在原始记录中的位置 |
+| `parts[].type` | `string` | 是 | 否 | 片段的种类：`text`、`summary`、`json`、`image` 或 `opaque` |
+| `parts[].text` | `string` | 是 | 是 | 片段的文字。对话文字、推理文字、推理摘要写原文，工具调用的参数写 JSON 文本；工具输出、上下文、图片和不可读的内容只在原始记录中，为 `null` |
+| `parts[].entryIndex` | `integer` | 是 | 否 | 片段所在的原始记录在 `sourceEntries` 中的序号，从 0 开始 |
+| `parts[].pointer` | `string` | 是 | 否 | 片段在那一行 JSON 中的位置，写成 RFC 6901 的 JSON Pointer |
+| `parts[].mediaType` | `string` | 是 | 是 | 图片的媒体类型，取自来源；其他片段为 `null` |
+| `parts[].file` | `binary` | 是 | 是 | 来源只给出路径的文件，读取时取得的字节；来源直接包含内容，或文件已不存在时为 `null` |
+| `sourceEntries` | `array` | 是 | 否 | 形成这次交互的来源记录，按读取的顺序排列 |
+| `sourceEntries[]` | `binary` | 不适用 | 否 | 一行 JSON 记录的字节，不含行尾的换行，媒体类型为 `application/json` |
+
+## 示例 [#example]
+
+用户在 Claude Code 中粘贴一张截图，接着写了一句话。图片只在原始记录中，文字同时写在片段里：
+
+```json
+{
+  "sessionVersionId": "019e2c41-7a10-7000-8000-0000000001a1",
+  "kind": "message",
+  "actor": "user",
+  "sourceRole": "user",
+  "sourceKind": "user",
+  "sourceId": "6c1b6cd6-1f0e-4a5b-9d7e-2b8f0c3a4e51",
+  "sourceVersion": "2.1.309",
+  "sourceTurnId": "22f4bec3-5d1a-4c2e-8f3b-7a6e9d0c1b24",
+  "sourceParentId": null,
+  "sourceMessageId": null,
+  "callId": null,
+  "toolCallVersionId": null,
+  "toolName": null,
+  "toolServer": null,
+  "isError": null,
+  "exitCode": null,
+  "phase": null,
+  "model": null,
+  "workingDirectory": "/Users/shenxianovo/Code/Personal/Heartbeat",
+  "parts": [
+    {
+      "type": "image",
+      "text": null,
+      "entryIndex": 0,
+      "pointer": "/message/content/0/source/data",
+      "mediaType": "image/png",
+      "file": null
+    },
+    {
+      "type": "text",
+      "text": "这个按钮的位置是不是不对？",
+      "entryIndex": 0,
+      "pointer": "/message/content/1/text",
+      "mediaType": null,
+      "file": null
+    }
+  ],
+  "sourceEntries": [
+    {
+      "digest": "sha256:9f2c4e1a7b3d5c6e8f0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5a6",
+      "mediaType": "application/json",
+      "size": 284512
+    }
+  ]
+}
+```
+
+Codex 执行 `pnpm test` 后的结果。输出只在原始记录中，调用和结果的原始记录是同一份：
+
+```json
+{
+  "sessionVersionId": "019e2c41-7a10-7000-8000-0000000002b3",
+  "kind": "tool-result",
+  "actor": "tool",
+  "sourceRole": null,
+  "sourceKind": "CommandExecution",
+  "sourceId": "exec-593d7997-76e7-4d76-8a94-c1d1fa52dfae",
+  "sourceVersion": "0.166.0",
+  "sourceTurnId": "01a18c37-33e8-70c1-b66a-5c5357f7ccac",
+  "sourceParentId": null,
+  "sourceMessageId": null,
+  "callId": "exec-593d7997-76e7-4d76-8a94-c1d1fa52dfae",
+  "toolCallVersionId": "019e2c41-7a10-7000-8000-0000000002c4",
+  "toolName": null,
+  "toolServer": null,
+  "isError": false,
+  "exitCode": 0,
+  "phase": null,
+  "model": "gpt-6",
+  "workingDirectory": "/Users/shenxianovo/Code/Personal/Heartbeat/src/Docs/Orisumi.Docs",
+  "parts": [
+    {
+      "type": "text",
+      "text": null,
+      "entryIndex": 0,
+      "pointer": "/payload/item/aggregated_output",
+      "mediaType": null,
+      "file": null
+    }
+  ],
+  "sourceEntries": [
+    {
+      "digest": "sha256:2b7e9c0d4a6f8e1b3c5d7f9a0b2c4d6e8f0a2b4c6d8e0f1a3b5c7d9e1f3a5b7c",
+      "mediaType": "application/json",
+      "size": 1843
+    }
+  ]
+}
+```
+
+## 待定 [#open]
+
+- Codex 的 `SubAgentActivity` 和 `FunctionCallOutput`：前者记下子 Agent 的启动等活动，后者是函数调用的输出，两者的调用与结果怎样对应还要核实。核实前作为采集诊断计数。

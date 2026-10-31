@@ -13,7 +13,14 @@
     "KEY": { "label": "key" },
     "STATE": { "label": "state<br/>草案" },
     "DISPLAY_NAME": { "label": "name" },
-    "MODEL": { "label": "model" }
+    "MODEL": { "label": "model" },
+    "PRODUCT": { "label": "product" },
+    "SOURCE_SESSION_ID": { "label": "sourceSessionId" },
+    "PARENT_SESSION_VERSION_ID": { "label": "parentSessionVersionId" },
+    "SESSION_VERSION_ID": { "label": "sessionVersionId" },
+    "ACTOR": { "label": "actor" },
+    "PARTS": { "label": "parts" },
+    "SOURCE_ENTRIES": { "label": "sourceEntries" }
   },
   "nodes": {
     "FOREGROUND_STATE": {
@@ -90,6 +97,27 @@
       "label": "用户本人",
       "interfaces": ["Entity"],
       "fields": ["DISPLAY_NAME"]
+    },
+    "ASSISTANT_SESSIONS": {
+      "path": "/observers/assistant-sessions/assistant-sessions-observer",
+      "schemaPath": "/observers/assistant-sessions/assistant-sessions-observer#schema",
+      "label": "助手会话 Observer",
+      "interfaces": ["Entity"],
+      "fields": ["PLATFORM", "HOST_NAME", "PROGRAM_VERSION"]
+    },
+    "ASSISTANT_SESSION": {
+      "path": "/observers/assistant-sessions/assistant-session",
+      "schemaPath": "/observers/assistant-sessions/assistant-session#schema",
+      "label": "AssistantSession<br/>助手会话",
+      "interfaces": ["Entity"],
+      "fields": ["PRODUCT", "SOURCE_SESSION_ID", "TITLE", "PARENT_SESSION_VERSION_ID"]
+    },
+    "ASSISTANT_INTERACTION": {
+      "path": "/observers/assistant-sessions/assistant-interaction",
+      "schemaPath": "/observers/assistant-sessions/assistant-interaction#schema",
+      "label": "助手交互<br/>观测内容",
+      "interfaces": ["Entity"],
+      "fields": ["SESSION_VERSION_ID", "KIND", "ACTOR", "PARTS", "SOURCE_ENTRIES"]
     }
   }
 }

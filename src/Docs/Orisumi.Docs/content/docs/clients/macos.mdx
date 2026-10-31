@@ -10,6 +10,7 @@ macOS 客户端常驻在菜单栏，通过 [Runtime](../hosting/runtime.mdx) 托
 | Observer | 内容 | 专用视图 |
 | --- | --- | --- |
 | [Foreground State](../observers/foreground-state/index.mdx) | 前台应用时段 | [今天的前台应用](#today) |
+| [Assistant Sessions](../observers/assistant-sessions/index.mdx) | Claude Code 与 Codex 会话中的交互 | 无，在 [Web 控制台的会话页](./web.mdx#sessions)查看 |
 
 ## 菜单栏 [#menu-bar]
 
@@ -98,7 +99,7 @@ Observer 停用或出了问题时，侧栏中它的视图旁有标记；其他�
 | --- | --- |
 | 常驻菜单栏，关闭窗口后继续运行 | 已实现 |
 | 设置与登录时启动 | 已实现 |
-| 经 Runtime 托管 Observer，前台状态 Observer 作为附带的安装包 | 已实现 |
+| 经 Runtime 托管 Observer，前台状态 Observer 和助手会话 Observer 作为附带的安装包 | 已实现 |
 | [安装与卸载](./device.mdx#install) | 已实现：附带的安装包；官方目录尚未托管，见 [Device Clients · 待定](./device.mdx#open) |
 | [更新](./device.mdx#updates) | 已实现，界面在官方目录有新版本时出现 |
 | [启用与停用](./device.mdx#enable) | 已实现 |
