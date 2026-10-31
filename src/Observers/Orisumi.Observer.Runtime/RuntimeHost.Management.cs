@@ -18,13 +18,9 @@ internal sealed partial class RuntimeHost
     private object Status(ManagedObserver observer)
     {
         var item = observer.Registration;
-        var delivery = observer.Store.Status;
         return new { item.PackageId, item.Name, item.Version, item.InstanceId, item.Installed, item.Enabled, item.Removed, item.Settings,
             observer.State, observer.Error, observer.Diagnostic, appliedRevision = item.Revision, pendingChanges = item.Pending.Length,
-            sync = new { item.Revision, pendingChanges = item.Pending.Length, error = item.SyncError },
-            delivery = new { delivery.Pending, delivery.Drafts, delivery.Saved,
-                error = !_connection.CanConnect ? "Runtime is " + _connection.State + "." : delivery.Error,
-                rejection = delivery.Rejection is { } rejected ? new { rejected.Version.Rule, rejected.Version.Detail } : null } };
+            sync = new { item.Revision, pendingChanges = item.Pending.Length, error = item.SyncError } };
     }
     private async Task<InstalledObserver[]> SnapshotAsync(CancellationToken token)
     {

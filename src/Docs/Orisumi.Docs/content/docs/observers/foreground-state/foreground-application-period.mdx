@@ -21,7 +21,7 @@ description: "应用处于前台的一个时段"
 
 ## 图标 [#icon]
 
-前台状态 Observer 在时段开始时读取应用的图标，作为[二进制内容](../../core/model/binary.mdx)写进 `icon`。观测内容在时段开始时就冻结，所以 `icon` 是这一段开始时应用的样子；应用升级换了图标，下一段时段读到新的图标。
+前台状态 Observer 在时段开始时读取应用的图标，作为[二进制内容](../../core/model/binary.mdx)写进 `icon`。观测内容在时段中不变，所以 `icon` 是这一段开始时应用的样子；应用升级换了图标，下一段时段读到新的图标。
 
 - 在 macOS 上，图标取自 `NSRunningApplication` 的 `icon`，绘制为 1024×1024 像素的 PNG。
 - 读不到图标时，`icon` 为 `null`，时段照常记录。
@@ -70,9 +70,9 @@ description: "应用处于前台的一个时段"
 
 ## 示例 [#example]
 
-VS Code 从 14:00 到 16:00 处于前台。14:00 首次确认时，Runtime 先上传图标，再用 `POST /versions` 提交观测内容。`localApplicationVersionId` 是本机应用首版的 VersionId：
+VS Code 从 14:00 到 16:00 处于前台。16:00 时段结束，Runtime 先上传图标，再用一次 `POST /versions` 提交观测内容和 Observation。`localApplicationVersionId` 是本机应用首版的 VersionId，`observerVersionId` 是程序实例的一个版本：
 
-```json title="14:00 · POST /versions"
+```json title="16:00 · POST /versions"
 {
   "versions": [
     {
@@ -90,16 +90,7 @@ VS Code 从 14:00 到 16:00 处于前台。14:00 首次确认时，Runtime 先�
           "size": 612480
         }
       }
-    }
-  ]
-}
-```
-
-14:00 到 16:00 之间，Observation 作为观测预览写入后端，见 [API · 观测预览](../../api/previews.mdx)。16:00 时段结束，再提交 Observation。`observerVersionId` 是程序实例的一个版本：
-
-```json title="16:00 · POST /versions"
-{
-  "versions": [
+    },
     {
       "entityId": "01a12e31-9050-7000-8000-000000000030",
       "versionId": "01a12e31-9050-7000-8000-000000000130",

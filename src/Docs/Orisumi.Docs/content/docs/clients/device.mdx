@@ -1,15 +1,15 @@
 ---
 title: "Device Clients"
-description: "设备端客户端怎样托管本机的 Observer：安装、启停、更新、故障恢复、发送、退出，以及展示最近的数据"
+description: "设备端客户端怎样托管本机的 Observer：安装、启停、更新、故障恢复、退出，以及展示最近的数据"
 ---
 
-设备端客户端常驻在一台设备上，托管这台设备上的 Observer：安装、更新和卸载，启用和停用，故障后重启，显示运行和发送状态，管理设置和登录时启动。每个平台的客户端都遵守本页，用原生界面编写，各自的界面见 [macOS](./macos.mdx)。
+设备端客户端常驻在一台设备上，托管这台设备上的 Observer：安装、更新和卸载，启用和停用，故障后重启，显示运行状态，管理设置和登录时启动。每个平台的客户端都遵守本页，用原生界面编写，各自的界面见 [macOS](./macos.mdx)。
 
-例如用户在 Mac 上装好客户端，附带的前台状态 Observer 随即开始记录 VS Code 在前台的时段。用户晚上停用它，当前时段结束于最后一次确认，还没发送的时段继续上传；第二天再启用，它以原来的身份接着记录，停用期间是空白。
+例如用户在 Mac 上装好客户端，附带的前台状态 Observer 随即开始记录 VS Code 在前台的时段。用户晚上停用它，当前时段结束于最后一次确认并保存；第二天再启用，它以原来的身份接着记录，停用期间是空白。
 
 ## 客户端与 Runtime [#runtime]
 
-客户端启动一个 [Runtime](../hosting/runtime.mdx)，Runtime 运行各 Observer 的进程，本地保存它们交来的数据并发送到后端。客户端向 Runtime 发出指令，从 Runtime 读取状态和数据：
+客户端启动一个 [Runtime](../hosting/runtime.mdx)，Runtime 运行各 Observer 的进程，把它们交来的批次提交到后端。客户端向 Runtime 发出指令，从 Runtime 读取状态和数据：
 
 ```mermaid
 flowchart LR
@@ -27,7 +27,7 @@ flowchart LR
   click B "/api"
 ```
 
-Observer 停下的原因有停用、卸载、更新、崩溃和退出客户端。每一种情况下，程序实例的身份、设置和本地数据都保留，再次运行时沿用。已经交给 Runtime 的版本由 Runtime 发送，发送只取决于 Runtime 是否在运行，见 [Hosting · 流程](../hosting/index.mdx#flow)。各种情况的区别写在下面各节中。
+Observer 停下的原因有停用、卸载、更新、崩溃和退出客户端。每一种情况下，程序实例的身份、设置和业务数据目录都保留，再次运行时沿用。正常停下时，Observer 先提交进行中的事实；崩溃时，还没有提交的数据丢失，见 [Hosting · 流程](../hosting/index.mdx#flow)。各种情况的区别写在下面各节中。
 
 ## 安装与卸载 [#install]
 
@@ -57,21 +57,17 @@ Observer 意外退出后，Runtime 自动重启它，最多三次。仍然失败
 
 一个 Observer 的故障只影响它自己。Runtime 本身意外退出时，客户端重新启动它。
 
-## 发送 [#sending]
-
-客户端按 Observer 显示待发送的数量和被拒绝的原因，见 [Submission · 发送状态](../hosting/submission.mdx#status)。被拒绝的版本由 Observer 的业务代码在它运行时处理，见 [Submission · 被拒绝的版本](../hosting/submission.mdx#rejections)；是否启用 Observer 始终由用户决定。
-
 ## 运行与退出 [#lifecycle]
 
-桌面客户端关闭窗口后，继续在菜单栏或系统托盘中运行，采集和发送照常进行。
+桌面客户端关闭窗口后，继续在菜单栏或系统托盘中运行，采集照常进行。
 
-退出客户端时，Runtime 先让所有 Observer 停止采集，再停止发送，见 [Runtime · 退出](../hosting/runtime.mdx#shutdown)。待发送的数据留在本地。下次启动时，客户端运行退出前启用的 Observer，并继续发送。
+退出客户端时，Runtime 先让所有 Observer 停止采集，见 [Runtime · 退出](../hosting/runtime.mdx#shutdown)。下次启动时，客户端运行退出前启用的 Observer。
 
 ## 最近的数据 [#recent]
 
-客户端为每个 Observer 显示运行和发送状态，以及最近的 Observation，包括还没发送的部分。数据经 Runtime 读取，见 [Protocol · 读取](../hosting/protocol.mdx#reading)。Observer 停用或崩溃后，数据仍可读取。
+客户端为每个 Observer 显示运行状态，以及最近的 Observation。数据经 Runtime 读取，见 [Protocol · 读取](../hosting/protocol.mdx#reading)。Observer 停用或崩溃后，数据仍可读取；后端不可用时读不到。
 
-Observer 的专用视图用原生界面写在客户端中，随客户端发布，例如前台状态 Observer 的今日时间线，见 [macOS · 今天的前台应用](./macos.mdx#today)。新安装的 Observer 没有专用视图时，客户端显示它的状态和最近的数据。专用视图负责这种业务的统计和展示，它出错不影响采集和发送。
+Observer 的专用视图用原生界面写在客户端中，随客户端发布，例如前台状态 Observer 的今日时间线，见 [macOS · 今天的前台应用](./macos.mdx#today)。新安装的 Observer 没有专用视图时，客户端显示它的状态和最近的数据。专用视图负责这种业务的统计和展示，它出错不影响采集。
 
 API 不可用时，客户端显示本地的数据，并标明可能不完整。
 
@@ -82,5 +78,4 @@ API 不可用时，客户端显示本地的数据，并标明可能不完整。
 - 官方目录和安装包的托管位置；各平台的签名与分发验证。
 - 后端删除或修复数据后，本地的数据怎样显示。
 - 系统权限的引导、用户登录、本地数据的清理。
-- 设置里换了 API 地址、数据目录不变时，数据目录里待发送的版本怎样处理。
 - Android 上 Observer 怎样安装、在后台运行、与客户端通信。

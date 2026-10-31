@@ -88,7 +88,7 @@ internal sealed class ForegroundCollector(
 
     private void Interrupt()
     {
-        // Close only the durable checkpoint, including after an interrupted write.
+        // The period ends at its last confirmation; a gap never extends it.
         store.FinishActive();
         _timeline.Interrupt();
     }

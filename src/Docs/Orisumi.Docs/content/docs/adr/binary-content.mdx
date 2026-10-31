@@ -7,7 +7,7 @@ description: "业务字段可以是二进制内容：版本保存摘要、媒体
 
 前台状态 Observer 能读到应用的图标，其他设备上的客户端也要显示它。版本内容是 JSON，存不下文件。之后的截图、音频片段也是文件，体积大，同一份文件常被很多版本使用：一个应用的图标出现在它的每个前台时段中。
 
-文件要满足版本已有的要求：已保存的版本读到的内容不变，离线的 Runtime 能可靠补交，删除后不留副本。
+文件要满足版本已有的要求：已保存的版本读到的内容不变，删除后不留副本。
 
 ## 决定 [#decision]
 
@@ -21,15 +21,15 @@ description: "业务字段可以是二进制内容：版本保存摘要、媒体
 
 ## 理由 [#rationale]
 
-摘要由字节算出，所以描述一旦保存，字节就确定了，[VERSION-2](../core/model/version.mdx#version-2) 直接覆盖文件，不需要另一条“文件不可替换”的规则。重试时比较描述的 JSON，就是比较字节，[VERSION-7](../core/model/version.mdx#version-7) 不用改。同一个图标出现在上千个时段中，后端只保存一份，读取方也只下载一次。
+摘要由字节算出，所以描述一旦保存，字节就确定了，[VERSION-2](../core/model/version.mdx#version-2) 直接覆盖文件，不需要另一条“文件不可替换”的规则。比较描述的 JSON，就是比较字节。同一个图标出现在上千个时段中，后端只保存一份，读取方也只下载一次。
 
 媒体类型和大小写在描述中。读取方读到版本就知道怎样显示，也能判断要不要下载；同样的字节可以在不同的字段中按不同的类型使用。
 
 文件放在使用它的字段中，删除就跟随使用它的实体：删除一段时段，它的图标在没有其他时段使用后随之移除。用途由字段名表达，例如 `icon`。业务上需要文件有自己的身份时，例如用户整理的一组照片，由对应的 Observer 定义一种带 `binary` 字段的业务类型。
 
-先上传、后提交，与只引用已保存的版本（[ENTITY-6](../core/model/entity.mdx#entity-6)）是同一个顺序：版本保存时，它用到的一切都已在后端。上传按摘要幂等，响应丢失后原样重传。
+先上传、后提交，与只引用已保存的版本（[ENTITY-6](../core/model/entity.mdx#entity-6)）是同一个顺序：版本保存时，它用到的一切都已在后端。同样的字节再次上传也成功。
 
-业务代码交出批次、收到本地回执，数据就已本地保存（见 [Hosting · 回执](../hosting/submission.mdx#receipts)）。字节和版本在同一个事务中保存，回执对文件同样成立，离线和重启后照常补交。
+业务代码把字节和版本放在同一个批次中交给 Runtime，Runtime 先上传字节再提交版本，见 [Hosting · 批次](../hosting/submission.mdx#batch)。
 
 一个 1024×1024 的图标几百 KB，去重后总量很小。PostgreSQL 已经是后端唯一的依赖，内容与版本在同一个事务中保存和删除，保留规则直接由事务保证。
 
@@ -53,5 +53,5 @@ description: "业务字段可以是二进制内容：版本保存摘要、媒体
 
 - [Binary](../core/model/binary.mdx)
 - [API · 内容](../api/writing.mdx#contents)、[Storage · Contents](../storage/contents.mdx)
-- [Hosting · 批次](../hosting/submission.mdx#handoff)、[Protocol · 批次的操作](../hosting/protocol.mdx#operations)
+- [Hosting · 批次](../hosting/submission.mdx#batch)、[Protocol · 批次的操作](../hosting/protocol.mdx#operations)
 - [Foreground Application Period](../observers/foreground-state/foreground-application-period.mdx)

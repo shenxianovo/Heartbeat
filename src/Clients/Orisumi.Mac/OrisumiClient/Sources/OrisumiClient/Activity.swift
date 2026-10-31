@@ -11,8 +11,7 @@ public struct AppIdentifier: Codable, Equatable, Hashable, Sendable {
     }
 }
 
-/// A foreground application period shown in the client, saved or still local.
-/// An active period is an Observation whose local version is still a draft; its end is the last confirmation.
+/// A saved foreground application period shown in the client.
 public struct Period: Equatable, Identifiable, Sendable {
     /// The Observation's EntityId.
     public var id: UUID
@@ -23,17 +22,14 @@ public struct Period: Equatable, Identifiable, Sendable {
     public var startAt: Date
     /// The last confirmation.
     public var endAt: Date
-    public var isActive: Bool
 
-    public init(id: UUID, name: String?, identifiers: [AppIdentifier], icon: String? = nil, startAt: Date, endAt: Date,
-                isActive: Bool = false) {
+    public init(id: UUID, name: String?, identifiers: [AppIdentifier], icon: String? = nil, startAt: Date, endAt: Date) {
         self.id = id
         self.name = name
         self.identifiers = identifiers
         self.icon = icon
         self.startAt = startAt
         self.endAt = endAt
-        self.isActive = isActive
     }
 
     public var bundleId: String? { identifiers.first { $0.scheme == "macos.bundle-id" }?.value }

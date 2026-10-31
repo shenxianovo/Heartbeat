@@ -14,23 +14,6 @@ internal static class SubmissionContract
         { throw new JsonException("The request does not match the contract.", exception); }
     }
 
-    internal static (VersionId? Previous, long Sequence, Observation Content) ReadPreview(JsonElement body)
-    {
-        try
-        {
-            Object(body, "previousVersionId", "sequence", "content");
-            CheckStorageValues(body);
-            var sequence = body.GetProperty("sequence");
-            if (!sequence.TryGetInt64(out var number) || number < 0) throw new JsonException("sequence must be a nonnegative int64.");
-            var previous = body.GetProperty("previousVersionId");
-            Object(body.GetProperty("content"), "observerVersionId", "contentVersionId", "inputSetVersionId", "startAt", "endAt", "timeZone");
-            return (previous.ValueKind == JsonValueKind.Null ? null : new VersionId(previous.GetGuid()), number,
-                (Observation)VersionJson.ReadContent("observation", body.GetProperty("content")));
-        }
-        catch (Exception exception) when (exception is InvalidOperationException or FormatException or KeyNotFoundException)
-        { throw new JsonException("The preview does not match the contract.", exception); }
-    }
-
     private static List<VersionSubmission> ReadCore(JsonElement body)
     {
         Object(body, "versions");

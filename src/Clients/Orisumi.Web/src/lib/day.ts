@@ -8,12 +8,10 @@ import { thingColor } from "./roles";
 export interface Experience {
   /** Observation 的 EntityId。 */
   observationId: string;
-  /** 已保存的当前版本。进行中、还没有保存过的时段只有预览，这里为 null。 */
-  observation: Version<Observation> | null;
+  /** 已保存的当前版本。 */
+  observation: Version<Observation>;
   observerVersionId: string;
-  /** 进行中的时段：预览最近一次更新的时刻。 */
-  previewAt: number | null;
-  /** 最近一次写入：预览的更新时刻，或者保存时间。 */
+  /** 保存时间。 */
   writtenAt: number;
   content: Version | null;
   contentType: string;
@@ -37,8 +35,6 @@ export interface Segment {
   observationId: string;
   contentEntityId: string | null;
   label: string;
-  /** 来自预览，还在延长。 */
-  ongoing: boolean;
 }
 
 export interface Row {
@@ -89,7 +85,6 @@ export function summarize(
       observationId: experience.observationId,
       contentEntityId: experience.content?.entityId ?? null,
       label,
-      ongoing: experience.previewAt !== null,
     });
     if (experience.things.length) {
       for (const { version, title, typeName } of experience.things) {
@@ -136,20 +131,6 @@ export function summarize(
     switches,
     thingTypes: [...new Set(thingRows.map((row) => row.typeName).filter(Boolean))],
   };
-}
-
-/**
- * 组合已保存的经历和预览：同一份 Observation 两者都有时，预览接在当前版本之后，是较新的陈述，
- * 取代它的时段，保留已保存的版本。
- */
-export function withPreviews(saved: readonly Experience[], previews: readonly Experience[]): Experience[] {
-  const byId = new Map(saved.map((e) => [e.observationId, e]));
-  const ongoing = previews.map((preview) => {
-    const version = byId.get(preview.observationId)?.observation ?? null;
-    return version ? { ...preview, observation: version } : preview;
-  });
-  const replaced = new Set(previews.map((d) => d.observationId));
-  return [...saved.filter((e) => !replaced.has(e.observationId)), ...ongoing];
 }
 
 type Thing = Experience["things"][number];

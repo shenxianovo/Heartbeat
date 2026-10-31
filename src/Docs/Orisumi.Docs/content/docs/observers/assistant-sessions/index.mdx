@@ -41,9 +41,8 @@ flowchart LR
 | 身份登记 | 来源身份到 EntityId 的映射，见 [Assistant Interaction · 身份](./assistant-interaction.mdx#identity) 和 [Assistant Session · 身份](./assistant-session.mdx#identity) |
 | 读取进度 | 每个日志文件已处理到的位置，以及读到这里时的来源上下文：所在的会话和一轮、模型、工作目录、来源给出的时区，见[读取进度](#progress) |
 | 待配对的推理 | Codex 已读到一半、还没有形成交互的推理，见 [Assistant Interaction · Codex](./assistant-interaction.mdx#codex) |
-| 待确认的批次 | 已交给 Runtime、还没有收到本地回执的批次，见[提交](#submission) |
 
-这些状态只在本机，后端保存的只有交给 Runtime 的版本。
+这些状态只在本机，后端保存的只有提交的版本。
 
 ## 采集 [#collection]
 
@@ -64,7 +63,7 @@ flowchart LR
 2. 最近有变化的文件各读一段，把新增的完整记录形成交互并提交。一段最多 16 行或 512 KiB。
 3. 在这一轮开始后的 3 秒内，继续按段导入还没读完的历史文件，各文件轮流进行。
 
-所以首次导入大量历史时，新的交互每一轮仍然会被读到。两轮之间相隔 5 秒。读取方看到新交互的时间还取决于来源写入日志的时机、积压的数量和 Runtime 的发送。
+所以首次导入大量历史时，新的交互每一轮仍然会被读到。两轮之间相隔 5 秒。读取方看到新交互的时间还取决于来源写入日志的时机和积压的数量。
 
 ### 读取进度 [#progress]
 
@@ -82,8 +81,6 @@ flowchart LR
 
 - 一行完整但无法解析为 JSON。
 - 记录的种类或结构不在已核实的版本中，例如 Codex 新增的事件类型。
-- 一行超过 64 MiB。
-- 一次交互连同它的原始记录超过 Runtime 一个批次的上限，见[提交](#submission)。
 
 这些记录不形成交互。来源中不形成交互的已知记录种类列在 [Assistant Interaction · 不形成交互的记录](./assistant-interaction.mdx#excluded)。
 
@@ -103,33 +100,20 @@ flowchart LR
 
 ## 提交 [#submission]
 
-助手会话 Observer 使用 [.NET](../../hosting/dotnet.mdx) 的 SDK，交互采用[结束后提交](../../hosting/submission.mdx#strategies)，不写观测预览：来源在一次交互完成后才写入日志，所以读到的交互都已完整，形成后随即结束。
+助手会话 Observer 使用 [.NET](../../hosting/dotnet.mdx) 的 SDK。来源在一次交互完成后才写入日志，所以读到的交互都已完整，形成后随即提交。
 
-一个文件中一段连续的新记录组成一个批次（见 [Submission · 批次](../../hosting/submission.mdx#handoff)）：
+一个文件中一段连续的新记录组成一个批次（见 [Submission · 批次](../../hosting/submission.mdx#batch)）：
 
-| 业务事件 | 交给 Runtime 的操作 |
+| 业务事件 | 批次中的操作 |
 | --- | --- |
-| 第一次读到一个会话 | 形成会话的草稿，引用它 |
-| 会话的标题或子 Agent 信息变化 | 形成会话的新草稿，引用它；之后的交互引用新版本 |
-| 读到一次交互 | 原始记录的字节随批次交出；形成交互的草稿和 Observation 的草稿，两者都结束 |
+| 第一次读到一个会话 | 写入会话的首版 |
+| 会话的标题或子 Agent 信息变化 | 写入会话的新版本；之后的交互引用新版本 |
+| 读到一次交互 | 原始记录的字节随批次交出；写入交互和它的 Observation |
 | 读到工具结果，调用已经形成 | 引用调用的交互，写进结果的 `toolCallVersionId` |
 
-交出批次和推进进度按这个顺序进行：
+业务代码为新出现的来源身份分配 EntityId，组成批次交给 Runtime。提交成功后，在一次本地事务中写入身份映射和读取进度。
 
-1. 业务代码为新出现的来源身份分配 EntityId，组成批次，给它一个请求标识。批次、新的身份映射和批次完成后的读取进度一起写进待确认的批次。
-2. 把批次交给 Runtime。
-3. 收到本地回执后，在一次本地事务中写入身份映射和读取进度，删除待确认的批次。
-
-程序在第 3 步之前退出时，下次启动先用原来的请求标识重发待确认的批次，Runtime 返回原来的回执，再继续第 3 步，见 [Submission · 回执](../../hosting/submission.mdx#receipts)。所以每次交互的 EntityId 只分配一次，进度也不会越过尚未交出的记录。
-
-一个批次的序列化大小和操作数都在 [Protocol](../../hosting/protocol.mdx) 的上限之内：超过时，这一段拆成更小的批次。一次交互单独成批仍然超过上限时，它作为采集诊断记下，读取进度越过它，继续处理后面的记录。在已核实的日志中，最长的一行约 3.5 MiB。
-
-### 被拒绝的版本 [#rejections]
-
-| 情况 | 处理 |
-| --- | --- |
-| 用户删除了某次交互或某个会话（[HISTORY-7](../../core/rules/history.mdx#history-7)） | 身份登记保留它的映射并标为已删除，之后再读到它时跳过。会话被删除后，这个会话之后的交互也跳过 |
-| 其他原因 | 报告错误，暂停发送 |
+提交失败时，身份映射和读取进度都不变，记一条采集诊断，下一轮重新读这一段。程序在提交成功之后、写入进度之前退出时，下次启动会再提交一次这一段，形成重复的交互。
 
 ## 实现 [#implementation]
 
@@ -141,7 +125,7 @@ flowchart LR
 
 程序在 `src/Observers/Orisumi.Observer.AssistantSessions/`，安装包 ID 是 `assistant-sessions`，随 [macOS 客户端](../../clients/macos.mdx)附带，由 Runtime 运行。构建和运行见该目录的 README。
 
-测试 Case：[交互的识别](../../testing/observers/assistant-interaction-mapping.mdx)、[工具、分支与子 Agent](../../testing/observers/assistant-interaction-relations.mdx)、[读取与恢复](../../testing/observers/assistant-session-reading.mdx)、[时间与位置](../../testing/observers/assistant-interaction-time.mdx)、[原始材料](../../testing/observers/assistant-raw-entries.mdx)。
+测试 Case：[交互的识别](../../testing/observers/assistant-interaction-mapping.mdx)、[工具、分支与子 Agent](../../testing/observers/assistant-interaction-relations.mdx)、[读取](../../testing/observers/assistant-session-reading.mdx)、[时间与位置](../../testing/observers/assistant-interaction-time.mdx)、[原始材料](../../testing/observers/assistant-raw-entries.mdx)。
 
 ## 待定 [#open]
 
@@ -149,3 +133,4 @@ flowchart LR
 - 读取其他设备拷来或同步来的日志。到时需要表达交互发生的设备，和运行程序实例的设备分开。
 - 早于已核实版本的日志格式。其中不认识的记录现在作为诊断计数。
 - Codex 的会话在一轮结束前中断时，读到一半的推理留在待配对的状态中。
+- 用户删除某个会话后，这个会话之后的交互提交被拒绝，它所在的文件停在这一段。

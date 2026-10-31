@@ -16,16 +16,14 @@ import {
 } from "lucide-react";
 import { isUnreadable } from "@/api/client";
 import { useSource } from "@/api/source";
-import { useCurrent } from "@/hooks/useCurrent";
+import { useWriting } from "@/hooks/useWriting";
 import { useHosts } from "@/hooks/useManagement";
 import { useNow } from "@/hooks/useNow";
 import { readTheme, saveTheme, type Theme } from "@/lib/preferences";
-import { clock, duration } from "@/lib/time";
 import { isUuidv7 } from "@/lib/uuid";
 import { cn } from "@/lib/utils";
 import { Stack } from "./stack/Stack";
 import { HighlightProvider } from "./token/context";
-import { Token } from "./token/Token";
 import { Anchored, Dialog, MenuItem, MenuLabel } from "./ui";
 
 export function AppShell() {
@@ -52,12 +50,12 @@ function Shell() {
 }
 
 /**
- * 侧栏只放每一页都用得到的东西：页面导航和它们的状态、查找、现在在记录什么，以及外观。
+ * 侧栏只放每一页都用得到的东西：页面导航和它们的状态、查找，以及外观。
  * 页面分两组：上面一组看记录，下面一组看采集。
  */
 function Sidebar() {
   const now = useNow(5000);
-  const { current, writing } = useCurrent(now);
+  const writing = useWriting(now);
   const hosts = useHosts();
   const offline = (hosts.data ?? []).filter((host) => !host.revoked && !host.connected).length;
 
@@ -130,11 +128,8 @@ function Sidebar() {
         <Appearance className="md:hidden" top={false} />
       </div>
       <div className="flex-1 max-md:hidden" />
-      <div className="max-md:hidden">
-        <Current current={current} writing={writing} now={now} />
-        <div className="mt-2 flex justify-end">
-          <Appearance />
-        </div>
+      <div className="flex justify-end max-md:hidden">
+        <Appearance />
       </div>
     </aside>
   );
@@ -164,38 +159,6 @@ function NavItem({
       <span className="flex-1">{children}</span>
       {badge}
     </Link>
-  );
-}
-
-/** 现在在记录什么：当前时段的事物、从几点起、持续多久。点它推出它的面板。 */
-function Current({
-  current,
-  writing,
-  now,
-}: {
-  current: ReturnType<typeof useCurrent>["current"];
-  writing: number;
-  now: number;
-}) {
-  return (
-    <section aria-label="现在" className="bg-card border-line shadow-card rounded-xl border px-3 py-2.5">
-      <p className="text-fg-3 mb-1 flex items-center gap-1.5 text-[11px]">
-        <span className="grid size-2 place-items-center">
-          <span className={cn("size-1.5 rounded-full", writing ? "bg-accent beat" : "bg-fg-3")} />
-        </span>
-        {writing ? "现在" : "没有 Observer 在写入"}
-      </p>
-      {current ? (
-        <>
-          <Token version={current.row.thing!} className="-ml-1.5 max-w-full" />
-          <p className="text-fg-3 mt-0.5 text-[11px] tabular-nums">
-            {clock(current.since)} 起 · {duration(now - current.since)}
-          </p>
-        </>
-      ) : (
-        <p className="text-fg-2 text-xs">没有正在进行的记录</p>
-      )}
-    </section>
   );
 }
 

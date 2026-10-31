@@ -14,7 +14,6 @@ internal static class Program
             if (init.GetProperty("protocol").GetInt32() != 1) throw new InvalidDataException("Unsupported Runtime protocol.");
             var directory = init.GetProperty("dataDirectory").GetString()!;
             using var state = new AssistantState(directory);
-            await state.ResumeAsync(session, session.Stopping);
             var registration = await AssistantRegistration.RegisterAsync(session, init.GetProperty("packageVersion").GetString()!, session.Stopping);
             var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             var collector = new AssistantCollector(session, state, new EntityId(init.GetProperty("instanceId").GetGuid()), registration,

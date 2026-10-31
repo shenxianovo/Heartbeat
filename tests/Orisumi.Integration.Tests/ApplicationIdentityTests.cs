@@ -4,7 +4,7 @@ using Microsoft.Extensions.Hosting;
 using System.Text.Json;
 using Orisumi.Api;
 using Orisumi.Application.Entities;
-using Orisumi.Observer.Runtime.Store;
+using Orisumi.Observer.Runtime;
 using Orisumi.Observer.Sdk;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -58,7 +58,7 @@ public sealed class ApplicationIdentityTests
     }
 
     [Test, Property("caseId", "application-identity")]
-    public async Task UnknownSurvivesRestartAndRetriesOnlyOnNewNamesOrApplications()
+    public async Task UnknownIsSkippedWhileRunningUntilNamesApplicationsOrTheProcessChange()
     {
         await using var fixture = await Fixture.CreateAsync();
         var app = await fixture.ApplicationAsync("unknown.app", "/unknown", "Unknown");
@@ -72,6 +72,9 @@ public sealed class ApplicationIdentityTests
         await fixture.ApplicationAsync("unknown.app", "/second", "Unknown");
         await fixture.RunAsync();
         await Assert.That(fixture.Model.Inputs.Count).IsEqualTo(3);
+        fixture.Restart();
+        await fixture.RunAsync();
+        await Assert.That(fixture.Model.Inputs.Count).IsEqualTo(4);
         await Assert.That((await fixture.ProductsAsync()).Count).IsEqualTo(0);
     }
 
@@ -113,32 +116,7 @@ public sealed class ApplicationIdentityTests
     }
 
     [Test, Property("caseId", "application-identity")]
-    [Arguments(false)]
-    [Arguments(true)]
-    public async Task ProcessExitDuringDeliveryReplaysTheSameBatchBeforeCheckingTheModel(bool saved)
-    {
-        await using var fixture = await Fixture.CreateAsync();
-        await fixture.ApplicationAsync("com.tencent.qq", "/QQ", "QQ");
-        fixture.Model.Decide = _ => new("new", Name: "QQ");
-        fixture.Model.Before = _ => { fixture.Session.Crash = saved ? "after" : "before"; return Task.CompletedTask; };
-        await Assert.That(async () => await fixture.RunAsync()).Throws<SimulatedProcessExit>();
-        var pending = Path.Combine(fixture.Directory, "pending.json");
-        await Assert.That(File.Exists(pending)).IsTrue();
-        var payloads = fixture.Store.Execute(local => local.Versions().Select(item => VersionJson.Submission(item.Version)).ToArray());
-        fixture.Session.Crash = null; fixture.Model.Before = null; fixture.Model.IsConfigured = false;
-        await fixture.RunAsync();
-        await Assert.That(File.Exists(pending)).IsFalse();
-        await Assert.That((await fixture.ProductsAsync()).Count).IsEqualTo(1);
-        await Assert.That(fixture.Model.Inputs.Count).IsEqualTo(1);
-        foreach (var expected in payloads)
-        {
-            var actual = await fixture.ReadVersionAsync(new(expected.GetProperty("versionId").GetGuid()));
-            await Assert.That(JsonElement.DeepEquals(expected, VersionJson.Submission(actual.Submission))).IsTrue();
-        }
-    }
-
-    [Test, Property("caseId", "application-identity")]
-    public async Task StaleProductIsRereadAndRemovedIdentifiersAreRecognizedAgain()
+    public async Task StaleProductIsRejectedThenRereadAndRemovedIdentifiersAreRecognizedAgain()
     {
         await using var fixture = await Fixture.CreateAsync();
         await fixture.ApplicationAsync("com.tencent.qq", "/QQ", "QQ");
@@ -153,6 +131,9 @@ public sealed class ApplicationIdentityTests
             await fixture.SubmitAsync(new VersionSubmission(product.EntityId, VersionId.New(), product.VersionId, product.SchemaVersionId,
                 IdentityData.Content(new { name = "Renamed", identifiers = IdentityData.Identifiers(product) })));
         };
+        await fixture.RunAsync();
+        await Assert.That(fixture.Diagnostics.Any(message => message.Contains("VERSION-6", StringComparison.Ordinal))).IsTrue();
+        await Assert.That(IdentityData.Identifiers((await fixture.ProductsAsync()).Single()).Length).IsEqualTo(1);
         await fixture.RunAsync();
         var renamed = (await fixture.ProductsAsync()).Single();
         await Assert.That(IdentityData.Product(renamed).Name).IsEqualTo("Renamed");
@@ -178,25 +159,6 @@ public sealed class ApplicationIdentityTests
         }
     }
 
-    private sealed class SimulatedProcessExit : Exception;
-
-    private sealed class DeliveringSession(ObserverStore store) : IObserverSession
-    {
-        private readonly LocalObserverSession local = new(store);
-        public string? Crash { get; set; }
-        public async Task<JsonElement> RequestAsync(string method, JsonElement parameters, string? requestId = null, CancellationToken cancellationToken = default)
-        {
-            var result = await local.RequestAsync(method, parameters, requestId ?? Guid.NewGuid().ToString(), cancellationToken);
-            if (method == "commit")
-            {
-                if (Crash == "before") throw new SimulatedProcessExit();
-                await store.SendAsync(cancellationToken);
-                if (Crash == "after") throw new SimulatedProcessExit();
-            }
-            return result;
-        }
-    }
-
     private sealed class Fixture : IAsyncDisposable
     {
         private readonly Orisumi.Testing.TestDatabase database;
@@ -206,9 +168,11 @@ public sealed class ApplicationIdentityTests
         internal string ConnectionString => database.ConnectionString;
         internal IServiceProvider Services => factory.Services;
         internal string Directory { get; } = System.IO.Directory.CreateTempSubdirectory("orisumi-identity-").FullName;
-        internal ObserverStore Store { get; }
-        internal DeliveringSession Session { get; }
+        internal EntityId InstanceId { get; } = EntityId.New();
+        internal RuntimeObserverSession Session { get; }
         internal HttpClient Http { get; }
+        private IdentityRecognizer? recognizer;
+        private string? recognizerModel;
         private VersionSubmission appSchema = null!;
         private VersionSubmission periodSchema = null!;
 
@@ -217,8 +181,7 @@ public sealed class ApplicationIdentityTests
             this.database = database;
             factory = new(database.ConnectionString);
             Http = factory.CreateClient();
-            Store = new(Path.Combine(Directory, "store.sqlite"), EntityId.New(), Http);
-            Session = new(Store);
+            Session = new(Http, InstanceId);
         }
         internal static async Task<Fixture> CreateAsync()
         {
@@ -260,15 +223,20 @@ public sealed class ApplicationIdentityTests
             var result = await response.Content.ReadFromJsonAsync<JsonElement>(Token);
             return result.GetProperty("versions").EnumerateArray().Select(VersionJson.ReadSaved).ToList();
         }
+        // One recognizer stands for one process; a different model setting starts a new one.
         internal async Task RunAsync(string model = "test-model")
         {
-            var work = new IdentityWork(Session, Store.InstanceId, Directory);
-            await work.ResumeAsync(Token);
-            await new IdentityRecognizer(new(Session, work), work, Model, model, "test", message => { Diagnostics.Add(message); Console.WriteLine("DIAGNOSTIC: " + message); }).RunOnceAsync(Token);
+            if (recognizer is null || recognizerModel != model)
+            {
+                var work = new IdentityWork(Session, InstanceId);
+                recognizer = new IdentityRecognizer(new(Session, work), work, Model, model, "test", message => { Diagnostics.Add(message); Console.WriteLine("DIAGNOSTIC: " + message); });
+                recognizerModel = model;
+            }
+            await recognizer.RunOnceAsync(Token);
         }
+        internal void Restart() => recognizer = null;
         public async ValueTask DisposeAsync()
         {
-            Store.Dispose();
             System.IO.Directory.Delete(Directory, true);
             Http.Dispose();
             await factory.DisposeAsync();

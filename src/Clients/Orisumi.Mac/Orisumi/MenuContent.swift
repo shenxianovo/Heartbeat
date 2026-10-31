@@ -43,13 +43,6 @@ struct MenuContent: View {
                 .disabled(model.busy.contains(observer.packageId))
             }
         }
-        let pending = model.observers.reduce(0) { $0 + $1.delivery.pending }
-        if pending > 0 {
-            Text("\(pending) 份等待发送")
-        }
-        ForEach(model.observers.filter { $0.delivery.rejection != nil }) { observer in
-            Text("\(observer.name) 的发送已暂停：\(observer.delivery.rejection!.rule)")
-        }
         Divider()
         Button("打开 Orisumi") {
             openWindow(id: MainView.windowId)
@@ -114,31 +107,13 @@ enum ObserverText {
         }
     }
 
-    static func delivery(_ delivery: Delivery) -> String {
-        "草稿 \(delivery.drafts) · 待发送 \(delivery.pending) · 已保存 \(delivery.saved)"
-    }
-
-    /// One phrase for sending: what needs attention, otherwise how much is waiting or saved.
-    static func deliverySummary(_ delivery: Delivery) -> String {
-        if delivery.rejection != nil { return "发送已暂停" }
-        if delivery.error != nil { return "发送出错" }
-        if delivery.pending > 0 { return "待发送 \(delivery.pending)" }
-        return "已保存 \(delivery.saved)"
-    }
-
-    /// The Observer's failures in sending and running, as sentences.
+    /// The Observer's process failure, if any.
     static func problems(_ observer: ObserverStatus) -> [String] {
-        var problems: [String] = []
-        if let error = observer.error { problems.append(error) }
-        if let rejection = observer.delivery.rejection {
-            problems.append("发送已暂停：\(rejection.rule)，\(rejection.detail)")
-        }
-        if let error = observer.delivery.error { problems.append("发送出错：\(error)") }
-        return problems
+        observer.error.map { [$0] } ?? []
     }
 
     static func hasFailure(_ model: RuntimeModel) -> Bool {
         if case .failed = model.state { return true }
-        return model.observers.contains { $0.state == .failed || $0.delivery.rejection != nil || $0.delivery.error != nil }
+        return model.observers.contains { $0.state == .failed }
     }
 }

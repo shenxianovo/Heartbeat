@@ -7,7 +7,7 @@ export const caseId = 'runtime-service';
 
 ## 为什么验证 [#why]
 
-服务器上的 Runtime 没有客户端，它必须自己完成接入、启动和退出，重启后找回全部程序实例和未发送的版本。约定见 [Hosting · Server](../../hosting/server.mdx) 和 [Runtime · 退出](../../hosting/runtime.mdx#shutdown)。
+服务器上的 Runtime 没有客户端，它必须自己完成接入、启动和退出，重启后沿用程序实例的身份和配置。约定见 [Hosting · Server](../../hosting/server.mdx) 和 [Runtime · 退出](../../hosting/runtime.mdx#shutdown)。
 
 ## 前置条件 [#setup]
 
@@ -20,8 +20,8 @@ export const caseId = 'runtime-service';
 | 没有 `host.json`，也没有 `--pairing-code` | Runtime 以非零的退出码退出，日志说明尚未接入 |
 | 带有效的 `--pairing-code` 启动 | 接入为 `server` 类型的托管方，安装附带的包，登记实例并运行 |
 | 关闭 Runtime 的标准输入 | Runtime 继续运行 |
-| 发送 `SIGTERM` | Runtime 停止所有 Observer，再停止发送，然后退出 |
-| 有未发送的版本时退出，再用同一个数据目录启动 | `--pairing-code` 被忽略；程序实例的 EntityId 不变，未发送的版本照常发送 |
+| 发送 `SIGTERM` | Runtime 停止所有 Observer，然后退出 |
+| 退出后，用同一个数据目录启动 | `--pairing-code` 被忽略；程序实例的 EntityId 不变，启用状态和设置保持原样 |
 | 管理入口停用、修改设置、更新和重试服务器上的实例 | Runtime 经长轮询收到并执行，报告新的状态 |
 | Observer 的进程 | 继承 Runtime 的环境变量，例如 `OPENAI_API_KEY` |
 | 设备端和服务器使用同一个安装包格式、同一个 Runtime 程序 | 安装、更新、卸载的结果相同 |

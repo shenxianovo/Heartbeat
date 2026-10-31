@@ -37,7 +37,7 @@ Orisumi.Observer.Runtime --service --data-dir <目录> --backend <API 地址> [-
 
 ## 持久目录 [#data]
 
-数据目录必须持久保存，并且只由一个 Runtime 使用，结构见 [Runtime · 数据目录](./runtime.mdx#data)。它保存托管方凭证、程序实例的身份、未发送的版本和 Observer 的业务状态，后端无法重建它们。容器部署时把它挂载为卷；目录丢失后，用新的配对码接入，得到的是一个新的托管方，原来的实例要在管理入口中删除。
+数据目录必须持久保存，并且只由一个 Runtime 使用，结构见 [Runtime · 数据目录](./runtime.mdx#data)。它保存托管方凭证、程序实例的身份和 Observer 的业务状态，后端无法重建它们。容器部署时把它挂载为卷；目录丢失后，用新的配对码接入，得到的是一个新的托管方，原来的实例要在管理入口中删除。
 
 ## 运行环境 [#environment]
 

@@ -1,6 +1,6 @@
 using System.Net;
 using Orisumi.Core;
-using Orisumi.Observer.Runtime.Store;
+using Orisumi.Observer.Runtime;
 using Orisumi.Observer.Sdk;
 using Orisumi.Observers.ForegroundState;
 
@@ -14,12 +14,11 @@ public sealed class ForegroundIconTests
         await using var database = await DatabaseFixture.CreateAsync();
         await using var factory = new OrisumiApiFactory(database.ConnectionString);
         using var http = factory.CreateClient();
-        using var directory = new RuntimeHostingTests.RuntimeDirectory();
         var owner = EntityId.New();
-        using var runtime = new ObserverStore(Path.Combine(directory.Data, "test.sqlite"), owner, http);
-        var session = new LocalObserverSession(runtime);
-        var registration = await ForegroundRegistration.RegisterAsync(session, owner);
-        var store = new ForegroundStore(session, owner, registration);
+        var runtime = new RuntimeObserverSession(http, owner);
+        var diagnostics = new List<string>();
+        var registration = await ForegroundRegistration.RegisterAsync(runtime, owner);
+        var store = new ForegroundStore(runtime, owner, registration, diagnostics.Add);
         var application = new LocalApplication(EntityId.New(), []);
         var timeline = new ForegroundTimeline(TimeSpan.FromSeconds(3));
         var firstIcon = new BinaryContent([1, 2], "image/png");
@@ -29,7 +28,6 @@ public sealed class ForegroundIconTests
         ForegroundApplicationReading Reading(int second) => ForegroundTimelineTests.Reading(second) with { ReadIcon = () => { reads++; return icon; } };
         var first = timeline.Accept(application, Reading(0)).Single();
         store.Checkpoint(first, null);
-        await runtime.SendAsync();
         icon = secondIcon;
         var ongoing = timeline.Accept(application, Reading(1)).Single();
         store.Checkpoint(ongoing, null);
@@ -44,16 +42,14 @@ public sealed class ForegroundIconTests
         var third = timeline.Accept(application, Reading(3)).Single();
         store.Checkpoint(third, null);
         store.FinishActive();
-        await runtime.SendAsync();
-        await Assert.That(runtime.Status.Rejection).IsNull();
-        await Assert.That(runtime.Status.Error).IsNull();
+        await Assert.That(diagnostics.Count).IsEqualTo(0);
         await Assert.That(reads).IsEqualTo(3);
         await Assert.That(second.Application.Id).IsEqualTo(first.Application.Id);
         await Assert.That(second.Content.Icon!.Digest).IsEqualTo(secondIcon.Digest);
         await Assert.That(third.Content.Icon!.Digest).IsEqualTo(secondIcon.Digest);
         foreach (var capture in new[] { first, second, third })
         {
-            var version = await runtime.ReadCurrentAsync(capture.Content.Id);
+            var version = await runtime.ReadCurrentAsync(capture.Content.Id, CancellationToken.None);
             var fields = ((BusinessContent)version!.Content).Fields;
             await Assert.That(fields.GetProperty("icon").GetProperty("digest").GetString()).IsEqualTo(capture.Content.Icon!.Digest);
             await Assert.That(fields.GetProperty("icon").GetProperty("mediaType").GetString()).IsEqualTo("image/png");
@@ -62,8 +58,6 @@ public sealed class ForegroundIconTests
             await Assert.That((await response.Content.ReadAsByteArrayAsync()).SequenceEqual(capture.Content.Icon.Payload.GetProperty("data").GetBytesFromBase64())).IsTrue();
         }
         await Assert.That(await BinaryContentTests.Count(database.ConnectionString, "contents")).IsEqualTo(2);
-        // Continuous checkpoints did not send a new copy of the already-confirmed file into local storage.
-        await Assert.That(runtime.Execute(local => local.ReadContent(firstIcon.Digest))).IsNull();
     }
 
     [Test, Property("caseId", "foreground-icons")]
@@ -72,21 +66,18 @@ public sealed class ForegroundIconTests
         await using var database = await DatabaseFixture.CreateAsync();
         await using var factory = new OrisumiApiFactory(database.ConnectionString);
         using var http = factory.CreateClient();
-        using var directory = new RuntimeHostingTests.RuntimeDirectory();
         var owner = EntityId.New();
-        using var runtime = new ObserverStore(Path.Combine(directory.Data, "test.sqlite"), owner, http);
-        var session = new LocalObserverSession(runtime);
-        var store = new ForegroundStore(session, owner, await ForegroundRegistration.RegisterAsync(session, owner));
+        var runtime = new RuntimeObserverSession(http, owner);
+        var store = new ForegroundStore(runtime, owner, await ForegroundRegistration.RegisterAsync(runtime, owner), _ => { });
         foreach (var fail in new[] { false, true })
         {
             var capture = ForegroundCapture.Create(new(EntityId.New(), []), ForegroundTimelineTests.Reading(0) with {
                 ReadIcon = () => fail ? throw new IOException("Icon unavailable") : null });
             store.Checkpoint(capture, null);
             store.FinishActive();
-            await runtime.SendAsync();
-            var saved = await runtime.ReadCurrentAsync(capture.Content.Id);
+            var saved = await runtime.ReadCurrentAsync(capture.Content.Id, CancellationToken.None);
             await Assert.That(((BusinessContent)saved!.Content).Fields.GetProperty("icon").ValueKind).IsEqualTo(System.Text.Json.JsonValueKind.Null);
-            await Assert.That(await runtime.ReadCurrentAsync(capture.ObservationId)).IsNotNull();
+            await Assert.That(await runtime.ReadCurrentAsync(capture.ObservationId, CancellationToken.None)).IsNotNull();
         }
         await Assert.That(await BinaryContentTests.Count(database.ConnectionString, "contents")).IsEqualTo(0);
     }

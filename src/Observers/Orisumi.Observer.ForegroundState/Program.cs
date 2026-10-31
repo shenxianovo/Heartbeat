@@ -28,10 +28,8 @@ internal static class Program
             var interval = settings.TryGetProperty("intervalMs", out var setting) ? setting.GetInt32() : 1000;
             if (interval is < 100 or > 60000) throw new ArgumentException("intervalMs must be 100 through 60000.");
             var registration = await ForegroundRegistration.RegisterAsync(session, observer, init.GetProperty("packageVersion").GetString(), session.Stopping);
-            var store = new ForegroundStore(session, observer, registration);
+            var store = new ForegroundStore(session, observer, registration, Console.Error.WriteLine);
             var applications = new LocalApplicationRegistry(Path.Combine(shared, "local-applications.json"));
-            var delivery = new ForegroundDelivery(session, applications, registration, TextWriter.Null);
-            store.FinishActive();
             var collector = new ForegroundCollector(observer, applications, store,
                 TimeSpan.FromMilliseconds(interval), MacOSForegroundApplicationReader.Read, TextWriter.Null, Console.Error);
             var eventFailure = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -39,15 +37,14 @@ internal static class Program
             await session.RequestAsync("ready", JsonLines.Json(new { }), cancellationToken: session.Stopping);
             using var stopping = CancellationTokenSource.CreateLinkedTokenSource(session.Stopping);
             var collection = Task.Run(() => collector.RunAsync(0, stopping.Token), CancellationToken.None);
-            var repairing = delivery.RunAsync(stopping.Token);
-            try { await await Task.WhenAny(collection, eventFailure.Task, repairing); }
+            try { await await Task.WhenAny(collection, eventFailure.Task); }
             catch (OperationCanceledException) when (stopping.IsCancellationRequested) { }
             finally
             {
                 await stopping.CancelAsync();
-                // During normal stop the host still acknowledges final local writes.
+                // A normal stop submits the ongoing period before the process exits.
                 collector.Stop();
-                try { await Task.WhenAll(collection, repairing); }
+                try { await collection; }
                 catch (OperationCanceledException) when (stopping.IsCancellationRequested) { }
             }
             return 0;

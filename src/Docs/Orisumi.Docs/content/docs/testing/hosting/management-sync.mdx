@@ -17,7 +17,7 @@ Runtime 使用独立的数据目录，运行一个由测试控制的 Observer。
 
 | 操作 | 预期结果 |
 | --- | --- |
-| 还没接入时运行 Observer | 照常运行和本地保存；`host.connection` 为 `unpaired`，发送状态说明尚未接入 |
+| 还没接入时运行 Observer | 进程可以启动；数据请求返回不可用；`host.connection` 为 `unpaired` |
 | 经 `pair` 接入 | `host.json` 写入数据目录；实例登记的配置是 Runtime 当时生效的配置 |
 | 断网时 `setEnabled` 停用 | 进程停止；安装登记中有序号 1 的待同步修改 |
 | 断网时停用后重启 Runtime | Observer 保持停用，待同步的修改仍在 |
@@ -30,7 +30,7 @@ Runtime 使用独立的数据目录，运行一个由测试控制的 Observer。
 | 安装一个 Observer | 启用作为一项本机修改同步；更新不形成修改 |
 | 后端接受了停用，Runtime 还没收到 | 管理入口读到 `enabled` 为 `false`，`status.appliedRevision` 小于 `revision`，界面显示等待设备同步 |
 | Runtime 离线 18 分钟 | 托管方的 `connected` 为 `false`；界面显示运行状态未知，写出最近一次报告的时刻 |
-| 远程删除实例 | Runtime 停止进程，报告 `state` 为 `stopped`；之后不再启动它；待发送的版本照常发送，被拒绝的原因在 `delivery.rejection` 中 |
+| 远程删除实例 | Runtime 停止进程，报告 `state` 为 `stopped`；之后不再启动它 |
 | 删除后本机 `install` 同一个包，不带 `newInstance` | `conflict`；带 `newInstance` 时得到新的 EntityId 和实例目录 |
 | 托管方被移除 | Runtime 停止同步和发送，`host.connection` 为 `revoked`，不再自动重试；Observer 照常运行 |
 | 远程安装，执行中结束 Runtime | 管理入口看到 `unconfirmed`；Runtime 重启后不执行这个操作 |
@@ -41,7 +41,6 @@ Runtime 使用独立的数据目录，运行一个由测试控制的 Observer。
 
 - 离线停用先写入登记、重启后保留、联网后同步，收到的设置与本机的启用合并，后端的配置不作为本机修改上传：`RuntimeManagementTests.OfflineLocalChangesSurviveRestartAndMergeWithRemoteFields`。
 - 旧请求的确认只移除它自己的序号，较新的本机修改留下；已删除的实例不会被配置同步恢复：`RuntimeManagementTests.AcknowledgementRebasesNewerLocalChangesAndNeverRevivesRemovedInstance`。
-- 凭证被撤销时待发送的版本留在本地，不记成被拒绝的版本，重新接入后照常发送：`RuntimeManagementTests.CredentialRejectionDoesNotPermanentlyPoisonPendingDelivery`。这个问题先以失败的测试复现，再修复。
 - 离线托管方的旧报告显示为状态未知、启用和设置仍可修改、在线操作不可用、设置必须是 JSON 对象：Web 的 `src/components/management.test.tsx`。
 - 手动：在临时环境中接入一台服务器，在 Web 和 macOS 中停用它的实例，看到等待同步变为已停止；远程重试；移除后重新接入。
 - 未覆盖：同步期间的长时间断网；远程安装执行中结束 Runtime。

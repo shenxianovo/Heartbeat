@@ -24,7 +24,7 @@ const initial: Instance = {
   revision: 2,
   removed: false,
   reportedAt: "2026-01-01T00:00:00Z",
-  status: { state: "running", enabled: true, appliedRevision: 1, pendingChanges: 0, delivery: { pending: 4 } },
+  status: { state: "running", enabled: true, appliedRevision: 1, pendingChanges: 0 },
 };
 afterEach(() => {
   cleanup();
@@ -62,7 +62,6 @@ test("离线设备的旧运行报告显示未知，启用和设置仍可保存�
   await screen.findByRole("button", { name: /测试 Observer/ });
   expect(screen.getByText("状态未知")).toBeInTheDocument();
   expect(screen.getByText("等待同步")).toBeInTheDocument();
-  expect(screen.getByText("4 待发送")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "安装" })).toBeDisabled();
   await user.click(screen.getByRole("switch", { name: "启用 测试 Observer" }));
   await waitFor(() => expect(writes).toEqual([{ enabled: false }]));

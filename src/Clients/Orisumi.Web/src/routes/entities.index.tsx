@@ -10,9 +10,7 @@ import { Button, Card, Message, PageHeader } from "@/components/ui";
 import { WeaveCanvas } from "@/components/weave/Weave";
 import { useEntityCount, type EntityFilter } from "@/hooks/queries";
 import { describeVersion, useDescribe, useEntityInfo } from "@/hooks/useEntityInfo";
-import { useCurrent } from "@/hooks/useCurrent";
 import { useEntity } from "@/hooks/queries";
-import { useNow } from "@/hooks/useNow";
 import { useTypes, type TypeEdge, type TypeIndex, type TypeNode } from "@/hooks/useTypes";
 import { referenceLabel } from "@/lib/references";
 import { differences, ROLE_NAMES } from "@/lib/roles";
@@ -93,7 +91,6 @@ function EntitiesPage() {
       <PageHeader
         title="实体"
         summary={`${types.data.nodes.length} 种类型。线上写着引用它的字段。点一个类型列出它的实体，再点一个实体从它开始织。`}
-        actions={<CurrentStart />}
       />
       <div className="grid gap-4">
         <Card className="min-w-0">
@@ -486,19 +483,6 @@ function RootName({ entityId }: { entityId: string }) {
   const entity = useEntity(entityId);
   const { info } = useDescribe(entity.data);
   return <span className="text-fg font-medium">「{info?.title ?? "…"}」</span>;
-}
-
-/** 现在正在记录的事物，一键从它开始织。 */
-function CurrentStart() {
-  const now = useNow(5000);
-  const { current } = useCurrent(now);
-  const navigate = Route.useNavigate();
-  if (!current) return null;
-  return (
-    <Button onClick={() => void navigate({ search: { root: current.row.thing!.entityId } })}>
-      从现在的「{current.row.title}」开始
-    </Button>
-  );
 }
 
 /** 列表里的一个实体：记号和名字，点它从它开始织。 */

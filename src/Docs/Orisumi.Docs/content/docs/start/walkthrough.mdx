@@ -13,11 +13,9 @@ description: "用一天的数据串起 Core 的概念"
 
 ## 2. 采集 [#collect]
 
-14:00，前台状态 Observer 读到 VS Code 在前台。它先保存一个前台时段作为观测内容，再开始一份 Observation：Observer 是它自己，内容是这个前台时段，事实时间从 14:00 开始。它直接读取系统状态，没有用到已保存的数据，所以这份 Observation 没有输入集。
+14:00，前台状态 Observer 读到 VS Code 在前台，开始这一段：观测内容是一个前台时段，Observation 的 Observer 是它自己，事实时间从 14:00 开始。它直接读取系统状态，没有用到已保存的数据，所以这份 Observation 没有输入集。
 
-之后每确认一次 VS Code 还在前台，它就把 `endAt` 延到这次确认的时刻。这份 Observation 还没有保存，进行中的内容作为观测预览交给后端，读取方随时能看到 VS Code 从 14:00 起在前台。16:00 用户切到浏览器，这一段到此结束，前台状态 Observer 把它保存为一个版本。
-
-断网时，Runtime 把版本保存在本地，联网后补发。补发沿用原来的 VersionId，后端认出这是已保存的版本，直接确认。
+之后每确认一次 VS Code 还在前台，它就把 `endAt` 延到这次确认的时刻。这份 Observation 还没有保存，读取方还读不到它。16:00 用户切到浏览器，这一段到此结束，前台状态 Observer 把前台时段和 Observation 一起保存。
 
 ## 3. 推断 [#infer]
 
@@ -42,7 +40,7 @@ InputSet 列的是读取时的那一版。之后前台时段再改，这些推�
 | 步骤 | 规则 |
 | --- | --- |
 | 准备 | [OBSERVER-4](../core/model/observer.mdx#observer-4)、[ENTITY-6](../core/model/entity.mdx#entity-6) |
-| 采集 | [EVIDENCE-1](../core/rules/evidence.mdx#evidence-1)、[TIME-3](../core/rules/time.mdx#time-3)、[OBSERVATION-11](../core/model/observation.mdx#observation-11)、[IDENTITY-4](../core/rules/identity.mdx#identity-4)、[VERSION-7](../core/model/version.mdx#version-7) |
+| 采集 | [EVIDENCE-1](../core/rules/evidence.mdx#evidence-1)、[TIME-3](../core/rules/time.mdx#time-3)、[IDENTITY-4](../core/rules/identity.mdx#identity-4) |
 | 推断 | [INPUTSET-5](../core/model/input-set.mdx#inputset-5)、[EVIDENCE-3](../core/rules/evidence.mdx#evidence-3)、[ENTITY-4](../core/model/entity.mdx#entity-4) |
 | 否定 | [OBSERVER-7](../core/model/observer.mdx#observer-7)、[IDENTITY-3](../core/rules/identity.mdx#identity-3)、[OBSERVER-6](../core/model/observer.mdx#observer-6) |
 | 追溯 | [EVIDENCE-7](../core/rules/evidence.mdx#evidence-7)、[ENTITY-7](../core/model/entity.mdx#entity-7) |

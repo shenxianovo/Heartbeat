@@ -38,11 +38,11 @@ API 中的时间精确到 1 微秒，UTC 指协调世界时。事实时间的含
 
 ### 保存时间 [#recorded-at]
 
-读取版本时，`recordedAt` 一定存在。它是后端首次保存这个版本的时刻，以 `Z` 结尾，精确到微秒。写入方不得提交 `recordedAt`；重试一个已保存的版本，`recordedAt` 保持不变。见 [VERSION-10](../core/model/version.mdx#version-10) 和 [VERSION-7](../core/model/version.mdx#version-7)。
+读取版本时，`recordedAt` 一定存在。它是后端保存这个版本的时刻，以 `Z` 结尾，精确到微秒。写入方不得提交 `recordedAt`，见 [VERSION-10](../core/model/version.mdx#version-10)。
 
 ## 内容相同 [#sameness]
 
-重试一个已保存的 VersionId 时，后端判断提交的内容与已保存的版本是否相同，见 [VERSION-7](../core/model/version.mdx#version-7)。比较按 JSON 的值进行：
+Runtime 登记 EntitySchema 和程序实例时，判断交来的内容与已保存的版本是否相同，见 [Hosting · 登记](../hosting/submission.mdx#registration)。比较按 JSON 的值进行：
 
 - 对象的键的顺序不影响比较。
 - 数字按数学值比较，`1`、`1.0` 和 `1e0` 相同。

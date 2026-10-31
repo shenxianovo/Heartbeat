@@ -1,20 +1,12 @@
-import { useMemo } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { readAllPages } from "@/api/client";
 import { useSource } from "@/api/source";
-import {
-  isEntitySchema,
-  type EntitySchema,
-  type Observation,
-  type ObservationPreview,
-  type Version,
-} from "@/api/types";
-import { withPreviews, type Experience, type PointGroup } from "@/lib/day";
+import { isEntitySchema, type EntitySchema, type Observation, type Version } from "@/api/types";
+import { type Experience, type PointGroup } from "@/lib/day";
 import { outgoingReferences } from "@/lib/references";
 import { roleOf } from "@/lib/roles";
 import { dayOf, dayRange, parseTime, SECOND } from "@/lib/time";
 import { businessTitle } from "@/lib/titles";
-import { usePreviews } from "./queries";
 import { useNow } from "./useNow";
 import { pool, readVersion, useTypes, type TypeIndex } from "./useTypes";
 
@@ -40,18 +32,9 @@ export function useDayObservations(range: ReturnType<typeof dayRange>, today: bo
   });
 }
 
-/** 一份要解析的经历：已保存的 Observation，或者预览。 */
-interface Pending {
-  observationId: string;
-  observation: Version<Observation> | null;
-  statement: Observation;
-  previewAt: number | null;
-  writtenAt: number;
-}
-
 /**
  * 一天的经历：读出这一天的全部 Observation，解析有时段的那些的内容和它们引用的事物。
- * 今天的数据每 5 秒刷新；今天还读预览，进行中的时段由预览接上。
+ * 今天的数据每 5 秒刷新。
  */
 export function useDay(key: string) {
   const source = useSource();
@@ -62,21 +45,11 @@ export function useDay(key: string) {
   const today = range.key === dayRange(now).key;
 
   const observations = useDayObservations(range, today);
-  const previews = usePreviews(today);
 
   const resolved = useQuery({
     queryKey: ["day", range.key, observations.dataUpdatedAt],
     queryFn: () => resolve(observations.data!, types.data!),
     enabled: !!observations.data && !!types.data,
-    placeholderData: keepPreviousData,
-    staleTime: Infinity,
-  });
-
-  // 预览只有几份，单独解析，不必每 2 秒重解析整天的 Observation。
-  const ongoing = useQuery({
-    queryKey: ["day", range.key, "previews", previews.dataUpdatedAt],
-    queryFn: () => resolvePreviews(previews.data!, types.data!),
-    enabled: today && !!previews.data && !!types.data,
     placeholderData: keepPreviousData,
     staleTime: Infinity,
   });
@@ -87,8 +60,9 @@ export function useDay(key: string) {
     return schema && isEntitySchema(schema) ? (schema as Version<EntitySchema>) : null;
   };
 
-  async function experienceOf(item: Pending, index: TypeIndex, now: number): Promise<Experience> {
-    const content = await read(item.statement.contentVersionId);
+  async function experienceOf(observation: Version<Observation>, index: TypeIndex, now: number): Promise<Experience> {
+    const statement = observation.content;
+    const content = await read(statement.contentVersionId);
     const schema = await schemaOf(content);
     const things: Experience["things"] = [];
     if (content) {
@@ -104,13 +78,12 @@ export function useDay(key: string) {
         things.push({ version: target, title, typeName: targetSchema?.content.displayName ?? "事物" });
       }
     }
-    const observer = await read(item.statement.observerVersionId);
+    const observer = await read(statement.observerVersionId);
     return {
-      observationId: item.observationId,
-      observation: item.observation,
-      observerVersionId: item.statement.observerVersionId,
-      previewAt: item.previewAt,
-      writtenAt: item.writtenAt,
+      observationId: observation.entityId,
+      observation,
+      observerVersionId: statement.observerVersionId,
+      writtenAt: Math.min(parseTime(observation.recordedAt) ?? now, now),
       content,
       contentType: schema?.content.resourceName ?? "unknown",
       contentTypeName: schema?.content.displayName ?? "观测内容",
@@ -119,8 +92,8 @@ export function useDay(key: string) {
         : null,
       things,
       observerEntityId: observer?.entityId ?? null,
-      start: parseTime(item.statement.startAt)!,
-      end: parseTime(item.statement.endAt) ?? now,
+      start: parseTime(statement.startAt)!,
+      end: parseTime(statement.endAt) ?? now,
     };
   }
 
@@ -144,19 +117,7 @@ export function useDay(key: string) {
       }
     }
 
-    const experiences = await pool(periods, 12, (observation) =>
-      experienceOf(
-        {
-          observationId: observation.entityId,
-          observation,
-          statement: observation.content,
-          previewAt: null,
-          writtenAt: Math.min(parseTime(observation.recordedAt) ?? now, now),
-        },
-        index,
-        now,
-      ),
-    );
+    const experiences = await pool(periods, 12, (observation) => experienceOf(observation, index, now));
 
     const points: PointGroup[] = [];
     for (const [versionId, times] of pointsByObserver) {
@@ -170,43 +131,10 @@ export function useDay(key: string) {
     return { experiences, points, observers: [...unique.values()] };
   }
 
-  async function resolvePreviews(list: ObservationPreview[], index: TypeIndex): Promise<Experience[]> {
-    const now = Date.now();
-    const periods = list.filter((preview) => {
-      if (!isPeriod(preview.content)) return false;
-      const start = parseTime(preview.content.startAt)!;
-      const end = parseTime(preview.content.endAt) ?? now;
-      return start < range.end && end > range.start;
-    });
-    return pool(periods, 4, (preview) => {
-      const at = Math.min(parseTime(preview.updatedAt) ?? now, now);
-      return experienceOf(
-        {
-          observationId: preview.entityId,
-          observation: null,
-          statement: preview.content,
-          previewAt: at,
-          writtenAt: at,
-        },
-        index,
-        now,
-      );
-    });
-  }
-
-  const data = useMemo(
-    () =>
-      resolved.data && {
-        ...resolved.data,
-        experiences: today ? withPreviews(resolved.data.experiences, ongoing.data ?? []) : resolved.data.experiences,
-      },
-    [resolved.data, ongoing.data, today],
-  );
-
   return {
     range,
     today,
-    data,
+    data: resolved.data,
     loading: observations.isPending || resolved.isPending,
     error: observations.error ?? resolved.error ?? types.error,
   };

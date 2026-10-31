@@ -5,7 +5,7 @@ description: "后端的十张表：哪些是权威，哪些是可以重建的投
 
 后端在 PostgreSQL 中保存十张业务表。八张保存 Core 的数据：`versions`、`deleted_versions` 和 `contents` 是权威，其余五张是推导出来、供查询使用的投影。另外两张是 Observer 的管理登记。这样设计的理由见 [ADR · 实体存储](../adr/entity-storage.mdx)。
 
-观测预览只暂存在后端进程的内存中，不写入 PostgreSQL，见 [API · Previews](../api/previews.mdx)。此外还有迁移工具自己的元数据表。
+此外还有迁移工具自己的元数据表。
 
 ## 例子 [#example]
 

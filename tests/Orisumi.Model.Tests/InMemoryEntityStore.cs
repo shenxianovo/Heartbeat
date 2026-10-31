@@ -38,14 +38,6 @@ internal sealed class InMemoryEntityStore : IEntityStore, IDisposable
             _deletedVersions.UnionWith(source._deletedVersions);
         }
 
-        private State? _savepoint;
-        public Task CreateSavepointAsync(CancellationToken cancellationToken) { _savepoint = new(this); return Task.CompletedTask; }
-        public Task ReleaseSavepointAsync(CancellationToken cancellationToken) { _savepoint = null; return Task.CompletedTask; }
-        public Task RollbackSavepointAsync(CancellationToken cancellationToken)
-        {
-            _versions.Clear(); _versions.AddRange(_savepoint!._versions);
-            return Task.CompletedTask;
-        }
         public Task<EntityVersion?> ReadCurrentAsync(EntityId id, CancellationToken cancellationToken) =>
             Task.FromResult(_versions.LastOrDefault(version => version.EntityId == id));
         public Task<EntityId?> FindVersionEntityAsync(VersionId id, CancellationToken cancellationToken) =>

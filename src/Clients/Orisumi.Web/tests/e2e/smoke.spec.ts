@@ -14,7 +14,6 @@ async function emptyApi(page: Page) {
       if (pathname === "/api/observations" || pathname === "/api/entities") {
         return route.fulfill({ json: EMPTY_PAGE });
       }
-      if (pathname === "/api/observation-previews") return route.fulfill({ json: { previews: [] } });
       return route.fulfill({ status: 404, json: { title: "Not Found", status: 404 } });
     },
   );

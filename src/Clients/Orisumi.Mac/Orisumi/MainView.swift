@@ -208,14 +208,6 @@ struct PeriodRow: View {
                 .frame(width: 96, alignment: .leading)
             AppIcon(digest: period.icon, size: 16)
             Text(period.name ?? "未知应用").lineLimit(1)
-            if period.isActive {
-                Text("进行中")
-                    .font(.caption)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 1)
-                    .background(.green.opacity(0.18), in: Capsule())
-                    .foregroundStyle(.green)
-            }
             Spacer()
             Text(Format.duration(from: period.startAt, to: period.endAt))
                 .monospacedDigit()

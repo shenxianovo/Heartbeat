@@ -88,32 +88,6 @@ public sealed class RuntimeManagementTests
         await Assert.That(removed.Pending.Length).IsEqualTo(0);
         await Assert.That(removed.Merge(new(item.InstanceId, true, JsonLines.Json(new { }), 6, 1, false)).Removed).IsTrue();
     }
-    [Test, Property("caseId", "runtime-management-sync")]
-    public async Task CredentialRejectionDoesNotPermanentlyPoisonPendingDelivery()
-    {
-        await using var database = await DatabaseFixture.CreateAsync();
-        await using var factory = new OrisumiApiFactory(database.ConnectionString);
-        using var gate = new CredentialGate(factory.Server.CreateHandler());
-        using var http = new HttpClient(gate) { BaseAddress = new("http://localhost/") };
-        using var directory = new RuntimeHostingTests.RuntimeDirectory();
-        using var store = new Orisumi.Observer.Runtime.Store.ObserverStore(Path.Combine(directory.Data, "store.sqlite"), Orisumi.Core.EntityId.New(), http);
-        var schema = EntityApiTests.Schema();
-        store.Execute(local => { local.Draft(schema.EntityId, schema.Content); local.Complete(schema.EntityId); });
-        await store.SendAsync();
-        await Assert.That(store.Status.Error).IsNull();
-        await Assert.That(store.Status.Pending).IsEqualTo(1);
-        gate.Accepted = true;
-        await store.SendAsync();
-        await Assert.That(store.Status.Pending).IsEqualTo(0);
-        await Assert.That(store.Status.Saved).IsEqualTo(1);
-    }
-    private sealed class CredentialGate(HttpMessageHandler inner) : DelegatingHandler(inner)
-    {
-        public bool Accepted { get; set; }
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) =>
-            Accepted ? base.SendAsync(request, token) : Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.Unauthorized)
-            { Content = JsonContent.Create(new { code = "credential_revoked" }) });
-    }
     private static async Task<JsonElement> Status(RuntimeHost host) => (await host.RequestAsync("list", JsonLines.Json(new { }), Token)).GetProperty("observers")[0];
     private static async Task Until(Func<Task<bool>> condition)
     {

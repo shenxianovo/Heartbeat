@@ -102,11 +102,6 @@ struct ForegroundToday: View {
                     .font(.callout)
                     .foregroundStyle(.red)
                     .lineLimit(1)
-            } else if let snapshot, !snapshot.complete {
-                Label("后端不可用，只显示本机的数据", systemImage: "icloud.slash")
-                    .font(.callout)
-                    .foregroundStyle(.orange)
-                    .help("API 中已保存的部分暂时读不到，统计可能不完整")
             }
         }
         .padding(.horizontal, 4)

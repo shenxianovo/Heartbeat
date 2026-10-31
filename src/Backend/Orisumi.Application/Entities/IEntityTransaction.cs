@@ -4,9 +4,6 @@ namespace Orisumi.Application.Entities;
 
 public interface IEntityTransaction
 {
-    Task CreateSavepointAsync(CancellationToken cancellationToken);
-    Task RollbackSavepointAsync(CancellationToken cancellationToken);
-    Task ReleaseSavepointAsync(CancellationToken cancellationToken);
     Task<EntityVersion?> ReadCurrentAsync(EntityId id, CancellationToken cancellationToken);
     Task<IReadOnlyList<EntityVersion>> ListEntitiesAsync(EntityQuery query, CancellationToken cancellationToken);
     Task<IReadOnlyList<EntityVersion>> ListObservationsAsync(ObservationQuery query, CancellationToken cancellationToken);

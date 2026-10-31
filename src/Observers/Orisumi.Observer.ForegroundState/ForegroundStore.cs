@@ -4,52 +4,44 @@ using Orisumi.Observer.Sdk;
 
 namespace Orisumi.Observers.ForegroundState;
 
-internal sealed class ForegroundStore(IObserverSession session, EntityId observerId, ForegroundRegistration registration)
+/// <summary>Keeps the ongoing period in memory and submits each period once it ends.</summary>
+internal sealed class ForegroundStore(IObserverSession session, EntityId observerId, ForegroundRegistration registration, Action<string> diagnostic)
 {
-    private EntityId? _activeContent;
+    private ForegroundCapture? _active;
 
     internal void Checkpoint(ForegroundCapture active, ForegroundCapture? completed)
     {
-        var operations = new List<object>();
-        var contents = new Dictionary<string, BinaryContent>();
-        if (completed is not null)
-        {
-            Update(operations, contents, completed, "old");
-            operations.Add(new { op = "complete", entityId = completed.ObservationId.Value });
-        }
-        Update(operations, contents, active, "new");
-        Commit(operations, contents.Values);
-        _activeContent = active.Content.Id;
+        if (completed is not null) Submit(completed);
+        _active = active;
     }
 
     internal void FinishActive()
     {
-        var result = session.RequestAsync("local", JsonLines.Json(new { draftsOnly = true, category = "observation" })).GetAwaiter().GetResult();
-        var ids = result.GetProperty("versions").EnumerateArray().Select(value => value.GetProperty("version").GetProperty("entityId").GetGuid()).ToArray();
-        foreach (var batch in ids.Chunk(512)) Commit(batch.Select(entityId => (object)new { op = "complete", entityId }).ToList());
+        if (_active is not { } active) return;
+        _active = null;
+        Submit(active);
     }
 
-    private void Commit(List<object> operations, IEnumerable<BinaryContent>? contents = null) => session.RequestAsync("commit", JsonLines.Json(new { operations, contents = (contents ?? []).Select(content => content.Payload) }), Guid.NewGuid().ToString()).GetAwaiter().GetResult();
-
-    private void Update(List<object> operations, Dictionary<string, BinaryContent> contents, ForegroundCapture capture, string prefix)
+    private void Submit(ForegroundCapture capture)
     {
-        if (_activeContent != capture.Content.Id)
+        var operations = new List<object>
         {
-            if (capture.Content.Icon is { } icon) contents[icon.Digest] = icon;
-            operations.Add(new { op = "draft", entityId = capture.Application.Id.Value, category = "business", ifAbsent = true,
-                schemaVersionId = registration.ApplicationSchema.Value, content = ApplicationContent(capture.Application).Fields });
-            operations.Add(new { op = "reference", entityId = capture.Application.Id.Value, @as = prefix + "Application" });
-            operations.Add(new { op = "draft", entityId = capture.Content.Id.Value, category = "business", ifAbsent = true,
-                schemaVersionId = registration.PeriodSchema.Value, strategy = "OnCompletion",
+            new { op = "write", entityId = capture.Application.Id.Value, category = "business", ifAbsent = true,
+                schemaVersionId = registration.ApplicationSchema.Value, content = ApplicationContent(capture.Application).Fields, @as = "application" },
+            new { op = "write", entityId = capture.Content.Id.Value, category = "business", previousVersionId = (Guid?)null,
+                schemaVersionId = registration.PeriodSchema.Value,
                 content = new { localApplicationVersionId = Guid.Empty, name = capture.Content.Name, icon = capture.Content.Icon?.Descriptor },
-                bindings = new Dictionary<string, string> { ["/localApplicationVersionId"] = prefix + "Application" } });
-        }
-        operations.Add(new { op = "reference", entityId = capture.Content.Id.Value, @as = prefix + "Content" });
-        operations.Add(new { op = "reference", entityId = observerId.Value, @as = prefix + "Observer" });
-        operations.Add(new { op = "draft", entityId = capture.ObservationId.Value, category = "observation", strategy = "OnCompletion", publishPreview = true,
-            content = new { observerVersionId = Guid.Empty, contentVersionId = Guid.Empty, inputSetVersionId = (Guid?)null,
-                capture.StartAt, capture.EndAt, capture.TimeZone },
-            bindings = new Dictionary<string, string> { ["/observerVersionId"] = prefix + "Observer", ["/contentVersionId"] = prefix + "Content" } });
+                bindings = new Dictionary<string, string> { ["/localApplicationVersionId"] = "application" }, @as = "content" },
+            new { op = "reference", entityId = observerId.Value, @as = "observer" },
+            new { op = "write", entityId = capture.ObservationId.Value, category = "observation", previousVersionId = (Guid?)null,
+                content = new { observerVersionId = Guid.Empty, contentVersionId = Guid.Empty, inputSetVersionId = (Guid?)null,
+                    capture.StartAt, capture.EndAt, capture.TimeZone },
+                bindings = new Dictionary<string, string> { ["/observerVersionId"] = "observer", ["/contentVersionId"] = "content" } },
+        };
+        JsonElement[] contents = capture.Content.Icon is { } icon ? new[] { icon.Payload } : [];
+        try { session.RequestAsync("commit", JsonLines.Json(new { operations, contents })).GetAwaiter().GetResult(); }
+        catch (Exception exception) when (exception is HttpRequestException or SubmissionRejectedException or InvalidOperationException or IOException)
+        { diagnostic($"The {capture.Content.Name ?? "foreground"} period was not saved: {exception.Message}"); }
     }
 
     internal static BusinessContent ApplicationContent(LocalApplication application) =>

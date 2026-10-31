@@ -2,33 +2,32 @@ using Orisumi.Core;
 
 namespace Orisumi.Application.Entities;
 
-public sealed class EntityService(IEntityStore store, TimeProvider timeProvider, ObservationPreviewCache? previews = null)
+public sealed class EntityService(IEntityStore store, TimeProvider timeProvider)
 {
-    // VERSION-13: rejection commits the prefix; an unexpected failure rolls back the whole operation.
+    // VERSION-13: any rejection rolls back the whole submission.
     public async Task<SubmissionResult> SubmitAsync(IEnumerable<VersionSubmission> versions,
         CancellationToken cancellationToken = default)
     {
-        var result = await store.ExecuteAsync(async (transaction, token) =>
+        try
         {
-            var saved = new List<EntityVersion>();
-            foreach (var version in versions)
+            return new(await store.ExecuteAsync(async (transaction, token) =>
             {
-                await transaction.CreateSavepointAsync(token);
-                try
+                var saved = new List<EntityVersion>();
+                foreach (var version in versions)
                 {
-                    saved.Add(await SaveAsync(transaction, VersionTime.Normalize(version), token));
-                    await transaction.ReleaseSavepointAsync(token);
+                    try { saved.Add(await SaveAsync(transaction, VersionTime.Normalize(version), token)); }
+                    catch (ModelViolationException exception)
+                    { throw new RejectedSubmission(new(saved.Count, version.VersionId, exception.Rule, exception.Message, exception.Conflict)); }
                 }
-                catch (ModelViolationException exception)
-                {
-                    await transaction.RollbackSavepointAsync(token);
-                    return new SubmissionResult(saved, new(saved.Count, version.VersionId, exception.Rule, exception.Message, exception.Conflict));
-                }
-            }
-            return new SubmissionResult(saved, null);
-        }, cancellationToken);
-        foreach (var saved in result.Saved) previews?.RemovePredecessor(saved);
-        return result;
+                return saved;
+            }, cancellationToken), null);
+        }
+        catch (RejectedSubmission rejected) { return new([], rejected.Rejection); }
+    }
+
+    private sealed class RejectedSubmission(SubmissionRejection rejection) : Exception(rejection.Detail)
+    {
+        public SubmissionRejection Rejection { get; } = rejection;
     }
 
     public Task<EntityVersion?> ReadVersionAsync(VersionId id, CancellationToken cancellationToken = default) =>
@@ -64,7 +63,6 @@ public sealed class EntityService(IEntityStore store, TimeProvider timeProvider,
             await transaction.DeleteAsync(id, token);
             return true;
         }, cancellationToken);
-        if (deleted) previews?.Remove(id);
         return deleted;
     }
 
@@ -97,12 +95,7 @@ public sealed class EntityService(IEntityStore store, TimeProvider timeProvider,
     {
         VersionRules.Require(!await transaction.IsEntityDeletedAsync(version.EntityId, token), "HISTORY-7", "Deleted entities cannot be restored.");
         VersionRules.Require(!await transaction.IsVersionDeletedAsync(version.VersionId, token), "VERSION-9", "Deleted VersionIds cannot be reused.");
-        var existing = await transaction.ReadVersionAsync(version.VersionId, token);
-        if (existing is not null)
-        {
-            VersionRules.Require(VersionRules.SameSubmission(existing.Submission, version), "VERSION-7", "VersionId already has different content.");
-            return existing;
-        }
+        VersionRules.Require(await transaction.ReadVersionAsync(version.VersionId, token) is null, "VERSION-9", "VersionIds cannot be reused.");
         EntityVersion? schemaVersion = null;
         if (version.SchemaVersionId is { } schemaId)
             schemaVersion = await transaction.ReadVersionAsync(schemaId, token);

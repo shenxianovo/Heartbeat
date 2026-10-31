@@ -141,10 +141,10 @@ public sealed class ReferrerApiTests
         await Assert.That((await Page(http, target.EntityId, "?versions=all")).GetProperty("referrers").GetArrayLength()).IsEqualTo(0);
     }
 
-    // VERSION-13: a rejected suffix must leave only the accepted prefix's references.
+    // VERSION-13: a rejected submission leaves no references; the corrected one saves exactly its own.
     [Test]
     [Property("caseId", "storage-transactions")]
-    public async Task PartialSubmissionAndRetryPreserveExactlyTheSavedReferences()
+    public async Task RejectedSubmissionLeavesNoReferencesAndTheCorrectedOneSavesItsOwn()
     {
         await using var database = await DatabaseFixture.CreateAsync();
         await using var factory = new OrisumiApiFactory(database.ConnectionString);
@@ -155,11 +155,11 @@ public sealed class ReferrerApiTests
         var later = first with { EntityId = EntityId.New(), VersionId = VersionId.New() };
         using var saved = await Submit(http, schema, target, first, rejected, later);
         await Assert.That((await Json(saved)).GetProperty("index").GetInt32()).IsEqualTo(3);
+        using (var absent = await http.GetAsync($"/entities/{target.EntityId.Value}/referrers")) await Assert.That(absent.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
+        using var corrected = await Submit(http, schema, target, first);
+        await Assert.That(corrected.StatusCode).IsEqualTo(HttpStatusCode.OK);
         var entry = (await Page(http, target.EntityId, "?versions=all")).GetProperty("referrers").EnumerateArray().Single();
         await Assert.That(Id(entry)).IsEqualTo(first.VersionId.Value);
-        using var retry = await Submit(http, schema, target, first);
-        await Assert.That(retry.StatusCode).IsEqualTo(HttpStatusCode.OK);
-        await Assert.That((await Page(http, target.EntityId)).GetProperty("referrers").GetArrayLength()).IsEqualTo(1);
     }
 
     [Test]

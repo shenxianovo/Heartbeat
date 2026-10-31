@@ -58,7 +58,6 @@ class Backend {
         const url = new URL(route.request().url());
         const path = url.pathname.replace(/^\/api/, "");
         const notFound = () => route.fulfill({ status: 404, json: { title: "Not Found", status: 404 } });
-        if (path === "/observation-previews") return route.fulfill({ json: { previews: [] } });
         if (path === "/observations") {
           const resourceName = url.searchParams.get("resourceName");
           const versions = this.versions.filter(

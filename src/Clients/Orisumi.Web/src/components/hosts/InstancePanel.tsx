@@ -102,13 +102,6 @@ export function InstancePanel({
               <span className="font-mono text-xs">{instance.status.version}</span>
             </Fact>
           )}
-          {instance.status?.delivery && (
-            <Fact label="发送">
-              <span className="tabular-nums">
-                {instance.status.delivery.pending ? `${instance.status.delivery.pending} 个待发送` : "都已发送"}
-              </span>
-            </Fact>
-          )}
         </dl>
         {(problem(instance) || instance.status?.diagnostic) && (
           <div className="space-y-1 text-xs leading-relaxed">

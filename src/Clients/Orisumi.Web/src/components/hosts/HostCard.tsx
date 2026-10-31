@@ -7,7 +7,7 @@ import { useManage } from "@/hooks/useManagement";
 import { cn } from "@/lib/utils";
 import { ConnectionDot, connectionText, HostIcon, RunLabel } from "./parts";
 
-/** 一个托管方和它的程序实例。实例按启用开关、运行状态和待发送一行一个，点名字打开面板。 */
+/** 一个托管方和它的程序实例。实例按启用开关和运行状态一行一个，点名字打开面板。 */
 export function HostCard({
   host,
   instances,
@@ -188,7 +188,6 @@ function InstanceRow({
 }) {
   const manage = useManage();
   const issue = problem(instance);
-  const pending = instance.status?.delivery?.pending ?? 0;
   return (
     <li
       className={cn(
@@ -207,7 +206,6 @@ function InstanceRow({
           </span>
           <span className="text-fg-3 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
             <RunLabel state={runState(host, instance)} />
-            {pending > 0 && <span className="tabular-nums">{pending} 待发送</span>}
             {issue && <span className="text-danger truncate">{issue}</span>}
           </span>
         </span>

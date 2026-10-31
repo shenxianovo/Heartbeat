@@ -1,41 +1,34 @@
 ---
 title: "Content Handoff"
-description: "批次带来的字节与版本一起本地保存，离线和重启后照常补交，暂存被清理后重新上传"
+description: "先校验批次中的文件，再上传字节并提交版本"
 ---
 
 export const caseId = 'runtime-binary-content';
 
 ## 为什么验证 [#why]
 
-收到本地回执，数据就已本地保存，这对文件同样成立：断网或进程重启后，版本和它用到的字节都要能补交。发送时内容要先于版本到达后端，后端的暂存被清理后，Runtime 自己重新上传。约定见 [Submission · 批次](../../hosting/submission.mdx#handoff)、[Submission · 发送与确认](../../hosting/submission.mdx#delivery) 和 [Protocol · 批次的操作](../../hosting/protocol.mdx#operations)。
+版本保存文件描述，字节先到后端，版本才能引用它。约定见 [Submission · 批次](../../hosting/submission.mdx#batch) 和 [BINARY-3](../../core/model/binary.mdx#binary-3)。
 
 ## 前置条件 [#setup]
 
-Runtime 的本地保存使用独立的 SQLite 文件。需要后端的行通过 `WebApplicationFactory` 启动 API，连接一个独立的测试数据库，见 [Database](../database.mdx)；断网由模拟的 HTTP 处理器表示。业务类型有一个可空的 `binary` 字段。
+业务类型包含一个可空的 `binary` 字段。参数校验使用 HTTP 替身；上传与读取连接真实 API 和独立的测试数据库。
 
 ## 操作与预期结果 [#steps]
 
 | 操作 | 预期结果 |
 | --- | --- |
-| 交出带 `contents` 的批次 | 返回回执；字节和版本在同一个事务中本地保存 |
-| 草稿用到的内容不在批次的 `contents` 中 | 整批返回 `invalid_request`，本地没有写入 |
-| `contents` 中的摘要或大小与字节不符 | 整批返回 `invalid_request`，本地没有写入 |
-| 两个批次带着同一份内容 | 本地只保存一份字节 |
-| 断网时交出带内容的批次，重启 Runtime，再恢复网络 | 先上传内容，再提交版本；后端读到的字节与交出的相同 |
-| 后端的暂存已被清理，发送时返回 `409`，`rule` 为 `BINARY-3` | Runtime 重新上传内容并发送其余的版本，业务代码不收到被拒绝的版本 |
-| 用到某份内容的版本都已保存 | 本地移除这份字节 |
-| 字节移除后，新的批次再次带来同一份内容 | 版本照常发送，不再上传这份内容 |
-| 客户端管道用 `content` 读取一份只在本地的内容 | 返回本地的字节 |
-| 用 `content` 读取后端没有的内容 | 返回 `not_found` |
+| 批次缺少文件字节，或摘要、大小不符 | 请求失败，没有上传字节或提交版本 |
+| 批次带着描述与匹配的字节 | 先上传字节，再提交版本；后端可读取原字节 |
+| 两个批次使用相同的文件 | 后端只保存一份字节 |
+| 客户端通过 Runtime 读取文件 | 从后端返回字节；不存在时报错；后端不可用时报错 |
 
 ## 测试实现 [#implementation]
 
-以下方法位于 `tests/Orisumi.Integration.Tests/RuntimeBinaryContentTests.cs`，对应本页的预期范围：
+以下方法位于 `tests/Orisumi.Integration.Tests/RuntimeBinaryContentTests.cs`：
 
-- 字节缺失、摘要或大小不符时整批拒绝且本地没有写入，同一批次重发和两个批次带同一份内容只保存一份字节，本地已有字节时缺少字节的批次仍被拒绝：`BatchValidatesBytesAtomicallyAndDeduplicatesAcrossBatches`。
-- 断网时交出批次，重启 Runtime 后先上传再提交；后端暂存被清理后收到 `409` `BINARY-3`，重新上传后保存，本地字节随之移除：`OfflineRestartAndExpiredStagingReuploadBeforeSavingAndReleaseLocalBytes`。
-- 字节移除和重启后，同一份内容不再上传；后端因删除移除内容后，按 `BINARY-3` 重新上传：`UploadedDigestsSurviveByteRemovalAndRestartAndRecoverAfterBackendDeletion`。
-- `content` 读取只在本地的内容、确认后从后端读取、后端没有时 `not_found`、后端不可用时报错：`ClientReadsLocalContentWithoutAnInstanceAndUsesBackendAfterConfirmation`。
+- 缺失字节、摘要和大小：`BatchValidatesBytesBeforeAnythingIsSent`。
+- 先上传再提交与后端去重：`BytesAreUploadedBeforeTheVersionsThatUseThem`。
+- 客户端读取与错误：`ClientReadsContentFromTheBackend`。
 
 ## 执行结果 [#results]
 

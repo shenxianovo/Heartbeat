@@ -125,7 +125,6 @@ function ThingBody({ info }: { info: EntityInfo }) {
                       ) : (
                         <span className="tabular-nums">{clock(segment.start)}</span>
                       )}
-                      {segment.ongoing && <span className="text-accent text-xs">进行中</span>}
                       <span className="flex-1" />
                       <span className="text-fg-3 text-xs tabular-nums">{duration(segment.end - segment.start)}</span>
                     </li>
@@ -297,16 +296,14 @@ function Siblings({ info }: { info: EntityInfo }) {
 
 function ExperienceBody({ info }: { info: EntityInfo }) {
   const direct = isObservation(info.version) ? info.version : null;
-  const { observation, preview, pending } = useObservationOf(info);
+  const { observation, pending } = useObservationOf(info);
   const contentQuery = useVersion(direct ? direct.content.contentVersionId : null);
   const content = direct ? (contentQuery.data ?? null) : info.version;
   const contentSchema = useVersion(content?.category === "business" ? content.schemaVersionId : null);
   const fields =
     contentSchema.data && isEntitySchema(contentSchema.data) ? contentSchema.data.content.fields : undefined;
   const now = useNow(1000);
-
-  // 进行中的经历：预览接在已保存的版本之后，是较新的陈述。
-  const statement = preview?.content ?? observation?.content ?? null;
+  const statement = observation?.content ?? null;
   const start = parseTime(statement?.startAt);
   const end = parseTime(statement?.endAt);
   const references = content ? outgoingReferences(content, fields) : [];
@@ -323,10 +320,7 @@ function ExperienceBody({ info }: { info: EntityInfo }) {
                 : "时间未知"}
           </p>
           {start !== null && end !== null && end > start && (
-            <p className="text-fg-2 mt-0.5 text-[13px]">
-              {duration(end - start)}
-              {preview && <span className="text-accent"> · 进行中</span>}
-            </p>
+            <p className="text-fg-2 mt-0.5 text-[13px]">{duration(end - start)}</p>
           )}
         </Section>
       ) : (
@@ -349,15 +343,6 @@ function ExperienceBody({ info }: { info: EntityInfo }) {
             </div>
           )}
           <Fields version={content} schema={null} fields={fields} skipReferences />
-        </Section>
-      )}
-
-      {preview && !observation && (
-        <Section title="由谁记下">
-          <div className="flex flex-wrap items-center gap-1.5 text-[13px]">
-            <Token versionId={preview.content.observerVersionId} />
-            <span className="text-fg-3 text-xs">预览 · {ago(now - Date.parse(preview.updatedAt))}更新，还没有保存</span>
-          </div>
         </Section>
       )}
 

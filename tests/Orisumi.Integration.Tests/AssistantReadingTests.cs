@@ -91,36 +91,18 @@ public sealed class AssistantReadingTests
     }
 
     [Test, Property("caseId", "assistant-session-reading")]
-    public async Task LostReceiptAndRestartReplayTheExactBatchBeforeAdvancingProgress()
+    public async Task FailedSubmissionKeepsTheCheckpointAndTheNextPollReadsTheSegmentAgain()
     {
         using var fixture = new AssistantTestFixture();
         var path = fixture.Write("claude/projects/project/main.jsonl", ClaudeMessage("u1", "one"));
-        var proxy = new LoseReceipt(fixture.Session);
-        var collector = fixture.CreateCollector(proxy);
-        await Assert.That(async () => await collector.ReadFileAsync(new(path, "claude-code", new("claude-code", "main")))).Throws<IOException>();
-        var original = fixture.Interactions().Single().Version;
+        fixture.Backend.Offline = true;
+        await fixture.Collector.PollAsync();
+        await Assert.That(fixture.Diagnostics.Count).IsEqualTo(1);
         await Assert.That(fixture.State.Read<FileProgress>(AssistantState.Key("file", path))).IsNull();
-        fixture.Restart();
+        fixture.Backend.Offline = false;
         await fixture.Collector.PollAsync();
         await Assert.That(fixture.Interactions().Count).IsEqualTo(1);
-        await Assert.That(fixture.Interactions().Single().Version.EntityId).IsEqualTo(original.EntityId);
-        await Assert.That(fixture.Interactions().Single().Version.VersionId).IsEqualTo(original.VersionId);
         await Assert.That(fixture.State.Read<FileProgress>(AssistantState.Key("file", path))!.Offset).IsEqualTo(new FileInfo(path).Length);
-    }
-
-    [Test, Property("caseId", "assistant-session-reading")]
-    public async Task InteractionsAndLinesBeyondTheLimitsAreDiagnosedAndSkipped()
-    {
-        using var fixture = new AssistantTestFixture();
-        fixture.Write("claude/projects/project/main.jsonl", ClaudeMessage("one", "small"), ClaudeMessage("large", new string('a', 40_000)),
-            ClaudeMessage("three", "small"), ClaudeMessage("huge", new string('b', 200_000)), ClaudeMessage("four", "small"));
-        var collector = fixture.CreateCollector(fixture.Session, new(BatchBytes: 30_000, BatchOperations: 512, LineBytes: 100_000));
-        for (var i = 0; i < 10; i++) await collector.PollAsync();
-        var ids = fixture.Interactions().Select(value => Content(value).Text("sourceId")).Order(StringComparer.Ordinal).ToArray();
-        await Assert.That(string.Join(',', ids)).IsEqualTo("four,one,three");
-        await Assert.That(fixture.Diagnostics.Count).IsEqualTo(2);
-        await Assert.That(fixture.Diagnostics.Any(value => value.Contains("batch limits", StringComparison.Ordinal))).IsTrue();
-        await Assert.That(fixture.Diagnostics.Any(value => value.Contains("100000 bytes", StringComparison.Ordinal))).IsTrue();
     }
 
     [Test, Property("caseId", "assistant-raw-entries")]
@@ -153,17 +135,7 @@ public sealed class AssistantReadingTests
         await Assert.That(reasoning.GetProperty("sourceEntries").GetArrayLength()).IsEqualTo(2);
         await Assert.That(string.Join(',', reasoning.GetProperty("parts").EnumerateArray().Select(part => part.Text("type")))).IsEqualTo("summary,text,opaque");
         var descriptor = reasoning.GetProperty("sourceEntries")[1];
-        var bytes = fixture.Runtime.Execute(local => local.ReadContent(descriptor.Text("digest")!))!;
+        var bytes = fixture.Backend.Contents[descriptor.Text("digest")!];
         await Assert.That(bytes.SequenceEqual(raw)).IsTrue();
-    }
-
-    private sealed class LoseReceipt(IObserverSession inner) : IObserverSession
-    {
-        public async Task<JsonElement> RequestAsync(string method, JsonElement parameters, string? requestId = null, CancellationToken cancellationToken = default)
-        {
-            var result = await inner.RequestAsync(method, parameters, requestId, cancellationToken);
-            if (method == "commit") throw new IOException("Injected lost local receipt.");
-            return result;
-        }
     }
 }

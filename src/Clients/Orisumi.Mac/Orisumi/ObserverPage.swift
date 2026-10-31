@@ -69,13 +69,6 @@ struct StatusBanners: View {
                     Button("启用") { Task { await model.setEnabled(observer.packageId, true) } }.disabled(busy)
                 }
             }
-            if let rejection = observer.delivery.rejection {
-                Banner(tone: .warning, title: "发送已暂停", message: "\(rejection.rule)，\(rejection.detail)") {
-                    Button("详情…", action: manage)
-                }
-            } else if let error = observer.delivery.error {
-                Banner(tone: .warning, title: "发送出错，新的记录暂时留在本机", message: error) { EmptyView() }
-            }
             if let diagnostic = observer.diagnostic {
                 Banner(tone: .info, title: "采集提示", message: diagnostic) { EmptyView() }
             }
@@ -201,7 +194,6 @@ struct RecentObservations: View {
 
     private var detail: String? {
         if let readError { return "无法读取：\(readError)" }
-        if let snapshot, !snapshot.complete { return "后端不可用，只显示本机的数据，可能不完整" }
         return snapshot.map { "\($0.items.count) 份" }
     }
 }
@@ -215,7 +207,6 @@ struct RecentRow: View {
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
                 .frame(width: 190, alignment: .leading)
-            StateBadge(state: item.state)
             Text(item.content?.compact ?? "内容不可读")
                 .font(.callout.monospaced())
                 .lineLimit(1)
@@ -233,36 +224,5 @@ struct RecentRow: View {
         let day = start.formatted(.dateTime.month().day())
         guard let end = item.endAt, end != start else { return "\(day) \(Format.time(start))" }
         return "\(day) \(Format.time(start)) – \(Format.time(end))"
-    }
-}
-
-struct StateBadge: View {
-    let state: LocalState
-
-    var body: some View {
-        Text(text)
-            .font(.caption)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 1)
-            .background(color.opacity(0.16), in: Capsule())
-            .foregroundStyle(color)
-    }
-
-    private var text: String {
-        switch state {
-        case .draft: "进行中"
-        case .pending: "待发送"
-        case .saved: "已保存"
-        case .rejected: "被拒绝"
-        }
-    }
-
-    private var color: Color {
-        switch state {
-        case .draft: .green
-        case .pending: .orange
-        case .saved: .secondary
-        case .rejected: .red
-        }
     }
 }

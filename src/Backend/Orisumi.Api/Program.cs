@@ -59,5 +59,4 @@ app.UseHostCredentials();
 app.MapManagement();
 app.MapEntities();
 app.MapContents();
-app.MapObservationPreviews();
 app.Run();

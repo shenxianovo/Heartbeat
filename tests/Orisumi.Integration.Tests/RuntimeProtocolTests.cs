@@ -2,92 +2,14 @@ using System.Net;
 using System.Diagnostics;
 using System.IO.Pipes;
 using System.Text.Json;
-using Orisumi.Core;
 using Orisumi.Observer.Sdk;
-using Orisumi.Observer.Runtime.Store;
-using Orisumi.Observers.ForegroundState;
 
 namespace Orisumi.Integration.Tests;
 
 public sealed class RuntimeProtocolTests
 {
     [Test]
-    [Property("caseId", "runtime-handoff")]
-    public async Task LostReceiptReplaysAfterRestartAndDifferentPayloadIsRejected()
-    {
-        var directory = Directory.CreateTempSubdirectory("orisumi-receipt-");
-        try
-        {
-            var owner = EntityId.New();
-            var entity = EntityId.New();
-            using var http = new HttpClient(new OfflineHandler()) { BaseAddress = new("http://localhost/") };
-            var body = JsonLines.Json(new { operations = new[] { new { op = "draft", entityId = entity.Value,
-                category = "entity_schema", content = new { displayName = "Example", description = "Example", resourceName = "examples", fields = new { } }, @as = "version" } } });
-            JsonElement receipt;
-            var file = Path.Combine(directory.FullName, "state.sqlite");
-            using (var runtimeStore = new ObserverStore(file, owner, http))
-                receipt = await new LocalObserverSession(runtimeStore).RequestAsync("commit", body, "retry-me");
-            using var restarted = new ObserverStore(file, owner, http);
-            var session = new LocalObserverSession(restarted);
-            var replayed = await session.RequestAsync("commit", body, "retry-me");
-            await Assert.That(replayed.GetRawText()).IsEqualTo(receipt.GetRawText());
-            await Assert.That(restarted.Execute(local => local.Versions().Count)).IsEqualTo(1);
-            var changed = JsonLines.Json(new { operations = new[] { new { op = "complete", entityId = entity.Value } } });
-            await Assert.That(async () => await session.RequestAsync("commit", changed, "retry-me")).Throws<InvalidOperationException>();
-            await Assert.That(restarted.Execute(local => local.Latest(entity)!.State)).IsEqualTo(SubmissionState.Draft);
-        }
-        finally { directory.Delete(true); }
-    }
-
-    [Test]
-    [Property("caseId", "runtime-handoff")]
-    public async Task FailedBatchRollsBackReceiptAndVersionsAndReferencesStayFixed()
-    {
-        var directory = Directory.CreateTempSubdirectory("orisumi-batch-");
-        try
-        {
-            var owner = EntityId.New();
-            using var http = new HttpClient(new OfflineHandler()) { BaseAddress = new("http://localhost/") };
-            using var runtimeStore = new ObserverStore(Path.Combine(directory.FullName, "state.sqlite"), owner, http);
-            var session = new LocalObserverSession(runtimeStore);
-            var registration = await ForegroundRegistration.RegisterAsync(session, owner);
-            var application = new LocalApplication(EntityId.New(), []);
-            var capture = ForegroundCapture.Create(application, ForegroundTimelineTests.Reading(0));
-            var store = new ForegroundStore(session, owner, registration);
-            store.Checkpoint(capture, null);
-            var before = runtimeStore.Execute(local => local.Versions().Count);
-            var invalid = JsonLines.Json(new { operations = new object[] {
-                new { op = "complete", entityId = capture.ObservationId.Value },
-                new { op = "reference", entityId = EntityId.New().Value },
-            } });
-            await Assert.That(async () => await session.RequestAsync("commit", invalid, "failed")).Throws<InvalidOperationException>();
-            await Assert.That(runtimeStore.Execute(local => local.Latest(capture.ObservationId)!.State)).IsEqualTo(SubmissionState.Draft);
-            await Assert.That(runtimeStore.Execute(local => local.Versions().Count)).IsEqualTo(before);
-            // Failed requests leave no receipt; a corrected request can use the same id.
-            await session.RequestAsync("commit", JsonLines.Json(new { operations = new[] { new { op = "complete", entityId = capture.ObservationId.Value } } }), "failed");
-            var frozen = runtimeStore.Execute(local => local.Latest(capture.ObservationId)!.Version);
-            store.Checkpoint(capture.Through(capture.EndAt.AddSeconds(1)), null);
-            var next = runtimeStore.Execute(local => local.Latest(capture.ObservationId)!.Version);
-            await Assert.That(next.PreviousVersionId).IsEqualTo(frozen.VersionId);
-            await Assert.That(((Observation)next.Content).ContentVersionId).IsEqualTo(((Observation)frozen.Content).ContentVersionId);
-            await Assert.That(runtimeStore.Execute(local => local.Find(frozen.VersionId)!.Version)).IsEqualTo(frozen);
-        }
-        finally { directory.Delete(true); }
-    }
-
-    [Test]
-    [Property("caseId", "runtime-registration")]
-    public async Task HostedRegistrationDoesNotWaitForAnOfflineBackend()
-    {
-        using var local = new ForegroundTestStore(EntityId.New());
-        var session = new LocalObserverSession(local.RuntimeStore);
-        var registration = await ForegroundRegistration.RegisterAsync(session, local.RuntimeStore.InstanceId);
-        await Assert.That(registration.ObserverSchema).IsEqualTo(local.Registration.ObserverSchema);
-        await Assert.That(local.RuntimeStore.Status.Pending).IsGreaterThan(0);
-    }
-
-    [Test]
-    [Property("caseId", "hosted-sending")]
+    [Property("caseId", "observer-lifecycle")]
     public async Task SessionDisposalDoesNotWaitForHostToCloseItsPipe()
     {
         using var host = new AnonymousPipeServerStream(PipeDirection.Out, HandleInheritability.None);

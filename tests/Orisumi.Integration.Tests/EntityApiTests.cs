@@ -22,7 +22,7 @@ public sealed class EntityApiTests
 
     [Test]
     [Property("caseId", "api-submission")]
-    public async Task SubmissionConfirmsInOrderRetriesAndRejectsConflictingVersions()
+    public async Task SubmissionConfirmsInOrderAndRejectsReusedOrStaleVersions()
     {
         await using var database = await DatabaseFixture.CreateAsync();
         await using var factory = new OrisumiApiFactory(database.ConnectionString);
@@ -37,30 +37,28 @@ public sealed class EntityApiTests
             .SequenceEqual(new[] { schema.VersionId.Value, first.VersionId.Value, second.VersionId.Value })).IsTrue();
         foreach (var confirmation in saved)
             await Assert.That(confirmation.GetProperty("recordedAt").GetDateTimeOffset()).IsNotEqualTo(default(DateTimeOffset));
-        using var retried = await Submit(http, first);
-        await Assert.That(retried.StatusCode).IsEqualTo(HttpStatusCode.OK);
-        await Assert.That((await Json(retried)).GetProperty("versions")[0].GetProperty("recordedAt").GetString())
-            .IsEqualTo(saved[1].GetProperty("recordedAt").GetString());
+        using var reused = await Submit(http, first);
+        await Conflict(reused, "VERSION-9");
 
         var time = new DateTimeOffset(2026, 10, 6, 1, 0, 0, TimeSpan.Zero);
         var observation = new VersionSubmission(EntityId.New(), VersionId.New(), null, null,
             new Observation(first.VersionId, first.VersionId, null, time, time, null));
-        using var observed = await Submit(http, observation);
-        await Assert.That(observed.StatusCode).IsEqualTo(HttpStatusCode.OK);
         var offset = VersionJson.Submission(observation).GetRawText().Replace(
             "2026-10-06T01:00:00.000000Z", "2026-10-06T09:00:00+08:00", StringComparison.Ordinal);
-        using var equivalent = await SubmitRaw(http, offset);
-        await Assert.That(equivalent.StatusCode).IsEqualTo(HttpStatusCode.OK);
+        using var observed = await SubmitRaw(http, offset);
+        await Assert.That(observed.StatusCode).IsEqualTo(HttpStatusCode.OK);
+        using var normalized = await http.GetAsync($"/versions/{observation.VersionId.Value}");
+        await Assert.That((await Json(normalized)).GetProperty("content").GetProperty("startAt").GetString()).IsEqualTo("2026-10-06T01:00:00.000000Z");
 
         using var changed = await Submit(http, first with { Content = new BusinessContent(JsonSerializer.Deserialize<JsonElement>("""{"name":"changed"}""")) });
-        await Conflict(changed, "VERSION-7");
+        await Conflict(changed, "VERSION-9");
         using var stale = await Submit(http, second with { VersionId = VersionId.New() });
         await Conflict(stale, "VERSION-6");
     }
 
     [Test]
     [Property("caseId", "api-submission")]
-    public async Task ContractErrorSavesNothingAndRuleRejectionSavesOnlyPrefix()
+    public async Task ContractErrorsAndRuleRejectionsSaveNothing()
     {
         await using var database = await DatabaseFixture.CreateAsync();
         await using var factory = new OrisumiApiFactory(database.ConnectionString);
@@ -79,10 +77,11 @@ public sealed class EntityApiTests
         await Assert.That(problem.GetProperty("index").GetInt32()).IsEqualTo(1);
         await Assert.That(problem.GetProperty("versionId").GetGuid()).IsEqualTo(rejected.VersionId.Value);
         await Assert.That(problem.GetProperty("rule").GetString()).IsEqualTo("INPUTSET-2");
-        using var present = await http.GetAsync($"/versions/{first.VersionId.Value}");
-        using var absentLater = await http.GetAsync($"/versions/{later.VersionId.Value}");
-        await Assert.That(present.StatusCode).IsEqualTo(HttpStatusCode.OK);
-        await Assert.That(absentLater.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
+        foreach (var version in new[] { first, rejected, later })
+        {
+            using var read = await http.GetAsync($"/versions/{version.VersionId.Value}");
+            await Assert.That(read.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
+        }
     }
 
     [Test]
@@ -199,7 +198,7 @@ public sealed class EntityApiTests
         using var conflict = await Submit(http, schema with { Content = new EntitySchema("Items", "Changed", "items", JsonSerializer.SerializeToElement(new { })) });
         await Problem(conflict, HttpStatusCode.Conflict);
         var problem = await Json(conflict);
-        await Assert.That(problem.GetProperty("rule").GetString()).IsEqualTo("VERSION-7");
+        await Assert.That(problem.GetProperty("rule").GetString()).IsEqualTo("VERSION-9");
         await Assert.That(problem.GetProperty("index").GetInt32()).IsEqualTo(0);
         await Assert.That(problem.GetProperty("versionId").GetGuid()).IsEqualTo(schema.VersionId.Value);
     }

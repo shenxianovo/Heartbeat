@@ -60,34 +60,24 @@ macOS 唤醒后立即重新读取。休眠、读取失败等情况下时段怎�
 
 ## 提交 [#submission]
 
-前台状态 Observer 使用 [.NET](../../hosting/dotnet.mdx) 的 SDK，采用[结束后提交](../../hosting/submission.mdx#strategies)，并写入[观测预览](../../hosting/submission.mdx#previews)：进行中的时段在本地补全，同时作为草稿写入后端，读取方能实时读到；时段结束时才冻结 Observation 并安排发送，所以后端为每个时段保存一个版本。业务事件对应的操作如下：
+前台状态 Observer 使用 [.NET](../../hosting/dotnet.mdx) 的 SDK。进行中的时段只在内存中补全，时段结束时才提交，所以后端为每个时段保存一个版本，进行中的时段读不到。业务事件对应的操作如下：
 
-| 业务事件 | 交给 Runtime 的操作 |
+| 业务事件 | 处理 |
 | --- | --- |
-| 首次确认应用在前台 | 识别本机应用；读取图标，连同字节形成观测内容并安排发送；形成 Observation 的草稿 |
-| 再次确认同一段活动 | 把新的结束边界合并进 Observation 的草稿 |
-| 切换应用，或应用名称、时区变化 | 通知当前时段结束；为新状态形成新的草稿 |
-| 读取失败、停止采集或其他中断 | 当前时段结束于最后一次确认，通知结束；恢复后形成新的草稿 |
+| 首次确认应用在前台 | 识别本机应用，读取图标，在内存中开始这一段 |
+| 再次确认同一段活动 | 把结束边界延到这次确认 |
+| 切换应用，或应用名称、时区变化 | 提交当前时段，开始新的一段 |
+| 读取失败、停止采集或其他中断 | 当前时段结束于最后一次确认，提交它 |
 
-观测内容形成后随即冻结并安排发送，它引用的本机应用版本也一样；Runtime 在它们保存之后才写入观测预览。结束当前时段和开始新的时段在同一个批次中提交，见 [Submission · 批次](../../hosting/submission.mdx#handoff)。
+一个时段在一个批次中提交：本机应用（已有版本时沿用）、带着图标的观测内容和 Observation，见 [Submission · 批次](../../hosting/submission.mdx#batch)。
 
-程序异常退出或停止超时被结束后，下次启动时，Runtime 恢复遗留的草稿，业务代码通知它结束于本地保存的最后一次确认。程序实例的身份不变，停机期间不计入时段，新的读数开始新的时段。
-
-### 被拒绝的版本 [#rejections]
-
-| 情况 | 处理 |
-| --- | --- |
-| 另一个程序实例已为同一个应用保存了首版（[VERSION-6](../../core/model/version.mdx#version-6)），内容相同 | 采用已保存的首版 |
-| 用户删除了某个本机应用（[HISTORY-7](../../core/rules/history.mdx#history-7)，或时段的引用违反 [ENTITY-6](../../core/model/entity.mdx#entity-6)） | 为这个安装分配新的 EntityId，更新登记文件，再改写待发送的时段 |
-| 其他原因 | 报告错误，暂停发送 |
-
-用户删除的是过去的数据。之后继续采集时，同一个应用以新的身份出现。
+提交失败时，前台状态 Observer 记一条采集诊断，丢掉这一段，继续采集。程序异常退出时，进行中的时段随之丢失；程序实例的身份不变，新的读数开始新的时段。
 
 ## 实现 [#implementation]
 
 | 平台 | 应用时段 | 窗口标题 |
 | --- | --- | --- |
-| macOS | 已实现：本机应用身份、连续时段、时段开始时提交观测内容、写入观测预览，经 Runtime 上传。图标未实现 | 未实现 |
+| macOS | 已实现：本机应用身份、连续时段，时段结束时经 Runtime 提交 | 未实现 |
 | Windows | 未实现 | 未实现 |
 | Android | 未实现 | 未实现 |
 
@@ -95,9 +85,10 @@ macOS 程序在 `src/Observers/Orisumi.Observer.ForegroundState/`，通过 AppKi
 
 用到的 macOS 接口：[应用激活通知](https://developer.apple.com/documentation/appkit/nsworkspace/didactivateapplicationnotification)、[焦点窗口变化通知](https://developer.apple.com/documentation/applicationservices/kaxfocusedwindowchangednotification)、[标题变化通知](https://developer.apple.com/documentation/applicationservices/kaxtitlechangednotification)。
 
-测试 Case：[本机应用身份](../../testing/observers/local-application-identity.mdx)、[时段边界](../../testing/observers/application-period-boundaries.mdx)、[提交与恢复](../../testing/observers/foreground-submission.mdx)、[被拒绝的版本](../../testing/observers/foreground-rejections.mdx)、[图标](../../testing/observers/foreground-icons.mdx)。
+测试 Case：[本机应用身份](../../testing/observers/local-application-identity.mdx)、[时段边界](../../testing/observers/application-period-boundaries.mdx)、[提交](../../testing/observers/foreground-submission.mdx)、[图标](../../testing/observers/foreground-icons.mdx)。
 
 ## 待定 [#open]
 
 - Android 上来源身份、重复查询与 Activity 生命周期的对应关系。
 - 程序实例本身被用户删除后，前台状态 Observer 怎样继续。
+- 用户删除某个本机应用后，登记文件仍指向它，这个应用的时段提交被拒绝。

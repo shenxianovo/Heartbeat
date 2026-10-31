@@ -8,9 +8,8 @@ final class FakeReader: RuntimeReading {
     var pages: [String?: String] = [:]
     var versions: [UUID: String] = [:]
     var expiredOnce = false
-    /// When set, `versions` reports this error and treats ids in `unavailable` as neither found nor missing.
+    /// When set, the backend read fails.
     var versionsError: String?
-    var unavailable: Set<UUID> = []
     var queries: [ReadQuery] = []
     var lookedUp: [UUID] = []
 
@@ -26,10 +25,10 @@ final class FakeReader: RuntimeReading {
     func versions<Content: Decodable & Sendable>(instanceId: UUID, _ ids: [UUID], as: Content.Type) async throws
         -> VersionsResult<Content> {
         lookedUp += ids
-        let found = ids.filter { !unavailable.contains($0) }.compactMap { versions[$0] }
-        let missing = ids.filter { versions[$0] == nil && !unavailable.contains($0) }.map { #""\#($0.uuidString)""# }
-        let error = versionsError.map { #""\#($0)""# } ?? "null"
-        let text = #"{"versions":[\#(found.joined(separator: ","))],"missing":[\#(missing.joined(separator: ","))],"error":\#(error)}"#
+        if let versionsError { throw RuntimeError.remote(code: "unavailable", message: versionsError) }
+        let found = ids.compactMap { versions[$0] }
+        let missing = ids.filter { versions[$0] == nil }.map { #""\#($0.uuidString)""# }
+        let text = #"{"versions":[\#(found.joined(separator: ","))],"missing":[\#(missing.joined(separator: ","))]}"#
         return try RuntimeJSON.decoder.decode(VersionsResult<Content>.self, from: Data(text.utf8))
     }
 }
@@ -42,15 +41,15 @@ struct ObservationReaderTests {
     static let deleted = UUID(uuidString: "019e1bbb-ec00-7000-8000-000000000204")!
     static let application = UUID(uuidString: "019e1bbb-ec00-7000-8000-000000000301")!
 
-    static func observation(_ index: Int, _ content: UUID, _ state: String) -> String {
-        #"{"version":{"versionId":"019e1bbb-ec00-7000-8000-00000000010\#(index)","entityId":"019e1bbb-ec00-7000-8000-00000000000\#(index)","content":{"observerVersionId":"019e1bbb-ec00-7000-8000-000000000101","contentVersionId":"\#(content.uuidString)","startAt":"2026-10-24T16:00:00Z","endAt":"2026-10-24T16:50:00.5Z"}},"state":"\#(state)"}"#
+    static func observation(_ index: Int, _ content: UUID) -> String {
+        #"{"versionId":"019e1bbb-ec00-7000-8000-00000000010\#(index)","entityId":"019e1bbb-ec00-7000-8000-00000000000\#(index)","content":{"observerVersionId":"019e1bbb-ec00-7000-8000-000000000101","contentVersionId":"\#(content.uuidString)","startAt":"2026-10-24T16:00:00Z","endAt":"2026-10-24T16:50:00.5Z"}}"#
     }
 
     static func reader() -> FakeReader {
         let reader = FakeReader()
         reader.pages = [
-            nil: #"{"observations":[\#(observation(1, codex, "draft"))],"next":"page-2","complete":true,"error":null}"#,
-            "page-2": #"{"observations":[\#(observation(2, safari, "saved")),\#(observation(3, deleted, "pending"))],"next":null,"complete":false,"error":"offline"}"#,
+            nil: #"{"observations":[\#(observation(1, codex))],"next":"page-2"}"#,
+            "page-2": #"{"observations":[\#(observation(2, safari)),\#(observation(3, deleted))],"next":null}"#,
         ]
         reader.versions = [
             codex: #"{"versionId":"\#(codex.uuidString)","entityId":"019e1bbb-ec00-7000-8000-0000000000c1","content":{"name":"Codex","localApplicationVersionId":"\#(application.uuidString)"}}"#,
@@ -64,14 +63,12 @@ struct ObservationReaderTests {
         let reader = Self.reader()
         let foreground = ForegroundReader()
         let today = try await foreground.today(instanceId: Self.instance, day: ActivityTests.day, from: reader)
-        // The period whose content is missing is left out; the draft is the active one.
+        // The period whose content is missing is left out.
         #expect(today.items.map(\.name) == ["Codex", "Safari"])
-        #expect(today.items.map(\.isActive) == [true, false])
         #expect(today.items.first?.bundleId == "com.openai.codex")
         #expect(today.items.map(\.icon) == [nil, "sha256:abababababababababababababababababababababababababababababababab"])
         #expect(today.items.first?.endAt == RuntimeJSON.parseDate("2026-10-24T16:50:00.5Z"))
-        #expect(!today.complete)
-        #expect(today.error == "offline")
+
         #expect(reader.queries.first?.resourceName == ForegroundReader.resourceName)
         #expect(reader.queries.first?.instanceId == Self.instance)
 
@@ -81,16 +78,8 @@ struct ObservationReaderTests {
         #expect(Set(reader.lookedUp) == [Self.codex, Self.safari, Self.deleted, Self.application])
     }
 
-    /// A reader whose `read` pages are complete, so only `versions` decides completeness.
-    static func completeReader() -> FakeReader {
-        let reader = Self.reader()
-        reader.pages["page-2"] = reader.pages["page-2"]!.replacingOccurrences(of: #""complete":false,"error":"offline""#,
-                                                                              with: #""complete":true,"error":null"#)
-        return reader
-    }
-
     @Test func forgetsCachedContentThatRuntimeReportsMissing() async throws {
-        let reader = Self.completeReader()
+        let reader = Self.reader()
         let foreground = ForegroundReader()
         let first = try await foreground.today(instanceId: Self.instance, day: ActivityTests.day, from: reader)
         #expect(first.items.map(\.name) == ["Codex", "Safari"])
@@ -100,37 +89,30 @@ struct ObservationReaderTests {
         reader.versions[Self.application] = nil
         let second = try await foreground.today(instanceId: Self.instance, day: ActivityTests.day, from: reader)
         #expect(second.items.map(\.name) == ["Safari"])
-        #expect(second.complete)
     }
 
-    @Test func dependencyReadErrorMakesTheSnapshotIncomplete() async throws {
-        let reader = Self.completeReader()
+    @Test func dependencyReadErrorIsReportedToTheView() async throws {
+        let reader = Self.reader()
         let foreground = ForegroundReader()
-        let first = try await foreground.today(instanceId: Self.instance, day: ActivityTests.day, from: reader)
-        #expect(first.complete)
-
-        // Runtime could not read the application version this time; the cached content is kept but marked incomplete.
+        _ = try await foreground.today(instanceId: Self.instance, day: ActivityTests.day, from: reader)
         reader.versionsError = "offline"
-        reader.unavailable = [Self.application]
-        let second = try await foreground.today(instanceId: Self.instance, day: ActivityTests.day, from: reader)
-        #expect(!second.complete)
-        #expect(second.error == "offline")
-        #expect(second.items.first?.bundleId == "com.openai.codex")
+        await #expect(throws: RuntimeError.self) {
+            try await foreground.today(instanceId: Self.instance, day: ActivityTests.day, from: reader)
+        }
     }
 
     @Test func recentObservationsForgetMissingContentAndReportErrors() async throws {
-        let reader = Self.completeReader()
+        let reader = Self.reader()
         let recent = RecentReader()
         _ = try await recent.recent(instanceId: Self.instance, now: .now, from: reader)
         reader.versions[Self.codex] = nil
         let deleted = try await recent.recent(instanceId: Self.instance, now: .now, from: reader)
         #expect(deleted.items.first?.content == nil)
-        #expect(deleted.complete)
 
         reader.versionsError = "offline"
-        let offline = try await recent.recent(instanceId: Self.instance, now: .now, from: reader)
-        #expect(!offline.complete)
-        #expect(offline.error == "offline")
+        await #expect(throws: RuntimeError.self) {
+            try await recent.recent(instanceId: Self.instance, now: .now, from: reader)
+        }
     }
 
     @Test func startsOverWhenTheCursorExpired() async throws {
@@ -144,7 +126,7 @@ struct ObservationReaderTests {
     @Test func readsRecentObservationsWithPlainContent() async throws {
         let reader = Self.reader()
         let recent = try await RecentReader().recent(instanceId: Self.instance, now: .now, from: reader)
-        #expect(recent.items.map(\.state) == [.draft])
+        #expect(recent.items.count == 1)
         #expect(recent.items.first?.content?.compact == #"{"localApplicationVersionId":"\#(Self.application.uuidString)","name":"Codex"}"#)
     }
 }

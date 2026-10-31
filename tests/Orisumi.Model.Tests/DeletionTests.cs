@@ -28,9 +28,6 @@ public sealed class DeletionTests
         await Reject(() => f.Save(Next(second)), "HISTORY-7");
         await Reject(() => f.Save(target.Submission with { EntityId = EntityId.New() }), "VERSION-9");
         await Reject(() => f.Save(New(new InputSet([target.VersionId]))), "ENTITY-6");
-        // VERSION-7 confirms the original reference checks even after their target disappears.
-        await Assert.That(await f.Save(inputs.Submission)).IsEqualTo(inputs);
-        await Assert.That(await f.Save(observation.Submission)).IsEqualTo(observation);
         foreach (var id in new[] { target.EntityId, observation.EntityId, inputs.EntityId, observer.EntityId, schema.EntityId }) await f.Service.DeleteAsync(id);
         foreach (var entity in new[] { schema, observer, inputs, observation })
         {

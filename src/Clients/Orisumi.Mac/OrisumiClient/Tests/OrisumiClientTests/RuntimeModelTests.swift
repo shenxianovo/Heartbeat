@@ -42,10 +42,9 @@ struct RuntimeModelTests {
     static let list = """
         {"host":{"hostId":null,"connection":"unpaired"},"observers":[
           {"packageId":"foreground-state","name":"Foreground State","version":"0.1.0","instanceId":"\(instance)","installed":true,
-           "removed":false,"settings":{},"sync":{"revision":0,"pendingChanges":0,"error":null},"enabled":true,"state":"running","error":null,"diagnostic":"Accessibility denied","delivery":{"pending":2,"drafts":1,"saved":5,"error":null,"rejection":null}},
+           "removed":false,"settings":{},"sync":{"revision":0,"pendingChanges":0,"error":null},"enabled":true,"state":"running","error":null,"diagnostic":"Accessibility denied"},
           {"packageId":"old","name":"Old","version":null,"instanceId":"019e1bbb-ec00-7000-8000-0000000000f2","installed":false,
-           "removed":false,"settings":{},"sync":{"revision":0,"pendingChanges":0,"error":null},"enabled":false,"state":"stopped","error":null,
-           "delivery":{"pending":1,"drafts":0,"saved":0,"error":null,"rejection":{"rule":"VERSION-6","detail":"conflict"}}}
+           "removed":false,"settings":{},"sync":{"revision":0,"pendingChanges":0,"error":null},"enabled":false,"state":"stopped","error":null}
         ]}
         """
 
@@ -57,8 +56,7 @@ struct RuntimeModelTests {
         await model.refresh()
         #expect(model.state == .running)
         #expect(model.installed.map(\.packageId) == ["foreground-state"])
-        #expect(model.uninstalled.first?.delivery.rejection?.rule == "VERSION-6")
-        #expect(model.observer("foreground-state")?.delivery.pending == 2)
+        #expect(model.uninstalled.map(\.packageId) == ["old"])
         #expect(model.observer("foreground-state")?.diagnostic == "Accessibility denied")
     }
 

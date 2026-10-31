@@ -7,9 +7,9 @@ struct ActivityTests {
     static let code = [AppIdentifier(scheme: "macos.bundle-id", value: "com.microsoft.VSCode")]
 
     static func period(_ id: Int, _ name: String, from start: TimeInterval, to end: TimeInterval,
-                       identifiers: [AppIdentifier] = [], icon: String? = nil, active: Bool = false) -> Period {
+                       identifiers: [AppIdentifier] = [], icon: String? = nil) -> Period {
         Period(id: UUID(uuidString: String(format: "019e1bbb-ec00-7000-8000-%012d", id))!, name: name, identifiers: identifiers,
-               icon: icon, startAt: day.start + start, endAt: day.start + end, isActive: active)
+               icon: icon, startAt: day.start + start, endAt: day.start + end)
     }
 
     @Test func clipsPeriodsToTheDay() {
@@ -23,7 +23,7 @@ struct ActivityTests {
         let periods = [
             Self.period(1, "Visual Studio Code", from: 0, to: 600, identifiers: Self.code),
             Self.period(2, "Code", from: 1_000, to: 1_300, identifiers: Self.code),
-            Self.period(3, "Claude", from: 2_000, to: 2_010, active: true),
+            Self.period(3, "Claude", from: 2_000, to: 2_010),
         ]
         let usage = Today.usage(periods, day: Self.day, now: Self.day.start + 3_000)
         // The active period counts until its last confirmation, not until now.

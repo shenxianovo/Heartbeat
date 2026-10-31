@@ -10,8 +10,7 @@ namespace Orisumi.Observers.AssistantSessions;
 
 internal sealed record SourceFile(string Path, string Product, SessionInfo? Location = null, bool IsIndex = false);
 internal sealed record FileProgress(string Identity, long Size, long Modified, long Offset, SourceContext Context);
-// Oversized lines carry no bytes: the reader skips them so one huge row cannot block the rest of the file.
-internal sealed record SourceLine(byte[] Bytes, long End, bool Oversized = false);
+internal sealed record SourceLine(byte[] Bytes, long End);
 
 internal static class SourceFiles
 {
@@ -85,10 +84,7 @@ internal static class SourceFiles
         return target;
     }
 
-    internal const int MaximumLineBytes = 64 * 1024 * 1024;
-
-    internal static async Task<IReadOnlyList<SourceLine>> ReadAsync(string path, long offset, int maximumLines, CancellationToken token,
-        int maximumLineBytes = MaximumLineBytes)
+    internal static async Task<IReadOnlyList<SourceLine>> ReadAsync(string path, long offset, int maximumLines, CancellationToken token)
     {
         await using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 65536, useAsync: true);
         file.Seek(offset, SeekOrigin.Begin);
@@ -97,7 +93,6 @@ internal static class SourceFiles
         using var line = new MemoryStream();
         var position = offset;
         var bytesInSlice = 0L;
-        var oversized = false;
         try
         {
             while (await file.ReadAsync(buffer.AsMemory(), token) is var count and > 0)
@@ -107,14 +102,6 @@ internal static class SourceFiles
                 {
                     position++;
                     if (buffer[index] != (byte)'\n') continue;
-                    if (oversized)
-                    {
-                        result.Add(new([], position, Oversized: true));
-                        oversized = false;
-                        begin = index + 1;
-                        if (result.Count >= maximumLines) return result;
-                        continue;
-                    }
                     line.Write(buffer, begin, index - begin);
                     var length = (int)line.Length;
                     var bytes = line.GetBuffer();
@@ -125,13 +112,7 @@ internal static class SourceFiles
                     begin = index + 1;
                     if (result.Count >= maximumLines || bytesInSlice >= 512 * 1024) return result;
                 }
-                if (oversized) continue;
                 line.Write(buffer, begin, count - begin);
-                if (line.Length > maximumLineBytes)
-                {
-                    oversized = true;
-                    line.SetLength(0);
-                }
             }
             return result; // Unterminated bytes, including partial UTF-8, stay in the source until next poll.
         }

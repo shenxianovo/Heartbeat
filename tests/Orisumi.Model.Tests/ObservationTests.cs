@@ -78,7 +78,7 @@ public sealed class ObservationTests
         else await Reject(() => f.Save(draft), "OBSERVATION-9");
     }
 
-    // INPUTSET-1, INPUTSET-2, INPUTSET-3, INPUTSET-4, EVIDENCE-3, EVIDENCE-8, VERSION-7, VERSION-12
+    // INPUTSET-1, INPUTSET-2, INPUTSET-3, INPUTSET-4, EVIDENCE-3, EVIDENCE-8, VERSION-12
     [Test]
     public async Task InputsAreExplicitNonemptyUniqueUnorderedVersionsOfAnyCategory()
     {
@@ -91,11 +91,11 @@ public sealed class ObservationTests
         var all = await f.Save(New(new InputSet(members)));
         members[0] = VersionId.New();
         await Assert.That(((InputSet)all.Content).Members[0]).IsEqualTo(schema.VersionId);
-        await Assert.That(await f.Save(all.Submission with { Content = new InputSet(((InputSet)all.Content).Members.Reverse()) })).IsEqualTo(all);
+        await Assert.That(VersionRules.SameSubmission(all.Submission, all.Submission with { Content = new InputSet(((InputSet)all.Content).Members.Reverse()) })).IsTrue();
         await Reject(() => f.Save(New(new InputSet([]))), "INPUTSET-2");
         await Reject(() => f.Save(New(new InputSet([business.VersionId, business.VersionId]))), "INPUTSET-3");
         await Reject(() => f.Save(New(new InputSet([new VersionId(Guid.NewGuid())]))), "VERSION-12");
-        await Reject(() => f.Save(all.Submission with { Content = new InputSet([schema.VersionId, schema.VersionId, observation.VersionId, input.VersionId]) }), "VERSION-7");
+        await Assert.That(VersionRules.SameSubmission(all.Submission, all.Submission with { Content = new InputSet([schema.VersionId, schema.VersionId, observation.VersionId, input.VersionId]) })).IsFalse();
         var result = await f.Save(New(new Observation(business.VersionId, business.VersionId, all.VersionId, null, null, null)));
         await f.Save(Next(business));
         await Assert.That(((Observation)(await f.Service.ReadVersionAsync(result.VersionId))!.Content).InputSetVersionId).IsEqualTo(all.VersionId);

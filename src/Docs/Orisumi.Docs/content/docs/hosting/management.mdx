@@ -27,7 +27,7 @@ Runtime 用一次性的配对码接入后端。用户在管理入口签发配对
 
 Runtime 调用 `POST /runtime/pair`，把得到的 `hostId`、凭证和 API 地址写进数据目录的 `host.json`，文件只有 Runtime 的用户可以读写。之后它的每个请求都带着这份凭证。
 
-还没有接入的 Runtime 照常运行 Observer、本地保存和读取本地数据，不发送版本，也不登记实例；发送状态的 `error` 说明尚未接入。接入后，它登记全部实例，再开始发送。
+还没有接入的 Runtime 照常运行 Observer，不登记实例；Observer 的提交和读取返回不可用。接入后，它登记全部实例。
 
 ## 配置 [#configuration]
 
@@ -92,7 +92,6 @@ Runtime 用 `PUT /runtime/instances/{entityId}/status` 报告每个实例的状�
 | `appliedRevision` | 已经合并的后端配置的 `revision` |
 | `pendingChanges` | 待同步的修改数 |
 | `state`、`error`、`diagnostic` | 进程的状态、故障原因和最近一条采集诊断，见 [Runtime · 状态](./runtime.mdx#states) |
-| `delivery` | 发送状态，与 [Protocol · 管理](./protocol.mdx#management) 中 `list` 的 `delivery` 相同 |
 
 - 状态变化时报告，同一个实例 5 秒内最多一次；连接期间每 60 秒至少报告一次。
 - 接入后、长轮询第一次返回后，报告全部实例。
@@ -122,20 +121,18 @@ Runtime 不保存收到的操作。执行中退出时，这个操作不再继续
 管理入口删除一个实例，或者删除它的 Core 实体时，后端在一个事务中把实例登记标记为已删除，并删除它的实体，见 [API · 删除实例](../api/management.mdx#removal)。Runtime 在长轮询或同步的响应中看到 `removed` 为 `true`，或者登记返回 `instance_removed` 时：
 
 1. 停止这个实例的进程，在安装登记中标记它已删除，丢弃它待同步的修改。
-2. 之后不再启动它，也不再为它写入观测预览。
+2. 之后不再启动它。
 3. 报告一次状态，`state` 为 `stopped`。客户端据此把“已删除，等待停止”显示为“已停止”。
 
 离线的 Runtime 在下次连接时执行这些步骤，在那之前程序实例可能仍在运行。
 
-待发送的版本照常发送，按 Core 的规则处理：这个实例自己的版本、以及引用它的 Observation 会被拒绝。实例不再运行，被拒绝的版本留在发送状态中，`rejection` 说明原因，Runtime 不为它新建身份。读取时，Runtime 按[读取](./protocol.mdx#reading)的规则，不显示后端已删除的实体的本地副本。
-
-安装一个实例已删除的包时，Runtime 要求显式新建实例：本机客户端的 `install` 和远程的 `install` 都要带 `newInstance`，否则返回 `conflict`。新实例得到新的 EntityId 和实例目录，旧实例目录保留到它的版本发送完。
+安装一个实例已删除的包时，Runtime 要求显式新建实例：本机客户端的 `install` 和远程的 `install` 都要带 `newInstance`，否则返回 `conflict`。新实例得到新的 EntityId 和实例目录，旧实例目录保留。
 
 ## 移除托管方 [#revocation]
 
-后端返回 `credential_revoked` 时，Runtime 停止发送、登记、同步和长轮询，在 `list` 中报告连接已撤销，不自动重试。Observer 照常运行，本地数据保留。
+后端返回 `credential_revoked` 时，Runtime 停止登记、同步和长轮询，在 `list` 中报告连接已撤销，不自动重试。Observer 照常运行，它们的提交返回不可用。
 
-用户在管理入口为这个托管方签发重新接入的配对码，交给 Runtime 后，Runtime 用原来的 `hostId` 接入，得到新的凭证，然后继续同步和发送。没有发出去的版本仍在本地，重新接入后照常发送。
+用户在管理入口为这个托管方签发重新接入的配对码，交给 Runtime 后，Runtime 用原来的 `hostId` 接入，得到新的凭证，然后继续同步。
 
 ## 每个部署一个实例 [#singleton]
 

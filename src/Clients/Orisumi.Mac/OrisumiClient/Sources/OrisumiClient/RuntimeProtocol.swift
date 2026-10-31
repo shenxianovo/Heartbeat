@@ -10,7 +10,7 @@ public struct ObserverStatus: Decodable, Equatable, Identifiable, Sendable {
     public var name: String
     public var version: String?
     public var instanceId: UUID
-    /// False after uninstall while the instance still has data to send.
+    /// False after uninstall; the program instance identity is retained.
     public var installed: Bool
     public var enabled: Bool
     public var state: State
@@ -18,7 +18,6 @@ public struct ObserverStatus: Decodable, Equatable, Identifiable, Sendable {
     public var error: String?
     /// The latest collection diagnostic the Observer wrote; the process may still be running.
     public var diagnostic: String?
-    public var delivery: Delivery
 
     public var removed: Bool
     public var settings: JSONValue
@@ -35,7 +34,7 @@ public struct ObserverStatus: Decodable, Equatable, Identifiable, Sendable {
 
     public init(packageId: String, name: String, version: String?, instanceId: UUID, installed: Bool = true,
                 enabled: Bool = true, state: State = .running, error: String? = nil, diagnostic: String? = nil,
-                delivery: Delivery = Delivery(pending: 0, drafts: 0, saved: 0), removed: Bool = false,
+                removed: Bool = false,
                 settings: JSONValue = .object([:]), sync: Synchronization = .init()) {
         self.packageId = packageId
         self.name = name
@@ -46,36 +45,7 @@ public struct ObserverStatus: Decodable, Equatable, Identifiable, Sendable {
         self.state = state
         self.error = error
         self.diagnostic = diagnostic
-        self.delivery = delivery
         self.removed = removed; self.settings = settings; self.sync = sync
-    }
-}
-
-/// The delivery status of one program instance.
-public struct Delivery: Decodable, Equatable, Sendable {
-    public var pending: Int
-    public var drafts: Int
-    public var saved: Int
-    public var error: String?
-    /// Sending of this instance waits until its business code handles the rejected version.
-    public var rejection: Rejection?
-
-    public init(pending: Int, drafts: Int, saved: Int, error: String? = nil, rejection: Rejection? = nil) {
-        self.pending = pending
-        self.drafts = drafts
-        self.saved = saved
-        self.error = error
-        self.rejection = rejection
-    }
-}
-
-public struct Rejection: Decodable, Equatable, Sendable {
-    public var rule: String
-    public var detail: String
-
-    public init(rule: String, detail: String) {
-        self.rule = rule
-        self.detail = detail
     }
 }
 
@@ -128,28 +98,15 @@ public struct RuntimeVersion<Content: Decodable & Sendable>: Decodable, Sendable
     public var content: Content
 }
 
-/// The state of an Observation on this device.
-public enum LocalState: String, Decodable, Sendable {
-    case draft, pending, saved, rejected
-}
-
+/// Saved Observation versions returned by the backend through Runtime.
 public struct ReadResult<Content: Decodable & Sendable>: Decodable, Sendable {
-    public struct Item: Decodable, Sendable {
-        public var version: RuntimeVersion<Content>
-        public var state: LocalState
-    }
-
-    public var observations: [Item]
+    public var observations: [RuntimeVersion<Content>]
     public var next: String?
-    /// False when the backend part could not be read; the result then holds local data only.
-    public var complete: Bool
-    public var error: String?
 }
 
 public struct VersionsResult<Content: Decodable & Sendable>: Decodable, Sendable {
     public var versions: [RuntimeVersion<Content>]
     public var missing: [UUID]
-    public var error: String?
 }
 
 /// The members of an Observation version's content.

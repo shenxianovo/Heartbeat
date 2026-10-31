@@ -1,13 +1,13 @@
 ---
 title: "Writing"
-description: "怎样上传二进制内容、提交一组版本、后端怎样逐个校验和保存，以及怎样删除实体"
+description: "怎样上传二进制内容、提交一组版本、后端怎样校验并整体保存，以及怎样删除实体"
 ---
 
-写入有三种：上传二进制内容、提交一组版本，以及删除一个实体。Observer 经 Runtime 提交，Runtime 怎样处理这些响应见 [Hosting · Submission](../hosting/submission.mdx#confirmation)。
+写入有三种：上传二进制内容、提交一组版本，以及删除一个实体。Observer 经 Runtime 提交，Runtime 怎样处理这些响应见 [Hosting · Submission](../hosting/submission.mdx#result)。
 
 ## 内容 [#contents]
 
-14:00 VS Code 的前台时段带着它的图标。Runtime 先用 [`PUT /contents/{digest}`](/api/putContent) 上传图标的字节，再提交时段，见 [BINARY-3](../core/model/binary.mdx#binary-3)。请求体是原始字节，`Content-Type` 为 `application/octet-stream`，最大 8 MiB（8,388,608 字节）。
+16:00 提交的 VS Code 前台时段带着它的图标。Runtime 先用 [`PUT /contents/{digest}`](/api/putContent) 上传图标的字节，再提交时段，见 [BINARY-3](../core/model/binary.mdx#binary-3)。请求体是原始字节，`Content-Type` 为 `application/octet-stream`，最大 8 MiB（8,388,608 字节）。
 
 | 结果 | 响应 |
 | --- | --- |
@@ -16,17 +16,17 @@ description: "怎样上传二进制内容、提交一组版本、后端怎样逐
 | 字节的摘要与路径不同 | `400`，`rule` 为 `BINARY-1` |
 | 超过 8 MiB | `413` |
 
-上传按摘要幂等，响应丢失后原样重传。上传超过 24 小时、仍没有版本使用的内容会被移除，见 [Storage · 暂存](../storage/contents.mdx#staging)。
+同样的字节再次上传也返回 `204`。上传超过 24 小时、仍没有版本使用的内容会被移除，见 [Storage · 暂存](../storage/contents.mdx#staging)。
 
 ## 提交 [#submission]
 
-16:00 用户切到浏览器，Runtime 用 [`POST /versions`](/api/submitVersions) 提交 VS Code 这一段的 Observation，以及浏览器的前台时段。请求体是 `{ "versions": [ … ] }`，至少有一个版本，由写入方按依赖顺序排列：被引用的版本在前。后端按这个顺序逐个保存，见 [VERSION-13](../core/model/version.mdx#version-13)。
+16:00 用户切到浏览器，Runtime 用 [`POST /versions`](/api/submitVersions) 提交 VS Code 这一段的前台时段和 Observation。请求体是 `{ "versions": [ … ] }`，至少有一个版本，由写入方按依赖顺序排列：被引用的版本在前。后端按这个顺序校验，全部通过才一起保存，见 [VERSION-13](../core/model/version.mdx#version-13)。
 
 | 结果 | 响应 |
 | --- | --- |
-| 全部版本都已保存 | `200`，按提交的顺序列出每个版本的 `versionId` 和 `recordedAt`。重试的版本返回首次保存时的 `recordedAt` |
-| 请求体不符合契约，例如 JSON 无效、缺少成员或带有 `recordedAt` | `400`，不带 `index`，整次提交都不处理 |
-| 某个版本违反 Core 规则，或与已保存的数据冲突 | `400` 或 `409`，带 `rule`、`index` 和 `versionId`。位置在 `index` 之前的版本都已保存，之后的版本没有处理 |
+| 全部版本都已保存 | `200`，按提交的顺序列出每个版本的 `versionId` 和 `recordedAt` |
+| 请求体不符合契约，例如 JSON 无效、缺少成员或带有 `recordedAt` | `400`，不带 `index`，整次提交都不保存 |
+| 某个版本违反 Core 规则，或与已保存的数据冲突 | `400` 或 `409`，带 `rule`、`index` 和 `versionId`，整次提交都不保存 |
 
 错误响应的字段见 [Errors](./errors.mdx)。一次提交中的版本数不设上限，请求体受 10 MiB 的上限约束。
 
@@ -36,18 +36,16 @@ description: "怎样上传二进制内容、提交一组版本、后端怎样逐
 
 | 阶段 | 检查 | 失败时 |
 | --- | --- | --- |
-| 请求结构 | JSON 与版本共有成员、Core 内容的成员和基础值类型、字段配置出现时的值类型，以及存储支持的字符串与数值范围 | `400`，不带 `index`，整批不处理 |
-| 版本规则 | UUIDv7、版本链、引用目标、二进制内容、事实边界、InputSet 非空与去重、Schema 字段定义的必写项与组合、业务字段匹配等 Core 规则 | `400` 或 `409`，带 `rule`、`index` 和 `versionId`，保留前面已保存的版本 |
+| 请求结构 | JSON 与版本共有成员、Core 内容的成员和基础值类型、字段配置出现时的值类型，以及存储支持的字符串与数值范围 | `400`，不带 `index` |
+| 版本规则 | UUIDv7、版本链、引用目标、二进制内容、事实边界、InputSet 非空与去重、Schema 字段定义的必写项与组合、业务字段匹配等 Core 规则 | `400` 或 `409`，带 `rule`、`index` 和 `versionId` |
 
-例如第二个版本的 Observation 缺少 `timeZone`，是请求结构错误，第一个版本也不保存；第二个版本的 InputSet 的 `members` 是空数组，结构合法，但违反 [INPUTSET-2](../core/model/input-set.mdx#inputset-2)，第一个版本保留。
+两个阶段失败时，整次提交都不保存。例如第二个版本的 Observation 缺少 `timeZone`，是请求结构错误；第二个版本的 InputSet 的 `members` 是空数组，结构合法，但违反 [INPUTSET-2](../core/model/input-set.mdx#inputset-2)。两种情况下第一个版本都不保存。
 
-`binary` 值的成员不符合 [BINARY-1](../core/model/binary.mdx#binary-1)，或 `size` 与已上传的字节数不同时，返回 `400`；内容尚未上传时返回 `409`，`rule` 为 `BINARY-3`，写入方上传后原样重发。
+`binary` 值的成员不符合 [BINARY-1](../core/model/binary.mdx#binary-1)，或 `size` 与已上传的字节数不同时，返回 `400`；内容尚未上传时返回 `409`，`rule` 为 `BINARY-3`。
 
 字段定义的 `description` 与 `type`、`required`、`nullable` 的必填检查属于 [SCHEMA-10](../core/model/schema.mdx#schema-10)。缺少说明、说明为空字符串或全为空白时，拒绝该版本；说明出现但不是字符串时，是请求结构错误。所以结构检查通过，还要经过版本规则的检查，版本才算合法。字符串与数值的存储范围见 [Storage · 内容的表示](../storage/versions.mdx#content)。
 
 ### 被拒绝之后 [#rejections]
-
-写入方确认 `index` 之前的版本已保存，处理完被拒绝的原因后，可以原样重发整次提交：已保存的版本由后端直接确认，见 [VERSION-7](../core/model/version.mdx#version-7)。
 
 基于旧版本的版本被拒绝时（[VERSION-6](../core/model/version.mdx#version-6)），写入方用 [`GET /entities/{entityId}`](/api/getEntity) 读取新的当前版本，再重新处理。
 
@@ -55,6 +53,6 @@ description: "怎样上传二进制内容、提交一组版本、后端怎样逐
 
 第二天，用户在 Web 控制台删掉 16:00 之后的浏览器时段。[`DELETE /entities/{entityId}`](/api/deleteEntity) 删除一个实体的全部版本，返回 `204`。删除一次作用于一个实体，所以这一段的 Observation 和前台时段分两次请求，见 [HISTORY-6](../core/rules/history.mdx#history-6)。
 
-删除已删除的实体也返回 `204`，所以响应丢失后可以直接重试。删除后实体不再接受新版本，见 [HISTORY-7](../core/rules/history.mdx#history-7)；读取它返回 `410`。
+删除已删除的实体也返回 `204`。删除后实体不再接受新版本，见 [HISTORY-7](../core/rules/history.mdx#history-7)；读取它返回 `410`。
 
 实体是一个已登记的程序实例时，删除它同时删除实例，见 [Management · 删除实例](./management.mdx#removal)。Runtime 不能删除实体，带托管方凭证的删除请求返回 `403`。

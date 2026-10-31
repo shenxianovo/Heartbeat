@@ -68,7 +68,7 @@ public sealed class RuntimeHostingTests
 
     [Test]
     [Property("caseId", "sdk-languages")]
-    public async Task PythonObserverUsesTheSamePipeAndStopsAfterLocalCompletion()
+    public async Task PythonObserverUsesTheSamePipeAndSubmitsBeforeExitingOnStop()
     {
         using var directory = new RuntimeDirectory();
         using var http = new HttpClient(new RuntimeProtocolTests.OfflineHandler()) { BaseAddress = new("http://localhost/") };
@@ -84,13 +84,12 @@ public sealed class RuntimeHostingTests
             if (observer.GetProperty("state").GetString() == "running") break;
             await Task.Delay(50, timeout.Token);
         } while (true);
-        await Assert.That(observer.GetProperty("delivery").GetProperty("drafts").GetInt32()).IsEqualTo(1);
         await host.RequestAsync("setEnabled", JsonLines.Json(new { packageId = "example", enabled = false }), timeout.Token);
         var stopped = (await host.RequestAsync("list", JsonLines.Json(new { }), timeout.Token)).GetProperty("observers")[0];
         await Assert.That(stopped.GetProperty("state").GetString()).IsEqualTo("stopped");
-        await Assert.That(stopped.GetProperty("delivery").GetProperty("drafts").GetInt32()).IsEqualTo(0);
-        await Assert.That(stopped.GetProperty("delivery").GetProperty("pending").GetInt32()).IsEqualTo(1);
-        await Assert.That(File.Exists(Path.Combine(store.InstanceDirectory(store.Find("example").InstanceId), "data", "stopped"))).IsTrue();
+        // The host is not paired, so both commits reach the Runtime through the pipe and come back unavailable.
+        var replies = await File.ReadAllTextAsync(Path.Combine(store.InstanceDirectory(store.Find("example").InstanceId), "data", "stopped"));
+        await Assert.That(replies).IsEqualTo("unavailable,unavailable");
     }
 
     [Test]
@@ -196,14 +195,15 @@ public sealed class RuntimeHostingTests
                 identity = str(uuid.UUID(int=(int(time.time()*1000)<<80)|(7<<76)|(2<<62)|(uuid.uuid4().int&((1<<62)-1))))
                 print(json.dumps({'id':identity,'method':method,'params':args}), flush=True)
                 reply = json.loads(sys.stdin.readline())
-                if 'error' in reply: raise RuntimeError(reply['error'])
-                return reply['result']
-            request('commit', {'operations':[{'op':'draft','entityId':entity,'category':'entity_schema','strategy':'OnCompletion','content':{'displayName':'Python example','description':'Protocol fixture','resourceName':'python-examples','fields':{}}}]})
+                return reply.get('error', {}).get('code', 'ok')
+            def write(description):
+                return request('commit', {'operations':[{'op':'write','entityId':entity,'category':'entity_schema','content':{'displayName':'Python example','description':description,'resourceName':'python-examples','fields':{}}}]})
+            replies = [write('Started')]
             request('ready', {})
             for line in sys.stdin:
                 if json.loads(line).get('event') == 'stop':
-                    request('commit', {'operations':[{'op':'complete','entityId':entity}]})
-                    pathlib.Path(init['dataDirectory'], 'stopped').write_text('done')
+                    replies.append(write('Stopped'))
+                    pathlib.Path(init['dataDirectory'], 'stopped').write_text(','.join(replies))
                     break
             """;
     }

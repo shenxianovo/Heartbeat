@@ -1,43 +1,33 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Orisumi.Core;
 using Orisumi.Observer.Sdk;
-using Orisumi.Observer.Runtime.Store;
 
 namespace Orisumi.Observer.Runtime;
 
 internal sealed class ManagedObserver : IAsyncDisposable
 {
     private readonly PackageStore _packages;
-    private readonly LocalObserverSession _session;
-    private readonly CancellationTokenSource _deliveryStop = new();
-    private readonly Task _delivery;
+    private readonly RuntimeObserverSession _session;
     private CancellationTokenSource? _runStop;
     private Task? _run;
     private string _state = "stopped";
     private string? _error;
     public InstalledObserver Registration { get; private set; }
-    public ObserverStore Store { get; }
+    public RuntimeObserverSession Session => _session;
     public string State => Registration.SyncError is not null && Registration.Scope == "deployment" && Registration.Revision == 0 ? "failed" : _state;
     public string? Error => _error ?? (Registration.Scope == "deployment" && Registration.Revision == 0 ? Registration.SyncError ?? "Waiting for registration." : null);
     public string? Diagnostic { get; private set; }
 
-    public ManagedObserver(PackageStore packages, InstalledObserver registration, HttpClient http, Func<bool>? canSend = null)
+    public ManagedObserver(PackageStore packages, InstalledObserver registration, HttpClient http, Func<bool>? connected = null)
     {
         _packages = packages;
         Registration = registration;
         var directory = packages.InstanceDirectory(registration.InstanceId);
         Directory.CreateDirectory(Path.Combine(directory, "data"));
         Directory.CreateDirectory(Path.Combine(packages.Root, "shared"));
-        Store = new ObserverStore(Path.Combine(directory, "store.sqlite"), new(registration.InstanceId), http) { PublishPreviews = false, CanSend = canSend ?? (() => true) };
-        _session = new(Store);
-        _delivery = DeliverAsync(_deliveryStop.Token);
-    }
-
-    private async Task DeliverAsync(CancellationToken token)
-    {
-        try { await Store.RunAsync(TimeSpan.FromSeconds(2), cancellationToken: token); }
-        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
-        catch (Exception exception) { _error = "Local delivery failed: " + exception.Message; }
+        // The backend accepts an instance's versions only after the instance is registered with it.
+        _session = new(http, new EntityId(registration.InstanceId), connected is null ? null : () => connected() && Registration.Revision > 0);
     }
 
     public void Start()
@@ -69,7 +59,6 @@ internal sealed class ManagedObserver : IAsyncDisposable
             try { running = await RunProcessAsync(token); }
             catch (InvalidDataException exception) { _error = exception.Message; incompatible = true; }
             catch (Exception exception) { _error = exception.Message; }
-            finally { Store.PublishPreviews = false; }
             if (token.IsCancellationRequested) { _state = "stopped"; return; }
             if (running >= TimeSpan.FromSeconds(60)) failures = 0;
             if (incompatible || failures >= 3) { _state = "failed"; return; }
@@ -119,11 +108,14 @@ internal sealed class ManagedObserver : IAsyncDisposable
                         readyAt = Stopwatch.GetTimestamp();
                         _state = "running";
                         _error = null;
-                        Store.PublishPreviews = true;
                         result = JsonLines.Json(new { });
                     }
-                    else result = await _session.RequestAsync(method, request.GetProperty("params"), id, connection.Token);
+                    else result = await _session.RequestAsync(method, request.GetProperty("params"), connection.Token);
                     await WriteAsync(new { id, result }, connection.Token);
+                }
+                catch (SubmissionRejectedException rejected)
+                {
+                    await WriteAsync(new { id, error = new { code = "rejected", message = rejected.Message, rule = rejected.Rule, versionId = rejected.VersionId } }, connection.Token);
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException || !connection.IsCancellationRequested)
                 {
@@ -153,7 +145,6 @@ internal sealed class ManagedObserver : IAsyncDisposable
             if (!process.HasExited)
             {
                 _state = "stopping";
-                Store.PublishPreviews = false;
                 if (stopping.IsCancellationRequested)
                 {
                     using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -168,7 +159,6 @@ internal sealed class ManagedObserver : IAsyncDisposable
         }
         finally
         {
-            Store.PublishPreviews = false;
             if (!process.HasExited) process.Kill(entireProcessTree: true);
             await process.WaitForExitAsync(CancellationToken.None);
             await connection.CancelAsync();
@@ -180,10 +170,6 @@ internal sealed class ManagedObserver : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await StopAsync();
-        await _deliveryStop.CancelAsync();
-        await _delivery;
-        Store.Dispose();
         _runStop?.Dispose();
-        _deliveryStop.Dispose();
     }
 }

@@ -108,7 +108,7 @@ Runtime 在切换登记之前退出时，下次启动读到的仍是旧版本的
 
 ## 删除实例 [#removal]
 
-删除实例永久结束程序实例的身份，与卸载不同，见 [Management · 删除实例](./management.mdx#removal)。Runtime 停止它的进程，删除程序文件，在登记中标记实例已删除。之后安装同一个 `id` 的包，要显式新建实例：Runtime 生成新的 EntityId 和实例目录，从[安装](#install)的第四步开始，旧实例目录保留到它的版本发送完。
+删除实例永久结束程序实例的身份，与卸载不同，见 [Management · 删除实例](./management.mdx#removal)。Runtime 停止它的进程，删除程序文件，在登记中标记实例已删除。之后安装同一个 `id` 的包，要显式新建实例：Runtime 生成新的 EntityId 和实例目录，从[安装](#install)的第四步开始，旧实例目录保留。
 
 ## 附带的 Observer [#bundled]
 

@@ -71,7 +71,7 @@ public sealed class VersionTests
         await Assert.That(await f.Service.ReadCurrentAsync(first.EntityId)).IsEqualTo(current);
     }
 
-    // VERSION-6, VERSION-7: stale new writes conflict; retrying a saved old version still succeeds.
+    // VERSION-6, VERSION-9: stale new writes conflict; a saved version cannot be submitted again.
     [Test]
     public async Task StaleWritesCanBeReprocessedAgainstCurrentVersion()
     {
@@ -84,31 +84,30 @@ public sealed class VersionTests
             var draft = Next(stale);
             await Reject(() => f.Save(draft), "VERSION-6");
             await Assert.That(await f.Service.ReadVersionAsync(draft.VersionId)).IsNull();
-            await Assert.That(await f.Save(stale.Submission)).IsEqualTo(stale);
+            await Reject(() => f.Save(stale.Submission), "VERSION-9");
         }
         await Assert.That(await f.Service.ReadCurrentAsync(first.EntityId)).IsEqualTo(current);
         var resolved = await f.Save(Next(current));
         await Assert.That(resolved.PreviousVersionId).IsEqualTo(current.VersionId);
     }
 
-    // VERSION-7, VERSION-2, VERSION-10
+    // VERSION-9, VERSION-2: a saved VersionId is never accepted again, with the same or changed members.
     [Test]
-    public async Task RetryConfirmsOriginalAndRejectsEveryChangedEnvelopeMember()
+    public async Task SavedVersionIdIsRejectedWithSameOrChangedMembers()
     {
         using var f = new ModelFixture();
         var first = await f.Schema();
         await f.Save(Next(first));
-        f.Time.Now = f.Time.Now.AddHours(1);
-        await Assert.That(await f.Save(first.Submission)).IsEqualTo(first);
         var changes = new[]
         {
+            first.Submission,
             first.Submission with { EntityId = EntityId.New() },
             first.Submission with { PreviousVersionId = first.VersionId },
             first.Submission with { SchemaVersionId = first.VersionId },
             first.Submission with { Content = new InputSet([first.VersionId]) },
             first.Submission with { Content = new EntitySchema("Changed", "Items", "items", Json("{}")) },
         };
-        foreach (var change in changes) await Reject(() => f.Save(change), "VERSION-7");
+        foreach (var change in changes) await Reject(() => f.Save(change), "VERSION-9");
         await Assert.That((await f.Service.ReadVersionsAsync(first.EntityId)).Count).IsEqualTo(2);
     }
 
@@ -158,7 +157,7 @@ public sealed class VersionTests
         await Assert.That(saved.VersionId).IsEqualTo(winner.VersionId);
         await Assert.That(saved.PreviousVersionId).IsNull();
         await Assert.That(await f.Service.ReadVersionAsync(loser.VersionId)).IsNull();
-        await Assert.That(await f.Save(winner)).IsEqualTo(saved);
+        await Reject(() => f.Save(winner), "VERSION-9");
     }
 
     // VERSION-12: every typed VersionId position uses the same UUIDv7 format rule.
@@ -196,9 +195,9 @@ public sealed class VersionTests
         await Assert.That(await f.Service.ReadCurrentAsync(business.EntityId)).IsEqualTo(business);
     }
 
-    // VERSION-13, ENTITY-6: dependency order, stop at the first rejection, retain prior saves.
+    // VERSION-13, ENTITY-6: dependency order; one rejection saves nothing from the submission.
     [Test]
-    public async Task BatchSavesDependenciesAndStopsAtFirstRejection()
+    public async Task BatchSavesDependenciesInOrderAndNothingWhenOneIsRejected()
     {
         using var f = new ModelFixture();
         var schema = New(new EntitySchema("Items", "Items", "items", Json("{}")));
@@ -206,11 +205,10 @@ public sealed class VersionTests
         var invalid = New(new InputSet([VersionId.New()]));
         var later = New(new InputSet([business.VersionId]));
         await Reject(() => f.Service.SubmitAsync([schema, business, invalid, later]), "ENTITY-6");
-        await Assert.That(await f.Service.ReadVersionAsync(schema.VersionId)).IsNotNull();
-        await Assert.That(await f.Service.ReadVersionAsync(business.VersionId)).IsNotNull();
-        await Assert.That(await f.Service.ReadVersionAsync(invalid.VersionId)).IsNull();
-        await Assert.That(await f.Service.ReadVersionAsync(later.VersionId)).IsNull();
-        await f.Save(later);
+        foreach (var version in new[] { schema, business, invalid, later })
+            await Assert.That(await f.Service.ReadVersionAsync(version.VersionId)).IsNull();
+        (await f.Service.SubmitAsync([schema, business, later])).RequireSuccess();
+        await Assert.That(await f.Service.ReadVersionAsync(later.VersionId)).IsNotNull();
     }
 
     // ENTITY-6, ENTITY-4, ENTITY-5

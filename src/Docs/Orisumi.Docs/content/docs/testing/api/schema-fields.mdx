@@ -38,7 +38,7 @@ export const caseId = 'api-schema-fields';
 - 说明演进后，旧业务版本仍引用原来的 Schema 版本。
 - category 为 observation、content 为空对象的整批拒绝。
 
-空 InputSet 的部分拒绝已由 `EntityApiTests.ContractErrorSavesNothingAndRuleRejectionSavesOnlyPrefix` 检查；该方法关联 [Submission](./submission.mdx)，执行结果在那一页显示。新增测试时复用这个边界，不重复增加相同测试。
+空 InputSet 的部分拒绝已由 `EntityApiTests.ContractErrorsAndRuleRejectionsSaveNothing` 检查；该方法关联 [Submission](./submission.mdx)，执行结果在那一页显示。新增测试时复用这个边界，不重复增加相同测试。
 
 ## 执行结果 [#results]
 

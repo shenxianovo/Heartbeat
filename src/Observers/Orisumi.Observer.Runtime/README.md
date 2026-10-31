@@ -1,6 +1,6 @@
 # Orisumi.Observer.Runtime
 
-Orisumi.Observer.Runtime 运行 Observer 的进程，本地保存它们交来的版本，并发送到后端。设备上由客户端启动，服务器上以服务方式运行。职责和协议见 [Hosting · Runtime](../../Docs/Orisumi.Docs/content/docs/hosting/runtime.mdx) 和 [Hosting · Server](../../Docs/Orisumi.Docs/content/docs/hosting/server.mdx)。
+Orisumi.Observer.Runtime 运行 Observer 的进程，把它们交来的批次形成版本并提交到后端。设备上由客户端启动，服务器上以服务方式运行。职责和协议见 [Hosting · Runtime](../../Docs/Orisumi.Docs/content/docs/hosting/runtime.mdx) 和 [Hosting · Server](../../Docs/Orisumi.Docs/content/docs/hosting/server.mdx)。
 
 ## 构建安装包
 
@@ -43,4 +43,4 @@ docker build -f src/Observers/Orisumi.Observer.Runtime/Dockerfile -t orisumi-run
 
 ## 验证
 
-`tests/Orisumi.Integration.Tests/` 中的 `RuntimeManagementTests`、`RuntimeOutcomeTests` 和 `Runtime*Tests` 检查同步、最终结果和本地保存，Case 见 [Testing](../../Docs/Orisumi.Docs/content/docs/testing/index.mdx)。
+`tests/Orisumi.Integration.Tests/` 中的 `RuntimeManagementTests` 和 `Runtime*Tests` 检查同步、提交和读取，Case 见 [Testing](../../Docs/Orisumi.Docs/content/docs/testing/index.mdx)。

@@ -3,7 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Orisumi.Core;
-using Orisumi.Observer.Runtime.Store;
+using Orisumi.Observer.Runtime;
 using Orisumi.Observer.Sdk;
 using Orisumi.Observers.AssistantSessions;
 
@@ -18,7 +18,7 @@ internal sealed class AssistantTestFixture : IDisposable
     internal string Codex => Path.Combine(Root, "codex");
     internal string StateDirectory => Path.Combine(Root, "capture");
     internal EntityId Owner { get; } = EntityId.New();
-    internal ObserverStore Runtime { get; private set; }
+    internal MemoryBackend Backend { get; }
     internal IObserverSession Session { get; private set; }
     internal AssistantState State { get; private set; }
     internal AssistantRegistration Registration { get; }
@@ -27,22 +27,21 @@ internal sealed class AssistantTestFixture : IDisposable
 
     internal AssistantTestFixture(HttpMessageHandler? handler = null)
     {
-        _http = new(handler ?? new MissingBackend()) { BaseAddress = new("http://localhost/") };
-        Runtime = new(Path.Combine(Root, "runtime.sqlite"), Owner, _http);
-        Session = new LocalObserverSession(Runtime);
+        Backend = new(handler);
+        _http = Backend.CreateClient();
+        Session = new RuntimeObserverSession(_http, Owner);
         State = new(StateDirectory);
         Registration = AssistantRegistration.RegisterAsync(Session, "0.1.0").GetAwaiter().GetResult();
         Collector = CreateCollector(Session);
     }
 
-    internal AssistantCollector CreateCollector(IObserverSession session, AssistantLimits? limits = null) => new(session, State, Owner,
-        Registration, Claude, Codex, Path.Combine(StateDirectory, "archives"), Diagnostics.Add, () => "Asia/Tokyo", TimeSpan.Zero, limits);
+    internal AssistantCollector CreateCollector(IObserverSession session) => new(session, State, Owner,
+        Registration, Claude, Codex, Path.Combine(StateDirectory, "archives"), Diagnostics.Add, () => "Asia/Tokyo", TimeSpan.Zero);
 
     internal void Restart()
     {
-        State.Dispose(); Runtime.Dispose();
-        Runtime = new(Path.Combine(Root, "runtime.sqlite"), Owner, _http);
-        Session = new LocalObserverSession(Runtime);
+        State.Dispose();
+        Session = new RuntimeObserverSession(_http, Owner);
         State = new(StateDirectory);
         Collector = CreateCollector(Session);
     }
@@ -56,13 +55,11 @@ internal sealed class AssistantTestFixture : IDisposable
         return path;
     }
 
-    internal IReadOnlyList<LocalVersion> Interactions() => Versions(Registration.InteractionSchema);
-    internal IReadOnlyList<LocalVersion> Sessions() => Versions(Registration.SessionSchema);
-    private LocalVersion[] Versions(VersionId schema) => Runtime.Execute(local => local.Versions()
-        .Where(version => version.Version.SchemaVersionId == schema).ToArray());
-    internal IReadOnlyList<LocalVersion> Observations() => Runtime.Execute(local => local.Versions()
-        .Where(version => version.Version.Content is Observation).ToArray());
-    internal static JsonElement Content(LocalVersion version) => ((BusinessContent)version.Version.Content).Fields;
+    internal IReadOnlyList<StoredVersion> Interactions() => Versions(Registration.InteractionSchema);
+    internal IReadOnlyList<StoredVersion> Sessions() => Versions(Registration.SessionSchema);
+    private StoredVersion[] Versions(VersionId schema) => Backend.Snapshot().Where(version => version.Version.SchemaVersionId == schema).ToArray();
+    internal IReadOnlyList<StoredVersion> Observations() => Backend.Snapshot().Where(version => version.Version.Content is Observation).ToArray();
+    internal static JsonElement Content(StoredVersion version) => ((BusinessContent)version.Version.Content).Fields;
     internal static byte[] Json(object value) => JsonSerializer.SerializeToUtf8Bytes(value, JsonSerializerOptions.Web);
     internal static byte[] ClaudeMessage(string id, object content, string type = "user", string? actor = "human",
         string? parent = null, string? cwd = "/work", bool meta = false, string sessionId = "main") => Json(new
@@ -91,10 +88,5 @@ internal sealed class AssistantTestFixture : IDisposable
         return value;
     }
 
-    public void Dispose() { State.Dispose(); Runtime.Dispose(); _http.Dispose(); _directory.Delete(true); }
-    private sealed class MissingBackend : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
-    }
+    public void Dispose() { State.Dispose(); _http.Dispose(); Backend.Dispose(); _directory.Delete(true); }
 }

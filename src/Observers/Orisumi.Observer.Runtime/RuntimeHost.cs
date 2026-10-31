@@ -29,9 +29,8 @@ internal sealed partial class RuntimeHost : IAsyncDisposable
             }
         foreach (var registration in _packages.Observers)
         {
-            var observer = new ManagedObserver(_packages, registration, _http, () => _connection.CanConnect && registration.Revision > 0);
+            var observer = new ManagedObserver(_packages, registration, _http, () => _connection.CanConnect);
             _observers.Add(registration.InstanceId, observer);
-            observer.Store.CanSend = () => _connection.CanConnect && observer.Registration.Revision > 0;
             if (runPackage is null || registration.PackageId == runPackage) observer.Start();
         }
     }
@@ -122,7 +121,7 @@ internal sealed partial class RuntimeHost : IAsyncDisposable
                 if (Directory.Exists(directory)) Directory.Delete(directory, true);
                 break;
             }
-            case "content": return await _reader.ContentAsync(_observers.Values, parameters, token);
+            case "content": return await _reader.ContentAsync(parameters, token);
             case "read": return await _reader.ReadAsync(FindInstance(parameters), parameters, token);
             case "versions": return await RuntimeReader.VersionsAsync(FindInstance(parameters), parameters, token);
             case "shutdown": await StopAsync(); break;
@@ -159,9 +158,7 @@ internal sealed partial class RuntimeHost : IAsyncDisposable
         var registration = _packages.Register(manifest, enabled, newInstance, updating);
         if (existing is null)
         {
-            existing = new(_packages, registration, _http);
-            var created = existing;
-            created.Store.CanSend = () => _connection.CanConnect && created.Registration.Revision > 0;
+            existing = new(_packages, registration, _http, () => _connection.CanConnect);
             _observers.Add(registration.InstanceId, existing);
         }
         else existing.SetRegistration(registration);

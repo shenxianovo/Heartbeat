@@ -7,21 +7,16 @@ namespace Orisumi.Observers.AssistantSessions;
 
 internal sealed class AssistantCollector(IObserverSession session, AssistantState state, EntityId observerId,
     AssistantRegistration registration, string claudeDirectory, string codexDirectory, string cacheDirectory,
-    Action<string> diagnostic, Func<string?>? currentZone = null, TimeSpan? additionalHistoryBudget = null,
-    AssistantLimits? limits = null)
+    Action<string> diagnostic, Func<string?>? currentZone = null, TimeSpan? additionalHistoryBudget = null)
 {
     private readonly Dictionary<string, long> _liveEnds = new(StringComparer.Ordinal);
     private readonly Dictionary<string, long> _lastVisited = new(StringComparer.Ordinal);
     private readonly HashSet<string> _unfinished = new(StringComparer.Ordinal);
     private long _visit;
     private readonly DateTime _started = DateTime.UtcNow;
-    private readonly AssistantDelivery _delivery = new(session, state, diagnostic);
-    private readonly AssistantLimits _limits = limits ?? AssistantLimits.Default;
 
     internal async Task PollAsync(CancellationToken token = default)
     {
-        await state.ResumeAsync(session, token);
-        if (!await _delivery.CheckAsync(token)) return;
         var files = SourceFiles.Discover(claudeDirectory, codexDirectory, diagnostic);
         var known = files.Select(file => file.Path).ToHashSet(StringComparer.Ordinal);
         foreach (var removed in _liveEnds.Keys.Where(path => !known.Contains(path)).ToArray()) _liveEnds.Remove(removed);
@@ -38,7 +33,7 @@ internal sealed class AssistantCollector(IObserverSession session, AssistantStat
             {
                 await ReadFileAsync(file, token);
             }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException or ZstdSharp.ZstdException)
+            catch (Exception exception) when (IsFailure(exception))
             { diagnostic(file.Path + ": " + exception.Message); }
             _lastVisited[file.Path] = ++_visit;
         }
@@ -52,16 +47,19 @@ internal sealed class AssistantCollector(IObserverSession session, AssistantStat
             {
                 if (timer.Elapsed >= budget) break;
                 try { await ReadFileAsync(file, token); }
-                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException or ZstdSharp.ZstdException)
+                catch (Exception exception) when (IsFailure(exception))
                 { _unfinished.Remove(file.Path); diagnostic(file.Path + ": " + exception.Message); }
                 _lastVisited[file.Path] = ++_visit;
             }
         }
     }
 
+    // A failed submission leaves the checkpoint where it was, so the next poll reads the same segment again.
+    private static bool IsFailure(Exception exception) => exception is IOException or UnauthorizedAccessException or JsonException
+        or ZstdSharp.ZstdException or HttpRequestException or SubmissionRejectedException or InvalidOperationException or ArgumentException;
+
     internal async Task ReadFileAsync(SourceFile file, CancellationToken token = default)
     {
-        await state.ResumeAsync(session, token);
         var information = new FileInfo(file.Path);
         var identity = FileIdentity.Read(file.Path);
         var size = information.Length;
@@ -84,31 +82,12 @@ internal sealed class AssistantCollector(IObserverSession session, AssistantStat
         var zone = !reset && _liveEnds.TryGetValue(file.Path, out var liveOffset) && offset >= liveOffset
             ? (currentZone?.Invoke() ?? LocalZone()) : null;
         var length = new FileInfo(expanded).Length;
-        // A segment that exceeds the Runtime's batch limits is read again with half as many lines.
-        // One line that still does not fit becomes a diagnostic, and the checkpoint moves past it.
-        IReadOnlyList<SourceLine> lines;
-        bool atEnd;
-        for (var maximumLines = 16; ; )
-        {
-            lines = await SourceFiles.ReadAsync(expanded, offset, maximumLines, token, _limits.LineBytes);
-            var trial = StartBatch(file, context);
-            var notes = new List<string>();
-            var (nextContext, nextOffset) = Interpret(file, lines, context, offset, zone, trial, notes);
-            atEnd = nextOffset == length;
-            trial.Set(key, new FileProgress(identity, size, modified, compressed && atEnd ? -1 : nextOffset, nextContext));
-            if (AssistantState.Fits(trial.Payload, _limits))
-            {
-                notes.ForEach(diagnostic);
-                (batch, context, offset) = (trial, nextContext, nextOffset);
-                break;
-            }
-            if (lines.Count > 1) { maximumLines = Math.Max(1, lines.Count / 2); continue; }
-            diagnostic($"{file.Path}@{offset}: the interaction exceeds the Runtime's batch limits and was skipped.");
-            offset = lines[0].End;
-            atEnd = offset == length;
-            batch.Set(key, new FileProgress(identity, size, modified, compressed && atEnd ? -1 : offset, context));
-            break;
-        }
+        var lines = await SourceFiles.ReadAsync(expanded, offset, 16, token);
+        var notes = new List<string>();
+        (context, offset) = Interpret(file, lines, context, offset, zone, batch, notes);
+        notes.ForEach(diagnostic);
+        var atEnd = offset == length;
+        batch.Set(key, new FileProgress(identity, size, modified, compressed && atEnd ? -1 : offset, context));
         await state.SubmitAsync(session, batch.Payload, batch.Changes, token);
         if (!atEnd && lines.Count > 0) _unfinished.Add(file.Path);
         else _unfinished.Remove(file.Path);
@@ -125,12 +104,6 @@ internal sealed class AssistantCollector(IObserverSession session, AssistantStat
         foreach (var line in lines)
         {
             if (batch.OperationCount > 400) break;
-            if (line.Oversized)
-            {
-                notes.Add($"{file.Path}@{offset}: the line exceeds {_limits.LineBytes} bytes and was skipped.");
-                offset = line.End;
-                continue;
-            }
             // Parsing works on a copy: malformed data must not partially update the context checkpoint.
             var next = JsonSerializer.Deserialize<SourceContext>(JsonSerializer.Serialize(context))!;
             try

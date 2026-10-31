@@ -66,8 +66,9 @@ public sealed class SchemaDescriptionTests
             await Assert.That(problem.GetProperty("index").GetInt32()).IsEqualTo(1);
             await Assert.That(problem.GetProperty("rule").GetString()).IsEqualTo("SCHEMA-10");
         }
+        // VERSION-13: neither failure stage saves the valid version before it.
         using var read = await http.GetAsync($"/versions/{prefix.VersionId.Value}");
-        await Assert.That(read.StatusCode).IsEqualTo(structural ? HttpStatusCode.NotFound : HttpStatusCode.OK);
+        await Assert.That(read.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
     }
 
     private static JsonObject Fields() => JsonNode.Parse("""

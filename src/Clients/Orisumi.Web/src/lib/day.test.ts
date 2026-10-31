@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Observation, Version } from "@/api/types";
-import { groupThings, summarize, tickStep, ticks, withPreviews, type Experience } from "./day";
+import { groupThings, summarize, tickStep, ticks, type Experience } from "./day";
 
 const MIN = 60_000;
 const from = Date.parse("2026-10-29T00:00:00Z");
@@ -26,7 +26,6 @@ function experience(id: string, start: number, end: number, thing: Version | nul
     observationId: id,
     observation: version<Observation>(id, {} as Observation),
     observerVersionId: "observer-v1",
-    previewAt: null,
     writtenAt: end,
     content: null,
     contentType: "periods",
@@ -97,20 +96,5 @@ describe("刻度", () => {
     const local = new Date(2026, 9, 29, 9, 7).getTime();
     const marks = ticks(local, local + 60 * MIN, 15 * MIN);
     expect(new Date(marks[0]!).getMinutes()).toBe(15);
-  });
-});
-
-describe("withPreviews", () => {
-  it("预览取代同一份 Observation 的时段，保留已保存的版本；只有预览的时段也列出", () => {
-    const saved = experience("a", from, from + 10 * MIN, code);
-    const preview = { ...experience("a", from, from + 30 * MIN, code), observation: null, previewAt: from + 30 * MIN };
-    const fresh = { ...experience("b", from + 30 * MIN, from + 31 * MIN, chrome), observation: null, previewAt: from };
-    const merged = withPreviews([saved, experience("c", from, from + MIN, null)], [preview, fresh]);
-    expect(merged.map((e) => [e.observationId, e.end, e.observation?.entityId ?? null])).toEqual([
-      ["c", from + MIN, "c"],
-      ["a", from + 30 * MIN, "a"],
-      ["b", from + 31 * MIN, null],
-    ]);
-    expect(summarize(merged, [], from, to).things.find((r) => r.key === "chrome")!.segments[0]!.ongoing).toBe(true);
   });
 });

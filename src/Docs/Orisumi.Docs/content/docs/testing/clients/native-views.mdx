@@ -1,43 +1,41 @@
 ---
 title: "Native Views"
-description: "没有专用视图的 Observer 也有公共界面，读取合并本地和后端的数据且不重复，断网时标明不完整"
+description: "客户端经 Runtime 读取已保存的观测，后端不可用时报告错误"
 ---
 
 export const caseId = 'native-views';
 
 ## 为什么验证 [#why]
 
-客户端展示的数据来自后端和本地两处，发送前后同一份 Observation 不能显示两次；Observer 停止后数据仍要可读。约定见 [Device Clients · 最近的数据](../../clients/device.mdx#recent) 和 [Protocol · 读取](../../hosting/protocol.mdx#reading)。
+客户端通过 Runtime 读取后端保存的数据。Observer 停止后仍能读取，后端删除的内容也要从视图中消失。约定见 [Device Clients · 最近的数据](../../clients/device.mdx#recent) 和 [Protocol · 读取](../../hosting/protocol.mdx#reading)。
 
 ## 前置条件 [#setup]
 
-Runtime 使用独立的数据目录，连接通过 `WebApplicationFactory` 启动的 API。读取的界面检查在 macOS 客户端中实际运行。
+Runtime 使用独立的数据目录，连接通过 WebApplicationFactory 启动的 API。Swift 单元测试使用与管道契约相同的 JSON 响应。实际客户端检查在 macOS 上运行。
 
 ## 操作与预期结果 [#steps]
 
 | 操作 | 预期结果 |
 | --- | --- |
-| 提交一份 Observation 后、发送前读取 | 结果中有它，`state` 为 `pending` |
-| 发送完成后再读取 | 它只出现一次，`state` 为 `saved` |
-| 读取进行中的 Observation | `state` 为 `draft` |
-| 停用 Observer 后读取 | 仍能读到它的数据 |
-| 后端不可用时读取 | 返回本地的数据，`complete` 为 `false`，`error` 说明原因 |
-| 用 `versions` 读取一个实体的旧版本，这个实体已有更新的版本 | 返回的是指定的旧版本 |
-| 被引用的版本已在后端删除 | 它出现在 `missing` 中 |
-| 翻页期间有新的数据提交 | 各页不重复也不遗漏第一页时的快照 |
-| 后端不可用时按事实时间读取，本地有只知道一个边界的和两个边界都未知的 Observation | 只知道一个边界的按那个时刻匹配；两个都未知的不在结果中，与后端的查询一致 |
-| 安装一个没有专用视图的 Observer，在 macOS 客户端中打开 | 详情显示状态、发送和最近的 Observation |
-| 前台状态 Observer 在 macOS 客户端中 | 显示今天的前台应用视图；断网时标明可能不完整 |
+| 提交后读取 | 返回已保存的 Observation 版本 |
+| 后端删除 Observation 后读取 | 结果中没有它 |
+| 停用 Observer 后读取 | 仍能读到已保存的数据 |
+| 后端不可用 | 返回错误 |
+| 翻页期间有新的数据提交 | 各页来自第一页时的快照 |
+| 被引用的内容被删除 | 读取缺失的版本，视图不再显示旧缓存内容 |
+| 读取依赖的内容时出错 | 把错误报告给视图 |
+| 前台状态 Observer 正常停用 | 当前时段结束并保存，客户端可以读取它 |
 
 ## 测试实现 [#implementation]
 
-以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
+以下方法位于 `tests/Orisumi.Integration.Tests/`：
 
-- 发送前读到 `draft`，发送后同一份 Observation 只出现一次且为 `saved`；后端删除后不再出现，之后离线也不出现本地副本：`RuntimeReadingTests.UploadDoesNotDuplicateAndKnownDeletionDoesNotReappearOffline`。
-- 翻页期间有新的时段提交，各页来自第一页的快照，不重复：`RuntimeReadingTests.PaginationKeepsOneSnapshotWhileCollectionContinues`。
-- 离线时只知道一个边界的按时刻匹配，两个都未知的排除：`RuntimeReadingTests.OfflineFactQueriesTreatOneEndpointAsAPointAndExcludeUnknownTime`。这个问题先以失败的测试复现，再修复。
-- macOS 客户端经 Runtime 读取今天的时段、分页和游标过期后重读，`versions` 报告缺失的内容不再显示，`versions` 报告错误时结果标为不完整：`OrisumiClient` 的 `ObservationReaderTests`；对真实 Runtime 读到进行中的时段、停用后仍能读取：`RuntimeIntegrationTests.enableUninstallReinstallKeepIdentityAndTodayReads`（设置 `ORISUMI_APP` 时运行）。
-- 未覆盖：`versions` 读取旧版本和已删除的版本。macOS 客户端的界面按 [macOS](../../clients/macos.mdx) 实际运行检查。
+- 已保存的数据、删除与后端不可用：`RuntimeReadingTests.ReadReturnsSavedObservationsAndLeavesOutDeletedOnes`。
+- 翻页快照：`RuntimeReadingTests.PaginationKeepsOneSnapshotWhileCollectionContinues`。
+
+Swift 的 `ObservationReaderTests` 覆盖管道响应解码、今天的时段、分页、游标过期后重读、删除后的缓存更新，以及读取失败。`RuntimeIntegrationTests.enableUninstallReinstallKeepIdentityAndTodayReads` 覆盖真实 Runtime 的接入、停用后读取、重装身份与启用状态；设置 `ORISUMI_APP` 时运行。
+
+未覆盖：经客户端管道读取指定旧版本。界面按 [macOS](../../clients/macos.mdx) 实际运行检查。
 
 ## 执行结果 [#results]
 

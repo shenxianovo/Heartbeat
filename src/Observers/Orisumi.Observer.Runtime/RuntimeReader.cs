@@ -2,26 +2,20 @@ using System.Net;
 using System.Text.Json;
 using Orisumi.Core;
 using Orisumi.Observer.Sdk;
-using Orisumi.Observer.Runtime.Store;
 using System.Globalization;
 
 namespace Orisumi.Observer.Runtime;
 
 internal sealed class RuntimeReader(HttpClient http, Func<bool>? canRead = null)
 {
-    private sealed record Item(VersionSubmission Version, string State);
-    private sealed record Snapshot(Guid InstanceId, string Query, Item[] Items, bool Complete, string? Error, DateTimeOffset Created);
+    private sealed record Snapshot(Guid InstanceId, string Query, VersionSubmission[] Items, DateTimeOffset Created);
     private readonly Dictionary<string, Snapshot> _snapshots = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, Item[]> _lastReads = new(StringComparer.Ordinal);
 
-    internal async Task<JsonElement> ContentAsync(IEnumerable<ManagedObserver> observers, JsonElement parameters, CancellationToken token)
+    internal async Task<JsonElement> ContentAsync(JsonElement parameters, CancellationToken token)
     {
         var digest = parameters.GetProperty("digest").GetString()!;
         if (!BinaryValue.ValidDigest(digest)) throw new ArgumentException("Invalid content digest.");
-        foreach (var observer in observers)
-            if (observer.Store.Execute(local => local.ReadContent(digest)) is { } localData)
-                return JsonLines.Json(new { data = localData });
-        if (canRead?.Invoke() == false) throw new HttpRequestException("Runtime is not connected.");
+        EnsureConnected();
         using var response = await http.GetAsync("contents/" + digest, token);
         if (response.StatusCode == HttpStatusCode.NotFound) throw new KeyNotFoundException("Content is not available.");
         response.EnsureSuccessStatusCode();
@@ -56,137 +50,51 @@ internal sealed class RuntimeReader(HttpClient http, Func<bool>? canRead = null)
             if (_snapshots.Count >= 32) _snapshots.Remove(_snapshots.MinBy(pair => pair.Value.Created).Key);
             _snapshots[snapshotId] = snapshot;
         }
-        var page = snapshot.Items.Skip(offset).Take(limit).Select(item => new { version = VersionJson.Submission(item.Version), state = item.State }).ToArray();
+        var page = snapshot.Items.Skip(offset).Take(limit).Select(VersionJson.Submission).ToArray();
         var next = offset + page.Length < snapshot.Items.Length ? snapshotId + ":" + (offset + page.Length).ToString(CultureInfo.InvariantCulture) : null;
-        return JsonLines.Json(new { observations = page, next, snapshot.Complete, snapshot.Error });
+        return JsonLines.Json(new { observations = page, next });
     }
 
     private async Task<Snapshot> BuildAsync(ManagedObserver observer, string query, DateTimeOffset from, DateTimeOffset to,
         string? resource, CancellationToken token)
     {
-        var (local, currentVersions) = LocalSnapshot(observer.Store);
-        var remote = new Dictionary<EntityId, Item>();
+        var items = new List<VersionSubmission>();
         var cache = new Dictionary<VersionId, VersionSubmission?>();
-        var complete = true;
-        string? error = null;
-        try
+        string? after = null;
+        do
         {
-            string? after = null;
-            do
+            var path = "observations?limit=1000&from=" + Uri.EscapeDataString(VersionTime.Format(from)) + "&to=" + Uri.EscapeDataString(VersionTime.Format(to));
+            if (resource is not null) path += "&resourceName=" + Uri.EscapeDataString(resource);
+            if (after is not null) path += "&after=" + Uri.EscapeDataString(after);
+            EnsureConnected();
+            using var response = await http.GetAsync(path, token);
+            response.EnsureSuccessStatusCode();
+            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
+            foreach (var value in json.RootElement.GetProperty("versions").EnumerateArray())
             {
-                var path = "observations?limit=1000&from=" + Uri.EscapeDataString(VersionTime.Format(from)) + "&to=" + Uri.EscapeDataString(VersionTime.Format(to));
-                if (resource is not null) path += "&resourceName=" + Uri.EscapeDataString(resource);
-                if (after is not null) path += "&after=" + Uri.EscapeDataString(after);
-                if (canRead?.Invoke() == false) throw new HttpRequestException("Runtime is not connected.");
-                using var response = await http.GetAsync(path, token);
-                response.EnsureSuccessStatusCode();
-                using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
-                foreach (var value in json.RootElement.GetProperty("versions").EnumerateArray())
-                {
-                    var version = VersionJson.ReadSaved(value).Submission;
-                    if (await BelongsAsync(version)) remote[version.EntityId] = new(version, "saved");
-                }
-                after = json.RootElement.GetProperty("next").GetString();
-            } while (after is not null);
-            // Snapshot local again: sending may have confirmed a version after the list was read.
-            (local, currentVersions) = LocalSnapshot(observer.Store);
-            foreach (var item in currentVersions)
-            {
-                if (item.Version.Content is not Observation observation || !Overlaps(observation, from, to)) continue;
-                if (!await BelongsAsync(item.Version) || !await MatchesResourceAsync(observation, resource)) continue;
-                if (remote.TryGetValue(item.Version.EntityId, out var saved))
-                {
-                    if (item.Version.VersionId == saved.Version.VersionId) continue;
-                    if (item.State != SubmissionState.Saved && DescendsFrom(item.Version, saved.Version.VersionId, local))
-                        remote[item.Version.EntityId] = new(item.Version, State(item.State));
-                    continue;
-                }
-                if (canRead?.Invoke() == false) throw new HttpRequestException("Runtime is not connected.");
-                using var response = await http.GetAsync("entities/" + item.Version.EntityId.Value, token);
-                if (response.StatusCode == HttpStatusCode.Gone)
-                {
-                    observer.Store.Execute(transaction => transaction.RememberDeleted(item.Version.EntityId));
-                    continue;
-                }
-                if (response.StatusCode == HttpStatusCode.NotFound)
-                {
-                    if (item.State != SubmissionState.Saved) remote[item.Version.EntityId] = new(item.Version, State(item.State));
-                    continue;
-                }
-                response.EnsureSuccessStatusCode();
-                using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
-                var current = VersionJson.ReadSaved(json.RootElement).Submission;
-                var selected = item.State != SubmissionState.Saved && DescendsFrom(item.Version, current.VersionId, local)
-                    ? new Item(item.Version, State(item.State)) : new Item(current, "saved");
-                if (selected.Version.Content is Observation selectedObservation && Overlaps(selectedObservation, from, to)
-                    && await BelongsAsync(selected.Version) && await MatchesResourceAsync(selectedObservation, resource)) remote[item.Version.EntityId] = selected;
+                var version = VersionJson.ReadSaved(value).Submission;
+                if (version.Content is Observation observation && (await LookupAsync(observation.ObserverVersionId))?.EntityId.Value == observer.Registration.InstanceId)
+                    items.Add(version);
             }
-            if (_lastReads.Count >= 32 && !_lastReads.ContainsKey(query)) _lastReads.Remove(_lastReads.Keys.First());
-            _lastReads[query] = remote.Values.ToArray();
-        }
-        catch (Exception exception) when (exception is HttpRequestException or JsonException || exception is OperationCanceledException && !token.IsCancellationRequested)
-        {
-            complete = false;
-            error = exception.Message;
-            remote = (_lastReads.GetValueOrDefault(query) ?? []).ToDictionary(item => item.Version.EntityId);
-            var deleted = observer.Store.Execute(transaction => local.Values.Select(item => item.Version.EntityId).Concat(remote.Keys)
-                .Where(transaction.IsKnownDeleted).ToHashSet());
-            foreach (var id in deleted) remote.Remove(id);
-            foreach (var item in currentVersions)
-            {
-                if (deleted.Contains(item.Version.EntityId)) continue;
-                if (item.Version.Content is not Observation observation || !Overlaps(observation, from, to)) continue;
-                if (local.GetValueOrDefault(observation.ObserverVersionId)?.Version.EntityId.Value != observer.Registration.InstanceId) continue;
-                if (resource is not null && (local.GetValueOrDefault(observation.ContentVersionId)?.Version.SchemaVersionId is not { } schema
-                    || local.GetValueOrDefault(schema)?.Version.Content is not EntitySchema entitySchema || entitySchema.ResourceName != resource)) continue;
-                if (item.State != SubmissionState.Saved || !remote.ContainsKey(item.Version.EntityId)) remote[item.Version.EntityId] = new(item.Version, State(item.State));
-            }
-        }
-        var items = remote.Values.OrderByDescending(item => ((Observation)item.Version.Content).StartAt ?? ((Observation)item.Version.Content).EndAt)
-            .ThenBy(item => item.Version.EntityId.Value).ToArray();
-        return new(observer.Registration.InstanceId, query, items, complete, error, DateTimeOffset.UtcNow);
+            after = json.RootElement.GetProperty("next").GetString();
+        } while (after is not null);
+        var ordered = items.OrderByDescending(item => ((Observation)item.Content).StartAt ?? ((Observation)item.Content).EndAt)
+            .ThenBy(item => item.EntityId.Value).ToArray();
+        return new(observer.Registration.InstanceId, query, ordered, DateTimeOffset.UtcNow);
 
         async Task<VersionSubmission?> LookupAsync(VersionId id)
         {
             if (cache.TryGetValue(id, out var found)) return found;
-            if (local.TryGetValue(id, out var value)) return cache[id] = value.Version;
-            return cache[id] = (await observer.Store.ReadVersionAsync(id, token))?.Submission;
-        }
-        async Task<bool> BelongsAsync(VersionSubmission version) => version.Content is Observation observation
-            && (await LookupAsync(observation.ObserverVersionId))?.EntityId.Value == observer.Registration.InstanceId;
-        async Task<bool> MatchesResourceAsync(Observation observation, string? expected)
-        {
-            if (expected is null) return true;
-            var content = await LookupAsync(observation.ContentVersionId);
-            return content?.SchemaVersionId is { } schema && (await LookupAsync(schema))?.Content is EntitySchema type && type.ResourceName == expected;
+            var response = await observer.Session.ReadVersionsAsync([id], token);
+            return cache[id] = response.GetProperty("versions").EnumerateArray().Select(VersionJson.ReadSubmission).SingleOrDefault();
         }
     }
-
-    private static (Dictionary<VersionId, LocalVersion> Versions, LocalVersion[] Current) LocalSnapshot(ObserverStore runtimeStore) =>
-        runtimeStore.Execute(transaction => (transaction.Versions().ToDictionary(item => item.Version.VersionId),
-            transaction.CurrentVersions().Where(item => !transaction.IsKnownDeleted(item.Version.EntityId)).ToArray()));
-
-    private static bool DescendsFrom(VersionSubmission version, VersionId ancestor, Dictionary<VersionId, LocalVersion> local)
-    {
-        var current = version;
-        var visited = new HashSet<VersionId>();
-        while (visited.Add(current.VersionId))
-        {
-            if (current.VersionId == ancestor || current.PreviousVersionId == ancestor) return true;
-            if (current.PreviousVersionId is not { } predecessor || !local.TryGetValue(predecessor, out var previous)) return false;
-            current = previous.Version;
-        }
-        return false;
-    }
-    private static bool Overlaps(Observation observation, DateTimeOffset from, DateTimeOffset to)
-    {
-        if ((observation.StartAt ?? observation.EndAt) is not { } start) return false;
-        var end = observation.EndAt ?? start;
-        return start == end ? start >= from && start < to : start < to && end > from;
-    }
-    private static string State(SubmissionState state) => state == SubmissionState.Frozen ? "pending" : state.ToString().ToLowerInvariant();
 
     public static Task<JsonElement> VersionsAsync(ManagedObserver observer, JsonElement parameters, CancellationToken token) =>
-        observer.Store.ReadVersionsAsync(parameters.GetProperty("versionIds").EnumerateArray().Select(item => new VersionId(item.GetGuid())), token);
+        observer.Session.ReadVersionsAsync(parameters.GetProperty("versionIds").EnumerateArray().Select(item => new VersionId(item.GetGuid())), token);
 
+    private void EnsureConnected()
+    {
+        if (canRead?.Invoke() == false) throw new HttpRequestException("Runtime is not connected.");
+    }
 }

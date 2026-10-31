@@ -23,8 +23,6 @@ public static class DependencyInjection
         services.AddScoped<EntityService>();
         services.AddScoped<ContentService>();
         services.AddSingleton<IManagementStore, PostgresManagementStore>();
-        services.AddSingleton<ObservationPreviewCache>();
-        services.AddScoped<ObservationPreviewService>();
         return services;
     }
 }

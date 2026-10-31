@@ -3,9 +3,9 @@ title: "Overview"
 description: "托管方是什么，它和 Observer 的业务代码怎样分工，提交的流程，Runtime 在设备和服务器上的两种运行方式，以及它报告的状态"
 ---
 
-Observer 的业务代码判断事实、形成版本；托管方运行它，保管它的身份，并把它形成的版本可靠地交给后端。托管方是 [Runtime](./runtime.mdx)。设备上由设备端客户端启动它，服务器上由服务管理器或容器启动它，两处是同一个程序。
+Observer 的业务代码判断事实、交出业务变化；托管方运行它，保管它的身份，把业务变化形成版本并提交给后端。托管方是 [Runtime](./runtime.mdx)。设备上由设备端客户端启动它，服务器上由服务管理器或容器启动它，两处是同一个程序。
 
-[Walkthrough](../start/walkthrough.mdx) 那一天 16:00，用户从 VS Code 切到浏览器。前台状态 Observer 判断 VS Code 的时段到此结束、浏览器的时段开始，形成对应的版本。这些版本怎样留在本机、怎样送到后端，断网、崩溃和重启后怎样继续，都由 Mac 上的 Runtime 负责。晚上服务器上的 Runtime 运行应用识别 Observer，它读到浏览器这个新的本机应用，形成应用产品的版本，交给的是同一种 Runtime。
+[Walkthrough](../start/walkthrough.mdx) 那一天 16:00，用户从 VS Code 切到浏览器。前台状态 Observer 判断 VS Code 的时段到此结束，把这一段交给 Mac 上的 Runtime，由它形成版本并提交给后端。晚上服务器上的 Runtime 运行应用识别 Observer，它读到浏览器这个新的本机应用，形成应用产品，交给的是同一种 Runtime。
 
 ## 本分区的页面 [#pages]
 
@@ -21,9 +21,8 @@ Observer 的业务代码判断事实、形成版本；托管方运行它，保�
 | Observer 的业务代码 | 托管方 |
 | --- | --- |
 | 定义 EntitySchema，读取来源，形成观测内容和 Observation | 保管程序实例的 EntityId，登记程序实例和所需的 EntitySchema |
-| 决定粒度、业务对象的身份、历史保留，以及事实何时结束 | 持久保存交来的版本，按依赖顺序提交，重试和恢复 |
-| 处理被拒绝的版本 | 把被拒绝的版本和它的 `rule` 交给业务代码 |
-| 选择提交策略，决定是否写入观测预览，是否等待最终结果 | 接好版本链，合并和冻结草稿，写入观测预览，报告批次的最终结果 |
+| 决定粒度、业务对象的身份、历史保留，以及事实何时结束 | 生成 VersionId，接好版本链，上传二进制内容，提交到后端 |
+| 处理提交的错误 | 把后端的结果或错误交给业务代码 |
 | 持久保存自己的业务状态 | 提供实例的数据目录，执行管理配置，报告状态 |
 
 后端按 Schema 版本和 Core 的规则校验并保存，见 [Core · 谁决定什么](../core/index.mdx#responsibility)。
@@ -34,19 +33,15 @@ Observer 的业务代码判断事实、形成版本；托管方运行它，保�
 
 ```mermaid
 flowchart TD
-  B[业务代码形成一次业务变化：一组有序的版本] --> H[Runtime 本地保存这些版本，返回本地回执]
-  H --> S[后端按依赖顺序逐个保存]
-  S --> OK[已保存，可以被引用和读取]
-  S -. 结果不确定 .-> R[Runtime 用原来的 VersionId 和内容重发] --> S
-  S -. 一个版本被拒绝 .-> J[之前的版本已保存；被拒绝的版本交给业务代码] --> B
-  click H "/hosting/submission#receipts"
-  click R "/hosting/submission#retry"
-  click J "/hosting/submission#rejections"
+  B[业务代码交出一次业务变化：一个批次] --> H[Runtime 形成版本]
+  H --> S[后端校验整次提交]
+  S --> OK[全部保存，Runtime 返回 VersionId]
+  S -. 一个版本被拒绝 .-> J[整次提交都不保存，错误交给业务代码]
+  click H "/hosting/submission#batch"
+  click J "/hosting/submission#result"
 ```
 
-Runtime 保存这些版本之后，发送就与形成它们的进程无关：进程崩溃、程序实例停止后，Runtime 照常完成发送。重发沿用 VersionId，后端把已保存的版本直接确认，见 [VERSION-7](../core/model/version.mdx#version-7)。一次提交中途被拒绝时，之前的版本已保存，见 [VERSION-13](../core/model/version.mdx#version-13)；被拒绝的版本怎样处理，由业务代码按业务规则决定。
-
-前台状态 Observer 收到本地回执就继续采集。应用识别 Observer 判断下一条线索之前要读到上一条的结果，所以它再等 Runtime 报告这一批已保存，见 [Submission · 最终结果](./submission.mdx#outcome)。
+提交在业务代码等待时完成。业务代码收到结果时，版本已保存，下一次处理可以读到它们。
 
 ## 两种运行方式 [#modes]
 
@@ -61,12 +56,11 @@ Runtime 保存这些版本之后，发送就与形成它们的进程无关：进
 
 ## 状态 [#status]
 
-Runtime 为每个程序实例报告三项状态：
+Runtime 为每个程序实例报告两项状态：
 
 | 状态 | 含义 |
 | --- | --- |
 | 启用 | 程序实例是否应当运行 |
 | 运行 | 程序实例现在是否在运行，以及最近一条采集诊断，见 [OBSERVER-8](../core/model/observer.mdx#observer-8) |
-| 发送 | 待发送和已保存的数量，发送错误和被拒绝的版本 |
 
-三项各自变化。例如程序实例停用后，它已经交出的版本照常发送；程序实例在运行时，来源可能正在读取失败。Runtime 把它们报告给本机客户端，取值见 [Runtime · 状态](./runtime.mdx#states)；也报告给后端，供其他客户端读取，见 [Management · 状态报告](./management.mdx#status)。
+两项各自变化。例如程序实例在运行时，来源可能正在读取失败。Runtime 把它们报告给本机客户端，取值见 [Runtime · 状态](./runtime.mdx#states)；也报告给后端，供其他客户端读取，见 [Management · 状态报告](./management.mdx#status)。

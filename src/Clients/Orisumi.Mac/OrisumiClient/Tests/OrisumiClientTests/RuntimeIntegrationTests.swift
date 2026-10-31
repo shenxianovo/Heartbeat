@@ -38,32 +38,39 @@ struct RuntimeIntegrationTests {
         var model = Self.model(dataDirectory: directory)
         model.start()
 
-        // The bundled package is installed on first start and collects right away.
+        _ = try await Self.waitFor(model) { _ in true }
+        for observer in model.observers where observer.packageId != Self.packageId {
+            await model.setEnabled(observer.packageId, false)
+        }
+
+        // Data requests require a paired Runtime.
+        let backend = URL(string: ProcessInfo.processInfo.environment["ORISUMI_BACKEND"] ?? "http://localhost:8080/api/")!
+        var request = URLRequest(url: backend.appending(path: "pairings"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = Data("{}".utf8)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        #expect((response as? HTTPURLResponse)?.statusCode == 201)
+        let pairing = try RuntimeJSON.decoder.decode(PairingCode.self, from: data)
+        await model.pair(code: pairing.code, name: "Runtime integration test")
+        await model.setEnabled(Self.packageId, false)
+        _ = try await Self.waitFor(model) { $0.state == .stopped }
+        await model.setEnabled(Self.packageId, true)
         let running = try await Self.waitFor(model) { $0.state == .running }
         let instance = running.instanceId
         #expect(running.installed && running.enabled)
 
-        // Today's periods read through Runtime include the active draft.
         let day = Today.interval(containing: .now)
         let reader = ForegroundReader()
-        var periods: Snapshot<Period> = Snapshot(items: [])
-        for _ in 0..<50 {
-            periods = try await reader.today(instanceId: instance, day: day, from: model)
-            if periods.items.contains { $0.isActive } { break }
-            try await Task.sleep(for: .milliseconds(200))
-        }
-        #expect(periods.complete)
-        #expect(periods.items.contains { $0.isActive })
-
-        // Disabling stops the process; the period that was active is no longer a draft.
+        let periods = try await reader.today(instanceId: instance, day: day, from: model)
+        // Let the Observer confirm a nonempty period, then stop and read the saved result.
+        try await Task.sleep(for: .seconds(2))
         let started = Date.now
         await model.setEnabled(Self.packageId, false)
         #expect(Date.now.timeIntervalSince(started) < 10)
-        let disabled = try await Self.waitFor(model) { $0.state == .stopped && !$0.enabled }
-        #expect(disabled.delivery.drafts == 0)
+        _ = try await Self.waitFor(model) { $0.state == .stopped && !$0.enabled }
         let afterStop = try await reader.today(instanceId: instance, day: day, from: model)
-        #expect(!afterStop.items.contains { $0.isActive })
-        #expect(afterStop.items.count >= periods.items.count)
+        #expect(afterStop.items.count > periods.items.count)
 
         await model.setEnabled(Self.packageId, true)
         _ = try await Self.waitFor(model) { $0.state == .running }

@@ -14,12 +14,12 @@ Orisumi.Observer.ApplicationIdentity 是应用识别 Observer：它读取后端�
 | `model` | 程序实例的设置 | OpenAI 模型型号 | `gpt-6.1-terra` |
 | `intervalSeconds` | 程序实例的设置 | 一轮结束到下一轮开始的间隔，必须是正数 | `60` |
 
-没有 Key 时，应用识别不调用模型，每轮报告一次诊断，仍先恢复上次没有完成的批次。
+没有 Key 时，应用识别不调用模型，每轮报告一次诊断。
 
 ## 状态
 
-程序实例的 EntityId 和未发送的版本由 Runtime 保存，模型回答未知的线索和正在等待结果的批次保存在实例的数据目录中，见 [Application Identity · 恢复](../../Docs/Orisumi.Docs/content/docs/observers/application-identity/index.mdx#recovery)。
+程序实例的 EntityId 由 Runtime 保存。模型回答未知的线索只记在内存中，进程重启后重新交给模型，见 [Application Identity · 模型](../../Docs/Orisumi.Docs/content/docs/observers/application-identity/index.mdx#model)。
 
 ## 验证
 
-测试在 `tests/Orisumi.Integration.Tests/` 中，随集成测试运行，见[集成测试 README](../../../tests/Orisumi.Integration.Tests/README.md)。Case 见 [Testing · 应用识别](../../Docs/Orisumi.Docs/content/docs/testing/observers/application-identity.mdx)。`ApplicationIdentityTests` 经真实的 Runtime 本地保存和管道，连接独立的 PostgreSQL，模型用替身；`ApplicationModelTests` 用 HTTP 替身检查 Responses 请求和回答的解析。真实的 OpenAI 调用不在自动测试中，需要时在临时环境中运行并单独保存结果。
+测试在 `tests/Orisumi.Integration.Tests/` 中，随集成测试运行，见[集成测试 README](../../../tests/Orisumi.Integration.Tests/README.md)。Case 见 [Testing · 应用识别](../../Docs/Orisumi.Docs/content/docs/testing/observers/application-identity.mdx)。`ApplicationIdentityTests` 经真实的 Runtime 请求处理，连接独立的 PostgreSQL，模型用替身；`ApplicationModelTests` 用 HTTP 替身检查 Responses 请求和回答的解析。真实的 OpenAI 调用不在自动测试中，需要时在临时环境中运行并单独保存结果。

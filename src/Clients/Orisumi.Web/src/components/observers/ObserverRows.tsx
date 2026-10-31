@@ -1,8 +1,7 @@
 import { isActive, LENS, union, type ObserverRow, type Span } from "@/lib/activity";
 import { categoryInfo } from "@/lib/categories";
-import { ago, clock } from "@/lib/time";
+import { ago } from "@/lib/time";
 import { cn } from "@/lib/utils";
-import { useEntityInfo } from "@/hooks/useEntityInfo";
 import { Mark } from "../token/Token";
 import { useHighlight, useStack } from "../token/context";
 
@@ -87,7 +86,7 @@ function Row({ row, day, now }: { row: ObserverRow; day: { start: number; end: n
           <Lane row={row} from={day.start} to={day.end} now={now} color={category.color} />
           <Lane row={row} from={now - LENS} to={now} now={now} color={category.color} lens active={active} />
         </span>
-        <Status row={row} now={now} active={active} />
+        <Status row={row} now={now} />
       </button>
     </div>
   );
@@ -115,7 +114,6 @@ function Lane({
   const x = (at: number) => ((Math.min(Math.max(at, from), to) - from) / width) * 1000;
   const visible = (span: Span) => span.end >= from && span.start <= to;
   const tick = lens ? 3 : 2;
-  const preview = row.preview && row.basis === "fact" && visible(row.preview) ? row.preview : null;
 
   return (
     <span className="bg-line relative block h-7 overflow-hidden rounded">
@@ -136,15 +134,6 @@ function Lane({
           .map((at, i) => (
             <rect key={`t${i}`} x={x(at) - tick / 2} y={5} width={tick} height={18} fill={color} opacity={0.85} />
           ))}
-        {preview && (
-          <rect
-            x={x(preview.start)}
-            y={8}
-            width={Math.max(2, x(preview.end) - x(preview.start))}
-            height={12}
-            fill={color}
-          />
-        )}
         {!lens && now > from && now < to && <rect x={x(now) - 1} y={0} width={2} height={28} fill="var(--fg-3)" />}
       </svg>
       {lens && active && (
@@ -158,33 +147,13 @@ function Lane({
   );
 }
 
-function Status({ row, now, active }: { row: ObserverRow; now: number; active: boolean }) {
-  const preview = active && row.preview && now - row.preview.updatedAt < LENS ? row.preview : null;
+function Status({ row, now }: { row: ObserverRow; now: number }) {
   return (
     <span className="min-w-0 text-right">
-      {preview ? (
-        <>
-          <span className="block text-[13px] tabular-nums">预览 · {ago(now - preview.updatedAt)}</span>
-          <PreviewTitle contentVersionId={preview.contentVersionId} start={preview.start} />
-        </>
-      ) : (
-        <>
-          <span className={cn("block text-[13px] tabular-nums", !row.lastAt && "text-fg-3")}>
-            {row.lastAt ? ago(now - row.lastAt) : "今天没有写入"}
-          </span>
-          <span className="text-fg-3 block text-xs tabular-nums">今天 {row.count.toLocaleString()} 份</span>
-        </>
-      )}
-    </span>
-  );
-}
-
-/** 预览的观测内容和开始时刻，例如“VS Code，从 17:51 起”。 */
-function PreviewTitle({ contentVersionId, start }: { contentVersionId: string; start: number }) {
-  const { info } = useEntityInfo(contentVersionId);
-  return (
-    <span className="text-fg-3 block truncate text-xs">
-      {info ? `${info.title}，` : ""}从 {clock(start)} 起
+      <span className={cn("block text-[13px] tabular-nums", !row.lastAt && "text-fg-3")}>
+        {row.lastAt ? ago(now - row.lastAt) : "今天没有写入"}
+      </span>
+      <span className="text-fg-3 block text-xs tabular-nums">今天 {row.count.toLocaleString()} 份</span>
     </span>
   );
 }

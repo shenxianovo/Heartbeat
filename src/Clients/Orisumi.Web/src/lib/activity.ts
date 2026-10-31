@@ -1,8 +1,8 @@
-import type { Observation, ObservationPreview, Version } from "@/api/types";
+import type { Observation, Version } from "@/api/types";
 import { nameObservers, type ObserverIdentity } from "./observers";
 import { MINUTE, parseTime } from "./time";
 
-/** 最近 60 秒内保存过 Observation 或更新过预览的 Observer 算正在写入。 */
+/** 最近 60 秒内保存过 Observation 的 Observer 算正在写入。 */
 export const ACTIVE_WINDOW = MINUTE;
 /** 时间轴末尾放大的一段。 */
 export const LENS = 10 * MINUTE;
@@ -15,13 +15,6 @@ export interface Span {
   end: number;
 }
 
-/** 一份预览的事实边界。只知道一个边界时 start 和 end 相同。 */
-export interface PreviewSpan extends Span {
-  entityId: string;
-  contentVersionId: string;
-  updatedAt: number;
-}
-
 export interface ObserverRow {
   identity: ObserverIdentity;
   key: string;
@@ -31,10 +24,9 @@ export interface ObserverRow {
   spans: Span[];
   /** 按事实时间的时间点，或者按保存时间的每份 Observation。 */
   ticks: number[];
-  preview: PreviewSpan | null;
   /** 今天的 Observation 数。 */
   count: number;
-  /** 最近一次保存 Observation 或更新预览的时刻，今天没有写入时为 0。 */
+  /** 最近一次保存 Observation 的时刻，今天没有写入时为 0。 */
   lastAt: number;
 }
 
@@ -48,7 +40,6 @@ export interface ActivityInput {
   timed: Version<Observation>[];
   /** 只写事实时间未知的陈述的 Observer 今天保存的 Observation。 */
   recorded: Version<Observation>[];
-  previews: ObservationPreview[];
   now: number;
 }
 
@@ -86,7 +77,6 @@ export function observerRows(input: ActivityInput): ObserverRow[] {
         basis: basisOf(identity, input.timedTypes),
         spans: [],
         ticks: [],
-        preview: null,
         count: 0,
         lastAt: 0,
       };
@@ -121,25 +111,6 @@ export function observerRows(input: ActivityInput): ObserverRow[] {
     if (entry.basis !== "recorded") continue;
     saved(entry, observation);
     entry.ticks.push(Math.min(parseTime(observation.recordedAt) ?? now, now));
-  }
-
-  for (const preview of input.previews) {
-    const identity = input.identityOf(preview.content.observerVersionId);
-    if (!identity) continue;
-    const entry = row(identity);
-    const updatedAt = Math.min(parseTime(preview.updatedAt) ?? now, now);
-    if (entry.preview && entry.preview.updatedAt >= updatedAt) continue;
-    const start = parseTime(preview.content.startAt);
-    const end = parseTime(preview.content.endAt);
-    const from = start ?? end ?? updatedAt;
-    entry.preview = {
-      entityId: preview.entityId,
-      contentVersionId: preview.content.contentVersionId,
-      start: from,
-      end: Math.max(from, end ?? (start !== null ? updatedAt : from)),
-      updatedAt,
-    };
-    entry.lastAt = Math.max(entry.lastAt, updatedAt);
   }
 
   const list = [...rows.values()];

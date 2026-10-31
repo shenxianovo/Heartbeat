@@ -6,8 +6,14 @@ namespace Orisumi.Observer.Sdk;
 
 public interface IObserverSession
 {
-    Task<JsonElement> RequestAsync(string method, JsonElement parameters, string? requestId = null,
-        CancellationToken cancellationToken = default);
+    Task<JsonElement> RequestAsync(string method, JsonElement parameters, CancellationToken cancellationToken = default);
+}
+
+/// <summary>The backend rejected the submission formed from a batch; nothing in the batch was saved.</summary>
+public sealed class SubmissionRejectedException(string rule, Guid versionId, string message) : Exception(message)
+{
+    public string Rule { get; } = rule;
+    public Guid VersionId { get; } = versionId;
 }
 
 /// <summary>A language adapter: only framing, request correlation and host lifetime.</summary>
@@ -31,14 +37,11 @@ public sealed class PipeObserverSession : IObserverSession, IAsyncDisposable
         _reading = Task.Run(ReadAsync);
     }
 
-    public async Task<JsonElement> RequestAsync(string method, JsonElement parameters, string? requestId = null,
-        CancellationToken cancellationToken = default)
+    public async Task<JsonElement> RequestAsync(string method, JsonElement parameters, CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        using var outcomeStop = method == "outcome" ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, Stopping) : null;
-        cancellationToken = outcomeStop?.Token ?? cancellationToken;
         await _requests.WaitAsync(cancellationToken);
-        var id = requestId ?? Guid.NewGuid().ToString();
+        var id = Guid.NewGuid().ToString();
         var completion = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
         try
         {
@@ -67,9 +70,7 @@ public sealed class PipeObserverSession : IObserverSession, IAsyncDisposable
                     continue;
                 }
                 if (!value.TryGetProperty("id", out var id) || !_pending.TryGetValue(id.GetString()!, out var completion)) continue;
-                if (value.TryGetProperty("error", out var error)) completion.TrySetException(error.GetProperty("code").GetString() == "unavailable"
-                    ? new HttpRequestException(error.GetProperty("message").GetString())
-                    : new InvalidOperationException(error.GetProperty("message").GetString()));
+                if (value.TryGetProperty("error", out var error)) completion.TrySetException(Failure(error));
                 else completion.TrySetResult(value.GetProperty("result").Clone());
             }
         }
@@ -80,6 +81,17 @@ public sealed class PipeObserverSession : IObserverSession, IAsyncDisposable
             foreach (var pending in _pending.Values) pending.TrySetException(failure);
             await _stopped.CancelAsync();
         }
+    }
+
+    private static Exception Failure(JsonElement error)
+    {
+        var message = error.GetProperty("message").GetString();
+        return error.GetProperty("code").GetString() switch
+        {
+            "unavailable" => new HttpRequestException(message),
+            "rejected" => new SubmissionRejectedException(error.GetProperty("rule").GetString()!, error.GetProperty("versionId").GetGuid(), message!),
+            _ => new InvalidOperationException(message),
+        };
     }
 
     public async ValueTask DisposeAsync()

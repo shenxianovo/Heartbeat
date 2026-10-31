@@ -120,9 +120,9 @@ public sealed class SchemaTests
             await Reject(() => f.Business(schema, content), rule);
     }
 
-    // VERSION-2, VERSION-7, SCHEMA-13
+    // VERSION-2, SCHEMA-13: saved content outlives its source document; sameness compares values.
     [Test]
-    public async Task JsonContentOwnsItsLifetimeAndRetriesCompareValues()
+    public async Task JsonContentOwnsItsLifetimeAndSamenessComparesValues()
     {
         using var f = new ModelFixture();
         EntityVersion schema;
@@ -131,8 +131,10 @@ public sealed class SchemaTests
         EntityVersion business;
         using (var document = System.Text.Json.JsonDocument.Parse("""{"n":1,"s":"x"}"""))
             business = await f.Save(New(new BusinessContent(document.RootElement), schema.VersionId));
-        await Assert.That(await f.Save(business.Submission with { Content = new BusinessContent(Json("""{"s":"x","n":1.0}""")) })).IsEqualTo(business);
-        await Reject(() => f.Save(business.Submission with { Content = new BusinessContent(Json("""{"n":1}""")) }), "VERSION-7");
-        await Reject(() => f.Save(business.Submission with { Content = new BusinessContent(Json("""{"n":1,"s":null}""")) }), "VERSION-7");
+        await Assert.That(await f.Service.ReadVersionAsync(business.VersionId)).IsEqualTo(business);
+        bool Same(string json) => VersionRules.SameSubmission(business.Submission, business.Submission with { Content = new BusinessContent(Json(json)) });
+        await Assert.That(Same("""{"s":"x","n":1.0}""")).IsTrue();
+        await Assert.That(Same("""{"n":1}""")).IsFalse();
+        await Assert.That(Same("""{"n":1,"s":null}""")).IsFalse();
     }
 }

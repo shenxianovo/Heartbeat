@@ -1,17 +1,9 @@
 import Foundation
 
-/// What a view read: the items, and whether the backend part was available.
+/// The saved items read for a view.
 public struct Snapshot<Item: Sendable>: Sendable {
     public var items: [Item]
-    /// False when only local data could be read; statistics may then be incomplete.
-    public var complete: Bool
-    public var error: String?
-
-    public init(items: [Item], complete: Bool = true, error: String? = nil) {
-        self.items = items
-        self.complete = complete
-        self.error = error
-    }
+    public init(items: [Item]) { self.items = items }
 }
 
 /// Reads all pages of one query, starting over once when the snapshot cursor expired.
@@ -20,18 +12,14 @@ func readAll<Content: Decodable & Sendable>(_ query: ReadQuery, from reader: Run
                                             as: Content.Type) async throws -> ReadResult<Content> {
     for attempt in 0..<2 {
         var query = query
-        var items: [ReadResult<Content>.Item] = []
-        var complete = true
-        var error: String?
+        var items: [RuntimeVersion<Content>] = []
         do {
             repeat {
                 let page = try await reader.read(query, as: Content.self)
                 items += page.observations
-                complete = complete && page.complete
-                error = error ?? page.error
                 query.cursor = page.next
             } while query.cursor != nil
-            return ReadResult(observations: items, next: nil, complete: complete, error: error)
+            return ReadResult(observations: items, next: nil)
         } catch let failure as RuntimeError where failure.code == "conflict" && attempt == 0 {
             continue
         }
@@ -39,30 +27,25 @@ func readAll<Content: Decodable & Sendable>(_ query: ReadQuery, from reader: Run
     throw RuntimeError.invalidResponse
 }
 
-/// Contents of referenced versions. Every refresh asks Runtime for each version still needed: what it returns
-/// replaces the cache, what it reports missing (deleted on the backend) is forgotten, and versions it could not read
-/// keep their cached content while the snapshot is marked incomplete.
+/// Referenced contents are refreshed from the backend; missing versions are removed from the cache.
 @MainActor
 final class VersionCache<Content: Decodable & Sendable> {
     private(set) var contents: [UUID: Content] = [:]
 
     subscript(id: UUID) -> Content? { contents[id] }
 
-    /// Returns Runtime's error when some versions could not be read.
-    func refresh(_ ids: [UUID], instanceId: UUID, from reader: RuntimeReading) async throws -> String? {
+    /// Reading failures propagate to the view.
+    func refresh(_ ids: [UUID], instanceId: UUID, from reader: RuntimeReading) async throws {
         let unique = Array(Set(ids))
-        var error: String?
         for start in stride(from: 0, to: unique.count, by: 256) {
             let chunk = Array(unique[start..<min(start + 256, unique.count)])
             let result = try await reader.versions(instanceId: instanceId, chunk, as: Content.self)
             for version in result.versions { contents[version.versionId] = version.content }
             for id in result.missing { contents[id] = nil }
-            error = error ?? result.error
         }
         // Versions no longer referenced are dropped, so the cache stays the size of one refresh.
         let needed = Set(unique)
         contents = contents.filter { needed.contains($0.key) }
-        return error
     }
 }
 
@@ -78,22 +61,21 @@ public final class ForegroundReader {
     public func today(instanceId: UUID, day: DateInterval, from reader: RuntimeReading) async throws -> Snapshot<Period> {
         let result = try await readAll(ReadQuery(instanceId: instanceId, during: day, resourceName: Self.resourceName),
                                        from: reader, as: ObservationMembers.self)
-        let contentIds = result.observations.map(\.version.content.contentVersionId)
-        let contentError = try await periods.refresh(contentIds, instanceId: instanceId, from: reader)
+        let contentIds = result.observations.map(\.content.contentVersionId)
+        try await periods.refresh(contentIds, instanceId: instanceId, from: reader)
         let applicationIds = contentIds.compactMap { periods[$0]?.localApplicationVersionId }
-        let applicationError = try await applications.refresh(applicationIds, instanceId: instanceId, from: reader)
+        try await applications.refresh(applicationIds, instanceId: instanceId, from: reader)
 
         let items = result.observations.compactMap { item -> Period? in
-            let observation = item.version.content
+            let observation = item.content
             // A period whose content was deleted is left out.
             guard let startAt = observation.startAt, let endAt = observation.endAt,
                   let content = periods[observation.contentVersionId] else { return nil }
             let application = content.localApplicationVersionId.flatMap { applications[$0] }
-            return Period(id: item.version.entityId, name: content.name, identifiers: application?.identifiers ?? [],
-                          icon: content.icon?.digest, startAt: startAt, endAt: endAt, isActive: item.state == .draft)
+            return Period(id: item.entityId, name: content.name, identifiers: application?.identifiers ?? [],
+                          icon: content.icon?.digest, startAt: startAt, endAt: endAt)
         }
-        let error = result.error ?? contentError ?? applicationError
-        return Snapshot(items: items, complete: result.complete && error == nil, error: error)
+        return Snapshot(items: items)
     }
 
     struct PeriodContent: Decodable, Sendable {
@@ -116,7 +98,6 @@ public struct RecentObservation: Equatable, Identifiable, Sendable {
     public var id: UUID
     public var startAt: Date?
     public var endAt: Date?
-    public var state: LocalState
     public var content: JSONValue?
 }
 
@@ -132,14 +113,13 @@ public final class RecentReader {
         let interval = DateInterval(start: now.addingTimeInterval(-Double(days) * 86_400), end: now)
         let page = try await reader.read(ReadQuery(instanceId: instanceId, during: interval, limit: limit),
                                          as: ObservationMembers.self)
-        let error = try await contents.refresh(page.observations.map(\.version.content.contentVersionId),
+        try await contents.refresh(page.observations.map(\.content.contentVersionId),
                                                instanceId: instanceId, from: reader)
         let items = page.observations.map { item in
-            RecentObservation(id: item.version.entityId, startAt: item.version.content.startAt,
-                              endAt: item.version.content.endAt, state: item.state,
-                              content: contents[item.version.content.contentVersionId])
+            RecentObservation(id: item.entityId, startAt: item.content.startAt,
+                              endAt: item.content.endAt,
+                              content: contents[item.content.contentVersionId])
         }
-        let readError = page.error ?? error
-        return Snapshot(items: items, complete: page.complete && readError == nil, error: readError)
+        return Snapshot(items: items)
     }
 }

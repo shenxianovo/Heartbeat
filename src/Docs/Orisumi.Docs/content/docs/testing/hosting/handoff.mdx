@@ -1,45 +1,38 @@
 ---
 title: "Handoff"
-description: "批次整批提交或回滚，回执在提交后返回，重发同一个批次不重复"
+description: "批次直接提交后端，成功返回具名版本，失败返回错误"
 ---
 
 export const caseId = 'runtime-handoff';
 
 ## 为什么验证 [#why]
 
-一次业务变化的几项操作必须一起成立，例如结束旧时段和开始新时段。业务代码靠回执判断数据已本地保存，回执丢失后的重发不能形成第二份数据。需要等后端保存的业务，要能按批次读到最终结果，进程重启后也一样。约定见 [Submission · 批次](../../hosting/submission.mdx#handoff)、[回执](../../hosting/submission.mdx#receipts) 和 [最终结果](../../hosting/submission.mdx#outcome)。
+一个批次中的内容和 Observation 需要一起保存，后面的操作要引用前面形成的确定版本。约定见 [Submission · 批次](../../hosting/submission.mdx#batch) 和 [结果](../../hosting/submission.mdx#result)。
 
 ## 前置条件 [#setup]
 
-Runtime 使用独立的数据目录，启动一个由测试控制的 Observer 进程，后端是记录每次请求的 HTTP 处理器。
+通过 `WebApplicationFactory` 启动 API，连接独立的测试数据库。RuntimeObserverSession 在进程内处理批次；不可用后端由 HTTP 替身模拟。
 
 ## 操作与预期结果 [#steps]
 
 | 操作 | 预期结果 |
 | --- | --- |
-| 一个批次结束旧的 Observation，引用新的本机应用，形成新的观测内容和 Observation 草稿 | 收到一个回执，回执中有这些版本；本地同时有旧时段的最终版本和新时段的草稿 |
-| 同样的批次中最后一个操作不合法 | Runtime 返回错误，本地没有这一批的任何改动 |
-| 批次中先引用一个实体，后面的观测内容绑定这个结果；之后再补全这个实体 | 观测内容引用的是批次中取得的版本，补全形成新版本，引用不变 |
-| 提交后回执丢失，用同一个标识重发同样的批次 | 返回原来的回执，没有新的版本 |
-| 同一个标识带着不同的内容 | Runtime 拒绝，本地没有改动 |
-| 收到回执前结束 Observer 的进程，再启动 | 业务代码读到的本地状态是批次之前或之后之一，不会只有一部分 |
-| 批次的操作数超过 512，或一行超过 16 MiB | 批次被拒绝或连接断开，本地没有改动 |
-| 一个批次的草稿都已结束；另一个批次有未结束的草稿 | 前者的 `outcome` 在后端保存后为 `saved`，后者为 `pending` |
-| 批次中的一个版本被拒绝 | `outcome` 为 `rejected`，带 `versionId` 和 `rule`；`discard` 之后为 `discarded` |
-| 等待 `outcome` 时后端不可用 | `wait` 到期后返回 `pending`，版本留在本地 |
-| 等待 `outcome` 时收到 `stop` | 等待结束，进程退出；重启后同一个 `batchId` 的 `outcome` 仍可读取 |
-| `draft` 用 `previousVersionId` 指定后端的当前版本，实体在本地没有版本 | 新版本接在这个版本之后，后端保存成功 |
-| `draft` 的 `previousVersionId` 不是本地最新的版本，而实体在本地有未保存的版本 | 批次被拒绝，本地没有改动 |
+| 批次写入业务内容、引用 Observer，再绑定它们形成 Observation | 一次提交保存两个新版本；具名结果与后端读到的 VersionId 一致 |
+| 省略前一版本，连续写入同一个实体 | 每一版接在当前版本之后；同批次先采用已形成的版本，再读取后端 |
+| 对已有实体使用 `ifAbsent` | 沿用当前版本，版本链不增长 |
+| 批次中后一个版本违反 Core 规则 | 返回被拒绝的规则，整个提交没有保存 |
+| 后端不可用 | 请求返回错误 |
 
 ## 测试实现 [#implementation]
 
-以下方法位于 `tests/Orisumi.Integration.Tests/`，对应本页的预期范围：
+以下方法位于 `tests/Orisumi.Integration.Tests/RuntimeSubmissionTests.cs`：
 
-- 提交后回执丢失，重启后用同一个标识重发得到原回执、没有新版本；同一个标识带不同内容被拒绝：`RuntimeProtocolTests.LostReceiptReplaysAfterRestartAndDifferentPayloadIsRejected`。
-- 批次中的操作不合法时整批回滚、不留回执，改正后可沿用同一个标识；批次取得的引用不随实体之后的版本改变：`RuntimeProtocolTests.FailedBatchRollsBackReceiptAndVersionsAndReferencesStayFixed`。
-- 前台时段切换的批次形成一个回执：由 [提交与恢复](../observers/foreground-submission.mdx) 的测试经 `LocalObserverSession` 覆盖。
-- 回执跨重启保留，`outcome` 的已保存、等待、被拒绝（含依赖的版本被拒绝）和已丢弃，以及取消等待：`RuntimeOutcomeTests.ReceiptTracksUnnamedVersionsAcrossRestartAndReportsDependencyRejectionAndDiscard`。
-- 未覆盖：收到回执前结束 Observer 的进程；超过 512 个操作或 16 MiB 的一行；`draft` 的 `previousVersionId`。
+- 绑定引用与具名结果：`BatchIsOneSubmissionWithBoundReferencesAndNamedResults`。
+- 前一版本省略与 `ifAbsent`：`OmittedPreviousVersionFollowsTheCurrentVersionAndIfAbsentKeepsIt`。
+- 拒绝后整体回滚：`RejectedSubmissionSavesNothingAndReportsTheRule`。
+- 后端不可用：`UnavailableBackendFailsTheCommit`。
+
+未覆盖：超过 512 个操作；同批次连续更新同一实体；绑定结果在后续更新后保持原引用。
 
 ## 执行结果 [#results]
 

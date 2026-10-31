@@ -27,10 +27,8 @@ public sealed class AssistantSubmissionTests
             Item("CommandExecution", "call", Fields("""{"command":["echo","ok"],"aggregated_output":"complete output","status":"completed","exit_code":0}""")));
         await fixture.Collector.PollAsync();
         var versions = fixture.Interactions().Select(value => value.Version).ToArray();
-        await fixture.Runtime.SendAsync();
-        await Assert.That(fixture.Runtime.Status.Rejection).IsNull();
-        await Assert.That(fixture.Runtime.Status.Error).IsNull();
-        await Assert.That(fixture.Runtime.Status.Pending + fixture.Runtime.Status.Drafts).IsEqualTo(0);
+        // Only the missing local image is diagnosed; every batch was saved.
+        await Assert.That(fixture.Diagnostics.All(message => message.Contains("missing.png", StringComparison.Ordinal))).IsTrue();
         foreach (var version in versions)
         {
             using var response = await http.GetAsync("versions/" + version.VersionId.Value);
@@ -71,7 +69,7 @@ public sealed class AssistantSubmissionTests
     }
 
     [Test, Property("caseId", "assistant-session-reading")]
-    public async Task DeletionDoesNotResurrectAndDeletedSessionsSuppressFutureInteractions()
+    public async Task DeletedRecordsAreNotRecreatedAndARejectedSegmentIsReadAgain()
     {
         await using var database = await DatabaseFixture.CreateAsync();
         await using var factory = new OrisumiApiFactory(database.ConnectionString);
@@ -79,7 +77,6 @@ public sealed class AssistantSubmissionTests
         using var fixture = new AssistantTestFixture(factory.Server.CreateHandler());
         var path = fixture.Write("claude/projects/project/main.jsonl", ClaudeMessage("first", "hello"));
         await fixture.Collector.PollAsync();
-        await fixture.Runtime.SendAsync();
         var original = fixture.Interactions().Single().Version;
         using (var deleted = await http.DeleteAsync("entities/" + original.EntityId.Value)) deleted.EnsureSuccessStatusCode();
         File.Copy(path, Path.Combine(Path.GetDirectoryName(path)!, "copy.jsonl"));
@@ -88,16 +85,12 @@ public sealed class AssistantSubmissionTests
         using (var read = await http.GetAsync("entities/" + original.EntityId.Value)) await Assert.That(read.StatusCode).IsEqualTo(HttpStatusCode.Gone);
         var conversation = fixture.Sessions().Single().Version;
         using (var deleted = await http.DeleteAsync("entities/" + conversation.EntityId.Value)) deleted.EnsureSuccessStatusCode();
+        var checkpoint = fixture.State.Read<Orisumi.Observers.AssistantSessions.FileProgress>(Orisumi.Observers.AssistantSessions.AssistantState.Key("file", path))!.Offset;
         await File.AppendAllTextAsync(path, Encoding.UTF8.GetString(ClaudeMessage("second", "later")) + "\n");
         await fixture.Collector.PollAsync();
-        await fixture.Runtime.SendAsync();
-        await Assert.That(fixture.Runtime.Status.Rejection).IsNotNull();
         await fixture.Collector.PollAsync();
-        await Assert.That(fixture.Runtime.Status.Rejection).IsNull();
-        var before = fixture.Interactions().Count;
-        await File.AppendAllTextAsync(path, Encoding.UTF8.GetString(ClaudeMessage("third", "suppressed")) + "\n");
-        await fixture.Collector.PollAsync();
-        await Assert.That(fixture.Interactions().Count).IsEqualTo(before);
-        await Assert.That(fixture.Interactions().Any(value => Content(value).GetProperty("sourceId").GetString() == "third")).IsFalse();
+        await Assert.That(fixture.Interactions().Count).IsEqualTo(1);
+        await Assert.That(fixture.Diagnostics.Count).IsEqualTo(2);
+        await Assert.That(fixture.State.Read<Orisumi.Observers.AssistantSessions.FileProgress>(Orisumi.Observers.AssistantSessions.AssistantState.Key("file", path))!.Offset).IsEqualTo(checkpoint);
     }
 }

@@ -9,10 +9,6 @@ namespace Orisumi.Infrastructure.Database;
 internal sealed partial class PostgresEntityTransaction(NpgsqlConnection connection, NpgsqlTransaction transaction) : IEntityTransaction
 {
     private const string Columns = "v.entity_id, v.version_id, v.previous_version_id, v.schema_version_id, v.category, v.recorded_at, v.content";
-    private const string Savepoint = "version_save";
-    public Task CreateSavepointAsync(CancellationToken cancellationToken) => transaction.SaveAsync(Savepoint, cancellationToken);
-    public Task RollbackSavepointAsync(CancellationToken cancellationToken) => transaction.RollbackAsync(Savepoint, cancellationToken);
-    public Task ReleaseSavepointAsync(CancellationToken cancellationToken) => transaction.ReleaseAsync(Savepoint, cancellationToken);
 
     public async Task<EntityVersion?> ReadVersionAsync(VersionId id, CancellationToken cancellationToken) =>
         (await ReadAsync($"SELECT {Columns} FROM versions v WHERE v.version_id = $1", cancellationToken, id.Value)).SingleOrDefault();

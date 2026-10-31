@@ -4,7 +4,6 @@ import {
   isObservation,
   type EntitySchema,
   type Observation,
-  type ObservationPreview,
   type Version,
 } from "@/api/types";
 import { roleOf, ROLE_NAMES, thingColor, type Role } from "@/lib/roles";
@@ -13,7 +12,7 @@ import { businessTitle } from "@/lib/titles";
 import { CATEGORY_NAMES } from "@/lib/versions";
 import { LOCAL_APPLICATIONS } from "@/lib/applications";
 import { useCatalog } from "./useApplications";
-import { usePreviews, useReferrers, useVersion } from "./queries";
+import { useReferrers, useVersion } from "./queries";
 import { useTypes } from "./useTypes";
 
 /** 一个版本在界面上的样子：角色、名字、类型名，以及事物的颜色。 */
@@ -84,21 +83,15 @@ const EMPTY = { contentTypes: new Set<string>(), observerTypes: new Set<string>(
 
 /**
  * 经历的事实时间在 Observation 上：Observation 就是它自己，观测内容取引用它的那份 Observation。
- * 进行中的经历还有预览，按 Observation 的 EntityId 或观测内容的版本找到。其他角色没有 Observation，不发请求。
+ * 其他角色没有 Observation，不发请求。
  */
 export function useObservationOf(info: EntityInfo | null) {
   const direct = info && isObservation(info.version) ? info.version : null;
   const lookup = !direct && info?.role === "experience" ? info.version.entityId : null;
   const referrers = useReferrers(lookup);
-  const previews = usePreviews(!!direct || !!lookup);
   const found = referrers.data?.pages.flatMap((page) => page.referrers).find((r) => isObservation(r.version))?.version;
-  const preview =
-    previews.data?.find((d) =>
-      direct ? d.entityId === direct.entityId : !!lookup && d.content.contentVersionId === info?.version.versionId,
-    ) ?? null;
   return {
     observation: (direct ?? found ?? null) as Version<Observation> | null,
-    preview: preview as ObservationPreview | null,
     pending: !!lookup && referrers.isPending,
   };
 }

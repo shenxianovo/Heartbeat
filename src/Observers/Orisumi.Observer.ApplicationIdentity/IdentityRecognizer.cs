@@ -1,17 +1,17 @@
 using System.Text.Json;
 using Orisumi.Core;
+using Orisumi.Observer.Sdk;
 
 namespace Orisumi.Observers.ApplicationIdentity;
 
 internal sealed class IdentityRecognizer(IdentityRepository repository, IdentityWork work, IApplicationModel model,
     string modelName, string programVersion, Action<string> diagnostic)
 {
-    private Dictionary<string, string> unknown = [];
+    // Identifiers the model answered unknown for, with what it saw then. Kept only while the process runs.
+    private readonly Dictionary<string, string> unknown = [];
 
     public async Task RunOnceAsync(CancellationToken token)
     {
-        var savedState = work.ReadState();
-        unknown = savedState is null ? [] : JsonSerializer.Deserialize<Dictionary<string, string>>(savedState)!;
         if (!model.IsConfigured) { diagnostic("OPENAI_API_KEY 未配置，本轮不识别。"); return; }
         try
         {
@@ -22,27 +22,15 @@ internal sealed class IdentityRecognizer(IdentityRepository repository, Identity
             var applications = await repository.ListAsync("local-applications", token);
             var groups = applications.SelectMany(app => IdentityData.Identifiers(app).Where(i => i.IsShared).Distinct()
                 .Select(identifier => (identifier, app))).GroupBy(item => item.identifier);
+            // The catalogue is read again for each identifier, so it includes the previous write and manual changes.
             foreach (var group in groups)
             {
-                // Refresh the catalogue after each write, including concurrent manual changes.
-                for (var attempt = 0; attempt < 2; attempt++)
-                {
-                    try
-                    {
-                        await IdentifyAsync(group.Key, group.Select(item => item.app).ToArray(), productSchema.VersionId, observer.VersionId, token);
-                        break;
-                    }
-                    catch (ModelViolationException exception) when (exception.Rule == "VERSION-6" && attempt == 0)
-                    { diagnostic("产品已更新，重新读取并判断。"); }
-                    catch (ModelViolationException exception) { diagnostic($"提交被拒绝：{exception.Rule} {exception.Message}"); break; }
-                }
+                try { await IdentifyAsync(group.Key, group.Select(item => item.app).ToArray(), productSchema.VersionId, observer.VersionId, token); }
+                catch (SubmissionRejectedException exception) { diagnostic($"提交被拒绝：{exception.Rule} {exception.Message}"); }
             }
         }
-        catch (ModelViolationException exception) { diagnostic($"提交被拒绝：{exception.Rule} {exception.Message}"); }
+        catch (SubmissionRejectedException exception) { diagnostic($"提交被拒绝：{exception.Rule} {exception.Message}"); }
     }
-
-    private Task SaveUnknownAsync(CancellationToken token)
-    { token.ThrowIfCancellationRequested(); work.SaveState(JsonSerializer.Serialize(unknown)); return Task.CompletedTask; }
 
     private async Task IdentifyAsync(ApplicationIdentifier identifier, EntityVersion[] apps,
         VersionId productSchema, VersionId observer, CancellationToken token)
@@ -51,7 +39,7 @@ internal sealed class IdentityRecognizer(IdentityRepository repository, Identity
         var key = JsonSerializer.Serialize(identifier, IdentityData.Json);
         if (products.Any(product => product.Identifiers.Contains(identifier)))
         {
-            if (unknown.Remove(key)) await SaveUnknownAsync(token);
+            unknown.Remove(key);
             return;
         }
         var periods = new List<EntityVersion>();
@@ -73,7 +61,6 @@ internal sealed class IdentityRecognizer(IdentityRepository repository, Identity
         if (decision.Kind == "unknown" && decision.ProductId is null && decision.Name is null)
         {
             unknown[key] = fingerprint;
-            await SaveUnknownAsync(token);
             return;
         }
         var target = decision.Kind == "existing" ? products.SingleOrDefault(product => product.Version.EntityId.Value == decision.ProductId) : null;
@@ -90,6 +77,5 @@ internal sealed class IdentityRecognizer(IdentityRepository repository, Identity
             new Observation(observer, product.VersionId, inputs.VersionId, null, null, null));
         await repository.SubmitAsync([inputs, product, observation], token);
         unknown.Remove(key);
-        await SaveUnknownAsync(token);
     }
 }

@@ -10,8 +10,8 @@ Orisumi.Observer.AssistantSessions 读取当前用户的 Claude Code 和 Codex �
 | `SourceFiles.cs` | 发现日志文件、文件身份、按段读取完整的行、解压归档 |
 | `ClaudeSource.cs`、`CodexSource.cs` | 两种来源的记录到交互的对应 |
 | `AssistantCollector.cs` | 每一轮的读取顺序和时间预算 |
-| `AssistantBatch.cs`、`AssistantDelivery.cs` | 组成批次、交给 Runtime、处理被拒绝的版本 |
-| `AssistantState.cs` | 数据目录中的 `capture.sqlite`：身份登记、读取进度、待配对的推理和待确认的批次 |
+| `AssistantBatch.cs` | 组成批次，交给 Runtime 提交 |
+| `AssistantState.cs` | 数据目录中的 `capture.sqlite`：身份登记、读取进度、待配对的推理 |
 
 它引用 `Orisumi.Observer.Sdk` 和 Core，通过标准输入和标准输出与 Runtime 通信。Codex 归档的 zstd 由随包发布的 ZstdSharp.Port 解压，不需要安装 zstd 命令。
 
@@ -36,7 +36,7 @@ dotnet run --project src/Observers/Orisumi.Observer.Runtime -- \
 	--pairing-code <配对码>
 ```
 
-配对码在 Web 控制台的托管页用“接入”签发。带配对码时，Runtime 接入后端并上传；不带配对码时，版本只在本地保存，状态中写着 `Runtime is unpaired`，适合只看本地采集。按 Ctrl+C 停止，结束后删除数据目录。
+配对码在 Web 控制台的托管页用“接入”签发。Runtime 接入后端后才能提交；尚未接入时，数据请求返回不可用。按 Ctrl+C 停止，结束后删除数据目录。
 
 首次运行会导入 `$HOME` 下的全部会话。只想导入几个会话时，把它们复制到一个临时目录的 `.claude/projects/<任意名>/` 或 `.codex/sessions/` 下，再用 `HOME=<临时目录>` 运行。
 
@@ -44,7 +44,7 @@ dotnet run --project src/Observers/Orisumi.Observer.Runtime -- \
 
 程序从 Runtime 的 `init` 读取 `instanceId`、`packageVersion` 和 `dataDirectory`，没有设置项。
 
-- 启动时，程序先重发上次留下的待确认批次，再回复 `ready`。
+- 启动时，程序登记所需的 EntitySchema 和程序实例，再回复 `ready`。
 - 采集诊断写到标准错误，Runtime 把最近的一条作为采集提示报告给客户端。
 - 收到 `stop` 后，程序停止轮询，以 0 退出。初始化或运行失败时以 1 退出。
 

@@ -44,9 +44,8 @@ ADR 用英文 slug 命名，例如 `entity-model.mdx`，没有编号。引用时
 | Model | [身份、时间与更新](./identity-and-updates.mdx) | 业务规则决定身份和粒度，每个版本有自己的保存时间，更新形成新版本，独立的陈述形成新观测 |
 | Model | [二进制内容](./binary-content.mdx) | 业务字段可以是二进制内容：版本保存摘要、媒体类型和大小，字节按摘要单独保存、先于版本上传，随使用它的版本保留和移除 |
 | Model | [删除](./deletion.mdx) | 删除以实体为单位，只移除选中实体的全部版本，删除后不可复活 |
-| Hosting | [提交与 Runtime](./submission.mdx) | 程序实例的身份持久不变，Observer 的业务代码按业务规则形成事实，Runtime 本地保存并按依赖顺序可靠提交；各语言的 SDK 只连接 Runtime |
-| Hosting | [观测预览](./observation-previews.mdx) | 进行中的 Observation 以观测预览实时可读：Observer 在本地的草稿中补全并决定何时结束，后端在内存中暂存最新的一份预览，结束后才保存为版本 |
-| Hosting | [Runtime 与进程托管](./observer-runtime.mdx) | 设备和服务器运行同一个 Runtime，Runtime 启动各 Observer 的进程，经标准输入输出双向通信；实例身份和本地数据由 Runtime 保管，与程序文件分开 |
+| Hosting | [提交与 Runtime](./submission.mdx) | 程序实例的身份持久不变，Observer 的业务代码交出业务变化，Runtime 形成版本并直接提交给后端；各语言的 SDK 只连接 Runtime |
+| Hosting | [Runtime 与进程托管](./observer-runtime.mdx) | 设备和服务器运行同一个 Runtime，Runtime 启动各 Observer 的进程，经标准输入输出双向通信；实例身份和业务数据目录由 Runtime 保管，与程序文件分开 |
 | Hosting | [Observer 的统一管理](./observer-management.mdx) | 后端为每个 Runtime 和程序实例保存管理登记；启停和设置离线先生效、按字段同步，后端接受的顺序决定结果；安装维护只在线执行；Runtime 主动连接后端，凭配对得到的凭证接入 |
 | Hosting | [设备端客户端](./device-client.mdx) | 原生客户端通过 Runtime 托管本机的 Observer：从官方目录单独安装 ZIP 包，启停、更新和有限重启；专用视图原生实现，随客户端发布；陈述由各 Observer 负责 |
 | Backend | [后端运行与本地环境](./backend-runtime.mdx) | 四个后端项目组成一个进程，Aspire 编排本地环境，NGINX 提供同源入口 |

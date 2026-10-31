@@ -21,7 +21,6 @@ export interface InstanceStatus {
   diagnostic?: string | null;
   appliedRevision?: number;
   pendingChanges?: number;
-  delivery?: { pending: number; error?: string | null; rejection?: { rule: string; detail: string } | null };
 }
 
 export interface Instance {
@@ -102,7 +101,7 @@ export function synced(instance: Instance): boolean {
 
 export function problem(instance: Instance): string | null {
   const status = instance.status;
-  return status?.error ?? status?.delivery?.rejection?.detail ?? status?.delivery?.error ?? null;
+  return status?.error ?? null;
 }
 
 export function settled(operation: Operation | undefined): boolean {

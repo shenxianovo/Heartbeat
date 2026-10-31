@@ -21,7 +21,6 @@ internal sealed class AssistantBatch(AssistantState state, EntityId observerId, 
     {
         var key = AssistantState.Key("session", info.Product, info.SourceSessionId);
         var existing = Read<EntityEntry>(key);
-        if (existing?.Deleted == true) return existing;
         var previous = existing?.Session;
         var merged = info with { Title = info.Title ?? previous?.Title, Client = info.Client ?? previous?.Client,
             ParentId = info.ParentId ?? previous?.ParentId, AgentName = info.AgentName ?? previous?.AgentName,
@@ -33,13 +32,11 @@ internal sealed class AssistantBatch(AssistantState state, EntityId observerId, 
         {
             if (parentId == merged.SourceSessionId) throw new InvalidDataException("A source session cannot be its own parent.");
             parent = Session(new(merged.Product, parentId));
-            if (parent.Deleted) { entry = entry with { Session = merged, Deleted = true }; Set(key, entry); return entry; }
         }
         var bindings = new Dictionary<string, string>();
         if (parent is not null) bindings["/parentSessionVersionId"] = Reference(parent.EntityId);
-        Draft(entry.EntityId, registration.SessionSchema, new { merged.Product, merged.SourceSessionId, merged.Title, merged.Client,
-            parentSessionVersionId = parent is null ? (Guid?)null : Guid.Empty, merged.AgentName, merged.SpawnCallId }, bindings);
-        _operations.Add(new { op = "complete", entityId = entry.EntityId });
+        Write(entry.EntityId, registration.SessionSchema, new { merged.Product, merged.SourceSessionId, merged.Title, merged.Client,
+            parentSessionVersionId = parent is null ? (Guid?)null : Guid.Empty, merged.AgentName, merged.SpawnCallId }, bindings, first: previous is null);
         _references.Remove(entry.EntityId); // A metadata change needs a reference to the newly formed version.
         entry = entry with { Session = merged };
         Set(key, entry);
@@ -51,13 +48,12 @@ internal sealed class AssistantBatch(AssistantState state, EntityId observerId, 
         var key = AssistantState.Key("interaction", info.Product, interaction.Kind, interaction.SourceId);
         if (Read<EntityEntry>(key) is not null) return;
         var session = Session(info);
-        if (session.Deleted) return;
         var entry = new EntityEntry(EntityId.New().Value, EntityId.New().Value,
             AssistantState.Key("session", info.Product, info.SourceSessionId));
         var bindings = new Dictionary<string, string> { ["/sessionVersionId"] = Reference(session.EntityId) };
         var call = interaction.CallId is { } callId
             ? Read<EntityEntry>(AssistantState.Key("call", info.Product, info.SourceSessionId, callId)) : null;
-        var hasCall = interaction.Kind == "tool-result" && call is { Deleted: false };
+        var hasCall = interaction.Kind == "tool-result" && call is not null;
         if (hasCall) bindings["/toolCallVersionId"] = Reference(call!.EntityId);
         foreach (var bytes in interaction.SourceEntries)
         {
@@ -66,7 +62,7 @@ internal sealed class AssistantBatch(AssistantState state, EntityId observerId, 
         }
         foreach (var part in interaction.Parts)
             if (part.File is { } binary) _contents[binary.Digest] = binary;
-        Draft(entry.EntityId, registration.InteractionSchema, new
+        Write(entry.EntityId, registration.InteractionSchema, new
         {
             sessionVersionId = Guid.Empty, interaction.Kind, interaction.Actor, interaction.SourceRole, interaction.SourceKind,
             interaction.SourceId, interaction.SourceVersion, interaction.SourceTurnId, interaction.SourceParentId, interaction.SourceMessageId,
@@ -74,16 +70,14 @@ internal sealed class AssistantBatch(AssistantState state, EntityId observerId, 
             interaction.IsError, interaction.ExitCode, interaction.Phase, interaction.Model, interaction.WorkingDirectory,
             parts = interaction.Parts.Select(part => new { part.Type, part.Text, part.EntryIndex, part.Pointer, part.MediaType, file = part.File?.Descriptor }),
             sourceEntries = interaction.SourceEntries.Select(bytes => new BinaryContent(bytes, "application/json").Descriptor),
-        }, bindings);
-        _operations.Add(new { op = "complete", entityId = entry.EntityId });
+        }, bindings, first: true);
         var contentReference = Reference(entry.EntityId);
         var observerReference = Reference(observerId.Value);
-        _operations.Add(new { op = "draft", entityId = entry.ObservationId, category = "observation", strategy = "OnCompletion",
+        _operations.Add(new { op = "write", entityId = entry.ObservationId, category = "observation", previousVersionId = (Guid?)null,
             content = new { observerVersionId = Guid.Empty, contentVersionId = Guid.Empty, inputSetVersionId = (Guid?)null,
                 startAt = interaction.StartAt is { } start ? VersionTime.Normalize(start) : (DateTimeOffset?)null,
                 endAt = interaction.EndAt is { } end ? VersionTime.Normalize(end) : (DateTimeOffset?)null, interaction.TimeZone },
             bindings = new Dictionary<string, string> { ["/observerVersionId"] = observerReference, ["/contentVersionId"] = contentReference } });
-        _operations.Add(new { op = "complete", entityId = entry.ObservationId });
         Set(key, entry);
         if (interaction.Kind == "tool-call" && interaction.CallId is { } id)
             Set(AssistantState.Key("call", info.Product, info.SourceSessionId, id), entry);
@@ -98,7 +92,9 @@ internal sealed class AssistantBatch(AssistantState state, EntityId observerId, 
         return name;
     }
 
-    private void Draft(Guid id, VersionId schema, object content, Dictionary<string, string> bindings) =>
-        _operations.Add(new { op = "draft", entityId = id, category = "business", strategy = "OnCompletion",
-            schemaVersionId = schema.Value, content, bindings });
+    // A first version says so; a later one follows the entity's current version.
+    private void Write(Guid id, VersionId schema, object content, Dictionary<string, string> bindings, bool first) =>
+        _operations.Add(first
+            ? new { op = "write", entityId = id, category = "business", previousVersionId = (Guid?)null, schemaVersionId = schema.Value, content, bindings }
+            : (object)new { op = "write", entityId = id, category = "business", schemaVersionId = schema.Value, content, bindings });
 }

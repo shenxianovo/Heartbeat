@@ -4,12 +4,6 @@ using Orisumi.Observer.Sdk;
 
 namespace Orisumi.Observers.AssistantSessions;
 
-// Runtime pipe limits for one batch, and the longest source line the reader keeps in memory. Tests inject smaller ones.
-internal sealed record AssistantLimits(int BatchBytes, int BatchOperations, int LineBytes)
-{
-    internal static readonly AssistantLimits Default = new(JsonLines.MaximumBytes - 1024, 512, SourceFiles.MaximumLineBytes);
-}
-
 internal sealed record SessionInfo(string Product, string SourceSessionId, string? Title = null, string? Client = null,
     string? ParentId = null, string? AgentName = null, string? SpawnCallId = null);
 

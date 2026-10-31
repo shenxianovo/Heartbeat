@@ -3,7 +3,7 @@ title: "Protocol"
 description: "客户端和 Observer 的进程经两条管道与 Runtime 通信的消息格式"
 ---
 
-客户端和 Observer 的进程都通过标准输入和标准输出与 [Runtime](./runtime.mdx) 通信。客户端管道用于管理 Observer 和读取数据，Observer 管道用于交出版本。本页写两条管道的消息格式；消息的语义见 [Submission](./submission.mdx) 和 [Runtime](./runtime.mdx)。
+客户端和 Observer 的进程都通过标准输入和标准输出与 [Runtime](./runtime.mdx) 通信。客户端管道用于管理 Observer 和读取数据，Observer 管道用于交出批次。本页写两条管道的消息格式；消息的语义见 [Submission](./submission.mdx) 和 [Runtime](./runtime.mdx)。
 
 ## 格式 [#format]
 
@@ -30,7 +30,8 @@ Runtime 用同一个 `id` 返回结果或错误：
 | `invalid_request` | 请求不符合协议 |
 | `not_found` | 安装包、程序实例或版本不存在 |
 | `conflict` | 与当前状态冲突，例如读取的游标已过期，或者安装的包原来的实例已删除 |
-| `unavailable` | 暂时无法完成，例如官方目录读取失败 |
+| `rejected` | 后端拒绝了批次形成的提交，见[批次的操作](#operations) |
+| `unavailable` | 暂时无法完成，例如后端不可用或官方目录读取失败 |
 | `internal` | Runtime 的错误 |
 
 ## 客户端管道 [#client-pipe]
@@ -70,17 +71,15 @@ Runtime 用同一个 `id` 返回结果或错误：
       "diagnostic": null,
       "removed": false,
       "settings": {},
-      "sync": { "revision": 7, "pendingChanges": 0, "error": null },
-      "delivery": { "pending": 0, "drafts": 1, "saved": 42, "error": null, "rejection": null }
+      "sync": { "revision": 7, "pendingChanges": 0, "error": null }
     }
   ]
 }
 ```
 
 - `host.connection` 是这个 Runtime 与后端的连接：`unpaired`（还没有接入，`hostId` 为 `null`）、`connected`、`offline` 或 `revoked`（托管方已移除）。
-- 已卸载、但还有待发送数据的程序实例也在列表中，`installed` 为 `false`。已删除、版本还没发送完的程序实例也在列表中，`removed` 为 `true`。
+- 已卸载的程序实例也在列表中，`installed` 为 `false`。已删除的程序实例也在列表中，`removed` 为 `true`。
 - `enabled` 和 `settings` 是生效的配置。`sync.revision` 是已合并的后端配置的修订号，还没有登记时为 `0`；`sync.pendingChanges` 是待同步的修改数；`sync.error` 说明同步停止的原因，见 [Management · 同步](./management.mdx#sync)。
-- `rejection` 不为空时是 `{ "rule": "VERSION-6", "detail": "…" }`，说明这个实例的发送因被拒绝的版本暂停，见 [Submission · 被拒绝的版本](./submission.mdx#rejections)。
 
 `catalog` 合并附带的安装包和官方目录，列出本机可用的每个包：
 
@@ -108,7 +107,7 @@ Runtime 用同一个 `id` 返回结果或错误：
 
 ### 读取 [#reading]
 
-客户端经 Runtime 读取一个程序实例的 Observation。Runtime 从 API 读取已保存的部分，补上本地还没发送的版本，合并后返回。合并结果中每份 Observation 只出现一次，所以本地版本发送之后，界面不会把同一个时段显示两次。
+客户端经 Runtime 读取后端已保存的数据。后端不可用时，请求返回 `unavailable`。
 
 `read` 按事实时间读取一个程序实例的 Observation：
 
@@ -123,34 +122,24 @@ Runtime 用同一个 `id` 返回结果或错误：
 ```json
 {
   "observations": [
-    { "version": { "versionId": "…", "entityId": "…" }, "state": "draft" }
+    { "versionId": "…", "entityId": "…" }
   ],
-  "next": null,
-  "complete": true,
-  "error": null
+  "next": null
 }
 ```
 
-- `version` 是 Observation 的版本，结构见 [API · Versions](../api/versions.mdx)。
-- `state` 是这份 Observation 在本机的状态：`draft`（草稿）、`pending`（待发送）、`saved`（已保存）或 `rejected`（被拒绝）。
+- `observations` 中每项是 Observation 的版本，结构见 [API · Versions](../api/versions.mdx)。
 - 结果按事实时间的起点从晚到早排列，起点相同的按 EntityId 排列。
-- 第一页时，Runtime 生成一份合并的快照，之后的页都从这份快照中读取，翻页时不重复也不遗漏。快照保留 2 分钟，Runtime 最多同时保留 32 份，超出时移除最早的一份。快照过期后，`cursor` 返回 `conflict`，客户端从第一页重新读取。
-- 同一份 Observation 按 EntityId 合并。本地版本与后端的版本相同时，显示为 `saved`；本地版本接在后端当前版本之后时，显示本地版本；两者分叉时显示后端的版本。
-- 后端返回 `410` 的实体，Runtime 在本地记下，之后断网或重启也不再显示它的本地副本。
-- `complete` 为 `false` 时，后端的部分没有读到，`error` 说明原因。结果由本地的数据和 Runtime 这次运行中最近读取的结果组成，不能作为完整的统计。
+- 第一页时，Runtime 从后端读出全部结果，生成一份快照，之后的页都从这份快照中读取，翻页时不重复也不遗漏。快照保留 2 分钟，Runtime 最多同时保留 32 份，超出时移除最早的一份。快照过期后，`cursor` 返回 `conflict`，客户端从第一页重新读取。
 
 `versions` 按 VersionId 读取被引用的版本，一次最多 256 个：
 
 ```json
-{ "versions": [], "missing": [], "error": null }
+{ "versions": [], "missing": [] }
 ```
 
-- 还没发送的版本从本地读取，已保存的从 API 读取。
 - 返回的是指定的那个版本，不用实体的当前版本代替，见 [ENTITY-4](../core/model/entity.mdx#entity-4)。
-- 版本已被删除时，它出现在 `missing` 中，Runtime 不用旧的缓存代替。
-- 断网时返回本地有的版本，`error` 说明原因。
-
-后端不可用时，Runtime 用最近 32 次读取的结果补充本地数据，这些结果只在 Runtime 运行期间保留。
+- 版本不存在或已被删除时，它出现在 `missing` 中。
 
 `content` 按摘要读取一份二进制内容，参数是 `digest`：
 
@@ -158,8 +147,8 @@ Runtime 用同一个 `id` 返回结果或错误：
 { "data": "iVBORw0KGgoAAAANSUhEUgAA…" }
 ```
 
-- `data` 是字节的 Base64。本地还没发送的版本用到的内容从本地读取，其余的从 [`GET /contents/{digest}`](/api/getContent) 读取。
-- 后端没有这份内容时返回 `not_found`，后端不可用时返回 `unavailable`。
+- `data` 是字节的 Base64，来自 [`GET /contents/{digest}`](/api/getContent)。
+- 后端没有这份内容时返回 `not_found`。
 
 ## Observer 管道 [#observer-pipe]
 
@@ -181,29 +170,24 @@ Runtime 启动进程后先发送：
 
 程序实例的程序版本用 `packageVersion`，所以后端记录的版本与安装包一致。
 
-停止时发送 `{ "event": "stop" }`，Observer 不回复它，收尾并收到回执后退出。
+停止时发送 `{ "event": "stop" }`，Observer 不回复它，提交进行中的事实后退出。
 
-Observer 发出的请求如下。批次的语义见 [Submission · 批次](./submission.mdx#handoff)。
+Observer 发出的请求如下。批次的语义见 [Submission · 批次](./submission.mdx#batch)。
 
 | 请求 | 参数 | 结果 |
 | --- | --- | --- |
-| `ready` | 无 | 初始化和恢复完成，每次启动一次 |
-| `registerSchema` | `entityId`、`content` | `versionId`。只在本地登记，发送前再与后端对齐，见 [Submission · 登记](./submission.mdx#registration) |
+| `ready` | 无 | 初始化完成，每次启动一次 |
+| `registerSchema` | `entityId`、`content` | `versionId`。与后端的版本链对齐，见 [Submission · 登记](./submission.mdx#registration) |
 | `registerInstance` | `schemaVersionId`、`content` | `versionId`。登记的是管道绑定的程序实例 |
-| `commit` | `operations` | `results`：每个具名操作得到的 VersionId |
-| `local` | 可选的 `entityId`、`versionId`、`draftsOnly`、`category` | 本地的版本及其状态，供恢复和修复使用 |
-| `status` | 无 | 发送状态：`pending`、`drafts`、`saved`、`error`、`rejection` |
-| `outcome` | `batchId`，可选 `wait` | 一个批次的最终结果，见[最终结果](#outcome) |
+| `commit` | `operations`，可选 `contents` | `results`：每个具名操作得到的 VersionId |
 | `readCurrent` | `entityId` | 后端的当前版本，带 `recordedAt`；没有时为 `null` |
-| `entityStatus` | `entityId` | 后端对这个实体返回的 HTTP 状态码，例如 `410` 说明已删除 |
 | `versions` | `versionIds`，最多 256 个 | 与客户端管道的 [`versions`](#reading) 相同 |
 | `listEntities` | 可选的 `category`、`resourceName`、`after`、`limit` | 一页实体的当前版本和 `next`，与 [`GET /entities`](/api/listEntities) 相同 |
 | `listReferrers` | `entityId`，可选的 `versions`、`after`、`limit` | 一页引用方和 `next`，与 [`GET /entities/{entityId}/referrers`](/api/listReferrers) 相同 |
-| `repair` | `rejectedVersionId`、`action` 及其字段 | 处理被拒绝的版本 |
 
 ### 批次的操作 [#operations]
 
-`commit` 请求的 `id` 就是批次的标识，重发时沿用原来序列化好的整行。一个批次有 1 到 512 个操作：
+一个批次有 1 到 512 个操作：
 
 ```json
 {
@@ -211,13 +195,13 @@ Observer 发出的请求如下。批次的语义见 [Submission · 批次](./sub
   "method": "commit",
   "params": {
     "operations": [
-      { "op": "complete", "entityId": "0196f3a2-9d10-7a52-b3c4-1e2f3a4b5c6d" },
       { "op": "reference", "entityId": "0196f3a2-8e21-7b63-a4d5-2f3e4a5b6c7d", "as": "app" },
       {
-        "op": "draft",
+        "op": "write",
         "entityId": "0196f3a3-0a32-7c74-95e6-3a4f5b6c7d8e",
         "category": "business",
         "schemaVersionId": "0196f3a1-ff43-7d85-86f7-4b5a6c7d8e9f",
+        "previousVersionId": null,
         "content": {
           "name": "Safari",
           "icon": { "digest": "sha256:8d2f…", "mediaType": "image/png", "size": 584113 },
@@ -236,47 +220,24 @@ Observer 发出的请求如下。批次的语义见 [Submission · 批次](./sub
 
 | 操作 | 字段 |
 | --- | --- |
-| `draft` | `entityId`、`category`、`content`，可选 `schemaVersionId`、`previousVersionId`、`strategy`（`Immediate` 或 `OnCompletion`）、`publishPreview`、`ifAbsent`、`bindings`、`as` |
+| `write` | `entityId`、`category`、`content`，可选 `schemaVersionId`、`previousVersionId`、`ifAbsent`、`bindings`、`as` |
 | `reference` | `entityId`、`as` |
-| `complete` | `entityId`，可选 `as` |
 
 - `op` 写明操作的种类，`category` 是版本的类别，与 [API · Versions](../api/versions.mdx#members) 中的相同。
-- `as` 给操作的结果起名，后面的 `bindings` 和回执中的 `results` 用这个名字。
-- `bindings` 把内容中的一个引用位置（JSON Pointer）绑定到前面 `reference` 的结果，结果是一个确定的版本。
-- `ifAbsent` 为 `true` 时，实体在本地已有版本就沿用当前版本，不写入。
-- `previousVersionId` 指定新版本的前一版本，用于更新由其他写入方保存的实体，例如用户在 Web 中改过的应用产品。实体在本地没有未保存的版本时，它可以是后端的任何一个已保存版本，通常是 `readCurrent` 的结果；否则必须是实体在本地最新的版本。省略时用本地最新的版本。
+- `as` 给操作的结果起名，后面的 `bindings` 和结果中的 `results` 用这个名字。
+- `bindings` 把内容中的一个引用位置（JSON Pointer）绑定到前面操作的结果，结果是一个确定的版本。
+- `previousVersionId` 指定新版本的前一版本；为 `null` 时是实体的首版。省略时用实体的当前版本：同一批次中写入过它就用那一版，否则读取后端，后端没有它就是首版。
+- `ifAbsent` 为 `true` 时，实体已有版本就沿用当前版本，不写入。
+- `reference` 得到实体的当前版本，规则与省略 `previousVersionId` 时相同。实体没有版本时，批次返回 `invalid_request`。
 - `content` 是完整的版本内容，Observation 的可空字段也要写出。
-- `contents` 列出批次的草稿中用到的每份二进制内容，`data` 是字节的 Base64。草稿中的 `binary` 值都要在同一批次的 `contents` 中，摘要和大小都要与字节相符，否则整批返回 `invalid_request`。没有用到二进制内容时省略。
+- `contents` 列出批次的写入中用到的每份二进制内容，`data` 是字节的 Base64。写入的 `binary` 值都要在同一批次的 `contents` 中，摘要和大小都要与字节相符，否则整批返回 `invalid_request`。没有用到二进制内容时省略。
+
+后端拒绝这次提交时，请求返回 `rejected`，`message` 是后端的说明，另带 `rule` 和被拒绝的 `versionId`：
+
+```json
+{ "id": "…", "error": { "code": "rejected", "message": "…", "rule": "VERSION-6", "versionId": "0196f3a3-2c41-7d85-a6e7-4b5c6d7e8f90" } }
+```
 
 ### 读取后端 [#observer-reading]
 
-`readCurrent`、`entityStatus`、`listEntities` 和 `listReferrers` 只读取后端已保存的数据，不合并本地的版本。后端不可用时返回 `unavailable`。`versions` 先读本地，再读后端。
-
-### 最终结果 [#outcome]
-
-`outcome` 的 `batchId` 是 `commit` 请求的 `id`。`wait` 是最多等待的秒数，0 到 30，默认 0；等待期间结果确定时立即返回：
-
-```json
-{ "state": "rejected", "versionId": "0196f3a3-2c41-7d85-a6e7-4b5c6d7e8f90", "rule": "VERSION-6", "detail": "…" }
-```
-
-| `state` | 含义 |
-| --- | --- |
-| `saved` | 回执中的全部版本都已保存 |
-| `pending` | 还有版本在本地，例如草稿还没结束、等待发送或发送失败 |
-| `rejected` | 回执中的一个版本，或者它依赖的版本，是当前被拒绝的版本；带 `versionId`、`rule` 和 `detail` |
-| `discarded` | 回执中的一个版本已被修复操作丢弃或替换 |
-
-回执永久保留，所以重启后仍可以读取以前批次的结果；`batchId` 不存在时返回 `not_found`。收到 `stop` 后，SDK 结束正在等待的 `outcome`。语义见 [Submission · 最终结果](./submission.mdx#outcome)。
-
-### 修复 [#repair]
-
-`repair` 的 `rejectedVersionId` 必须是当前被拒绝的版本，请求的 `id` 和批次一样持久去重。`action` 对应 [Submission · 被拒绝的版本](./submission.mdx#rejections) 中的处理：
-
-| `action` | 附带的字段 | 作用 |
-| --- | --- | --- |
-| `adoptSaved` | `saved`：`readCurrent` 得到的版本 | 采用后端已保存的版本 |
-| `replaceRejected` | `entityId`、`schemaVersionId`、`content` | 改写被拒绝的版本 |
-| `replaceReference` | 同上，再加 `oldVersionId` | 在同一个事务中形成替代的实体，并把引用改到它 |
-| `discard` | 无 | 丢弃被拒绝的版本和依赖它的版本 |
-
+`readCurrent`、`listEntities` 和 `listReferrers` 读取后端已保存的数据，`versions` 与客户端管道的相同。后端不可用时返回 `unavailable`。

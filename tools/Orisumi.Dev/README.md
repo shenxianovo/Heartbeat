@@ -118,7 +118,7 @@ NGINX 总是启动，提供固定的入口端口。各入口在不同服务组�
 `--configuration` 默认是 `release`。`mac run` 运行所选配置的客户端。
 
 - `mac run` 要求环境运行中、API 已启动；客户端已在运行时报错，先运行 `mac stop`。
-- 每个数据卷对应一个 Runtime 数据目录 `.artifacts/mac/instances/<卷名>/`，其中有安装的 Observer、各程序实例的身份和本地数据。所以本地待发送的版本只会发往它所属的后端。删除卷之后，可以一并删除对应的目录。
+- 每个数据卷对应一个 Runtime 数据目录 `.artifacts/mac/instances/<卷名>/`，其中有安装的 Observer、各程序实例的身份和本地数据。实例身份和采集进度与后端的数据卷对应。删除卷之后，一并删除对应的目录，重新接入并从来源采集。
 - 日常使用的客户端从 `/Applications` 启动，使用默认的数据目录，与这里的互不影响。
 
 ## Observer 安装包

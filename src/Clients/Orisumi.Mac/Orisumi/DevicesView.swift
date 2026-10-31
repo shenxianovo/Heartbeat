@@ -109,8 +109,6 @@ struct LocalRow: View {
                 HStack(spacing: 5) {
                     Circle().fill(ObserverText.color(observer)).frame(width: 6, height: 6)
                     Text(observer.removed ? "已删除" : ObserverText.state(observer))
-                    Text("·").foregroundStyle(.tertiary)
-                    Text(ObserverText.deliverySummary(observer.delivery))
                     if observer.sync.pendingChanges > 0 {
                         Text("·").foregroundStyle(.tertiary)
                         Text("等待同步")
@@ -157,7 +155,6 @@ struct LocalInspector: View {
                         Text(observer.removed ? "已删除" : ObserverText.state(observer))
                     }
                 }
-                LabeledContent("发送", value: ObserverText.delivery(observer.delivery))
                 LabeledContent("同步", value: synchronization)
                 ForEach(ObserverText.problems(observer), id: \.self) { problem in
                     Text(problem).foregroundStyle(.red).textSelection(.enabled)
@@ -339,10 +336,6 @@ struct RemoteRow: View {
                 HStack(spacing: 5) {
                     Circle().fill(HostText.color(host, instance)).frame(width: 6, height: 6)
                     Text(HostText.state(host, instance))
-                    if instance.pending > 0 {
-                        Text("·").foregroundStyle(.tertiary)
-                        Text("待发送 \(instance.pending)")
-                    }
                     if !instance.synchronized {
                         Text("·").foregroundStyle(.tertiary)
                         Text("等待同步")
@@ -388,7 +381,6 @@ struct RemoteInspector: View {
                 if !host.connected, let reported = instance.reportedAt {
                     LabeledContent("最近报告", value: reported.formatted(.relative(presentation: .named)))
                 }
-                LabeledContent("发送", value: instance.pending > 0 ? "\(instance.pending) 个待发送" : "都已发送")
                 if let problem = instance.problem {
                     Text(problem).foregroundStyle(.red).textSelection(.enabled)
                 }
@@ -672,8 +664,7 @@ enum HostText {
 extension ManagedInstance {
     var state: String? { status?["state"]?.text }
     var version: String? { status?["version"]?.text }
-    var pending: Int { Int(status?["delivery"]?["pending"]?.number ?? 0) }
     var problem: String? {
-        status?["error"]?.text ?? status?["delivery"]?["rejection"]?["detail"]?.text ?? status?["delivery"]?["error"]?.text
+        status?["error"]?.text
     }
 }
