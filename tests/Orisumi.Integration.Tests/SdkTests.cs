@@ -15,14 +15,14 @@ public sealed class SdkTests
         using var http = factory.CreateClient();
         var schema = Observer.Fixture.Program.SchemaId;
         var key = new RecognitionKey(null, "fixture", "script");
-        await using var data = new DataClient(http, http, Ref.Recognize(schema, key));
+        await using var data = new DataClient(http, http, Ref.Recognize(CommonSchemas.Program, key));
         var read = await Observer.Fixture.Program.WriteAndReadAsync(data);
         await Assert.That(read.GetProperty("content").GetProperty("name").GetString()).IsEqualTo("sample");
-        var item = new WriteItem(schema, new { name = "row" }, new(null, "row", "1"), Time: FactTime.Unknown());
+        var item = new WriteItem(schema, new { name = "row" }, "direct", new(null, "row", "1"), Time: FactTime.Unknown());
         var first = (await data.WriteAsync(item))!;
         var second = (await data.WriteAsync(item))!;
         await Assert.That(second.Changed).IsFalse();
-        await Assert.That(second.Observation!.Value.GetProperty("versionId").GetGuid()).IsEqualTo(first.Observation!.Value.GetProperty("versionId").GetGuid());
+        await Assert.That(second.Version!.Value.GetProperty("versionId").GetGuid()).IsEqualTo(first.Version!.Value.GetProperty("versionId").GetGuid());
         var list = await data.ListAsync("entities?resourceName=fixture-observers&limit=1");
         await Assert.That(list.Count).IsEqualTo(3);
         var versions = await data.VersionsAsync([first.Version!.Value.GetProperty("versionId").GetGuid()]);
@@ -39,9 +39,9 @@ public sealed class SdkTests
         var key = new RecognitionKey(null, "native", "a");
         var file = new BinaryContent([1, 2, 3], "image/png");
         var items = new[] {
-            new WriteItem(schema, new { name = new string('a', 6 * 1024 * 1024), nested = new { files = new[] {file}, target = Ref.Recognize(schema, key), optional = (string?)null } }, Time: FactTime.Unknown()),
-            new WriteItem(schema, new { name = new string('b', 6 * 1024 * 1024), target = Ref.Entity(Guid.CreateVersion7()) }),
-            new WriteItem(schema, new { name = "last", target = Ref.Version(Guid.CreateVersion7()) }) };
+            new WriteItem(schema, new { name = new string('a', 6 * 1024 * 1024), nested = new { files = new[] {file}, target = Ref.Recognize(schema, key), optional = (string?)null } }, "direct", Time: FactTime.Unknown()),
+            new WriteItem(schema, new { name = new string('b', 6 * 1024 * 1024), target = Ref.Entity(Guid.CreateVersion7()) }, "direct"),
+            new WriteItem(schema, new { name = "last", target = Ref.Version(Guid.CreateVersion7()) }, "direct") };
         await data.WriteAllAsync(items);
         await Assert.That(handler.Methods.ToArray()).IsEquivalentTo(["PUT", "POST", "POST"]);
         await Assert.That(handler.Posts.Count).IsEqualTo(2);

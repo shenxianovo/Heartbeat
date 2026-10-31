@@ -48,7 +48,7 @@ public sealed class AssistantTimeTests
         foreach (var entry in fixture.Observations())
         {
             var observation = (Observation)entry.Content;
-            var content = Content(interactions[observation.ContentVersionId]);
+            var content = Content(interactions[entry.VersionId]);
             if (content.Text("sourceId") == "first")
             {
                 await Assert.That(observation.EndAt - observation.StartAt).IsEqualTo(TimeSpan.FromSeconds(2));

@@ -3,7 +3,7 @@ title: "Version"
 description: "实体一次保存的完整内容，保存后不可改写"
 ---
 
-版本是实体一次保存的完整内容。每次修改都形成一个新版本，旧版本原样保留，所以一个实体的历史就是它的版本链。所有类型的实体共用这一结构。
+版本是实体一次保存的完整内容。每次修改都形成一个新版本，旧版本原样保留，所以一个实体的历史就是它的版本链。Observation、EntitySchema 和 InputSet 共用这一结构，[事物](./thing.mdx)没有版本。
 
 <ModelRelations node="Version" />
 
@@ -18,31 +18,35 @@ description: "实体一次保存的完整内容，保存后不可改写"
 | `entityId` | `EntityId` | 版本所属的实体 |
 | `versionId` | `VersionId` | 版本的身份 |
 | `previousVersionId` | 引用或 `null` | 同一实体的前一版本，首版为 `null` |
-| `category` | `observation`、`entity_schema`、`input_set` 或 `business` | 内容属于哪一类。前三种是 Core 类型 |
-| `schemaVersionId` | 引用或 `null` | 业务内容所用的 Schema 版本，Core 类型为 `null` |
+| `category` | `observation`、`entity_schema` 或 `input_set` | 实体的类别 |
 | `recordedAt` | 时间，由后端赋值 | 保存时间：后端保存这个版本的时刻 |
-| `content` | 由 Core 或 Schema 版本规定 | 这个版本的内容。Core 类型的成员见各类型页，业务字段由 Schema 版本声明 |
+| `content` | 由 Core 或 Schema 版本规定 | 这个版本的内容。EntitySchema 和 InputSet 的成员见各类型页，Observation 的业务字段由 Schema 版本声明 |
+
+Observation 的版本还有说明这份陈述的成员，见 [Observation · 成员](./observation.mdx#members)。
 
 ## 示例 [#example]
 
-一份前台时段的 Observation 补全了一次：第一版延长到 14:10，第二版延长到 14:20。
+一份前台时段补全了一次：第一版延长到 14:10，第二版延长到 14:20。
 
-```json {21,30}
+```json
 [
 	{
 		"entityId": "019e1bbb-ec00-7000-8000-0000000000e1",
 		"versionId": "019e1bbb-ec00-7000-8000-000000000101",
 		"previousVersionId": null,
 		"category": "observation",
-		"schemaVersionId": null,
+		"schemaVersionId": "019e1bbb-ec00-7000-8000-000000000201",
+		"observerId": "019e1bbb-ec00-7000-8000-0000000000a0",
+		"observerVersionId": "019e1bbb-ec00-7000-8000-0000000000a1",
+		"formation": "direct",
+		"inputSetVersionId": null,
+		"startAt": "2026-10-06T06:00:00Z",
+		"endAt": "2026-10-06T06:10:00Z",
+		"timeZone": "Asia/Shanghai",
 		"recordedAt": "2026-10-06T06:10:01Z",
 		"content": {
-			"observerVersionId": "019e1bbb-ec00-7000-8000-0000000000a1",
-			"contentVersionId": "019e1bbb-ec00-7000-8000-0000000000c1",
-			"inputSetVersionId": null,
-			"startAt": "2026-10-06T06:00:00Z",
-			"endAt": "2026-10-06T06:10:00Z",
-			"timeZone": "Asia/Shanghai"
+			"localApplicationId": "019e1bbb-ec00-7000-8000-0000000000c1",
+			"name": "Visual Studio Code"
 		}
 	},
 	{
@@ -50,15 +54,18 @@ description: "实体一次保存的完整内容，保存后不可改写"
 		"versionId": "019e1bbb-ec00-7000-8000-000000000102",
 		"previousVersionId": "019e1bbb-ec00-7000-8000-000000000101",
 		"category": "observation",
-		"schemaVersionId": null,
+		"schemaVersionId": "019e1bbb-ec00-7000-8000-000000000201",
+		"observerId": "019e1bbb-ec00-7000-8000-0000000000a0",
+		"observerVersionId": "019e1bbb-ec00-7000-8000-0000000000a1",
+		"formation": "direct",
+		"inputSetVersionId": null,
+		"startAt": "2026-10-06T06:00:00Z",
+		"endAt": "2026-10-06T06:20:00Z",
+		"timeZone": "Asia/Shanghai",
 		"recordedAt": "2026-10-06T06:20:01Z",
 		"content": {
-			"observerVersionId": "019e1bbb-ec00-7000-8000-0000000000a1",
-			"contentVersionId": "019e1bbb-ec00-7000-8000-0000000000c1",
-			"inputSetVersionId": null,
-			"startAt": "2026-10-06T06:00:00Z",
-			"endAt": "2026-10-06T06:20:00Z",
-			"timeZone": "Asia/Shanghai"
+			"localApplicationId": "019e1bbb-ec00-7000-8000-0000000000c1",
+			"name": "Visual Studio Code"
 		}
 	}
 ]
@@ -78,11 +85,11 @@ description: "实体一次保存的完整内容，保存后不可改写"
 
 已保存的版本不得改写，保存时间也包括在内。实体需要新内容时，形成新版本，见 [HISTORY-1](../rules/history.mdx#history-1)。
 
-### VERSION-3 业务版本引用 Schema 版本 [#version-3]
+### VERSION-3 Observation 引用 Schema 版本 [#version-3]
 
 执行方：后端
 
-业务版本必须引用一个 Schema 版本，内容按这一版校验和解释。Core 类型的 `schemaVersionId` 为 `null`，内容由 Core 解释。
+Observation 的版本必须引用一个 Schema 版本，内容按这一版校验和解释。
 
 ## 版本链 [#chain]
 
@@ -90,19 +97,19 @@ description: "实体一次保存的完整内容，保存后不可改写"
 
 执行方：后端
 
-每个实体只有一条线性的版本链。首版的 `previousVersionId` 为 `null`；之后每个版本的 `previousVersionId` 必须是保存时的当前版本。
+每个有版本的实体只有一条线性的版本链。首版的 `previousVersionId` 为 `null`；之后每个版本的 `previousVersionId` 必须是保存时的当前版本。
 
 ### VERSION-5 当前版本 [#version-5]
 
 定义
 
-实体最新保存的版本是它的当前版本。
+实体最新保存的版本是它的当前版本。当前版本说明这份陈述的作者目前怎么说，系统目前采用哪些陈述，见 [UNDERSTANDING-4](../rules/understanding.mdx#understanding-4)。
 
 ### VERSION-6 按到达顺序 [#version-6]
 
-执行方：后端、写入方
+执行方：后端
 
-同一实体的写入按到达顺序形成版本：写入方给出完整内容，后端把它接在当前版本之后。所以一个实体的内容由一个写入方决定。多个写入方共用的实体只放不变的内容，见 [IDENTITY-5](../rules/identity.mdx#identity-5)。
+同一份 Observation 的写入按到达顺序形成版本：写入方给出完整内容，后端把它接在当前版本之后。一份 Observation 只有一个作者，见 [OBSERVATION-10](./observation.mdx#observation-10)。
 
 ### VERSION-8 版本按变化形成 [#version-8]
 
@@ -132,16 +139,16 @@ VersionId 不得重新分配，实体删除后也一样。
 
 ## 写入 [#writes]
 
-写入方把一个实体的完整内容交给后端，这是一次写入。一次写入可以同时形成这个内容的 Observation。
+写入方把一份 Observation 的完整内容、事实时间和形成方式交给后端，这是一次写入。
 
 ### VERSION-12 VersionId 由后端生成 [#version-12]
 
 执行方：后端
 
-VersionId 是后端在保存时生成的 UUIDv7。写入方用识别依据或 EntityId 指出引用的目标，后端解析成确定的版本，见 [API · Writing](../../api/writing.mdx#references)。
+VersionId 是后端在保存时生成的 UUIDv7。写入方用识别依据或 EntityId 指出引用的目标，后端解析成事物的 EntityId 或确定的版本，见 [API · Writing](../../api/writing.mdx#references)。
 
 ### VERSION-13 一次写入整体保存 [#version-13]
 
 执行方：后端
 
-一次写入形成的内容版本、InputSet 和 Observation，全部通过才一起保存。其中一项被拒绝时，这次写入都不保存，其他写入不受影响。
+一次写入形成的 Observation 版本和 InputSet，连同它提到的新事物，全部通过才一起保存。其中一项被拒绝时，这次写入都不保存，其他写入不受影响。

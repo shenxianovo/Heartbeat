@@ -40,7 +40,7 @@ public sealed record FactTime([property: JsonIgnore(Condition = JsonIgnoreCondit
     public static FactTime Point(DateTimeOffset at, string? zone) => new(at, at, zone);
     public static FactTime Unknown() => new(null, null, null);
 }
-public sealed record WriteItem(Guid SchemaId, object Content, RecognitionKey? Key = null, Guid? EntityId = null,
+public sealed record WriteItem(Guid SchemaId, object Content, string Formation, RecognitionKey? Key = null,
     FactTime? Time = null, Guid[]? Inputs = null);
 public sealed record SchemaDefinition(Guid SchemaId, JsonElement Content)
 {
@@ -53,12 +53,25 @@ public sealed record SchemaDefinition(Guid SchemaId, JsonElement Content)
 /// <summary>The running device from the Observer context, shared by every Observer that refers to it.</summary>
 public sealed record DeviceContext(RecognitionKey Key, string? Name, string Platform)
 {
-    public static SchemaDefinition Definition { get; } = SchemaDefinition.Load(typeof(DeviceContext).Assembly, "Orisumi.Observer.Sdk.device.schema.json")[0];
-    public Ref Ref => Ref.Recognize(Definition.SchemaId, Key);
-    public WriteItem Write => new(Definition.SchemaId, new { name = Name, platform = Platform }, Key);
+    public static SchemaDefinition[] Definitions { get; } = SchemaDefinition.Load(typeof(DeviceContext).Assembly, "Orisumi.Observer.Sdk.device.schema.json");
+    public Ref Ref => Ref.Recognize(Definitions[0].SchemaId, Key);
+    public IEnumerable<WriteItem> Writes(Guid observerId)
+    {
+        yield return new(Definitions[1].SchemaId, new { deviceId = Ref, platform = Platform }, "direct",
+            new(observerId.ToString("D"), "orisumi.device-description", Key.Value));
+        if (Name is not null) yield return new(CommonSchemas.Name, new { thingId = Ref, name = Name }, "direct",
+            new(observerId.ToString("D"), "orisumi.device-name", Key.Value));
+    }
 }
-public sealed record WriteResult(JsonElement? Version, bool Changed, JsonElement? Observation, JsonElement? Error);
+public sealed record WriteResult(JsonElement? Version, bool Changed, JsonElement? Error);
 public sealed class WriteRejectedException(JsonElement error) : Exception(error.GetProperty("detail").GetString())
 {
     public JsonElement Error { get; } = error;
+}
+
+public static class CommonSchemas
+{
+    public static readonly Guid Name = Guid.Parse("019e1bbb-ec00-7000-8000-000000000010");
+    public static readonly Guid Review = Guid.Parse("019e1bbb-ec00-7000-8000-00000000000e");
+    public static readonly Guid Program = Guid.Parse("019e1bbb-ec00-7000-8000-000000000012");
 }

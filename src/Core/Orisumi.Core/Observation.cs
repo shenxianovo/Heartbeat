@@ -1,12 +1,16 @@
+using System.Text.Json;
+
 namespace Orisumi.Core;
 
 public sealed record Observation(
-    VersionId ObserverVersionId,
-    VersionId ContentVersionId,
-    VersionId? InputSetVersionId,
-    DateTimeOffset? StartAt,
-    DateTimeOffset? EndAt,
-    string? TimeZone) : VersionContent
+    EntityId ObserverId,
+    VersionId? ObserverVersionId,
+    string Formation,
+    JsonElement Fields,
+    VersionId? InputSetVersionId = null,
+    DateTimeOffset? StartAt = null,
+    DateTimeOffset? EndAt = null,
+    string? TimeZone = null) : VersionContent
 {
     public override string Category => "observation";
 }

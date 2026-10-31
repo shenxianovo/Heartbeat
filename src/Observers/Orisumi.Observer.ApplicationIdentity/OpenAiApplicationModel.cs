@@ -20,6 +20,7 @@ internal sealed class OpenAiApplicationModel(HttpClient http, string? apiKey, st
                 A product is the same software across platforms. Versions, CPU architectures and store/direct downloads normally share a product.
                 A rename can retain identity. Similar names, publisher or functionality alone do not establish identity.
                 Judge lite, international and fork variants by their actual relationship. Prefer an existing product when it is the same software.
+                Respect the supplied user denials; do not repeat a denied conclusion.
                 Return kind existing with a catalogue productId, new with a concise product name, or unknown if evidence is insufficient.
                 Unused productId/name must be null. Do not invent a catalogue ID. Do not use external tools.
                 """,

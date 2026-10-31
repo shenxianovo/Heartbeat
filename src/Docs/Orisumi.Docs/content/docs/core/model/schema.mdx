@@ -3,16 +3,16 @@ title: "EntitySchema"
 description: "一种业务类型，以及它每一版的字段、约束与含义"
 ---
 
-EntitySchema 定义一种业务类型，例如“本机应用”或“前台时段”。它是一个实体，EntityId 叫 SchemaId；它的每个版本是这种类型的一版字段、约束和含义，叫 Schema 版本。
+EntitySchema 定义一种业务类型，例如“设备”或“前台时段”。业务类型分两种：事物的类型，以及 Observation 的类型。EntitySchema 是一个实体，EntityId 叫 SchemaId；它的每个版本是这种类型的一版字段、约束和含义，叫 Schema 版本。
 
-每个业务版本都引用它保存时所用的 Schema 版本。类型后来增减了字段，旧数据仍按当时的 Schema 版本解释，不需要迁移。
+每个 Observation 的版本都引用它保存时所用的 Schema 版本。类型后来增减了字段，旧数据仍按当时的 Schema 版本解释，不需要迁移。
 
-本页的规则约束业务类型。Core 类型的结构由 Core 自己定义。
+本页的规则约束业务类型。EntitySchema 和 InputSet 的结构由 Core 自己定义。
 
 <ModelRelations node="EntitySchema" />
 
-- **类别**：Core 类型，`category` 为 `entity_schema`
-- **被引用**：业务版本的 `schemaVersionId`
+- **类别**：`category` 为 `entity_schema`，结构由 Core 定义
+- **被引用**：Observation 的 `schemaVersionId`，事物的 `schemaId`
 - **决策**：[ADR · 实体模型](../../adr/entity-model.mdx)
 
 ## 字段 [#fields]
@@ -22,7 +22,9 @@ EntitySchema 定义一种业务类型，例如“本机应用”或“前台时�
 | `displayName` | 非空字符串 | 类型名称，见 [SCHEMA-4](#schema-4) |
 | `description` | 非空字符串 | 业务说明，见 [SCHEMA-4](#schema-4) |
 | `resourceName` | 字符串 | 类型的资源名，见 [SCHEMA-5](#schema-5) |
-| `fields` | 字段名到字段定义的映射 | 业务实体的字段，引用也是字段 |
+| `kind` | `thing` 或 `observation` | 这是事物的类型，还是 Observation 的类型，见 [SCHEMA-17](#schema-17) |
+| `immutable` | 布尔值 | 这种 Observation 的内容形成后是否不再变化，见 [SCHEMA-18](#schema-18) |
+| `fields` | 字段名到字段定义的映射 | Observation 的业务字段，引用也是字段。事物的类型为空对象 |
 
 ## 字段定义 [#field-definitions]
 
@@ -34,6 +36,7 @@ EntitySchema 定义一种业务类型，例如“本机应用”或“前台时�
 | `nullable` | 所有字段 | 字段出现时，值能否为 `null` |
 | `fields` | `object` | 对象的成员，结构与顶层 `fields` 相同 |
 | `items` | `array` | 数组元素的字段定义 |
+| `target` | `reference` | 引用的目标：`thing` 是事物，`version` 是有版本的实体 |
 
 | `type` | 值 |
 | --- | --- |
@@ -41,20 +44,22 @@ EntitySchema 定义一种业务类型，例如“本机应用”或“前台时�
 | `boolean` | 布尔值 |
 | `integer` | 整数 |
 | `number` | 数值，可以包含小数 |
-| `reference` | 目标版本的 `VersionId` |
+| `reference` | 目标事物的 `EntityId`，或目标版本的 `VersionId`，由 `target` 决定 |
 | `binary` | 二进制内容的描述，见 [Binary](./binary.mdx) |
 | `object` | JSON 对象 |
 | `array` | JSON 数组 |
 
 ## 示例 [#example]
 
-下面的业务类型有三个字段：`title` 必须出现，可以为 `null`；`relatedVersionId` 是引用；`identifiers` 是对象数组，每个元素的 `sourceVersionId` 也是引用。
+下面的业务类型有三个字段：`title` 必须出现，可以为 `null`；`relatedId` 引用一个事物；`identifiers` 是对象数组，每个元素的 `sourceVersionId` 引用一个版本。
 
 ```json
 {
 	"displayName": "示例条目",
-	"description": "一个带标题、实体引用和平台标识线索的示例条目。",
+	"description": "一个带标题、事物引用和平台标识线索的示例条目。",
 	"resourceName": "example-items",
+	"kind": "observation",
+	"immutable": false,
 	"fields": {
 		"title": {
 			"type": "string",
@@ -62,9 +67,10 @@ EntitySchema 定义一种业务类型，例如“本机应用”或“前台时�
 			"required": true,
 			"nullable": true
 		},
-		"relatedVersionId": {
+		"relatedId": {
 			"type": "reference",
-			"description": "与这个条目相关的版本，目标可以是任何类型。",
+			"target": "thing",
+			"description": "与这个条目相关的事物。",
 			"required": true,
 			"nullable": false
 		},
@@ -92,6 +98,7 @@ EntitySchema 定义一种业务类型，例如“本机应用”或“前台时�
 					},
 					"sourceVersionId": {
 						"type": "reference",
+						"target": "version",
 						"description": "提供这项线索的版本；来源没有保存为版本时省略。",
 						"required": false,
 						"nullable": false
@@ -109,19 +116,19 @@ EntitySchema 定义一种业务类型，例如“本机应用”或“前台时�
 
 定义
 
-一个 EntitySchema 定义一种业务类型，它的每个版本是这种类型的一个 Schema 版本。同一类型的业务实体共用一个 EntitySchema，各有自己的 `EntityId`。
+一个 EntitySchema 定义一种业务类型，它的每个版本是这种类型的一个 Schema 版本。同一类型的实体共用一个 EntitySchema，各有自己的 `EntityId`。
 
 ### SCHEMA-2 按 Schema 版本解释 [#schema-2]
 
 执行方：后端、读取方
 
-业务版本按它引用的 Schema 版本校验和解释：有哪些字段、哪些位置是引用、每个字段是什么含义，都由这个 Schema 版本决定。新的 Schema 版本只作用于引用它的业务版本，已保存的业务版本继续按原来引用的版本解释。
+Observation 的版本按它引用的 Schema 版本校验和解释：有哪些字段、哪些位置是引用、每个字段是什么含义，都由这个 Schema 版本决定。新的 Schema 版本只作用于引用它的版本，已保存的版本继续按原来引用的 Schema 版本解释。
 
 ### SCHEMA-3 只按声明校验 [#schema-3]
 
 执行方：后端
 
-后端只按已声明的 EntitySchema 校验业务实体。业务版本引用的 Schema 版本必须已保存。
+后端只按已声明的 EntitySchema 校验业务数据。Observation 引用的 Schema 版本必须已保存，事物的类型必须已声明。
 
 ### SCHEMA-4 名称与说明 [#schema-4]
 
@@ -153,7 +160,7 @@ EntitySchema 定义一种业务类型，例如“本机应用”或“前台时�
 
 执行方：写入方
 
-`reference` 字段的名字以 `VersionId` 结尾，元素是 `reference` 的数组以 `VersionIds` 结尾，对象成员也一样。名字的前半部分写目标在这里的角色，例如前台应用时段引用本机应用的 `localApplicationVersionId`，与 Observation 的 `observerVersionId` 写法相同。
+目标是事物的 `reference` 字段，名字以 `Id` 结尾，元素是这种引用的数组以 `Ids` 结尾；目标是版本的，以 `VersionId` 和 `VersionIds` 结尾。对象成员也一样。名字的前半部分写目标在这里的角色，例如前台应用时段引用本机应用的 `localApplicationId`，复核引用被复核版本的 `targetVersionId`。
 
 ## 字段约束 [#constraints]
 
@@ -161,7 +168,7 @@ EntitySchema 定义一种业务类型，例如“本机应用”或“前台时�
 
 执行方：后端
 
-`reference` 的非空值必须是 VersionId。顶层字段、对象成员和数组元素都可以是 `reference`。
+`reference` 必须声明 `target`，非空值必须是对应的 EntityId 或 VersionId。顶层字段、对象成员和数组元素都可以是 `reference`。
 
 ### SCHEMA-10 字段定义必写项 [#schema-10]
 
@@ -190,7 +197,7 @@ EntitySchema 定义一种业务类型，例如“本机应用”或“前台时�
 
 执行方：后端
 
-业务实体只接受已声明的字段，对象成员也一样。字段定义只接受[字段定义](#field-definitions)中列出的配置。
+Observation 只接受已声明的字段，对象成员也一样。字段定义只接受[字段定义](#field-definitions)中列出的配置。
 
 ### SCHEMA-13 省略与 null [#schema-13]
 
@@ -224,3 +231,17 @@ EntitySchema 定义一种业务类型，例如“本机应用”或“前台时�
 执行方：写入方
 
 业务含义改变时，必须新建一个 EntitySchema，使用新的 SchemaId 和 `resourceName`。字段改名或改写 `description` 不得改变旧数据的含义。
+
+## 类型的性质 [#kinds]
+
+### SCHEMA-17 事物的类型 [#schema-17]
+
+执行方：后端
+
+`kind` 决定类型属于事物还是 Observation，同一个 EntitySchema 的各版本相同。事物的类型 `fields` 为空对象，`immutable` 为 `false`；事物引用它的 SchemaId。
+
+### SCHEMA-18 内容不再变化 [#schema-18]
+
+执行方：后端
+
+`immutable` 为 `true` 时，同一份 Observation 的内容形成后不再变化：写入方用同一个描述版本写入同一份识别依据，内容不同时，后端拒绝这次写入。描述版本变了算纠正，形成新版本，例如修复解析错误后重读日志。来源保留历史的类型这样声明，所以身份冲突在第一次写入时就能发现，见 [IDENTITY-5](../rules/identity.mdx#identity-5)。

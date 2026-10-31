@@ -3,7 +3,7 @@ title: "Overview"
 description: "Orisumi 的 HTTP 接口提供数据能力：写入、读取和删除数据，所有类型共用同一组接口"
 ---
 
-Orisumi API 提供数据能力：按 [Core](../core/index.mdx) 的实体与版本模型写入、读取和删除数据。写入时调用方说出一个实体的完整内容，后端认出对象、组织版本；读取时接口按身份寻址：版本用 VersionId，实体用 EntityId。所有类型的实体共用同一组接口，读取一个版本之前不需要知道它的类型。理由见 [ADR · 单向写入与托管的分工](../adr/data-capability.mdx) 和 [ADR · 实体 API](../adr/entity-api.mdx)。
+Orisumi API 提供数据能力：按 [Core](../core/index.mdx) 的事物与观测模型写入、读取和删除数据。写入时调用方说出一份 Observation 的完整内容，后端认出对象、创建事物、组织版本；读取时接口按身份寻址：版本用 VersionId，实体用 EntityId。所有类型的实体共用同一组接口，读取一个版本之前不需要知道它的类型。理由见 [ADR · 单向写入与托管的分工](../adr/data-capability.mdx) 和 [ADR · 实体 API](../adr/entity-api.mdx)。
 
 ## 例子 [#example]
 
@@ -11,7 +11,7 @@ Orisumi API 提供数据能力：按 [Core](../core/index.mdx) 的实体与版�
 
 | 时刻 | 调用方 | 调用 |
 | --- | --- | --- |
-| 16:00 | 前台状态 Observer | `PUT /contents/{digest}` 上传 VS Code 的图标，见 [Writing · 文件](./writing.mdx#contents)；再 `POST /writes` 写入 VS Code 的前台时段和它的 Observation，见 [Writing](./writing.mdx#example) |
+| 16:00 | 前台状态 Observer | `PUT /contents/{digest}` 上传 VS Code 的图标，见 [Writing · 文件](./writing.mdx#contents)；再 `POST /writes` 写入 VS Code 的前台时段，见 [Writing](./writing.mdx#example) |
 | 晚上 | 推断 Observer | `GET /observations` 读取当天的时段，见 [Reading · 按事实时间查询](./reading.mdx#observations)；再 `POST /writes` 写入推断，列出实际用到的输入 |
 | 第二天 | Web 控制台 | `GET /contents/{digest}` 读取时段中的图标，见 [Reading · 内容](./reading.mdx#contents)；`GET /entities/{entityId}/referrers` 从 VS Code 找到相关的数据，见 [Reading · 引用方](./reading.mdx#referrers)；`DELETE /entities/{entityId}` 删除浏览器的时段，见 [Writing · 删除](./writing.mdx#deletion) |
 
@@ -22,8 +22,8 @@ Orisumi API 提供数据能力：按 [Core](../core/index.mdx) 的实体与版�
 | 用途 | 接口 |
 | --- | --- |
 | 写入 | [`POST /writes`](/api/write)、[`PUT /contents/{digest}`](/api/putContent)、[`DELETE /entities/{entityId}`](/api/deleteEntity) |
-| 读取 | [`GET /versions/{versionId}`](/api/getVersion)、[`POST /versions/read`](/api/readVersions)、[`GET /entities/{entityId}`](/api/getEntity)、[`GET /entities/{entityId}/versions`](/api/listEntityVersions)、[`GET /contents/{digest}`](/api/getContent) |
-| 列出与查询 | [`GET /entities`](/api/listEntities)、[`GET /observations`](/api/listObservations)、[`GET /entities/{entityId}/referrers`](/api/listReferrers) |
+| 读取 | [`GET /versions/{versionId}`](/api/getVersion)、[`POST /versions/read`](/api/readVersions)、[`GET /entities/{entityId}`](/api/getEntity)、[`GET /entities/{entityId}/versions`](/api/listEntityVersions)、[`POST /things/read`](/api/readThings)、[`GET /contents/{digest}`](/api/getContent) |
+| 列出与查询 | [`GET /entities`](/api/listEntities)、[`GET /things`](/api/listThings)、[`GET /observations`](/api/listObservations)、[`GET /entities/{entityId}/referrers`](/api/listReferrers) |
 | Observer 的管理 | `/pairings`、`/hosts` 和 `/observer-instances` 下的接口由管理入口调用，`/runtime/` 下的由托管方调用，见 [Management](./management.mdx) |
 
 每个接口一页，由契约生成，给出路径、参数、请求和响应的结构。接口的语义写在本分区的主题页中：[Writing](./writing.mdx)、[Reading](./reading.mdx) 和 [Management](./management.mdx)。

@@ -1,29 +1,53 @@
 ---
 title: "Assistant Session"
-description: "Claude Code 或 Codex 中的一个会话，内容只有身份"
+description: "Claude Code 或 Codex 中的一个会话"
 ---
 
-助手会话表示来源中的一个会话，例如 Claude Code 里讨论文档结构的那个会话，或者它为读网页派出的子 Agent 的会话。会话被它的每次[交互](./assistant-interaction.mdx)引用，自己不作为观测内容，所以没有事实时间：会话从几点到几点，由读取方从交互的时间计算。
+助手会话表示来源中的一个会话，例如 Claude Code 里讨论文档结构的那个会话，或者它为读网页派出的子 Agent 的会话。它是一个[事物](../../core/model/thing.mdx)，被它的每次[交互](./assistant-interaction.mdx)提到。会话从几点到几点，由读取方从交互的时间计算。
 
-会话只有身份。日志和索引文件各给出会话的一部分，日志还可能被重读，所以会变的内容都定义为单独的业务类型：[会话标题](./assistant-session-title.mdx)和[子 Agent 关系](./assistant-subagent.mdx)，见 [IDENTITY-5](../../core/rules/identity.mdx#identity-5)。
+日志和索引文件各给出会话的一部分，日志还可能被重读，所以会变的内容都写成单独的 Observation：标题是 [Name](../../core/rules/understanding.mdx#name)，发起关系是[子 Agent 关系](./assistant-subagent.mdx)，见 [IDENTITY-5](../../core/rules/identity.mdx#identity-5)。
 
 <ObserverStructure node="ASSISTANT_SESSION" />
 
 ## 粒度 [#granularity]
 
-来源的一个会话对应一个实体，子 Agent 的会话也是一个实体。内容写入一次后不再变化。
+来源的一个会话对应一个事物，子 Agent 的会话也是一个事物。
 
 ## 身份 [#identity]
 
-Claude Code 的 `sessionId` 和 `agentId`、Codex 的会话 `id` 都由来源生成，在同一个产品中唯一，所以身份是 `(product, sourceSessionId)`。
+Claude Code 的 `sessionId` 和 `agentId`、Codex 的会话 `id` 都由来源生成，在同一个产品中唯一。
 
 | 识别依据 | 值 |
 | --- | --- |
 | `scope` | `null` |
 | `scheme` | `claude-code.session` 或 `codex.session` |
-| `value` | `sourceSessionId` |
+| `value` | `sessionId`、`agentId` 或会话 `id` |
 
-同一个会话的文件被复制或移动，例如 Codex 把会话移进归档目录，身份不变，仍是同一个实体。用户删除一个会话后，识别依据随它删除；之后读到这个会话的数据时，它是一个新实体，见 [IDENTITY-7](../../core/rules/identity.mdx#identity-7)。
+同一个会话的文件被复制或移动，例如 Codex 把会话移进归档目录，身份不变。用户删除一个会话后，识别依据随它删除；之后读到这个会话的数据时，它是一个新事物，见 [IDENTITY-7](../../core/rules/identity.mdx#identity-7)。
+
+## 标题 [#titles]
+
+来源中一次不同的标题写成一份 Name，形成后不再变化。Codex 把一个会话命名为“整理文档结构”，之后用户改成“重写 Observer 文档”，这是两份 Name。
+
+| 产品 | 来源 |
+| --- | --- |
+| Claude Code | 日志中的 `custom-title` 和 `agent-name`；子 Agent 取 `meta.json` 的 `description` |
+| Codex | `session_index.jsonl` 的 `thread_name`。这个文件只追加，每次改名有一行 |
+
+| 识别依据 | 值 |
+| --- | --- |
+| `scope` | `null` |
+| `scheme` | `codex.session-title` 或 `claude-code.session-title` |
+| `value` | Codex 是会话 `id` 和 `updated_at`，Claude Code 是 `sessionId` 和标题，都用换行连接 |
+
+Claude Code 的标题行没有时间和标识，同一行反复写入，所以用标题本身区分。标题回到之前用过的值时，这次变化不形成新的 Name。
+
+| 产品 | 事实时间 |
+| --- | --- |
+| Codex | 时间点：`updated_at` |
+| Claude Code | 未知，两个边界都是 `null` |
+
+形成方式是 `direct`，`timeZone` 为 `null`。
 
 ## EntitySchema [#schema]
 
@@ -31,21 +55,6 @@ Claude Code 的 `sessionId` 和 `agentId`、Codex 的会话 `id` 都由来源生
 | --- | --- |
 | SchemaId | `019e1bbb-ec00-7000-8000-000000000008` |
 | 显示名称 | 助手会话 |
-| 说明 | 表示 Claude Code 或 Codex 中的一个会话，包括子 Agent 的会话。一个来源会话对应一个实体，内容只有身份，不再变化。标题和子 Agent 关系是单独的业务类型。会话本身没有事实时间，会话中每次交互的时间写在引用交互的 Observation 上。 |
+| 说明 | 表示 Claude Code 或 Codex 中的一个会话，包括子 Agent 的会话。产品和来源标识在识别依据中。 |
 | 资源名 | `assistant-sessions` |
-
-| 字段 | 类型 | 必填 | 可空 | description |
-| --- | --- | --- | --- | --- |
-| `product` | `string` | 是 | 否 | 产生会话的产品：`claude-code` 或 `codex` |
-| `sourceSessionId` | `string` | 是 | 否 | 来源中会话的标识：Claude Code 主会话的 `sessionId`、子 Agent 的 `agentId`，或 Codex 的会话 `id` |
-
-## 示例 [#example]
-
-Claude Code 为读网页派出的子 Agent 的会话：
-
-```json
-{
-  "product": "claude-code",
-  "sourceSessionId": "ac3f8c436510b138e"
-}
-```
+| `kind` | `thing` |

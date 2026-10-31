@@ -29,14 +29,14 @@ public sealed class BinaryValueTests
                "items":{"type":"object","description":"Item","nullable":false,"fields":{
                  "file":{"type":"binary","description":"File","required":true,"nullable":true}}}}}
             """);
-        var schema = new EntitySchema("Example", "Example", "example", fields);
+        var schema = new EntitySchema("Example", "Example", "example", fields, "observation", false);
         var content = JsonSerializer.SerializeToElement(new { file = descriptor, text = descriptor.Digest,
             files = new[] { new { file = (BinaryValue?)descriptor }, new { file = (BinaryValue?)null } } }, JsonSerializerOptions.Web);
-        var version = new VersionSubmission(EntityId.New(), VersionId.New(), null, VersionId.New(), new BusinessContent(content));
+        var version = new VersionSubmission(EntityId.New(), VersionId.New(), null, VersionId.New(), new Observation(EntityId.New(), null, "direct", content));
         VersionRules.Validate(version, schema);
         var found = BinaryValue.Collect(version, schema);
         await Assert.That(found.Count).IsEqualTo(2);
         await Assert.That(found.All(value => value == descriptor)).IsTrue();
-        await Assert.That(VersionRules.GetReferences(version, schema).Count).IsEqualTo(1);
+        await Assert.That(VersionRules.GetReferences(version, schema).Count).IsEqualTo(2);
     }
 }

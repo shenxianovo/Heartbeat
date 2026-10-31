@@ -1,47 +1,23 @@
 ---
 title: "Writing"
-description: "写入的 HTTP 接口：一次写入说出一个实体的完整内容，后端认出对象、形成版本和 Observation；以及文件和删除"
+description: "写入的 HTTP 接口：一次写入说出一份 Observation 的完整内容，后端认出对象、创建事物、形成版本；以及文件和删除"
 ---
 
-写入只有一个接口：[`POST /writes`](/api/write)。业务代码说出一个实体的完整内容，可选的识别依据、事实时间和实际输入，后端认出对象，形成版本和 Observation。能发 HTTP 就能写 Observer，[SDK](./sdk.mdx) 只是方便。
+写入只有一个接口：[`POST /writes`](/api/write)。业务代码说出一份 Observation 的完整内容、形成方式、可选的识别依据、事实时间和实际输入，后端认出对象，创建提到的事物，形成版本。能发 HTTP 就能写 Observer，[SDK](./sdk.mdx) 只是方便。
 
 ## 例子 [#example]
 
-[Walkthrough](../start/walkthrough.mdx) 那一天 16:00，用户切到浏览器，VS Code 这一段结束。前台状态 Observer 先上传图标（见[文件](#contents)），再写入本机应用和这一段：
+[Walkthrough](../start/walkthrough.mdx) 那一天 16:00，用户切到浏览器，VS Code 这一段结束。前台状态 Observer 先上传图标（见[文件](#contents)），再写入这一段：
 
 ```json title="POST /writes"
 {
   "observer": { "entityId": "0196f3a2-7c1e-7d40-9b1a-2f6c8e4d5a01" },
   "writes": [
     {
-      "schemaId": "019e1bbb-ec00-7000-8000-000000000002",
-      "key": {
-        "scope": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
-        "scheme": "macos.installation",
-        "value": "com.microsoft.VSCode\n/Applications/Visual Studio Code.app/Contents/MacOS/Electron"
-      },
-      "content": {
-        "deviceVersionId": {
-          "schemaId": "019e1bbb-ec00-7000-8000-00000000000d",
-          "key": {
-            "scope": null,
-            "scheme": "macos.hardware-uuid",
-            "value": "3F2504E0-4F89-41D3-9A0C-0305E82C3301"
-          }
-        },
-        "identifiers": [
-          { "scheme": "macos.bundle-id", "value": "com.microsoft.VSCode" },
-          {
-            "scheme": "macos.executable-path",
-            "value": "/Applications/Visual Studio Code.app/Contents/MacOS/Electron"
-          }
-        ]
-      }
-    },
-    {
       "schemaId": "019e1bbb-ec00-7000-8000-000000000001",
+      "formation": "direct",
       "content": {
-        "localApplicationVersionId": {
+        "localApplicationId": {
           "schemaId": "019e1bbb-ec00-7000-8000-000000000002",
           "key": {
             "scope": "3F2504E0-4F89-41D3-9A0C-0305E82C3301",
@@ -66,58 +42,30 @@ description: "写入的 HTTP 接口：一次写入说出一个实体的完整内
 }
 ```
 
-第一次写入按识别依据认出 VS Code：这个本机应用已有且内容相同，什么都不做；第一次读到时新建它。第二次写入形成时段内容的首版，引用本机应用的当前版本，同时形成 Observation，负责的是这一版前台状态 Observer。
+后端按识别依据认出 VS Code 这个本机应用，第一次读到时创建它，然后形成这一段的首版。负责的是前台状态 Observer，版本引用它当时的描述。
 
 ## 一次写入 [#write]
 
 | 字段 | 含义 |
 | --- | --- |
 | `schemaId` | 业务类型，这个 Observer 已经[声明](#types) |
-| `key` | 可选。认出实体的[识别依据](#recognition) |
-| `entityId` | 可选。写入一个已知的实体，和 `key` 只出现一个 |
-| `content` | 完整的业务内容，见 [VERSION-1](../core/model/version.mdx#version-1) |
-| `time` | 可选。出现时同时形成 [Observation](#observation) |
-| `inputs` | 可选。处理实际用到的已保存版本，见[观测](#observation) |
+| `formation` | [形成方式](../core/model/observation.mdx#formation) |
+| `key` | 可选。认出这份 Observation 的[识别依据](#recognition) |
+| `content` | 完整的业务字段，见 [VERSION-1](../core/model/version.mdx#version-1) |
+| `time` | 可选。事实时间，省略时边界都未知 |
+| `inputs` | 可选。处理实际用到的已保存版本 |
 
-| 情况 | 内容实体 |
+| 情况 | 结果 |
 | --- | --- |
-| 没有 `key` 和 `entityId` | 新建实体。一次温度读数就是这样 |
-| `key` 还没有对应的实体 | 新建实体，登记这份依据 |
-| 实体已有，Schema 版本和内容都与当前版本相同 | 什么都不做 |
-| 实体已有，有变化 | 形成新版本 |
+| 没有 `key` | 新建 Observation。一次温度读数就是这样 |
+| `key` 还没有对应的 Observation | 新建，登记这份依据 |
+| 同一个 Observer，内容、时间和输入都与当前版本相同 | 什么都不做 |
+| 同一个 Observer，有变化 | 形成新版本 |
+| 类型声明 `immutable`，描述版本相同而内容不同 | 拒绝，`rule` 为 `SCHEMA-18` |
+| 另一个 Observer，内容相同 | 什么都不做 |
+| 另一个 Observer，内容不同 | 拒绝，`rule` 为 `OBSERVATION-10` |
 
-内容是否相同按[内容相同](./versions.mdx#sameness)判断。写入方给出的是它读到的完整状态，后端把它接在当前版本之后，见 [VERSION-6](../core/model/version.mdx#version-6)。怎样选择 `key` 和内容的范围，见 [IDENTITY-5](../core/rules/identity.mdx#identity-5)。
-
-`entityId` 用于受托管实例写入[自己的描述](#observer)。这个实体已删除时，写入被拒绝，见 [HISTORY-7](../core/rules/history.mdx#history-7)。
-
-## 认出对象 [#recognition]
-
-识别依据是业务规则给出的三个值，业务类型取自 `schemaId`：
-
-| 字段 | 含义 |
-| --- | --- |
-| `scope` | 作用范围，由业务规则决定，例如设备的稳定标识或一个账号。全局有效的标识为 `null` |
-| `scheme` | 标识方案，决定怎样解释 `value`，例如 `macos.installation` |
-| `value` | 标识的值，后端原样比较 |
-
-一份依据最多对应一个实体，见 [IDENTITY-7](../core/rules/identity.mdx#identity-7)。三个值的 UTF-8 字节数之和最多 2048。不同设备上路径相同的应用，`scope` 不同，所以是不同的实体。用户删除实体后，依据随它删除，之后的写入形成一个新实体。
-
-没有自然标识的类型不用识别依据，每次写入都新建。
-
-## 观测 [#observation]
-
-写入带 `time` 时，后端同时形成内容的 Observation：
-
-| 字段 | 含义 |
-| --- | --- |
-| `time.startAt`、`time.endAt`、`time.timeZone` | 含义见 [Observation · 成员](../core/model/observation.mdx#members)，都必须出现，未知时为 `null` |
-| `inputs` | 处理实际用到的已保存版本，写 VersionId，见 [EVIDENCE-1](../core/rules/evidence.mdx#evidence-1)。省略或为 `[]` 时不形成 InputSet，后端不从引用推算输入 |
-
-| 这个 Observer 对这个实体 | Observation |
-| --- | --- |
-| 还没有 Observation | 新建 |
-| 已有，内容版本、时间和输入都相同 | 什么都不做 |
-| 已有，有变化 | 形成它的新版本，见 [OBSERVATION-10](../core/model/observation.mdx#observation-10) |
+内容是否相同按[内容相同](./versions.mdx#sameness)判断，另一个 Observer 写入时只比较业务字段，所以新旧程序用不同的 Schema 版本也不会被拒绝。写入方给出的是它读到的完整状态，后端把它接在当前版本之后，见 [VERSION-6](../core/model/version.mdx#version-6)。怎样选择 `key` 和内容的范围，见 [IDENTITY-5](../core/rules/identity.mdx#identity-5)。
 
 所以重读同一份日志什么都不发生。进行中的事实也是这样写的：
 
@@ -128,23 +76,43 @@ time = [14:00, 14:10]
 time = [14:00, 16:00]
 ```
 
-每次写入形成 Observation 的一个新版本，内容不变，见 [TIME-4](../core/rules/time.mdx#time-4)。结束后写入一次是这种写法的特例。写入不带 `time` 时只保存内容，Observation 之后再形成：窗口标题比应用时段先结束时，时段的内容先写入，标题引用它，时段结束时再带着 `time` 写入一次。
+每次写入形成一个新版本，内容不变，见 [TIME-4](../core/rules/time.mdx#time-4)。结束后写入一次是这种写法的特例。
+
+## 认出对象 [#recognition]
+
+识别依据是业务规则给出的三个值，业务类型取自 `schemaId`：
+
+| 字段 | 含义 |
+| --- | --- |
+| `scope` | 作用范围，由业务规则决定，例如设备的稳定标识或一个来源会话。全局有效的标识为 `null` |
+| `scheme` | 标识方案，决定怎样解释 `value`，例如 `macos.installation` |
+| `value` | 标识的值，后端原样比较 |
+
+一份依据最多对应一个实体，见 [IDENTITY-7](../core/rules/identity.mdx#identity-7)。三个值的 UTF-8 字节数之和最多 2048。不同设备上路径相同的应用，`scope` 不同，所以是不同的事物。用户删除实体后，依据随它删除，之后的写入形成一个新实体。
+
+每个 Observer 要各写一份时，把它的 EntityId 放进 `scope`，见 [IDENTITY-8](../core/rules/identity.mdx#identity-8)。没有自然标识的类型不用识别依据，每次写入都新建。
+
+## 输入 [#inputs]
+
+`inputs` 写 VersionId，见 [EVIDENCE-1](../core/rules/evidence.mdx#evidence-1)。省略或为 `[]` 时不形成 InputSet，后端不从引用推算输入。
 
 一个请求中成员相同的 `inputs` 共用一个 InputSet，成员的顺序不影响比较，见 [INPUTSET-5](../core/model/input-set.mdx#inputset-5)。例如一次模型调用得到十份推断，后端形成一个 InputSet 和十份 Observation。
 
 ## 引用 [#references]
 
-业务内容中 `type` 为 `reference` 的字段，有三种写法，Schema 声明的位置才这样解释，其他字符串和对象都按原值保存：
+业务字段中 `type` 为 `reference` 的值有这几种写法，Schema 声明的位置才这样解释，其他字符串和对象都按原值保存：
 
-| 写法 | 指向 |
-| --- | --- |
-| 字符串 VersionId | 这个确定的版本 |
-| `{ "entityId": "…" }` | 这个实体此刻的当前版本 |
-| `{ "schemaId": "…", "key": { … } }` | 这份识别依据对应的实体此刻的当前版本 |
+| 字段的 `target` | 写法 | 指向 |
+| --- | --- | --- |
+| `thing` | 字符串 EntityId | 这个事物 |
+| `thing` | `{ "schemaId": "…", "key": { … } }` | 这份识别依据对应的事物，不存在时创建，见 [THING-2](../core/model/thing.mdx#thing-2) |
+| `version` | 字符串 VersionId | 这个确定的版本 |
+| `version` | `{ "entityId": "…" }` | 这个实体此刻的当前版本 |
+| `version` | `{ "schemaId": "…", "key": { … } }` | 这份识别依据对应的实体此刻的当前版本 |
 
-读回时都是 VersionId，这个结果不随实体之后的版本改变，见 [ENTITY-4](../core/model/entity.mdx#entity-4)。
+读回时事物是 EntityId，版本是 VersionId，见 [ENTITY-4](../core/model/entity.mdx#entity-4)。
 
-引用谁，就先写入谁：同一个 Observer 的写入按顺序处理，所以前面的写入能被后面的引用。目标解析不到时，可空的字段写入 `null`，其他字段让这次写入被拒绝，见 [ENTITY-6](../core/model/entity.mdx#entity-6)。例如工具结果对应的调用不在日志中，`toolCallVersionId` 就是 `null`。
+提到事物不用先写入，它们随这次写入一起保存。引用版本时，目标要先保存：同一个 Observer 的写入按顺序处理，所以前面的写入能被后面的引用。版本解析不到时，可空的字段写入 `null`，其他字段让这次写入被拒绝，见 [ENTITY-6](../core/model/entity.mdx#entity-6)。例如工具结果对应的调用不在日志中，`toolCallVersionId` 就是 `null`。
 
 ## 业务类型 [#types]
 
@@ -154,7 +122,7 @@ time = [14:00, 16:00]
 {
   "observer": { "entityId": "0196f3a2-7c1e-7d40-9b1a-2f6c8e4d5a01" },
   "schemas": [
-    { "schemaId": "019e1bbb-ec00-7000-8000-000000000002", "content": { "displayName": "本机应用", "…": "…" } }
+    { "schemaId": "019e1bbb-ec00-7000-8000-000000000002", "content": { "displayName": "本机应用", "kind": "thing", "…": "…" } }
   ],
   "writes": []
 }
@@ -170,32 +138,40 @@ time = [14:00, 16:00]
 
 这个 Observer 之后的写入用这一版，直到它声明另一版。所以两台设备上运行着新旧两个版本的前台状态 Observer 时，各自用自己那一版，Schema 不会在两台设备之间来回改写，见 [ENTITY-3](../core/model/entity.mdx#entity-3)。
 
-`schemaId` 是业务类型的常量，由编写它的人生成，UUIDv7 不会重复；共用一种业务类型的程序用同一个 `schemaId` 和同一份内容，见[业务类型的声明](./sdk.mdx#definitions)。
+[公共类型](../core/rules/understanding.mdx#common-types)由后端内置，不用声明。`schemaId` 是业务类型的常量，由编写它的人生成，UUIDv7 不会重复；共用一种业务类型的程序用同一个 `schemaId` 和同一份内容，见[业务类型的声明](./sdk.mdx#definitions)。
 
 ## 负责的 Observer [#observer]
 
-请求的 `observer` 指出负责这些写入的 Observer：
+请求的 `observer` 指出负责这些写入的事物：
 
 | 写法 | 用于 |
 | --- | --- |
 | `{ "entityId": "…" }` | 受托管的程序实例，EntityId 在运行上下文中 |
-| `{ "schemaId": "…", "key": { … } }` | 直接运行的脚本，用识别依据认出自己 |
+| `{ "schemaId": "…", "key": { … } }` | 直接运行的脚本和 Agent，类型是程序实例，用识别依据认出自己；用户本人，类型是人 |
 
-Observation 引用处理这次写入时这个实体的当前版本。所以程序启动时先写入自己的描述：
+程序启动时在请求的 `description` 中写下自己的描述：
 
 ```json
-{ "schemaId": "019e1bbb-ec00-7000-8000-000000000003", "entityId": "0196f3a2-7c1e-7d40-9b1a-2f6c8e4d5a01", "content": { "platform": "macos", "hostName": "Mac", "programVersion": "0.1.0" } }
+{
+  "observer": { "entityId": "0196f3a2-7c1e-7d40-9b1a-2f6c8e4d5a01" },
+  "description": {
+    "schemaId": "019e1bbb-ec00-7000-8000-000000000003",
+    "content": { "platform": "macos", "hostName": "Mac", "programVersion": "0.1.0" }
+  },
+  "writes": []
+}
 ```
 
-描述不变时什么都不做，程序升级或模型变化时形成新版本，之后的 Observation 引用新版本。还没有描述的 Observer 不能形成 Observation，这次写入被拒绝。受托管实例的 EntityId 由托管方预留，它用预留的 EntityId 写入首版，见 [ENTITY-2](../core/model/entity.mdx#entity-2)。
+描述是这个 Observer 自己的一份 Observation，见 [OBSERVER-9](../core/model/observer.mdx#observer-9)。内容不变时什么都不做，程序升级或模型变化时形成新版本，之后的写入引用新版本。没有写过描述的 Observer 也能写入，`observerVersionId` 为 `null`。受托管实例的 EntityId 由托管方预留，第一次使用时创建为程序实例这种事物，见 [ENTITY-2](../core/model/entity.mdx#entity-2)。
 
-每个 Observer 一条写入流，后端按收到的顺序处理。Observer 可以是程序实例，也可以是用户本人。
+每个 Observer 一条写入流，后端按收到的顺序处理。
 
 ## 请求和结果 [#requests]
 
 | 字段 | 含义 |
 | --- | --- |
 | `observer` | 负责的 [Observer](#observer) |
+| `description` | 可选。这个 Observer 的[描述](#observer) |
 | `sequence` | 可选。这条写入流中请求的序号，由[本地转发](../hosting/runtime.mdx#forwarding)填写。后端保存最后处理的序号，序号不大于它的请求已经处理过，返回 `200`，`duplicate` 为 `true`，什么都不做 |
 | `schemas` | 可选。声明的[业务类型](#types) |
 | `writes` | 这个请求的写入，按顺序处理，可以为空 |
@@ -205,8 +181,8 @@ Observation 引用处理这次写入时这个实体的当前版本。所以程�
 ```json
 {
   "results": [
-    { "version": { "entityId": "…", "versionId": "…" }, "changed": false, "observation": null },
-    { "version": { "entityId": "…", "versionId": "…" }, "changed": true, "observation": { "entityId": "…", "versionId": "…" } },
+    { "version": { "entityId": "…", "versionId": "…" }, "changed": false },
+    { "version": { "entityId": "…", "versionId": "…" }, "changed": true },
     { "error": { "status": 409, "rule": "BINARY-3", "detail": "…" } }
   ]
 }
@@ -214,9 +190,8 @@ Observation 引用处理这次写入时这个实体的当前版本。所以程�
 
 | 字段 | 含义 |
 | --- | --- |
-| `version` | 这次写入之后内容实体的实际当前版本，完整内容见 [Versions](./versions.mdx) |
+| `version` | 这次写入之后这份 Observation 的实际当前版本，完整内容见 [Versions](./versions.mdx) |
 | `changed` | 这次写入是否形成了新版本 |
-| `observation` | 这份 Observation 的当前版本，写入不带 `time` 时为 `null` |
 | `error` | 这次写入被拒绝的原因，字段含义见 [Errors](./errors.mdx#format) |
 
 | 结果 | 响应 |
@@ -241,13 +216,13 @@ Observation 引用处理这次写入时这个实体的当前版本。所以程�
 
 ## 校验 [#validation]
 
-后端先检查请求的结构，再按顺序处理 `schemas` 和每次写入。业务内容的字段由这个 Observer 声明的 Schema 版本解释。
+后端先检查请求的结构，再按顺序处理 `schemas`、`description` 和每次写入。业务字段由这个 Observer 声明的 Schema 版本解释。
 
 | 阶段 | 检查 | 失败时 |
 | --- | --- | --- |
 | 请求结构 | JSON、成员和基础值类型，以及 `observer` 的归属 | `400` 或 `403`，整个请求都不处理 |
 | 声明 | `schemas` 中每一版的内容 | `400` 或 `409`，整个请求都不处理 |
-| 每次写入 | 业务类型是否已声明、Schema 字段定义的必写项与组合、引用目标、二进制内容、事实边界、识别依据的长度、存储支持的字符串与数值范围 | 这次写入被拒绝，其他写入照常处理 |
+| 每次写入 | 业务类型是否已声明、Schema 字段定义的必写项与组合、形成方式、作者和 `immutable`、引用目标、二进制内容、事实边界、识别依据的长度、存储支持的字符串与数值范围 | 这次写入被拒绝，其他写入照常处理 |
 
 例如 `startAt` 晚于 `endAt`，这次写入按 [OBSERVATION-6](../core/model/observation.mdx#observation-6) 被拒绝，请求中的其他写入照常保存。
 
@@ -268,16 +243,16 @@ Observation 引用处理这次写入时这个实体的当前版本。所以程�
 
 ## 删除 [#deletion]
 
-第二天，用户在 Web 控制台删掉 16:00 之后的浏览器时段。[`DELETE /entities/{entityId}`](/api/deleteEntity) 移除一个实体的全部版本和它的识别依据，返回 `204`。一次作用于一个实体，所以这一段的 Observation 和前台时段是两个删除，见 [HISTORY-6](../core/rules/history.mdx#history-6)。
+第二天，用户在 Web 控制台删掉 16:00 之后的浏览器时段。[`DELETE /entities/{entityId}`](/api/deleteEntity) 移除一个实体的全部版本和它的识别依据，返回 `204`，见 [HISTORY-6](../core/rules/history.mdx#history-6)。判断错了时用[否定](../core/rules/understanding.mdx#understanding-5)，删除只用于用户要抹掉的数据。
 
 | 情况 | 结果 |
 | --- | --- |
 | 实体已经删除 | `204` |
 | EntityId 从未出现过 | `404` |
-| 还有业务版本使用这个 EntitySchema | `409`，`rule` 为 `HISTORY-9` |
+| 还有数据使用这个 EntitySchema | `409`，`rule` 为 `HISTORY-9` |
 | 托管方凭证 | `403`，`code` 为 `management_only` |
 
-已有的引用保留，目标不可读取，见 [HISTORY-8](../core/rules/history.mdx#history-8)。之后的引用不能指向它：字段可空时写入 `null`，否则这次写入被拒绝，见 [ENTITY-6](../core/model/entity.mdx#entity-6)。
+已有的引用保留，目标不可读取，见 [HISTORY-8](../core/rules/history.mdx#history-8)。之后的引用不能指向它：引用版本时，字段可空就写入 `null`，否则这次写入被拒绝，见 [ENTITY-6](../core/model/entity.mdx#entity-6)。
 
 删除后实体不再接受新版本，见 [HISTORY-7](../core/rules/history.mdx#history-7)；读取它返回 `410`。业务代码之后读到同一个来源对象时，写入按新对象创建。
 

@@ -86,7 +86,7 @@ description: "管理 Observer 的 HTTP 接口：配对与托管方、实例的�
 
 `DELETE /observer-instances/{entityId}` 在一个事务中把登记标记为已删除，并删除它的 Core 实体，返回 `204`；重复删除也返回 `204`，EntityId 没有登记时返回 `404`。[`DELETE /entities/{entityId}`](/api/deleteEntity) 删除一个已登记的程序实例时，做同样的事，见 [Writing · 删除](./writing.mdx#deletion)。
 
-之后这个 EntityId 的任何版本都按 [HISTORY-7](../core/rules/history.mdx#history-7) 被拒绝，包括它还没保存过的首版。
+之后以这个 EntityId 写入都按 [HISTORY-7](../core/rules/history.mdx#history-7) 被拒绝，包括它还没写入过的情况。
 
 ## 长轮询 [#poll]
 

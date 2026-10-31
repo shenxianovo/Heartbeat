@@ -9,7 +9,13 @@ internal sealed class ModelFixture : IDisposable
     internal InMemoryEntityStore Store { get; } = new();
     internal Clock Time { get; } = new();
     internal EntityService Service { get; }
-    internal ModelFixture() => Service = new(Store, Time);
+    internal EntityId ObserverId { get; } = EntityId.New();
+    internal ModelFixture()
+    {
+        Service = new(Store, Time);
+        Store.ExecuteAsync(async (transaction, token) => { await transaction.CreateThingAsync(ObserverId, BuiltInSchemas.Program, token); return true; }).GetAwaiter().GetResult();
+    }
+    internal Observation Content(JsonElement fields) => new(ObserverId, null, "direct", fields.Clone());
     internal static JsonElement Json(string value) => JsonSerializer.Deserialize<JsonElement>(value);
     internal static VersionSubmission New(VersionContent content, VersionId? schema = null) =>
         new(EntityId.New(), VersionId.New(), null, schema, content);
@@ -23,9 +29,9 @@ internal sealed class ModelFixture : IDisposable
         return saved;
     });
     internal Task<EntityVersion> Schema(string resource = "items", string fields = "{}") =>
-        Save(New(new EntitySchema("Items", "An item", resource, Json(fields))));
-    internal Task<EntityVersion> Business(EntityVersion schema, string content = "{}") =>
-        Save(New(new BusinessContent(Json(content)), schema.VersionId));
+        Save(New(new EntitySchema("Items", "An item", resource, Json(fields), "observation", false)));
+    internal Task<EntityVersion> Observe(EntityVersion schema, string content = "{}") =>
+        Save(New(Content(Json(content)), schema.VersionId));
     internal static async Task Reject(Func<Task> action, string rule)
     {
         try { await action(); }

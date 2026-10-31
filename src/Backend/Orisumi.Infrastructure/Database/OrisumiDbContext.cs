@@ -28,7 +28,7 @@ public sealed partial class OrisumiDbContext(DbContextOptions<OrisumiDbContext> 
         var entities = modelBuilder.Entity<StoredEntity>();
         entities.ToTable("entities");
         entities.HasKey(row => row.EntityId).HasName("pk_entities");
-        entities.HasIndex(row => row.CurrentVersionId).IsUnique().HasDatabaseName("ux_entities_current_version_id");
+        entities.HasIndex(row => row.CurrentVersionId).IsUnique().HasFilter("current_version_id IS NOT NULL").HasDatabaseName("ux_entities_current_version_id");
         entities.HasOne<StoredVersion>().WithMany().HasForeignKey(row => row.CurrentVersionId)
             .OnDelete(DeleteBehavior.NoAction).HasConstraintName("fk_entities_versions_current_version_id");
         entities.HasIndex(row => new { row.SchemaId, row.EntityId }).HasDatabaseName("ix_entities_schema_id_entity_id");
@@ -40,7 +40,8 @@ public sealed partial class OrisumiDbContext(DbContextOptions<OrisumiDbContext> 
         schemas.HasOne<StoredEntity>().WithMany().HasForeignKey(row => row.EntityId)
             .OnDelete(DeleteBehavior.NoAction).HasConstraintName("fk_schemas_entities_entity_id");
         var versions = modelBuilder.Entity<StoredVersion>();
-        versions.ToTable("versions");
+        versions.ToTable("versions", table => table.HasCheckConstraint("ck_versions_observation",
+            "(category = 'observation' AND schema_version_id IS NOT NULL AND observer_id IS NOT NULL AND formation IS NOT NULL) OR (category <> 'observation' AND schema_version_id IS NULL AND observer_id IS NULL AND formation IS NULL)"));
         versions.HasKey(row => row.VersionId).HasName("pk_versions");
         versions.Property(row => row.Content).HasColumnType("jsonb");
         versions.HasIndex(row => new { row.EntityId, row.Ordinal }).IsUnique().HasDatabaseName("ux_versions_entity_id_ordinal");
@@ -64,11 +65,17 @@ public sealed partial class OrisumiDbContext(DbContextOptions<OrisumiDbContext> 
         observations.HasOne<StoredEntity>().WithMany().HasForeignKey(row => row.EntityId).OnDelete(DeleteBehavior.NoAction).HasConstraintName("fk_observations_entities_entity_id");
         observations.HasOne<StoredVersion>().WithMany().HasForeignKey(row => row.VersionId).OnDelete(DeleteBehavior.NoAction).HasConstraintName("fk_observations_versions_version_id");
         observations.HasIndex(row => row.VersionId).IsUnique().HasDatabaseName("ux_observations_version_id");
-        observations.HasIndex(row => new { row.ContentSchemaId, row.FactRange }).HasMethod("gist").HasDatabaseName("ix_observations_content_schema_id_fact_range");
+        observations.HasIndex(row => new { row.SchemaId, row.FactRange }).HasMethod("gist").HasDatabaseName("ix_observations_schema_id_fact_range");
         observations.HasIndex(row => row.FactRange).HasMethod("gist").HasDatabaseName("ix_observations_fact_range");
         observations.HasIndex(row => row.ObserverEntityId).HasDatabaseName("ix_observations_observer_entity_id");
-        observations.HasIndex(row => row.ContentEntityId).HasDatabaseName("ix_observations_content_entity_id");
-        observations.HasIndex(row => new { row.ObserverEntityId, row.ContentEntityId }).HasDatabaseName("ix_observations_observer_entity_id_content_entity_id");
+        observations.HasIndex(row => row.Formation).HasDatabaseName("ix_observations_formation");
+        var things = modelBuilder.Entity<StoredThing>();
+        things.ToTable("things");
+        things.HasKey(row => row.EntityId).HasName("pk_things");
+        var reviews = modelBuilder.Entity<StoredReview>();
+        reviews.ToTable("reviews");
+        reviews.HasKey(row => row.EntityId).HasName("pk_reviews");
+        reviews.HasIndex(row => row.TargetEntityId).HasDatabaseName("ix_reviews_target_entity_id");
         var recognition = modelBuilder.Entity<StoredRecognitionKey>();
         recognition.ToTable("recognition_keys");
         recognition.HasNoKey();

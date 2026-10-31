@@ -3,7 +3,7 @@ title: "Foreground Window Title"
 description: "依附于前台应用时段的窗口标题时段"
 ---
 
-窗口标题时段表达“在这一段前台应用活动中，焦点窗口的标题是 T”，由前台状态 Observer 形成。它通过 `foregroundApplicationPeriodVersionId` 引用所属的[前台应用时段](./foreground-application-period.mdx)的观测内容，再沿这个内容找到本机应用，所以它自己不再引用本机应用，窗口也没有单独的身份。
+窗口标题时段表达“在这一段前台应用活动中，焦点窗口的标题是 T”，由前台状态 Observer 形成。它通过 `foregroundApplicationPeriodVersionId` 引用所属的[前台应用时段](./foreground-application-period.mdx)，再沿它找到本机应用，所以它自己不再提到本机应用，窗口也没有单独的身份。
 
 <ObserverStructure node="TITLE_CONTENT" />
 
@@ -22,11 +22,9 @@ description: "依附于前台应用时段的窗口标题时段"
 
 ## 身份 [#identity]
 
-标题时段通过 `foregroundApplicationPeriodVersionId` 归属一整段前台应用活动。每段应用活动有自己的观测内容，内容在时段中保持不变，所以应用时段延长时，标题的引用不变。标题比应用时段先结束时，业务代码先保存时段的内容，标题引用它，应用时段的 Observation 在时段结束时形成。
+标题时段通过 `foregroundApplicationPeriodVersionId` 归属一整段前台应用活动，应用时段延长后，标题的引用仍指向当时的版本，读取方按实体归集，见 [ENTITY-7](../../core/model/entity.mdx#entity-7)。标题比应用时段先结束时，业务代码先写入时段的开始边界，标题引用它，应用时段在结束时补全。
 
-要读到这一段活动的时间，查询引用这个观测内容的 Observation。
-
-标题时段自己的观测内容的身份，以及标题变化后是否复用内容，尚未确定。
+标题时段自己的身份，以及标题变化后是否沿用，尚未确定。
 
 ## 引用 [#references]
 
@@ -44,12 +42,12 @@ description: "依附于前台应用时段的窗口标题时段"
 | --- | --- |
 | SchemaId | 待定 |
 | 显示名称 | 前台窗口标题时段 |
-| 说明 | 表达一段前台应用活动中焦点窗口的标题；内容引用所属的前台应用时段，Observation 保存标题时段。 |
+| 说明 | 表达一段前台应用活动中焦点窗口的标题；内容引用所属的前台应用时段，事实时间是标题时段。 |
 | 资源名 | 待定 |
 
 | 字段 | 类型 | 必填 | 可空 | description |
 | --- | --- | --- | --- | --- |
-| `foregroundApplicationPeriodVersionId` | `reference` | 待定 | 待定 | 所属的前台应用时段 |
+| `foregroundApplicationPeriodVersionId` | `reference`，目标为版本 | 待定 | 待定 | 所属的前台应用时段 |
 | `title` | `string` | 待定 | 待定 | 窗口标题的原文；读到空标题时为 `""` |
 
 标题按原文保存。从标题中解析文件、项目或网页，是另一个 Observer 的陈述，由它形成自己的观测。
@@ -66,5 +64,5 @@ description: "依附于前台应用时段的窗口标题时段"
 ## 待定 [#open]
 
 - SchemaId、资源名，以及字段的必填和可空。
-- 观测内容的身份，以及标题变化后是否复用。
+- 标题时段的身份，以及标题变化后是否沿用。
 - 怎样区分读取失败、采集停顿和空标题。

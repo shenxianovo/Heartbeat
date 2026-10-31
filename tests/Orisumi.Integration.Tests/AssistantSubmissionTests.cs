@@ -64,9 +64,9 @@ public sealed class AssistantSubmissionTests
             finally { foreach (var original in originals) original.Dispose(); }
         }
         // The two tool occurrences share one stored source blob.
-        var tools = versions.Where(version => ((BusinessContent)version.Content).Fields.GetProperty("sourceId").GetString() == "call").ToArray();
-        var digest = ((BusinessContent)tools[0].Content).Fields.GetProperty("sourceEntries")[0].GetProperty("digest").GetString();
-        await Assert.That(((BusinessContent)tools[1].Content).Fields.GetProperty("sourceEntries")[0].GetProperty("digest").GetString()).IsEqualTo(digest);
+        var tools = versions.Where(version => ((Observation)version.Content).Fields.GetProperty("sourceId").GetString() == "call").ToArray();
+        var digest = ((Observation)tools[0].Content).Fields.GetProperty("sourceEntries")[0].GetProperty("digest").GetString();
+        await Assert.That(((Observation)tools[1].Content).Fields.GetProperty("sourceEntries")[0].GetProperty("digest").GetString()).IsEqualTo(digest);
     }
 
     [Test, Property("caseId", "assistant-session-reading")]
@@ -85,11 +85,11 @@ public sealed class AssistantSubmissionTests
         await Assert.That(fixture.Interactions().Count).IsEqualTo(1);
         using (var read = await http.GetAsync("entities/" + original.EntityId.Value)) await Assert.That(read.StatusCode).IsEqualTo(HttpStatusCode.Gone);
         var conversation = fixture.Sessions().Single();
-        using (var deleted = await http.DeleteAsync("entities/" + conversation.EntityId.Value)) deleted.EnsureSuccessStatusCode();
+        using (var deleted = await http.DeleteAsync("entities/" + conversation.GetProperty("entityId").GetGuid())) deleted.EnsureSuccessStatusCode();
         await File.AppendAllTextAsync(path, Encoding.UTF8.GetString(ClaudeMessage("second", "later")) + "\n");
         await fixture.Collector.PollAsync();
         await Assert.That(fixture.Interactions().Count).IsEqualTo(2);
-        await Assert.That(fixture.Sessions().Single().EntityId == conversation.EntityId).IsFalse();
+        await Assert.That(fixture.Sessions().Single().GetProperty("entityId").GetGuid() == conversation.GetProperty("entityId").GetGuid()).IsFalse();
         await Assert.That(fixture.Diagnostics.Count).IsEqualTo(0);
     }
 }

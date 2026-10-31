@@ -12,11 +12,11 @@ public sealed class DeletionTests
     {
         using var f = new ModelFixture();
         var schema = await f.Schema();
-        var target = await f.Business(schema);
+        var target = await f.Observe(schema);
         var second = await f.Save(Next(target));
         var inputs = await f.Save(New(new InputSet([target.VersionId, second.VersionId])));
-        var observer = await f.Business(schema);
-        var observation = await f.Save(New(new Observation(observer.VersionId, target.VersionId, inputs.VersionId, null, null, null)));
+        var observer = await f.Observe(schema);
+        var observation = await f.Save(New(f.Content(Json("{}")) with { InputSetVersionId = inputs.VersionId }, schema.VersionId));
         await f.Service.DeleteAsync(target.EntityId);
         await Assert.That(() => f.Service.ReadVersionAsync(target.VersionId)).Throws<EntityDeletedException>();
         await Assert.That(() => f.Service.ReadVersionAsync(second.VersionId)).Throws<EntityDeletedException>();
@@ -41,18 +41,18 @@ public sealed class DeletionTests
     {
         using var f = new ModelFixture();
         var schema = await f.Schema();
-        var business = await f.Business(schema);
+        var reading = await f.Observe(schema);
         var schema2 = await f.Save(Next(schema));
-        await f.Save(Next(business) with { SchemaVersionId = schema2.VersionId });
+        await f.Save(Next(reading) with { SchemaVersionId = schema2.VersionId });
         await Reject(() => f.Service.DeleteAsync(schema.EntityId), "HISTORY-9");
         await Assert.That(await f.Service.ReadVersionAsync(schema.VersionId)).IsNotNull();
         await Assert.That(await f.Service.ReadVersionAsync(schema2.VersionId)).IsNotNull();
-        foreach (var id in new[] { business.EntityId, schema.EntityId }) await f.Service.DeleteAsync(id);
+        foreach (var id in new[] { reading.EntityId, schema.EntityId }) await f.Service.DeleteAsync(id);
         await Assert.That(() => f.Service.ReadVersionAsync(schema.VersionId)).Throws<EntityDeletedException>();
         await Assert.That(() => f.Service.ReadVersionAsync(schema2.VersionId)).Throws<EntityDeletedException>();
     }
 
-    // HISTORY-8, HISTORY-9: references outside business schemaVersionId do not prevent deletion.
+    // HISTORY-8, HISTORY-9: references outside reading schemaVersionId do not prevent deletion.
     [Test]
     public async Task InputReferenceDoesNotKeepAnOtherwiseUnusedSchemaAlive()
     {
@@ -69,7 +69,7 @@ public sealed class DeletionTests
     public async Task MissingReadsAndRepeatedDeletesAreHarmless()
     {
         using var f = new ModelFixture();
-        var draft = New(new EntitySchema("Items", "Items", "items", Json("{}")));
+        var draft = New(new EntitySchema("Items", "Items", "items", Json("{}"), "observation", false));
         await Assert.That(await f.Service.ReadVersionAsync(draft.VersionId)).IsNull();
         await Assert.That(await f.Service.ReadCurrentAsync(draft.EntityId)).IsNull();
         await Assert.That((await f.Service.ReadVersionsAsync(draft.EntityId)).Count).IsEqualTo(0);

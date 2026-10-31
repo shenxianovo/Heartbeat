@@ -12,17 +12,11 @@
     "PROGRAM_VERSION": {
       "label": "programVersion"
     },
-    "LOCAL_APPLICATION_VERSION_ID": {
-      "label": "localApplicationVersionId"
-    },
     "FOREGROUND_APPLICATION_PERIOD_VERSION_ID": {
       "label": "foregroundApplicationPeriodVersionId"
     },
     "OBSERVED_NAME": {
       "label": "name"
-    },
-    "IDENTIFIERS": {
-      "label": "identifiers"
     },
     "TITLE": {
       "label": "title"
@@ -36,23 +30,8 @@
     "STATE": {
       "label": "state<br/>草案"
     },
-    "DISPLAY_NAME": {
-      "label": "name"
-    },
     "MODEL": {
       "label": "model"
-    },
-    "PRODUCT": {
-      "label": "product"
-    },
-    "SOURCE_SESSION_ID": {
-      "label": "sourceSessionId"
-    },
-    "PARENT_SESSION_VERSION_ID": {
-      "label": "parentSessionVersionId"
-    },
-    "SESSION_VERSION_ID": {
-      "label": "sessionVersionId"
     },
     "ACTOR": {
       "label": "actor"
@@ -63,23 +42,38 @@
     "SOURCE_ENTRIES": {
       "label": "sourceEntries"
     },
-    "DEVICE_VERSION_ID": {
-      "label": "deviceVersionId"
+    "LOCAL_APPLICATION_ID": {
+      "label": "localApplicationId"
     },
-    "IDENTIFIER": {
-      "label": "identifier"
+    "SESSION_ID": {
+      "label": "sessionId"
     },
-    "PRODUCT_VERSION_ID": {
-      "label": "productVersionId"
+    "PARENT_SESSION_ID": {
+      "label": "parentSessionId"
+    },
+    "DEVICE_ID": {
+      "label": "deviceId"
+    },
+    "PRODUCT_ID": {
+      "label": "productId"
+    },
+    "IDENTIFIER_ID": {
+      "label": "identifierId"
+    },
+    "EXECUTABLE_PATH": {
+      "label": "executablePath"
+    },
+    "IDENTIFIER_IDS": {
+      "label": "identifierIds"
     }
   },
   "nodes": {
     "FOREGROUND_STATE": {
       "path": "/observers/foreground-state/foreground-state-observer",
       "schemaPath": "/observers/foreground-state/foreground-state-observer#schema",
-      "label": "前台状态 Observer",
+      "label": "前台状态 Observer<br/>描述",
       "interfaces": [
-        "Entity"
+        "Observation"
       ],
       "fields": [
         "PLATFORM",
@@ -91,52 +85,49 @@
       "path": "/observers/input-events",
       "label": "输入事件 Observer",
       "interfaces": [
-        "Entity"
+        "Observation"
       ],
-      "fields": [
-        "NAME"
-      ]
+      "fields": []
     },
     "DEVICE_STATE": {
       "path": "/observers/device-state",
       "label": "设备状态 Observer",
       "interfaces": [
-        "Entity"
+        "Observation"
       ],
-      "fields": [
-        "NAME"
-      ]
+      "fields": []
     },
     "LOCAL_APPLICATION": {
       "path": "/observers/foreground-state/local-application",
       "schemaPath": "/observers/foreground-state/local-application#schema",
       "label": "LocalApplication<br/>本机应用",
       "interfaces": [
-        "Entity"
+        "Thing"
       ],
       "fields": [
-        "DEVICE_VERSION_ID",
-        "IDENTIFIERS"
+        "DEVICE_ID",
+        "IDENTIFIER_IDS",
+        "EXECUTABLE_PATH"
       ]
     },
     "APPLICATION_CONTENT": {
       "path": "/observers/foreground-state/foreground-application-period",
       "schemaPath": "/observers/foreground-state/foreground-application-period#schema",
-      "label": "前台应用时段<br/>观测内容",
+      "label": "前台应用时段",
       "interfaces": [
-        "Entity"
+        "Observation"
       ],
       "fields": [
-        "LOCAL_APPLICATION_VERSION_ID",
+        "LOCAL_APPLICATION_ID",
         "OBSERVED_NAME"
       ]
     },
     "TITLE_CONTENT": {
       "path": "/observers/foreground-state/foreground-window-title",
       "schemaPath": "/observers/foreground-state/foreground-window-title#schema",
-      "label": "前台窗口标题时段<br/>观测内容",
+      "label": "前台窗口标题时段",
       "interfaces": [
-        "Entity"
+        "Observation"
       ],
       "fields": [
         "FOREGROUND_APPLICATION_PERIOD_VERSION_ID",
@@ -146,9 +137,9 @@
     "INPUT_CONTENT": {
       "path": "/observers/input-events/input-event",
       "schemaPath": "/observers/input-events/input-event#schema",
-      "label": "键鼠输入事件<br/>观测内容",
+      "label": "键鼠输入事件",
       "interfaces": [
-        "Entity"
+        "Observation"
       ],
       "fields": [
         "KIND",
@@ -160,19 +151,18 @@
       "schemaPath": "/observers/device-state/device#schema",
       "label": "Device<br/>设备",
       "interfaces": [
-        "Entity"
+        "Thing"
       ],
       "fields": [
-        "NAME",
         "PLATFORM"
       ]
     },
     "DEVICE_CONTENT": {
       "path": "/observers/device-state/sleep-state",
       "schemaPath": "/observers/device-state/sleep-state#schema",
-      "label": "设备休眠与清醒<br/>观测内容",
+      "label": "设备休眠与清醒",
       "interfaces": [
-        "Entity"
+        "Observation"
       ],
       "fields": [
         "STATE"
@@ -181,9 +171,9 @@
     "APPLICATION_IDENTITY": {
       "path": "/observers/application-identity/application-identity-observer",
       "schemaPath": "/observers/application-identity/application-identity-observer#schema",
-      "label": "应用识别 Observer",
+      "label": "应用识别 Observer<br/>描述",
       "interfaces": [
-        "Entity"
+        "Observation"
       ],
       "fields": [
         "PROGRAM_VERSION",
@@ -195,41 +185,37 @@
       "schemaPath": "/observers/application-identity/application-product#schema",
       "label": "ApplicationProduct<br/>应用产品",
       "interfaces": [
-        "Entity"
+        "Thing"
       ],
-      "fields": [
-        "DISPLAY_NAME"
-      ]
+      "fields": []
     },
     "APPLICATION_MEMBERSHIP": {
       "path": "/observers/application-identity/application-membership",
       "schemaPath": "/observers/application-identity/application-membership#schema",
       "label": "ApplicationMembership<br/>线索归属",
       "interfaces": [
-        "Entity"
+        "Observation"
       ],
       "fields": [
-        "IDENTIFIER",
-        "PRODUCT_VERSION_ID"
+        "IDENTIFIER_ID",
+        "PRODUCT_ID"
       ]
     },
     "USER": {
       "path": "/observers/user/user",
       "schemaPath": "/observers/user/user#schema",
-      "label": "用户本人",
+      "label": "Person<br/>人",
       "interfaces": [
-        "Entity"
+        "Thing"
       ],
-      "fields": [
-        "DISPLAY_NAME"
-      ]
+      "fields": []
     },
     "ASSISTANT_SESSIONS": {
       "path": "/observers/assistant-sessions/assistant-sessions-observer",
       "schemaPath": "/observers/assistant-sessions/assistant-sessions-observer#schema",
-      "label": "助手会话 Observer",
+      "label": "助手会话 Observer<br/>描述",
       "interfaces": [
-        "Entity"
+        "Observation"
       ],
       "fields": [
         "PLATFORM",
@@ -242,39 +228,24 @@
       "schemaPath": "/observers/assistant-sessions/assistant-session#schema",
       "label": "AssistantSession<br/>助手会话",
       "interfaces": [
-        "Entity"
+        "Thing"
       ],
-      "fields": [
-        "PRODUCT",
-        "SOURCE_SESSION_ID"
-      ]
+      "fields": []
     },
     "ASSISTANT_INTERACTION": {
       "path": "/observers/assistant-sessions/assistant-interaction",
       "schemaPath": "/observers/assistant-sessions/assistant-interaction#schema",
-      "label": "助手交互<br/>观测内容",
+      "label": "助手交互",
       "interfaces": [
-        "Entity"
+        "Observation"
       ],
       "fields": [
-        "SESSION_VERSION_ID",
-        "DEVICE_VERSION_ID",
+        "SESSION_ID",
+        "DEVICE_ID",
         "KIND",
         "ACTOR",
         "PARTS",
         "SOURCE_ENTRIES"
-      ]
-    },
-    "ASSISTANT_SESSION_TITLE": {
-      "path": "/observers/assistant-sessions/assistant-session-title",
-      "schemaPath": "/observers/assistant-sessions/assistant-session-title#schema",
-      "label": "助手会话标题<br/>观测内容",
-      "interfaces": [
-        "Entity"
-      ],
-      "fields": [
-        "SESSION_VERSION_ID",
-        "TITLE"
       ]
     },
     "ASSISTANT_SUBAGENT": {
@@ -282,11 +253,11 @@
       "schemaPath": "/observers/assistant-sessions/assistant-subagent#schema",
       "label": "子 Agent 关系",
       "interfaces": [
-        "Entity"
+        "Observation"
       ],
       "fields": [
-        "SESSION_VERSION_ID",
-        "PARENT_SESSION_VERSION_ID"
+        "SESSION_ID",
+        "PARENT_SESSION_ID"
       ]
     }
   }

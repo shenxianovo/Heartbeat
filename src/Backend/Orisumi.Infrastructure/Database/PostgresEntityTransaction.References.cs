@@ -37,7 +37,7 @@ internal sealed partial class PostgresEntityTransaction
             {
                 var matching = references[version.VersionId]
                     .Where(reference => reference.TargetEntityId == query.Target && (query.Path is null || query.Path == reference.Position))
-                    .Select(reference => new VersionReference(reference.Position, reference.TargetVersionId)).ToArray();
+.ToArray();
                 if (matching.Length > 0) result.Add(new(version, matching));
                 if (result.Count > query.Limit) return result;
             }
@@ -57,7 +57,7 @@ internal sealed partial class PostgresEntityTransaction
         var references = versions.ToDictionary(version => version.VersionId, version => VersionRules.GetReferences(version.Submission,
             version.SchemaVersionId is { } id ? definitions[id] : null)
             .Where(reference => reference.Position is not ("/previousVersionId" or "/schemaVersionId")).ToArray());
-        var targets = references.Values.SelectMany(items => items).Select(reference => reference.Target.Value).Distinct().ToArray();
+        var targets = references.Values.SelectMany(items => items).Where(reference => reference.TargetVersionId is not null).Select(reference => reference.TargetVersionId!.Value.Value).Distinct().ToArray();
         var owners = new Dictionary<Guid, EntityId>();
         if (targets.Length > 0)
         {
@@ -69,7 +69,7 @@ internal sealed partial class PostgresEntityTransaction
             while (await reader.ReadAsync(token)) owners.Add(reader.GetGuid(0), new(reader.GetGuid(1)));
         }
         return references.ToDictionary(pair => pair.Key, pair => pair.Value.Select(reference =>
-            new ResolvedReference(reference.Position, reference.Target, owners[reference.Target.Value])).ToArray());
+            new ResolvedReference(reference.Position, reference.TargetVersionId, reference.TargetEntityId ?? owners[reference.TargetVersionId!.Value.Value])).ToArray());
     }
 
     internal async Task RebuildProjectionsAsync(CancellationToken token)
@@ -77,7 +77,7 @@ internal sealed partial class PostgresEntityTransaction
         // Only projections are replaced; immutable versions and deletion identities are untouched.
         var versions = await ReadAsync($"SELECT {Columns} FROM versions v ORDER BY ordinal, entity_id", token);
         var references = await ResolveReferencesAsync(versions, token);
-        await ExecuteAsync("DELETE FROM version_contents; DELETE FROM version_references; DELETE FROM observations; DELETE FROM schemas; DELETE FROM entities", token);
+        await ExecuteAsync("DELETE FROM version_contents; DELETE FROM version_references; DELETE FROM reviews; DELETE FROM observations; DELETE FROM schemas; DELETE FROM entities", token);
         await ExecuteAsync("""
             INSERT INTO entities(entity_id, category, schema_id, current_version_id)
             SELECT DISTINCT ON (v.entity_id) v.entity_id, v.category, s.entity_id, v.version_id
@@ -89,6 +89,7 @@ internal sealed partial class PostgresEntityTransaction
             SELECT e.entity_id, v.content->>'resourceName' FROM entities e
             JOIN versions v ON v.version_id = e.current_version_id WHERE e.category = 'entity_schema'
             """, token);
+        await ExecuteAsync("INSERT INTO entities(entity_id, category, schema_id) SELECT entity_id, 'thing', schema_id FROM things WHERE NOT deleted", token);
         foreach (var version in versions) await SaveReferencesAsync(version.VersionId, references[version.VersionId], token);
         var definitions = versions.Where(version => version.Content is EntitySchema).ToDictionary(version => version.VersionId, version => (EntitySchema)version.Content);
         foreach (var version in versions)
@@ -98,7 +99,7 @@ internal sealed partial class PostgresEntityTransaction
         foreach (var version in current)
         {
             // Reuse the ordinary projection conversion, without rewriting the version or duplicating its edges.
-            await SaveProjectionsAsync(version, null, [], token);
+            await SaveProjectionsAsync(version, versions.Single(schema => schema.VersionId == version.SchemaVersionId).EntityId.Value, [], token);
         }
     }
 }

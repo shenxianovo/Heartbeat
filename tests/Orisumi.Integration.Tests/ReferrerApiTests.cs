@@ -16,8 +16,8 @@ public sealed class ReferrerApiTests
         var writer = new WriteClient(http); await writer.InitializeAsync();
         var items = await writer.DeclareAsync(fields: WriteApiTests.NameFields);
         var schema = await writer.DeclareAsync("links", """
-            {"a~/VersionId":{"type":"reference","description":"Target","required":true,"nullable":false},
-             "otherVersionId":{"type":"reference","description":"Other","required":true,"nullable":false}}
+            {"a~/VersionId":{"type":"reference","target":"version","description":"Target","required":true,"nullable":false},
+             "otherVersionId":{"type":"reference","target":"version","description":"Other","required":true,"nullable":false}}
             """);
         var target = await writer.WriteAsync(items, new { name = "target" });
         var other = await writer.WriteAsync(items, new { name = "other" });

@@ -1,6 +1,6 @@
 ---
 title: "Reading"
-description: "怎样读取版本、实体和二进制内容，按类型、Observer、内容、事实时间和引用关系列出数据，以及怎样分页"
+description: "怎样读取版本、事物和二进制内容，按类型、Observer、形成方式、事实时间和引用关系列出数据，以及怎样分页"
 ---
 
 读取的接口只返回已保存的版本。已删除的实体和版本返回 `410`，读取方把它列为不可读取，见 [HISTORY-8](../core/rules/history.mdx#history-8)。
@@ -11,7 +11,7 @@ description: "怎样读取版本、实体和二进制内容，按类型、Observ
 | --- | --- |
 | 一个版本 | [`GET /versions/{versionId}`](/api/getVersion) |
 | 一组版本 | [`POST /versions/read`](/api/readVersions)，一次 1 到 256 个 |
-| 实体的当前版本 | [`GET /entities/{entityId}`](/api/getEntity)，见 [VERSION-5](../core/model/version.mdx#version-5) |
+| 一个实体 | [`GET /entities/{entityId}`](/api/getEntity)：事物返回它自己，有版本的实体返回当前版本，见 [VERSION-5](../core/model/version.mdx#version-5) |
 | 实体的版本链 | [`GET /entities/{entityId}/versions`](/api/listEntityVersions)，从首版到当前版排列，一次返回全部版本 |
 
 推断引用的是读取时的那一版，所以追溯时按 VersionId 读取，读到的是当时的内容，见 [ENTITY-4](../core/model/entity.mdx#entity-4)。
@@ -34,25 +34,32 @@ description: "怎样读取版本、实体和二进制内容，按类型、Observ
 
 ## 列出实体 [#lists]
 
-[`GET /entities`](/api/listEntities) 列出实体的当前版本，按 EntityId 升序排列。两个筛选参数都可以省略：
+[`GET /entities`](/api/listEntities) 列出有版本的实体的当前版本，按 EntityId 升序排列。两个筛选参数都可以省略：
 
 | 参数 | 只返回 |
 | --- | --- |
-| `category` | 这一类内容的实体，例如 `entity_schema` 列出全部 EntitySchema |
+| `category` | 这一类实体，例如 `entity_schema` 列出全部 EntitySchema |
 | `resourceName` | 这种业务类型的实体，类型由当前使用这个资源名的 EntitySchema 决定，见 [SCHEMA-5](../core/model/schema.mdx#schema-5) |
+
+## 事物 [#things]
+
+[`GET /things`](/api/listThings) 列出事物，按 EntityId 升序排列，`resourceName` 只返回这种类型的事物。[`POST /things/read`](/api/readThings) 一次读取 1 到 256 个事物，响应的 `status` 和[批量读取版本](#versions)相同。
+
+每个事物带着它的类型、识别依据和名字。名字按 [UNDERSTANDING-9](../core/rules/understanding.mdx#understanding-9) 取得，所以显示一批设备或会话时一次请求就够。关于事物的陈述用[引用方](#referrers)读取。
 
 ## 查询观测 [#observations]
 
-晚上，推断 Observer 用 [`GET /observations`](/api/listObservations) 读取当天的前台时段。它列出 Observation 的当前版本，条件都可以省略，给出的条件一起生效：
+晚上，推断 Observer 用 [`GET /observations`](/api/listObservations) 读取当天的前台时段。它列出 Observation 的当前版本，内容就在结果中。条件都可以省略，给出的条件一起生效：
 
 | 参数 | 只返回 |
 | --- | --- |
 | `from`、`to` | 事实时间与范围 `[from, to)` 相交的。两者同时给出或同时省略 |
-| `observerEntityId` | 由这个实体负责的，包含它的任意版本 |
-| `contentEntityId` | 观测内容属于这个实体的，包含它的任意版本 |
-| `resourceName` | 观测内容属于这种业务类型的 |
+| `observerId` | 由这个事物负责的 |
+| `resourceName` | 这种业务类型的 |
+| `formation` | 这种[形成方式](../core/model/observation.mdx#formation)的 |
+| `standing` | `all` 是全部，`current` 是当前理解，见 [UNDERSTANDING-4](../core/rules/understanding.mdx#understanding-4)。默认为 `all` |
 
-`observerEntityId` 和 `contentEntityId` 按版本的归属匹配，目标实体已删除时照常返回。不同 Observer 可以各有一份 Observation，见 [OBSERVATION-3](../core/model/observation.mdx#observation-3)。
+`observerId` 指向的事物已删除时照常返回。不同 Observer 可以各有一份 Observation，见 [OBSERVATION-3](../core/model/observation.mdx#observation-3)。
 
 给出 `from` 和 `to` 时，匹配只看当前版本中已知的边界：
 
@@ -66,11 +73,9 @@ description: "怎样读取版本、实体和二进制内容，按类型、Observ
 
 结果按已知的开始边界排序，开始边界未知时用结束边界，`order` 为 `asc`（默认）或 `desc`；相同时按 EntityId 升序。两个边界都未知的排在最后，两种顺序都一样。
 
-观测内容被删除、Observation 保留时，这份 Observation 照常出现在不带 `resourceName` 的结果中，不再出现在原内容类型的结果中。它的 `contentVersionId` 不变，读取这个版本返回 `410`，见 [HISTORY-8](../core/rules/history.mdx#history-8)。
-
 ## 引用方 [#referrers]
 
-[`GET /entities/{entityId}/referrers`](/api/listReferrers) 列出引用这个实体的版本，也就是它的引用方。例如找和 VS Code 有关的数据：先列出引用 VS Code 的前台时段，再分别列出引用这些时段的 Observation。接口只返回直接的引用方，更远的关系由读取方逐层查询。
+[`GET /entities/{entityId}/referrers`](/api/listReferrers) 列出引用这个实体的版本，也就是它的引用方。例如找和 VS Code 有关的数据，就列出引用 VS Code 这个事物的 Observation；找一条判断有没有被否定，就列出引用它的 Review。接口只返回直接的引用方，更远的关系由读取方逐层查询。
 
 查询 VS Code 的引用方，一页中的一项：
 
@@ -80,11 +85,18 @@ description: "怎样读取版本、实体和二进制内容，按类型、Observ
     "entityId": "01a12e31-9050-7000-8000-000000000020",
     "versionId": "01a12e31-9050-7000-8000-000000000120",
     "previousVersionId": null,
-    "category": "business",
+    "category": "observation",
     "schemaVersionId": "019e1bbb-ec00-7000-8000-000000000101",
-    "recordedAt": "2026-10-06T06:00:01Z",
+    "observerId": "01a12e31-9050-7000-8000-000000000030",
+    "observerVersionId": "01a12e31-9050-7000-8000-000000000130",
+    "formation": "direct",
+    "inputSetVersionId": null,
+    "startAt": "2026-10-06T06:00:00Z",
+    "endAt": "2026-10-06T08:00:00Z",
+    "timeZone": "Asia/Shanghai",
+    "recordedAt": "2026-10-06T08:00:01Z",
     "content": {
-      "localApplicationVersionId": "01a12e31-9050-7000-8000-000000000101",
+      "localApplicationId": "01a12e31-9050-7000-8000-000000000101",
       "name": "Visual Studio Code",
       "icon": {
         "digest": "sha256:3a7bd3e2360a3d29eea436fcfb7e44c735d117c42d1c1835420b6b9942dd4f1b",
@@ -95,21 +107,22 @@ description: "怎样读取版本、实体和二进制内容，按类型、Observ
   },
   "references": [
     {
-      "path": "/content/localApplicationVersionId",
-      "targetVersionId": "01a12e31-9050-7000-8000-000000000101"
+      "path": "/content/localApplicationId",
+      "targetEntityId": "01a12e31-9050-7000-8000-000000000101",
+      "targetVersionId": null
     }
   ]
 }
 ```
 
-- 目标按实体匹配：引用 VS Code 任何一个版本的都算，见 [ENTITY-7](../core/model/entity.mdx#entity-7)。`targetVersionId` 给出引用的是哪一版。
+- 目标按实体匹配：引用 Observation 任何一个版本的都算，见 [ENTITY-7](../core/model/entity.mdx#entity-7)。`targetVersionId` 给出引用的是哪一版，引用事物时为 `null`。
 - `path` 只返回在这个位置引用目标的版本。`resourceName` 只返回这种业务类型的引用方，例如应用识别 Observer 只读引用本机应用的前台时段。
-- 只匹配 `content` 中的引用：Core 类型的引用成员，以及业务字段中的 `reference`，见 [ENTITY-5](../core/model/entity.mdx#entity-5)。前一版本通过版本链读取，使用某个 EntitySchema 的数据通过 `resourceName` 列出。
+- 匹配 Observation 的 `observerId`、`observerVersionId`、`inputSetVersionId`，InputSet 的成员，以及业务字段中的 `reference`，见 [ENTITY-5](../core/model/entity.mdx#entity-5)。前一版本通过版本链读取，使用某个 EntitySchema 的数据通过 `resourceName` 列出。
 - 每一项是引用方的完整版本。`references` 列出其中引用目标的每个位置，`path` 是从版本根部写起的 JSON Pointer（[RFC 6901](https://www.rfc-editor.org/rfc/rfc6901.html)），例如 InputSet 的第四个成员是 `/content/members/3`。
-- `versions` 默认为 `current`，只返回当前版本仍引用目标的实体，每个实体一个版本。`versions=all` 返回每一个引用过目标的版本，包括后来改为引用别处的旧版本；一份延长过多次的 Observation，每个版本各占一项。
+- `versions` 默认为 `current`，只返回当前版本仍引用目标的实体，每个实体一个版本。`versions=all` 返回每一个引用过目标的版本，包括后来改为引用别处的旧版本；一份延长过多次的前台时段，每个版本各占一项。
 - 结果按引用方的 VersionId 升序排列。VersionId 是 UUIDv7，所以这也是形成的先后；`order=desc` 改为降序，例如读取 VS Code 最近的前台时段。翻页时沿用第一页的 `order`，游标与排序不符时返回 `400`。
 - 目标实体已被删除时，照常列出引用方，读取方据此知道哪些数据的追溯不完整，见 [HISTORY-8](../core/rules/history.mdx#history-8)。EntityId 从未出现过时返回 `404`。
 
 ## 分页 [#paging]
 
-列出实体、查询观测和列出引用方三个接口都分页。`limit` 是一页最多返回的版本数，默认 100，最大 1000；列出引用方时，一个版本连同它的全部位置算一项。响应中的 `next` 是下一页的游标，把它作为 `after` 传入就得到下一页；没有下一页时，`next` 为 `null`。游标的内容由后端决定，调用方原样传回；它绑定这次查询的条件和顺序，用在别的查询上时返回 `400`。
+列出实体、列出事物、查询观测和列出引用方四个接口都分页。`limit` 是一页最多返回的项数，默认 100，最大 1000；列出引用方时，一个版本连同它的全部位置算一项。响应中的 `next` 是下一页的游标，把它作为 `after` 传入就得到下一页；没有下一页时，`next` 为 `null`。游标的内容由后端决定，调用方原样传回；它绑定这次查询的条件和顺序，用在别的查询上时返回 `400`。

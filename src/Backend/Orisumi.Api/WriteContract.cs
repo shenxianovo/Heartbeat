@@ -19,7 +19,7 @@ internal static class WriteContract
     private static WriteRequest ReadCore(JsonElement body)
     {
         CheckDuplicateMembers(body);
-        Members(body, ["observer", "writes"], ["sequence", "schemas"]);
+        Members(body, ["observer", "writes"], ["sequence", "schemas", "description"]);
         var observer = Reference(body.GetProperty("observer"));
         CheckStorageValues(body.GetProperty("observer"));
         if (observer.Key is { } observerKey) CheckKeySize(observerKey);
@@ -31,7 +31,7 @@ internal static class WriteContract
             {
                 Object(declaration, "schemaId", "content");
                 var content = declaration.GetProperty("content");
-                Object(content, "displayName", "description", "resourceName", "fields");
+                Object(content, "displayName", "description", "resourceName", "fields", "kind", "immutable");
                 Fields(content.GetProperty("fields"));
                 CheckStorageValues(declaration);
                 schemas.Add(new(new(declaration.GetProperty("schemaId").GetGuid()), (EntitySchema)VersionJson.ReadContent("entity_schema", content)));
@@ -39,8 +39,7 @@ internal static class WriteContract
         var writes = new List<EntityWrite>();
         foreach (var write in body.GetProperty("writes").EnumerateArray())
         {
-            Members(write, ["schemaId", "content"], ["key", "entityId", "time", "inputs"]);
-            if (write.TryGetProperty("key", out _) && write.TryGetProperty("entityId", out _)) throw new JsonException("key and entityId are mutually exclusive.");
+            Members(write, ["schemaId", "content", "formation"], ["key", "time", "inputs"]);
             var content = write.GetProperty("content");
             if (content.ValueKind != JsonValueKind.Object) throw new JsonException("content must be an object.");
             FactTime? time = null;
@@ -52,7 +51,6 @@ internal static class WriteContract
             var inputs = write.TryGetProperty("inputs", out var list)
                 ? list.EnumerateArray().Select(v => new VersionId(v.GetGuid())).ToArray() : null;
             var key = write.TryGetProperty("key", out var recognition) ? Key(recognition) : null;
-            EntityId? entityId = write.TryGetProperty("entityId", out var entity) ? new(entity.GetGuid()) : null;
             string? storageError = null;
             try
             {
@@ -60,9 +58,17 @@ internal static class WriteContract
                 if (key is not null) CheckKeySize(key);
             }
             catch (JsonException error) { storageError = error.Message; }
-            writes.Add(new(new(write.GetProperty("schemaId").GetGuid()), content.Clone(), entityId, key, time, inputs, storageError));
+            writes.Add(new(new(write.GetProperty("schemaId").GetGuid()), content.Clone(), write.GetProperty("formation").GetString()!, key, time, inputs, storageError));
         }
-        return new(observer, writes, schemas, sequence);
+        ObserverDescription? description = null;
+        if (body.TryGetProperty("description", out var self))
+        {
+            Object(self, "schemaId", "content");
+            CheckStorageValues(self);
+            if (self.GetProperty("content").ValueKind != JsonValueKind.Object) throw new JsonException("description content must be an object.");
+            description = new(new(self.GetProperty("schemaId").GetGuid()), self.GetProperty("content").Clone());
+        }
+        return new(observer, writes, schemas, sequence, description);
     }
 
     private static DateTimeOffset? Time(JsonElement value) => value.ValueKind == JsonValueKind.Null ? null : VersionJson.ParseTime(value.GetString()!);

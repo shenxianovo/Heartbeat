@@ -11,12 +11,12 @@ public sealed class SchemaTests
     {
         using var f = new ModelFixture();
         var schema = await f.Schema();
-        var old = await f.Business(schema);
+        var old = await f.Observe(schema);
         var nextSchema = await f.Save(Next(schema, new EntitySchema("Required title", "Title", "items",
-            Json("""{"title":{"type":"string","description":"Test field value.","required":true,"nullable":false}}"""))));
-        await f.Business(schema);
-        await Reject(() => f.Business(nextSchema), "SCHEMA-11");
-        var updated = await f.Save(Next(old, new BusinessContent(Json("""{"title":"new"}"""))) with { SchemaVersionId = nextSchema.VersionId });
+            Json("""{"title":{"type":"string","description":"Test field value.","required":true,"nullable":false}}"""), "observation", false)));
+        await f.Observe(schema);
+        await Reject(() => f.Observe(nextSchema), "SCHEMA-11");
+        var updated = await f.Save(Next(old, f.Content(Json("""{"title":"new"}"""))) with { SchemaVersionId = nextSchema.VersionId });
         var returned = await f.Save(Next(updated, old.Content) with { SchemaVersionId = schema.VersionId });
         await Assert.That(returned.SchemaVersionId).IsEqualTo(schema.VersionId);
         await Assert.That(await f.Service.ReadCurrentAsync(old.EntityId)).IsEqualTo(returned);
@@ -25,15 +25,15 @@ public sealed class SchemaTests
         await Assert.That((await f.Service.ReadVersionsAsync(old.EntityId)).Count).IsEqualTo(3);
         var savedUpdated = (await f.Service.ReadVersionAsync(updated.VersionId))!;
         await Assert.That(savedUpdated.SchemaVersionId).IsEqualTo(nextSchema.VersionId);
-        await Assert.That(((BusinessContent)savedUpdated.Content).Fields.GetProperty("title").GetString()).IsEqualTo("new");
+        await Assert.That(((Observation)savedUpdated.Content).Fields.GetProperty("title").GetString()).IsEqualTo("new");
         var other = await f.Schema("others");
         await Reject(() => f.Save(Next(old) with { PreviousVersionId = returned.VersionId, SchemaVersionId = other.VersionId }), "ENTITY-3");
         await Reject(() => f.Save(Next(returned, new InputSet([schema.VersionId])) with { SchemaVersionId = null }), "ENTITY-3");
-        await Reject(() => f.Save(New(new BusinessContent(Json("{}")))), "VERSION-3");
+        await Reject(() => f.Save(New(f.Content(Json("{}")))), "VERSION-3");
         await Reject(() => f.Save(New(new InputSet([schema.VersionId]), schema.VersionId)), "VERSION-3");
-        await Reject(() => f.Save(New(new BusinessContent(Json("{}")), VersionId.New())), "SCHEMA-3");
-        await Reject(() => f.Save(New(new BusinessContent(Json("{}")), old.VersionId)), "SCHEMA-3");
-        await Assert.That(((BusinessContent)(await f.Service.ReadVersionAsync(old.VersionId))!.Content).Fields.GetRawText()).IsEqualTo("{}");
+        await Reject(() => f.Save(New(f.Content(Json("{}")), VersionId.New())), "SCHEMA-3");
+        await Reject(() => f.Save(New(f.Content(Json("{}")), old.VersionId)), "SCHEMA-3");
+        await Assert.That(((Observation)(await f.Service.ReadVersionAsync(old.VersionId))!.Content).Fields.GetRawText()).IsEqualTo("{}");
     }
 
     // SCHEMA-4: only nonempty names and descriptions are accepted; prose meaning is the writer's responsibility.
@@ -47,13 +47,13 @@ public sealed class SchemaTests
     public async Task EmptyNamesAndDescriptionsReportSchemaMetadataViolation(string? displayName, string? description)
     {
         using var f = new ModelFixture();
-        var invalid = New(new EntitySchema(displayName!, description!, "items", Json("{}")));
+        var invalid = New(new EntitySchema(displayName!, description!, "items", Json("{}"), "observation", false));
         await Reject(() => f.Save(invalid), "SCHEMA-4");
         await Assert.That(await f.Service.ReadVersionAsync(invalid.VersionId)).IsNull();
         var schema = await f.Schema();
         await Reject(() => f.Save(Next(schema, invalid.Content)), "SCHEMA-4");
         await Assert.That(await f.Service.ReadCurrentAsync(schema.EntityId)).IsEqualTo(schema);
-        await f.Save(Next(schema, new EntitySchema("New name", "New description", "items", Json("{}"))));
+        await f.Save(Next(schema, new EntitySchema("New name", "New description", "items", Json("{}"), "observation", false)));
     }
 
     // SCHEMA-5, SCHEMA-6
@@ -63,11 +63,11 @@ public sealed class SchemaTests
         using var f = new ModelFixture();
         var schema = await f.Schema();
         await Reject(() => f.Schema(), "SCHEMA-5");
-        await Reject(() => f.Save(Next(schema, new EntitySchema("Items", "Items", "renamed", Json("{}")))), "SCHEMA-5");
+        await Reject(() => f.Save(Next(schema, new EntitySchema("Items", "Items", "renamed", Json("{}"), "observation", false))), "SCHEMA-5");
         foreach (var invalid in new[] { "", "A", "1items", "-items", "my_items", "items\n" })
             await Reject(() => f.Schema(invalid), "SCHEMA-6");
         foreach (var valid in new[] { "a", "items-2", "schemas", "observers", "observations" }) await f.Schema(valid);
-        await f.Save(Next(schema, new EntitySchema("Changed name", "Changed description", "items", Json("{}"))));
+        await f.Save(Next(schema, new EntitySchema("Changed name", "Changed description", "items", Json("{}"), "observation", false)));
         await f.Service.DeleteAsync(schema.EntityId);
         await f.Schema();
     }
@@ -101,11 +101,11 @@ public sealed class SchemaTests
              "list":{"type":"array","description":"Test field value.","required":true,"nullable":true,"items":{"type":"object","description":"Test field value.","nullable":false,
                  "fields":{"value":{"type":"integer","description":"Test field value.","required":true,"nullable":true}}}}}
             """);
-        var omitted = await f.Business(schema, """{"list":null}""");
-        var withNull = await f.Business(schema, """{"optional":null,"list":[{"value":null},{"value":1e100}]}""");
-        var read = (BusinessContent)(await f.Service.ReadVersionAsync(omitted.VersionId))!.Content;
+        var omitted = await f.Observe(schema, """{"list":null}""");
+        var withNull = await f.Observe(schema, """{"optional":null,"list":[{"value":null},{"value":1e100}]}""");
+        var read = (Observation)(await f.Service.ReadVersionAsync(omitted.VersionId))!.Content;
         await Assert.That(read.Fields.TryGetProperty("optional", out _)).IsFalse();
-        await Assert.That(((BusinessContent)withNull.Content).Fields.GetProperty("optional").ValueKind).IsEqualTo(System.Text.Json.JsonValueKind.Null);
+        await Assert.That(((Observation)withNull.Content).Fields.GetProperty("optional").ValueKind).IsEqualTo(System.Text.Json.JsonValueKind.Null);
         (string Content, string Rule)[] invalid =
         [
             ("{}", "SCHEMA-11"),
@@ -117,7 +117,7 @@ public sealed class SchemaTests
             ("{\"list\":{}}", "SCHEMA-2"),
         ];
         foreach (var (content, rule) in invalid)
-            await Reject(() => f.Business(schema, content), rule);
+            await Reject(() => f.Observe(schema, content), rule);
     }
 
     // VERSION-2, SCHEMA-13: saved content outlives its source document; sameness compares values.
@@ -127,12 +127,12 @@ public sealed class SchemaTests
         using var f = new ModelFixture();
         EntityVersion schema;
         using (var document = System.Text.Json.JsonDocument.Parse("""{"n":{"type":"number","description":"Test field value.","required":true,"nullable":false},"s":{"type":"string","description":"Test field value.","required":false,"nullable":true}}"""))
-            schema = await f.Save(New(new EntitySchema("Item", "Item", "items", document.RootElement)));
-        EntityVersion business;
+            schema = await f.Save(New(new EntitySchema("Item", "Item", "items", document.RootElement, "observation", false)));
+        EntityVersion reading;
         using (var document = System.Text.Json.JsonDocument.Parse("""{"n":1,"s":"x"}"""))
-            business = await f.Save(New(new BusinessContent(document.RootElement), schema.VersionId));
-        await Assert.That(await f.Service.ReadVersionAsync(business.VersionId)).IsEqualTo(business);
-        Task<bool> Same(string json) => VersionRules.SameBusinessContentAsync((EntitySchema)schema.Content, (BusinessContent)business.Content, new BusinessContent(Json(json)), _ => Task.FromResult<EntityId?>(null));
+            reading = await f.Save(New(f.Content(document.RootElement), schema.VersionId));
+        await Assert.That(await f.Service.ReadVersionAsync(reading.VersionId)).IsEqualTo(reading);
+        Task<bool> Same(string json) => Task.FromResult(System.Text.Json.JsonElement.DeepEquals(((Observation)reading.Content).Fields, Json(json)));
         await Assert.That(await Same("""{"s":"x","n":1.0}""")).IsTrue();
         await Assert.That(await Same("""{"n":1}""")).IsFalse();
         await Assert.That(await Same("""{"n":1,"s":null}""")).IsFalse();

@@ -1,19 +1,19 @@
 ---
 title: "Assistant Sessions Observer"
-description: "一个助手会话 Observer 程序实例"
+description: "一个助手会话 Observer 程序实例的描述"
 ---
 
-助手会话 Observer 程序实例是一个业务实体，例如这台 Mac 上运行的助手会话 Observer。它形成的每份 Observation 都通过 `observerVersionId` 引用它的一个版本；读取方从这个版本读到交互发生的设备。
+助手会话 Observer 程序实例是一个事物，例如这台 Mac 上运行的助手会话 Observer。它用这份描述说明自己，见 [OBSERVER-9](../../core/model/observer.mdx#observer-9)，它形成的每份 Observation 都通过 `observerVersionId` 引用描述的一个版本。
 
 <ObserverStructure node="ASSISTANT_SESSIONS" />
 
 ## 粒度 [#granularity]
 
-一个实体对应一个程序实例。程序实例的划分见 [Assistant Sessions · 程序实例](./index.mdx#instance)。
+一份描述对应一个程序实例。程序实例的划分见 [Assistant Sessions · 程序实例](./index.mdx#instance)。
 
 ## 身份 [#identity]
 
-EntityId 由托管方保存，重启、升级和重装后沿用，见 [OBSERVER-4](../../core/model/observer.mdx#observer-4)。平台、主机名或程序版本变化时，形成同一个实体的新版本；之后的 Observation 引用新版本。
+EntityId 由托管方保存，重启、升级和重装后沿用，见 [OBSERVER-4](../../core/model/observer.mdx#observer-4)。平台、主机名或程序版本变化时，形成描述的新版本；之后的 Observation 引用新版本。
 
 ## EntitySchema [#schema]
 
@@ -21,8 +21,10 @@ EntityId 由托管方保存，重启、升级和重装后沿用，见 [OBSERVER-
 | --- | --- |
 | SchemaId | `019e1bbb-ec00-7000-8000-000000000007` |
 | 显示名称 | 助手会话 Observer |
-| 说明 | 表示一个助手会话 Observer 程序实例，保存它运行的平台、主机名和程序版本；它读取所在设备上 Claude Code 和 Codex 的会话日志，作为 Observer 对其中每次交互的观测负责。 |
+| 说明 | 描述一个助手会话 Observer 程序实例：它运行的平台、主机名和程序版本。 |
 | 资源名 | `assistant-sessions-observers` |
+| `kind` | `observation` |
+| `immutable` | `false` |
 
 | 字段 | 类型 | 必填 | 可空 | description |
 | --- | --- | --- | --- | --- |

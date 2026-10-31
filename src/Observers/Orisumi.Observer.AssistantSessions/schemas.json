@@ -24,29 +24,20 @@
           "nullable": false,
           "required": true
         }
-      }
+      },
+      "kind": "observation",
+      "immutable": false
     }
   },
   {
     "schemaId": "019e1bbb-ec00-7000-8000-000000000008",
     "content": {
       "displayName": "助手会话",
-      "description": "表示 Claude Code 或 Codex 中的一个会话，包括子 Agent 的会话。一个来源会话对应一个实体，内容只有身份，不再变化。标题和子 Agent 关系是单独的业务类型。会话本身没有事实时间，会话中每次交互的时间写在引用交互的 Observation 上。",
+      "description": "表示 Claude Code 或 Codex 中的一个会话，包括子 Agent 的会话。产品和来源标识在识别依据中。",
       "resourceName": "assistant-sessions",
-      "fields": {
-        "product": {
-          "type": "string",
-          "description": "产生会话的产品：claude-code 或 codex",
-          "nullable": false,
-          "required": true
-        },
-        "sourceSessionId": {
-          "type": "string",
-          "description": "来源中会话的标识：Claude Code 主会话的 sessionId、子 Agent 的 agentId，或 Codex 的会话 id",
-          "nullable": false,
-          "required": true
-        }
-      }
+      "fields": {},
+      "kind": "thing",
+      "immutable": false
     }
   },
   {
@@ -56,18 +47,6 @@
       "description": "表示 Claude Code 或 Codex 会话中的一次交互：一条消息、一次工具调用、一次工具结果、一段推理或一份交给模型的上下文。来源中的每次交互对应一个实体。内容按来源顺序列为片段，原始记录以二进制内容保存。事实时间取自来源记下的时刻：输入、调用、结果和上下文是时间点，助手的回复和推理在来源给出开始时间时是时段，否则只有结束边界。",
       "resourceName": "assistant-interactions",
       "fields": {
-        "sessionVersionId": {
-          "type": "reference",
-          "description": "交互所在的助手会话",
-          "nullable": false,
-          "required": true
-        },
-        "deviceVersionId": {
-          "type": "reference",
-          "description": "交互发生的设备；不知道时为 null",
-          "nullable": true,
-          "required": true
-        },
         "kind": {
           "type": "string",
           "description": "交互的种类：message、tool-call、tool-result、reasoning 或 context",
@@ -138,7 +117,8 @@
           "type": "reference",
           "description": "工具结果对应的调用交互；其他交互，或调用不在已读到的记录中时为 null",
           "nullable": true,
-          "required": true
+          "required": true,
+          "target": "version"
         },
         "toolName": {
           "type": "string",
@@ -241,30 +221,24 @@
             "description": "一行 JSON 记录的字节，不含行尾的换行，媒体类型为 application/json",
             "nullable": false
           }
-        }
-      }
-    }
-  },
-  {
-    "schemaId": "019e1bbb-ec00-7000-8000-00000000000a",
-    "content": {
-      "displayName": "助手会话标题",
-      "description": "表示助手会话在来源中的一次标题，形成后不再变化；标题变化是一条新的实体。Observation 保存来源记下的改名时间，来源没有时间时未知。",
-      "resourceName": "assistant-session-titles",
-      "fields": {
-        "sessionVersionId": {
-          "type": "reference",
-          "description": "这个标题所属的助手会话",
-          "nullable": false,
-          "required": true
         },
-        "title": {
-          "type": "string",
-          "description": "来源给出的标题",
+        "sessionId": {
+          "type": "reference",
+          "description": "交互所在的助手会话",
           "nullable": false,
-          "required": true
+          "required": true,
+          "target": "thing"
+        },
+        "deviceId": {
+          "type": "reference",
+          "description": "交互发生的设备；不知道时为 null",
+          "nullable": true,
+          "required": true,
+          "target": "thing"
         }
-      }
+      },
+      "kind": "observation",
+      "immutable": true
     }
   },
   {
@@ -274,18 +248,6 @@
       "description": "表示一个子 Agent 的会话和发起它的会话之间的关系。一个子 Agent 的会话一个实体。",
       "resourceName": "assistant-subagents",
       "fields": {
-        "sessionVersionId": {
-          "type": "reference",
-          "description": "子 Agent 的会话",
-          "nullable": false,
-          "required": true
-        },
-        "parentSessionVersionId": {
-          "type": "reference",
-          "description": "发起这个子 Agent 的会话",
-          "nullable": false,
-          "required": true
-        },
         "agentName": {
           "type": "string",
           "description": "子 Agent 的类型或路径：Claude Code meta.json 的 agentType，Codex 的 agent_path。来源没有给出时为 null",
@@ -297,8 +259,24 @@
           "description": "父会话中发起这个子 Agent 的工具调用标识，对应父会话中工具调用交互的 callId；来源没有给出时为 null",
           "nullable": true,
           "required": true
+        },
+        "sessionId": {
+          "type": "reference",
+          "description": "子 Agent 的会话",
+          "nullable": false,
+          "required": true,
+          "target": "thing"
+        },
+        "parentSessionId": {
+          "type": "reference",
+          "description": "发起这个子 Agent 的会话",
+          "nullable": false,
+          "required": true,
+          "target": "thing"
         }
-      }
+      },
+      "kind": "observation",
+      "immutable": true
     }
   }
 ]

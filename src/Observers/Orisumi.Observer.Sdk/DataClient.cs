@@ -59,8 +59,7 @@ public sealed class DataClient : IAsyncDisposable
     }
     public async Task UseAsync(IEnumerable<SchemaDefinition> definitions, Guid selfSchema, object self, CancellationToken token = default)
     {
-        var item = new WriteItem(selfSchema, self, Observer.Key, Observer.EntityId);
-        await SendAsync([Encode(item, out var files)], definitions.ToArray(), files, token);
+        await SendAsync([], definitions.ToArray(), [], token, new { schemaId = selfSchema, content = self });
     }
     public async Task<WriteResult?> WriteAsync(WriteItem item, CancellationToken token = default)
     { var results = await WriteAllAsync([item], token); return results.Count == 0 ? null : results[0]; }
@@ -97,13 +96,13 @@ public sealed class DataClient : IAsyncDisposable
         var content = JsonSerializer.SerializeToElement(item.Content, options);
         return JsonSerializer.SerializeToElement(item with { Content = content }, Json);
     }
-    private byte[] Bytes(IReadOnlyList<JsonElement> writes, SchemaDefinition[]? schemas, long? sequence = null) =>
-        JsonSerializer.SerializeToUtf8Bytes(new { observer = Observer, schemas, writes, sequence }, Json);
+    private byte[] Bytes(IReadOnlyList<JsonElement> writes, SchemaDefinition[]? schemas, long? sequence = null, object? description = null) =>
+        JsonSerializer.SerializeToUtf8Bytes(new { observer = Observer, schemas, writes, sequence, description }, Json);
     private async Task<IReadOnlyList<WriteResult>> SendAsync(IReadOnlyList<JsonElement> writes, SchemaDefinition[]? schemas,
-        Dictionary<string, BinaryContent> files, CancellationToken token)
+        Dictionary<string, BinaryContent> files, CancellationToken token, object? description = null)
     {
-        var bytes = Bytes(writes, schemas);
-        if (Bytes(writes, schemas, long.MaxValue).Length > MaximumBytes) throw new InvalidDataException("Write request exceeds 10 MiB.");
+        var bytes = Bytes(writes, schemas, description: description);
+        if (Bytes(writes, schemas, long.MaxValue, description).Length > MaximumBytes) throw new InvalidDataException("Write request exceeds 10 MiB.");
         foreach (var file in files.Values)
         {
             using var upload = new ByteArrayContent(file.Data);
@@ -137,7 +136,7 @@ public sealed class DataClient : IAsyncDisposable
         do
         {
             var page = await GetAsync(path + (cursor is null ? "" : (path.Contains('?') ? "&" : "?") + "after=" + Uri.EscapeDataString(cursor)), token);
-            items.AddRange(page.GetProperty("versions").EnumerateArray());
+            items.AddRange(page.GetProperty(path.StartsWith("things", StringComparison.Ordinal) ? "things" : "versions").EnumerateArray());
             cursor = page.GetProperty("next").GetString();
         } while (cursor is not null);
         return items;

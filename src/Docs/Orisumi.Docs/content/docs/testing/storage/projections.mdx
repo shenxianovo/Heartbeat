@@ -17,16 +17,16 @@ HTTP 用例经真实 API 和独立的 PostgreSQL 数据库运行。Runtime 使�
 
 | 操作 | 预期结果 |
 | --- | --- |
-| 删除观测内容 | Observation 保留 observer_entity_id、content_entity_id，content_schema_id 清空 |
+| 删除 Observation | 它的版本标为已删除，指向它的 Review 和引用仍能追溯 |
 | 删除引用目标 | 引用方保留原 path 和目标版本 |
-| 清空投影后重建 | 历史、当前版本、引用和观测查询与之前相同 |
-| 重建投影 | 识别依据与写入流不丢失，重复序号仍被识别 |
+| 清空投影后重建 | 事物、Review、历史、当前版本、引用和 Observation 的 current/all 查询与之前相同 |
+| 重建投影 | 删除后的依据不恢复，写入流中的描述版本不丢失 |
 
 ## 测试实现 [#implementation]
 
 方法位于 `tests/Orisumi.Integration.Tests/`：
 
-- 删除与重建：`ProjectionTests.RebuildPreservesHistoryDeletedTargetsAndAllQueryResults`。
+- 删除与重建：`ProjectionTests.RebuildPreservesThingsReviewsHistoryAndDeletedTargets`。
 
 未覆盖：重建期间逐条证明权威表未被写入。
 

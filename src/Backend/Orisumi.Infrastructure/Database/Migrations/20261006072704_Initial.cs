@@ -75,6 +75,34 @@ namespace Orisumi.Infrastructure.Database.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "reviews",
+                columns: table => new
+                {
+                    entity_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    target_entity_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    verdict = table.Column<string>(type: "text", nullable: false),
+                    by_person = table.Column<bool>(type: "boolean", nullable: false),
+                    whole = table.Column<bool>(type: "boolean", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("pk_reviews", x => x.entity_id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "things",
+                columns: table => new
+                {
+                    entity_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    schema_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    deleted = table.Column<bool>(type: "boolean", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("pk_things", x => x.entity_id);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "versions",
                 columns: table => new
                 {
@@ -85,11 +113,19 @@ namespace Orisumi.Infrastructure.Database.Migrations
                     schema_version_id = table.Column<Guid>(type: "uuid", nullable: true),
                     category = table.Column<string>(type: "text", nullable: false),
                     recorded_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    content = table.Column<string>(type: "jsonb", nullable: false)
+                    content = table.Column<string>(type: "jsonb", nullable: false),
+                    observer_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    observer_version_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    formation = table.Column<string>(type: "text", nullable: true),
+                    input_set_version_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    start_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    end_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    time_zone = table.Column<string>(type: "text", nullable: true)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("pk_versions", x => x.version_id);
+                    table.CheckConstraint("ck_versions_observation", "(category = 'observation' AND schema_version_id IS NOT NULL AND observer_id IS NOT NULL AND formation IS NOT NULL) OR (category <> 'observation' AND schema_version_id IS NULL AND observer_id IS NULL AND formation IS NULL)");
                     table.ForeignKey(
                         name: "fk_versions_versions_previous_version_id",
                         column: x => x.previous_version_id,
@@ -107,6 +143,7 @@ namespace Orisumi.Infrastructure.Database.Migrations
                 columns: table => new
                 {
                     observer_entity_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    description_version_id = table.Column<Guid>(type: "uuid", nullable: true),
                     last_sequence = table.Column<long>(type: "bigint", nullable: false),
                     schema_version_ids = table.Column<string>(type: "jsonb", nullable: false)
                 },
@@ -149,7 +186,7 @@ namespace Orisumi.Infrastructure.Database.Migrations
                     entity_id = table.Column<Guid>(type: "uuid", nullable: false),
                     category = table.Column<string>(type: "text", nullable: false),
                     schema_id = table.Column<Guid>(type: "uuid", nullable: true),
-                    current_version_id = table.Column<Guid>(type: "uuid", nullable: false)
+                    current_version_id = table.Column<Guid>(type: "uuid", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -209,8 +246,8 @@ namespace Orisumi.Infrastructure.Database.Migrations
                     entity_id = table.Column<Guid>(type: "uuid", nullable: false),
                     version_id = table.Column<Guid>(type: "uuid", nullable: false),
                     observer_entity_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    content_entity_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    content_schema_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    schema_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    formation = table.Column<string>(type: "text", nullable: false),
                     fact_range = table.Column<NpgsqlRange<DateTimeOffset>>(type: "tstzrange", nullable: true)
                 },
                 constraints: table =>
@@ -269,18 +306,8 @@ namespace Orisumi.Infrastructure.Database.Migrations
                 name: "ux_entities_current_version_id",
                 table: "entities",
                 column: "current_version_id",
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "ix_observations_content_entity_id",
-                table: "observations",
-                column: "content_entity_id");
-
-            migrationBuilder.CreateIndex(
-                name: "ix_observations_content_schema_id_fact_range",
-                table: "observations",
-                columns: new[] { "content_schema_id", "fact_range" })
-                .Annotation("Npgsql:IndexMethod", "gist");
+                unique: true,
+                filter: "current_version_id IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "ix_observations_fact_range",
@@ -289,14 +316,20 @@ namespace Orisumi.Infrastructure.Database.Migrations
                 .Annotation("Npgsql:IndexMethod", "gist");
 
             migrationBuilder.CreateIndex(
+                name: "ix_observations_formation",
+                table: "observations",
+                column: "formation");
+
+            migrationBuilder.CreateIndex(
                 name: "ix_observations_observer_entity_id",
                 table: "observations",
                 column: "observer_entity_id");
 
             migrationBuilder.CreateIndex(
-                name: "ix_observations_observer_entity_id_content_entity_id",
+                name: "ix_observations_schema_id_fact_range",
                 table: "observations",
-                columns: new[] { "observer_entity_id", "content_entity_id" });
+                columns: new[] { "schema_id", "fact_range" })
+                .Annotation("Npgsql:IndexMethod", "gist");
 
             migrationBuilder.CreateIndex(
                 name: "ux_observations_version_id",
@@ -328,6 +361,11 @@ namespace Orisumi.Infrastructure.Database.Migrations
                 columns: new[] { "schema_id", "scope", "scheme", "value" },
                 unique: true)
                 .Annotation("Npgsql:NullsDistinct", false);
+
+            migrationBuilder.CreateIndex(
+                name: "ix_reviews_target_entity_id",
+                table: "reviews",
+                column: "target_entity_id");
 
             migrationBuilder.CreateIndex(
                 name: "ux_schemas_resource_name",
@@ -387,7 +425,13 @@ namespace Orisumi.Infrastructure.Database.Migrations
                 name: "recognition_keys");
 
             migrationBuilder.DropTable(
+                name: "reviews");
+
+            migrationBuilder.DropTable(
                 name: "schemas");
+
+            migrationBuilder.DropTable(
+                name: "things");
 
             migrationBuilder.DropTable(
                 name: "version_contents");

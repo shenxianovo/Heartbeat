@@ -1,17 +1,17 @@
 ---
 title: "Application Product"
-description: "用户认知中的一款软件，内容只有名称"
+description: "用户认知中的一款软件"
 ---
 
-应用产品表示用户认知中的一款软件，例如 QQ。各设备、各平台上的 QQ 安装都是本机应用，它们的跨设备线索由[线索归属](./application-membership.mdx)指向 QQ 这个产品，规则见 [Application Identity · 归属](./index.mdx#membership)。
+应用产品表示用户认知中的一款软件，例如 QQ。它是一个[事物](../../core/model/thing.mdx)。各设备、各平台上的 QQ 安装都是本机应用，它们的跨设备线索由[线索归属](./application-membership.mdx)指向 QQ 这个产品，规则见 [Application Identity · 归属](./index.mdx#membership)。
 
-应用产品由应用识别 Observer 写入。它被线索归属引用，自己不作为观测内容，所以没有 Observation，这个产品的责任和依据在线索归属的 Observation 上。
+应用产品由应用识别 Observer 新建，名字是一份 [Name](../../core/rules/understanding.mdx#name)。
 
 <ObserverStructure node="APPLICATION_PRODUCT" />
 
 ## 粒度 [#granularity]
 
-一个实体对应一款软件。应用识别 Observer 把下面的标准交给模型：
+一个事物对应一款软件。应用识别 Observer 把下面的标准交给模型：
 
 | 情况 | 产品 |
 | --- | --- |
@@ -23,13 +23,15 @@ description: "用户认知中的一款软件，内容只有名称"
 
 ## 身份 [#identity]
 
-应用识别 Observer 认出一款新的软件时新建一个产品。产品没有识别依据，EntityId 由后端生成，名称不参与身份。
+应用识别 Observer 认出一款新的软件时新建一个产品，用自己范围内的依据，见 [THING-4](../../core/model/thing.mdx#thing-4)：
 
-内容写入一次后不再变化：线索的加入和移出是线索归属的变化，名称保持第一次判断时的样子。
+| 识别依据 | 值 |
+| --- | --- |
+| `scope` | 应用识别 Observer 的 EntityId |
+| `scheme` | `application-identity.product` |
+| `value` | 模型给出的产品名称 |
 
-## 引用 [#references]
-
-应用产品没有引用。[线索归属](./application-membership.mdx)引用它。
+名称不是产品的身份。软件改名时写一份新的 Name，产品不变。
 
 ## EntitySchema [#schema]
 
@@ -37,17 +39,6 @@ description: "用户认知中的一款软件，内容只有名称"
 | --- | --- |
 | SchemaId | `019e1bbb-ec00-7000-8000-000000000004` |
 | 显示名称 | 应用产品 |
-| 说明 | 表示用户认知中的一款软件，内容只有名称，写入后不再变化。属于它的跨设备线索是单独的线索归属。 |
+| 说明 | 表示用户认知中的一款软件。名字是 Name，属于它的线索是线索归属。 |
 | 资源名 | `application-products` |
-
-| 字段 | 类型 | 必填 | 可空 | description |
-| --- | --- | --- | --- | --- |
-| `name` | `string` | 是 | 否 | 产品的名称 |
-
-## 示例 [#example]
-
-```json
-{
-  "name": "QQ"
-}
-```
+| `kind` | `thing` |

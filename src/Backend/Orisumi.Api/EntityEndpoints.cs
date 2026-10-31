@@ -19,7 +19,9 @@ internal static class EntityEndpoints
         }).WithName("getVersion");
         app.MapGet("/entities/{entityId}", async (string entityId, EntityService service, CancellationToken token) =>
         {
-            var version = await service.ReadCurrentAsync(new(Id(entityId)), token);
+            var id = new EntityId(Id(entityId));
+            if (await service.ReadThingAsync(id, token) is { } thing) return Results.Json(ThingJson(thing));
+            var version = await service.ReadCurrentAsync(id, token);
             return version is null ? ApiProblem.Create(404, "This EntityId has never been saved.") : Results.Json(VersionJson.Saved(version));
         }).WithName("getEntity");
         app.MapGet("/entities/{entityId}/versions", async (string entityId, EntityService service, CancellationToken token) =>
@@ -35,6 +37,8 @@ internal static class EntityEndpoints
             return deleted ? Results.NoContent() : ApiProblem.Create(404, "This EntityId has never been saved.");
         })
             .WithName("deleteEntity");
+        app.MapGet("/things", ListThingsAsync).WithName("listThings");
+        app.MapPost("/things/read", ReadThingsAsync).WithName("readThings");
         app.MapGet("/entities", ListEntitiesAsync).WithName("listEntities");
         app.MapGet("/observations", ListObservationsAsync).WithName("listObservations");
         app.MapGet("/entities/{entityId}/referrers", ListReferrersAsync).WithName("listReferrers");
@@ -50,8 +54,7 @@ internal static class EntityEndpoints
         var result = await service.WriteAsync(write, host, token);
         var results = result.Results.Select<WriteResult, object>(item => item.Error is { } error
             ? new { error = Error(error) }
-            : new { version = VersionJson.Saved(item.Version!), changed = item.Changed,
-                observation = item.Observation is { } observation ? (JsonElement?)VersionJson.Saved(observation) : null }).ToArray();
+            : new { version = VersionJson.Saved(item.Version!), changed = item.Changed }).ToArray();
         return result.Duplicate ? Results.Json(new { duplicate = true, results }) : Results.Json(new { results });
     }
 
@@ -84,7 +87,7 @@ internal static class EntityEndpoints
     private static async Task<IResult> ListEntitiesAsync(HttpRequest request, EntityService service, CancellationToken token)
     {
         var category = Parameter(request, "category");
-        if (category is not (null or "business" or "entity_schema" or "input_set" or "observation"))
+        if (category is not (null or "entity_schema" or "input_set" or "observation"))
             throw new JsonException("Unknown category.");
         var after = Parameter(request, "after");
         EntityId? cursor = after is null ? null : new(Id(Decode(after, QueryKind("entities", category, Parameter(request, "resourceName")))));
@@ -102,9 +105,13 @@ internal static class EntityEndpoints
         if (from >= to) throw new JsonException("to must be later than from.");
         var order = Parameter(request, "order") ?? "asc";
         if (order is not ("asc" or "desc")) throw new JsonException("order must be asc or desc.");
-        var observer = Parameter(request, "observerEntityId"); var content = Parameter(request, "contentEntityId");
+        var observer = Parameter(request, "observerId");
+        var formation = Parameter(request, "formation");
+        if (formation is not null && !VersionRules.ValidFormation(formation)) throw new JsonException("Invalid formation.");
+        var standing = Parameter(request, "standing") ?? "all";
+        if (standing is not ("all" or "current")) throw new JsonException("standing must be all or current.");
         var resource = Parameter(request, "resourceName");
-        var kind = QueryKind("observations", from?.ToString("O", CultureInfo.InvariantCulture), to?.ToString("O", CultureInfo.InvariantCulture), observer, content, resource, order);
+        var kind = QueryKind("observations", from?.ToString("O", CultureInfo.InvariantCulture), to?.ToString("O", CultureInfo.InvariantCulture), observer, formation, standing, resource, order);
         ObservationCursor? cursor = null;
         if (Parameter(request, "after") is { } after)
         {
@@ -114,7 +121,7 @@ internal static class EntityEndpoints
         }
         var limit = Limit(request);
         var versions = await service.ListObservationsAsync(new(from, to, Limit: limit, After: cursor,
-            ObserverEntityId: observer is null ? null : new(Id(observer)), ContentEntityId: content is null ? null : new(Id(content)), Descending: order == "desc"), resource, token);
+            ObserverId: observer is null ? null : new(Id(observer)), Formation: formation, Current: standing == "current", Descending: order == "desc"), resource, token);
         return Page(versions, limit, version =>
         {
             var observation = (Observation)version.Content;
@@ -144,10 +151,45 @@ internal static class EntityEndpoints
             referrers = referrers.Take(limit).Select(referrer => new
             {
                 version = VersionJson.Saved(referrer.Version),
-                references = referrer.References.Select(reference => new { path = reference.Position, targetVersionId = reference.Target.Value }),
+                references = referrer.References.Select(reference => new { path = reference.Position, targetEntityId = reference.TargetEntityId.Value, targetVersionId = reference.TargetVersionId?.Value }),
             }),
             next = referrers.Count > limit ? Encode(kind, referrers[limit - 1].Version.VersionId.Value.ToString("D")) : null,
         });
+    }
+
+    private static object ThingJson(Thing thing) => new
+    {
+        entityId = thing.EntityId.Value, category = "thing", schemaId = thing.SchemaId.Value,
+        keys = thing.Keys.Select(key => new { scope = key.Scope, scheme = key.Scheme, value = key.Value }), name = thing.Name,
+    };
+
+    private static async Task<IResult> ListThingsAsync(HttpRequest request, EntityService service, CancellationToken token)
+    {
+        var resource = Parameter(request, "resourceName");
+        var kind = QueryKind("things", resource);
+        var after = Parameter(request, "after");
+        EntityId? cursor = after is null ? null : new(Id(Decode(after, kind)));
+        var limit = Limit(request);
+        var things = await service.ListThingsAsync(new(Limit: limit, After: cursor), resource, token);
+        return Results.Json(new { things = things.Take(limit).Select(ThingJson),
+            next = things.Count > limit ? Encode(kind, things[limit - 1].EntityId.Value.ToString("D")) : null });
+    }
+
+    private static async Task<IResult> ReadThingsAsync(JsonElement body, IEntityStore store, CancellationToken token)
+    {
+        if (body.ValueKind != JsonValueKind.Object || body.EnumerateObject().Count() != 1
+            || !body.TryGetProperty("entityIds", out var list) || list.ValueKind != JsonValueKind.Array || list.GetArrayLength() is < 1 or > 256)
+            throw new JsonException("entityIds must contain between 1 and 256 IDs.");
+        var ids = list.EnumerateArray().Select(value => new EntityId(Id(value.GetString()!))).ToArray();
+        return Results.Json(new { results = await store.ExecuteAsync(async (transaction, cancellation) =>
+        {
+            var things = (await transaction.ReadThingsAsync(ids.Distinct().ToArray(), cancellation)).ToDictionary(thing => thing.EntityId);
+            var results = new List<object>();
+            foreach (var id in ids)
+                results.Add(things.TryGetValue(id, out var thing) ? new { entityId = id.Value, status = "found", thing = ThingJson(thing) }
+                    : (object)new { entityId = id.Value, status = await transaction.IsEntityDeletedAsync(id, cancellation) ? "deleted" : "not_found" });
+            return results;
+        }, token) });
     }
 
     private static IResult Page(IReadOnlyList<EntityVersion> versions, int limit, Func<EntityVersion, string> cursor) =>

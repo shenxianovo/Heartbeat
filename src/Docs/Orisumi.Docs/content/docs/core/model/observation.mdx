@@ -1,26 +1,28 @@
 ---
 title: "Observation"
-description: "Observer 形成的一份陈述，唯一保存事实时间的类型"
+description: "一份陈述：谁负责、说了什么、怎么来的、依据什么、事实何时成立"
 ---
 
-Observation 是一份陈述，中文叫观测。它说明四件事：哪个 [Observer](./observer.mdx) 负责、内容是什么、依据了哪些已保存的数据、事实在什么时间成立。前台状态 Observer 采集到的前台时段、模型的推断、用户的确认、否定和亲身陈述，都是 Observation。
+Observation 是一份陈述，中文叫观测。它说明五件事：哪个 [Observer](./observer.mdx) 负责、说了什么、怎么来的、依据了哪些已保存的数据、事实在什么时间成立。前台状态 Observer 采集到的前台时段、模型的推断、用户的确认和否定，都是 Observation。
 
-只有 Observation 保存事实时间。前台时段本身只记“哪个应用在前台”，这一段从几点到几点，写在引用它的 Observation 上。
+这五件事都在同一个版本中，所以读一份 Observation 就读到了全部。它提到的对象是[事物](./thing.mdx)，实体之间的关系也都写在 Observation 中，见 [ENTITY-9](./entity.mdx#entity-9)。
 
 <ModelRelations node="Observation" />
 
-- **类别**：Core 类型，`category` 为 `observation`
-- **引用**：`observerVersionId`、`contentVersionId`、`inputSetVersionId`
-- **决策**：[ADR · 实体模型](../../adr/entity-model.mdx)、[ADR · Observer 与输入集](../../adr/observers-and-evidence.mdx)、[ADR · 身份、时间与更新](../../adr/identity-and-updates.mdx)
+- **类别**：`category` 为 `observation`，类型由 EntitySchema 定义
+- **引用**：`schemaVersionId`、`observerId`、`observerVersionId`、`inputSetVersionId`，以及业务字段中的引用
+- **决策**：[ADR · 实体模型](../../adr/entity-model.mdx)、[ADR · Observer 与输入集](../../adr/observers-and-evidence.mdx)、[ADR · 身份、时间与更新](../../adr/identity-and-updates.mdx)、[ADR · 模型形成的理解](../../adr/understanding.mdx)
 
 ## 成员 [#members]
 
-以下成员位于版本的 `content` 中，版本共有的成员见 [Version](./version.mdx#members)。
+以下成员在版本共有的[成员](./version.mdx#members)之外：
 
 | 成员 | 类型 | 含义 |
 | --- | --- | --- |
-| `observerVersionId` | 引用 | 负责的 Observer |
-| `contentVersionId` | 引用 | 观测内容 |
+| `schemaVersionId` | 引用 | 这份陈述所用的 Schema 版本，决定它的类型和 `content` 的结构 |
+| `observerId` | 引用 | 负责的 Observer，是一个事物 |
+| `observerVersionId` | 引用或 `null`，必须出现 | 形成这一版时 Observer 的描述，见 [OBSERVER-9](./observer.mdx#observer-9)。没有描述时为 `null` |
+| `formation` | 枚举 | [形成方式](#formation) |
 | `inputSetVersionId` | 引用或 `null`，必须出现 | 这次处理实际用到的 [InputSet](./input-set.mdx)。没有用到已保存的数据时为 `null`，见 [EVIDENCE-1](../rules/evidence.mdx#evidence-1) |
 | `timeZone` | 字符串或 `null`，必须出现 | 事实所属的 IANA 时区，未知时为 `null` |
 | `startAt` | 时间或 `null`，必须出现 | 事实的已知开始边界，未知时为 `null` |
@@ -32,12 +34,23 @@ VS Code 从 14:00 起在前台，前台状态 Observer 在 14:05 最后一次确
 
 ```json
 {
+	"entityId": "019e1bbb-ec00-7000-8000-0000000000e1",
+	"versionId": "019e1bbb-ec00-7000-8000-000000000101",
+	"previousVersionId": null,
+	"category": "observation",
+	"schemaVersionId": "019e1bbb-ec00-7000-8000-000000000201",
+	"observerId": "019e1bbb-ec00-7000-8000-0000000000a0",
 	"observerVersionId": "019e1bbb-ec00-7000-8000-0000000000a1",
-	"contentVersionId": "019e1bbb-ec00-7000-8000-0000000000c1",
+	"formation": "direct",
 	"inputSetVersionId": null,
 	"startAt": "2026-10-06T06:00:00Z",
 	"endAt": "2026-10-06T06:05:00Z",
-	"timeZone": "Asia/Shanghai"
+	"timeZone": "Asia/Shanghai",
+	"recordedAt": "2026-10-06T06:05:01Z",
+	"content": {
+		"localApplicationId": "019e1bbb-ec00-7000-8000-0000000000c1",
+		"name": "Visual Studio Code"
+	}
 }
 ```
 
@@ -49,19 +62,19 @@ VS Code 从 14:00 起在前台，前台状态 Observer 在 14:05 最后一次确
 
 执行方：后端
 
-每份 Observation 必须引用一个 Observer 和一个观测内容，两者都是业务实体的版本。`inputSetVersionId` 不为 `null` 时，必须指向一个 InputSet 的版本。这些目标都要已保存且未被删除，见 [ENTITY-6](./entity.mdx#entity-6)。
+每份 Observation 必须引用一个 `kind` 为 `observation` 的 Schema 版本和一个作为 Observer 的事物。`observerVersionId` 不为 `null` 时，必须是这个 Observer 的描述的版本。`inputSetVersionId` 不为 `null` 时，必须指向一个 InputSet 的版本。这些目标都要存在且未被删除，见 [ENTITY-6](./entity.mdx#entity-6)。
 
-### OBSERVATION-2 内容的类型 [#observation-2]
+### OBSERVATION-2 陈述的类型 [#observation-2]
 
 定义
 
-观测内容的类型由内容版本所用的 Schema 版本决定。
+Observation 的类型由它所用的 Schema 版本决定。
 
-### OBSERVATION-3 内容可共用 [#observation-3]
+### OBSERVATION-3 同一件事的多份观测 [#observation-3]
 
-执行方：后端
+定义
 
-同一个观测内容可以被多份 Observation 引用，每个 Observer 一份。同一个 Observer 再次写入这个内容时，时间或内容有变化就形成它那份 Observation 的新版本。每次读取都要单独成一份观测时，每次读取是一个新的内容实体，例如一次温度读数。
+不同的 Observer 对同一件事可以各有一份 Observation。一个 Observer 的陈述更新时形成它那一份的新版本，其他 Observer 的不受影响。每次读取都要单独成一份观测时，每次读取是一个新的 Observation，例如一次温度读数。
 
 ## 事实时间 [#fact-time]
 
@@ -82,13 +95,13 @@ VS Code 从 14:00 起在前台，前台状态 Observer 在 14:05 最后一次确
 
 执行方：写入方
 
-只有 Observation 保存事实时间，业务实体的事实时间写在引用它的 Observation 上。观测内容可以保留来源的原始时间，见 [TIME-5](../rules/time.mdx#time-5)。
+只有 Observation 保存事实时间。业务字段可以保留来源的原始时间，见 [TIME-5](../rules/time.mdx#time-5)。
 
 ### OBSERVATION-5 null 即未知 [#observation-5]
 
 定义
 
-边界为 `null` 表示这个边界未知。暂停、取消这类业务状态由观测内容表达。
+边界为 `null` 表示这个边界未知。暂停、取消这类业务状态由 `content` 表达。
 
 ### OBSERVATION-6 开始不晚于结束 [#observation-6]
 
@@ -116,8 +129,26 @@ VS Code 从 14:00 起在前台，前台状态 Observer 在 14:05 最后一次确
 
 ## 版本 [#versions]
 
-### OBSERVATION-10 只有原 Observer 能更新 [#observation-10]
+### OBSERVATION-10 一个作者 [#observation-10]
 
 执行方：后端
 
-Observation 的后续版本由同一个 Observer 形成：`observerVersionId` 指向同一个 Observer 实体的某个版本。后续版本可以补全或纠正事实时间、时区、观测内容和输入集。其他 Observer 的确认或否定形成新的 Observation，见 [IDENTITY-3](../rules/identity.mdx#identity-3)。
+一份 Observation 只有一个作者：所有版本的 `observerId` 相同。其他 Observer 写入同一份识别依据时，内容相同什么都不做，内容不同就拒绝这次写入。后续版本可以补全或纠正事实时间、时区、内容和输入集。其他 Observer 的确认或否定形成新的 Observation，见 [IDENTITY-3](../rules/identity.mdx#identity-3)。
+
+## 形成方式 [#formation]
+
+形成方式说明这份陈述怎么来的，它说明来由，不说明真假。前台时段是程序直接读到的，VS Code 留在前台时用户可能在开会。
+
+| `formation` | 含义 | 例子 |
+| --- | --- | --- |
+| `direct` | 程序记下来源给出的内容 | 前台应用、一条助手消息、一次传感器读数 |
+| `stated` | 人自己说的 | “15:00 在开会”、对一条判断的否定 |
+| `computed` | 同样的输入一定得到同样的结果 | QQ 今天用了多久 |
+| `extracted` | 模型只转述材料中有什么 | OCR、语音转写 |
+| `inferred` | 超出材料的判断 | “QQ 号 123 是本人”、“下午在写代码” |
+
+### OBSERVATION-11 如实声明形成方式 [#observation-11]
+
+执行方：写入方、后端
+
+写入方如实声明每个版本的形成方式，后端只检查取值。一个 Observer 可以形成不同形成方式的陈述。读取方要知道结论的依据里有没有推断时，沿 InputSet 查，见 [EVIDENCE-7](../rules/evidence.mdx#evidence-7)。

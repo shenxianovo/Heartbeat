@@ -14,7 +14,7 @@ public sealed class ApplicationModelTests
             """);
         using var http = new HttpClient(handler);
         var input = new IdentificationInput("macos", new("macos.bundle-id", "com.tencent.qq"),
-            [[new("macos.bundle-id", "com.tencent.qq"), new("macos.executable-path", "/Applications/QQ")]], ["QQ"], []);
+            [[new("macos.bundle-id", "com.tencent.qq"), new("macos.executable-path", "/Applications/QQ")]], ["QQ"], [], []);
         var result = await new OpenAiApplicationModel(http, "test-key", "test-model").IdentifyAsync(input, TestContext.Current!.Execution.CancellationToken);
         await Assert.That(result).IsEqualTo(new IdentificationDecision("new", Name: "QQ"));
         var body = handler.Body;
@@ -34,7 +34,7 @@ public sealed class ApplicationModelTests
         using var handler = new ResponseHandler(response);
         using var http = new HttpClient(handler);
         var model = new OpenAiApplicationModel(http, "test-key", "test-model");
-        await Assert.That(async () => await model.IdentifyAsync(new("macos", new("macos.bundle-id", "test"), [], [], []),
+        await Assert.That(async () => await model.IdentifyAsync(new("macos", new("macos.bundle-id", "test"), [], [], [], []),
             TestContext.Current!.Execution.CancellationToken)).Throws<InvalidDataException>();
     }
 

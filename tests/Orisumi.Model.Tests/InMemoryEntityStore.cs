@@ -27,6 +27,7 @@ internal sealed class InMemoryEntityStore : IEntityStore, IDisposable
 
     private sealed class State : IEntityTransaction
     {
+        private readonly Dictionary<EntityId, Thing> _things = [];
         private readonly List<EntityVersion> _versions = [];
         private readonly HashSet<EntityId> _deletedEntities = [];
         private readonly HashSet<VersionId> _deletedVersions = [];
@@ -36,6 +37,7 @@ internal sealed class InMemoryEntityStore : IEntityStore, IDisposable
         internal State(State source)
         {
             _versions.AddRange(source._versions);
+            foreach (var pair in source._things) _things.Add(pair.Key, pair.Value);
             foreach (var pair in source._keys) _keys.Add(pair.Key, pair.Value);
             foreach (var pair in source._streams) _streams.Add(pair.Key, pair.Value with { SchemaVersionIds = new(pair.Value.SchemaVersionIds) });
             _deletedEntities.UnionWith(source._deletedEntities);
@@ -49,6 +51,7 @@ internal sealed class InMemoryEntityStore : IEntityStore, IDisposable
             try { return await operation(); }
             catch (ModelViolationException)
             {
+                _things.Clear(); foreach (var pair in saved._things) _things.Add(pair.Key, pair.Value);
                 _versions.Clear(); _versions.AddRange(saved._versions);
                 _keys.Clear(); foreach (var pair in saved._keys) _keys.Add(pair.Key, pair.Value);
                 _streams.Clear(); foreach (var pair in saved._streams) _streams.Add(pair.Key, pair.Value);
@@ -63,10 +66,12 @@ internal sealed class InMemoryEntityStore : IEntityStore, IDisposable
             Task.FromResult(_streams.TryGetValue(observer, out var stream) ? stream with { SchemaVersionIds = new(stream.SchemaVersionIds) } : new(0, []));
         public Task SaveStreamAsync(EntityId observer, WriteStreamState stream, CancellationToken cancellationToken)
         { _streams[observer] = stream; return Task.CompletedTask; }
-        public Task<EntityVersion?> FindObservationAsync(EntityId observer, EntityId content, CancellationToken cancellationToken) =>
-            Task.FromResult(_versions.LastOrDefault(v => v.Content is Observation o
-                && _versions.Find(v => v.VersionId == o.ObserverVersionId)?.EntityId == observer
-                && _versions.Find(v => v.VersionId == o.ContentVersionId)?.EntityId == content));
+        public Task<Thing?> ReadThingAsync(EntityId id, CancellationToken token) => Task.FromResult(_things.GetValueOrDefault(id));
+        public Task<IReadOnlyList<Thing>> ReadThingsAsync(IReadOnlyList<EntityId> ids, CancellationToken token) =>
+            Task.FromResult<IReadOnlyList<Thing>>(ids.Where(_things.ContainsKey).Select(id => _things[id]).ToArray());
+        public Task<IReadOnlyList<Thing>> ListThingsAsync(EntityQuery query, CancellationToken token) => throw new NotSupportedException();
+        public Task CreateThingAsync(EntityId id, EntityId schema, CancellationToken token)
+        { _things.Add(id, new(id, schema, [])); return Task.CompletedTask; }
 
         public Task<EntityVersion?> ReadCurrentAsync(EntityId id, CancellationToken cancellationToken) =>
             Task.FromResult(_versions.LastOrDefault(version => version.EntityId == id));
@@ -84,15 +89,15 @@ internal sealed class InMemoryEntityStore : IEntityStore, IDisposable
         public Task<IReadOnlyList<EntityVersion>> ReadVersionsAsync(EntityId id, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<EntityVersion>>(_versions.Where(version => version.EntityId == id).ToArray());
         public Task<bool> EntityExistsAsync(EntityId id, CancellationToken cancellationToken) =>
-            Task.FromResult(_deletedEntities.Contains(id) || _versions.Any(version => version.EntityId == id));
+            Task.FromResult(_deletedEntities.Contains(id) || _things.ContainsKey(id) || _versions.Any(version => version.EntityId == id));
         public Task<bool> IsEntityDeletedAsync(EntityId id, CancellationToken cancellationToken) => Task.FromResult(_deletedEntities.Contains(id));
         public Task<bool> IsVersionDeletedAsync(VersionId id, CancellationToken cancellationToken) => Task.FromResult(_deletedVersions.Contains(id));
         public Task<EntityId?> FindSchemaAsync(string resourceName, CancellationToken cancellationToken) =>
             Task.FromResult(_versions.Find(version => version.Content is EntitySchema schema && schema.ResourceName == resourceName)?.EntityId);
-        public Task<bool> HasBusinessVersionsAsync(EntityId schemaId, CancellationToken cancellationToken)
+        public Task<bool> HasSchemaUsersAsync(EntityId schemaId, CancellationToken cancellationToken)
         {
             var schemaVersions = _versions.Where(version => version.EntityId == schemaId).Select(version => version.VersionId).ToHashSet();
-            return Task.FromResult(_versions.Any(version => version.SchemaVersionId is { } id && schemaVersions.Contains(id)));
+            return Task.FromResult(_things.Values.Any(thing => thing.SchemaId == schemaId) || _versions.Any(version => version.SchemaVersionId is { } id && schemaVersions.Contains(id)));
         }
         public Task<long?> ContentSizeAsync(string digest, CancellationToken cancellationToken) => Task.FromResult<long?>(null);
         public Task UploadContentAsync(string digest, byte[] data, DateTimeOffset uploadedAt, CancellationToken cancellationToken) =>
@@ -110,6 +115,7 @@ internal sealed class InMemoryEntityStore : IEntityStore, IDisposable
         {
             foreach (var key in _keys.Where(pair => pair.Value == id).Select(pair => pair.Key).ToArray()) _keys.Remove(key);
             _streams.Remove(id);
+            _things.Remove(id);
             _deletedEntities.Add(id);
             _deletedVersions.UnionWith(_versions.Where(version => version.EntityId == id).Select(version => version.VersionId));
             _versions.RemoveAll(version => version.EntityId == id);

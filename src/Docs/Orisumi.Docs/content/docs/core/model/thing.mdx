@@ -1,0 +1,68 @@
+---
+title: "Thing"
+description: "只有身份的实体：设备、会话、账号和人"
+---
+
+事物是被提到和被观测的对象，例如这台 Mac、一个 Codex 会话、QQ 号 123、用户本人。事物只有身份，关于它的一切都是 [Observation](./observation.mdx)：设备叫什么、会话的标题、QQ 号是谁的，都是引用它的陈述。
+
+<ModelRelations node="Thing" />
+
+- **类别**：`category` 为 `thing`
+- **身份**：`EntityId`，来源对象靠[识别依据](../rules/identity.mdx#identity-7)认出
+- **决策**：[ADR · 实体模型](../../adr/entity-model.mdx)
+
+## 成员 [#members]
+
+| 成员 | 类型 | 含义 |
+| --- | --- | --- |
+| `entityId` | `EntityId` | 事物的身份 |
+| `category` | `thing` | 实体的类别 |
+| `schemaId` | SchemaId | 事物的类型，这个 EntitySchema 的 `kind` 为 `thing` |
+| `keys` | 识别依据的数组 | 认出这个事物所用的依据，可以为空 |
+
+## 示例 [#example]
+
+一条 QQ 消息提到发送者：
+
+```json
+{
+  "entityId": "019e1bbb-ec00-7000-8000-0000000000d1",
+  "category": "thing",
+  "schemaId": "019e1bbb-ec00-7000-8000-000000000011",
+  "keys": [
+    { "scope": null, "scheme": "qq.uin", "value": "123" }
+  ]
+}
+```
+
+## 规则 [#rules]
+
+### THING-1 只有身份 [#thing-1]
+
+定义
+
+事物没有内容和版本，也没有事实时间。这个事物的类型和识别依据是它保存的全部信息。
+
+### THING-2 提到时创建 [#thing-2]
+
+执行方：后端
+
+写入用识别依据提到一个事物，而它还不存在时，后端创建它。提到事物不需要先写入，也不需要负责的 Observer，所以多个 Observer 可以提到同一个事物。
+
+### THING-3 内容写成 Observation [#thing-3]
+
+执行方：写入方
+
+关于事物的内容都写成引用它的 Observation。名字用公共的 [Name](../rules/understanding.mdx#name)，其他内容由业务类型定义，例如设备的平台、本机应用的标识线索。
+
+### THING-4 Observer 自己的事物 [#thing-4]
+
+执行方：写入方
+
+来源没有给出标识时，Observer 可以用自己范围内的依据新建事物：`scope` 是这个 Observer 的 EntityId，`value` 由它决定。例如模型认出一个人，用 `zhangsan-classmate` 作依据，同一批写入能引用它，重跑不会重复。这样的依据只在这个 Observer 内有意义，见 [IDENTITY-6](../rules/identity.mdx#identity-6)。
+
+### THING-5 事物不合并 [#thing-5]
+
+执行方：写入方
+
+两个事物其实是同一个时，写一条 `predicate` 为 `same-as` 的[关系](../rules/understanding.mdx#relation)，EntityId 和已有的引用都不变。例如两个设备事物是重装系统前后的同一台机器，或者两个人其实是同一个人。这个判断错了，否定这条关系即可。

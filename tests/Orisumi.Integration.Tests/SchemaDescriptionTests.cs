@@ -58,7 +58,7 @@ public sealed class SchemaDescriptionTests
         };
         var writer = new WriteClient(http); await writer.InitializeAsync();
         var prefix = Guid.CreateVersion7();
-        object Declaration(Guid id, string resource, object definitions) => new { schemaId = id, content = new { displayName = "Test", description = "Test type", resourceName = resource, fields = definitions } };
+        object Declaration(Guid id, string resource, object definitions) => new { schemaId = id, content = new { displayName = "Test", description = "Test type", resourceName = resource, kind = "observation", immutable = false, fields = definitions } };
         using var response = await http.PostAsJsonAsync("/writes", new { observer = writer.ObserverReference,
             schemas = new[] { Declaration(prefix, "prefix", new { }), Declaration(Guid.CreateVersion7(), "invalid", fields) }, writes = Array.Empty<object>() });
         await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.BadRequest);
@@ -67,6 +67,53 @@ public sealed class SchemaDescriptionTests
             await Assert.That(problem.GetProperty("rule").GetString()).IsEqualTo("SCHEMA-10");
         using var read = await http.GetAsync($"/entities/{prefix}");
         await Assert.That(read.StatusCode).IsEqualTo(HttpStatusCode.NotFound);
+    }
+
+    [Test, Property("caseId", "api-schema-fields")]
+    [Arguments("thing-fields", "SCHEMA-17")]
+    [Arguments("thing-immutable", "SCHEMA-17")]
+    [Arguments("kind-change", "SCHEMA-17")]
+    [Arguments("reference-target", "SCHEMA-9")]
+    [Arguments("id-field", "SCHEMA-7")]
+    public async Task KindAndReferenceDeclarationsRespectSchemaRules(string change, string rule)
+    {
+        await using var database = await DatabaseFixture.CreateAsync();
+        await using var factory = new OrisumiApiFactory(database.ConnectionString);
+        using var http = factory.CreateClient();
+        var writer = new WriteClient(http); await writer.InitializeAsync();
+        var id = await writer.DeclareAsync("objects", kind: "thing");
+        var fields = change switch
+        {
+            "thing-fields" => JsonNode.Parse(WriteApiTests.NameFields)!,
+            "reference-target" => JsonNode.Parse("""{"targetId":{"type":"reference","description":"Target","required":true,"nullable":false}}""")!,
+            "id-field" => JsonNode.Parse("""{"id":{"type":"string","description":"ID","required":true,"nullable":false}}""")!,
+            _ => new JsonObject(),
+        };
+        using var response = await http.PostAsJsonAsync("writes", new { observer = writer.ObserverReference,
+            schemas = new[] { new { schemaId = change == "kind-change" ? id.Value : Guid.CreateVersion7(),
+                content = new { displayName = "Objects", description = "Objects", resourceName = change == "kind-change" ? "objects" : "invalid",
+                    kind = change.StartsWith("thing", StringComparison.Ordinal) ? "thing" : "observation", immutable = change == "thing-immutable", fields } } },
+            writes = Array.Empty<object>() });
+        await Assert.That(response.StatusCode).IsEqualTo(HttpStatusCode.BadRequest);
+        await Assert.That((await WriteClient.JsonAsync(response)).GetProperty("rule").GetString()).IsEqualTo(rule);
+    }
+
+    [Test, Property("caseId", "api-schema-fields")]
+    public async Task BuiltInTypesNeedNoDeclarationAndAnObserversOwnDeclarationTakesPrecedence()
+    {
+        await using var database = await DatabaseFixture.CreateAsync();
+        await using var factory = new OrisumiApiFactory(database.ConnectionString);
+        using var http = factory.CreateClient();
+        var writer = new WriteClient(http); await writer.InitializeAsync();
+        var name = new EntityId(Orisumi.Observer.Sdk.CommonSchemas.Name);
+        var original = await writer.WriteAsync(name, new { thingId = writer.ObserverId.Value, name = "default" });
+        var fields = """{"thingId":{"type":"reference","target":"thing","description":"Named thing","required":true,"nullable":false},"name":{"type":"string","description":"Name","required":true,"nullable":false},"extra":{"type":"string","description":"Extra","required":true,"nullable":false}}""";
+        await writer.DeclareAsync("names", fields, name);
+        var own = await writer.WriteAsync(name, new { thingId = writer.ObserverId.Value, name = "own", extra = "extra" });
+        await Assert.That(own.SchemaVersionId == original.SchemaVersionId).IsFalse();
+        var other = new WriteClient(http); await other.InitializeAsync();
+        var fallback = await other.WriteAsync(name, new { thingId = writer.ObserverId.Value, name = "builtin" });
+        await Assert.That(fallback.SchemaVersionId).IsEqualTo(original.SchemaVersionId);
     }
 
     private static JsonObject Fields() => JsonNode.Parse("""

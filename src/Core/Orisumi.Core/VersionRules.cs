@@ -12,8 +12,8 @@ public static class VersionRules
         Require(IsUuid7(version.VersionId.Value), "VERSION-12", "VersionId must be a UUIDv7.");
         Require(version.PreviousVersionId is not { } previous || IsUuid7(previous.Value), "VERSION-12", "Invalid previous VersionId.");
         Require(version.SchemaVersionId is not { } schemaId || IsUuid7(schemaId.Value), "VERSION-12", "Invalid Schema VersionId.");
-        Require((version.Content is BusinessContent) == version.SchemaVersionId.HasValue,
-            "VERSION-3", "Only business versions must reference a Schema version.");
+        Require((version.Content is Observation) == version.SchemaVersionId.HasValue,
+            "VERSION-3", "Only Observation versions must reference a Schema version.");
         switch (version.Content)
         {
             case EntitySchema declaration:
@@ -22,15 +22,18 @@ public static class VersionRules
                 Require(EntitySchemaRules.ValidResource(declaration.ResourceName), "SCHEMA-6", "Invalid resourceName.");
                 if (EntitySchemaRules.FieldViolation(declaration.Fields) is { } rule)
                     throw new ModelViolationException(rule, "Invalid field definitions.");
+                Require(declaration.Kind is "thing" or "observation", "SCHEMA-17", "Invalid Schema kind.");
+                Require(declaration.Kind != "thing" || (!declaration.Immutable && !declaration.Fields.EnumerateObject().Any()),
+                    "SCHEMA-17", "Thing Schemas have no fields and are not immutable.");
                 break;
-            case BusinessContent business:
+            case Observation reading:
+                ValidateObservation(reading);
                 Require(schema is not null, "SCHEMA-3", "A saved Schema version is required.");
-                if (EntitySchemaRules.EntityViolation(schema!.Fields, business.Fields) is { } contentRule)
+                Require(schema!.Kind == "observation", "SCHEMA-17", "An Observation requires an observation Schema.");
+                if (EntitySchemaRules.EntityViolation(schema!.Fields, reading.Fields) is { } contentRule)
                     throw new ModelViolationException(contentRule, "Content does not match its Schema version.");
                 break;
-            case Observation observation:
-                ValidateObservation(observation);
-                break;
+
             case InputSet inputs:
                 Require(inputs.Members.Length > 0, "INPUTSET-2", "An InputSet must not be empty.");
                 Require(inputs.Members.All(id => IsUuid7(id.Value)), "VERSION-12", "Inputs must be VersionIds.");
@@ -41,10 +44,13 @@ public static class VersionRules
         }
     }
 
+    public static bool ValidFormation(string formation) => formation is "direct" or "stated" or "computed" or "extracted" or "inferred";
+
     public static void ValidateObservation(Observation observation)
     {
-        Require(IsUuid7(observation.ObserverVersionId.Value) && IsUuid7(observation.ContentVersionId.Value),
-            "VERSION-12", "Observer and content must be VersionIds.");
+        Require(IsUuid7(observation.ObserverId.Value), "ENTITY-2", "Observer must be an EntityId.");
+        Require(observation.ObserverVersionId is not { } description || IsUuid7(description.Value), "VERSION-12", "Invalid Observer description.");
+        Require(ValidFormation(observation.Formation), "OBSERVATION-11", "Invalid formation.");
         Require(observation.InputSetVersionId is not { } input || IsUuid7(input.Value), "VERSION-12", "Invalid InputSet VersionId.");
         Require(observation.StartAt is null || observation.EndAt is null || observation.StartAt <= observation.EndAt,
             "OBSERVATION-6", "startAt must not be later than endAt.");
@@ -60,16 +66,14 @@ public static class VersionRules
         switch (version.Content)
         {
             case Observation observation:
-                result.Add(new("/content/observerVersionId", observation.ObserverVersionId));
-                result.Add(new("/content/contentVersionId", observation.ContentVersionId));
-                if (observation.InputSetVersionId is { } input) result.Add(new("/content/inputSetVersionId", input));
+                result.Add(new("/observerId", null, observation.ObserverId));
+                if (observation.ObserverVersionId is { } description) result.Add(new("/observerVersionId", description));
+                if (observation.InputSetVersionId is { } input) result.Add(new("/inputSetVersionId", input));
+                Require(schema is not null, "SCHEMA-2", "Reference enumeration needs the version's Schema.");
+                CollectObject(schema!.Fields, observation.Fields, "/content", result);
                 break;
             case InputSet inputs:
                 for (var i = 0; i < inputs.Members.Length; i++) result.Add(new($"/content/members/{i}", inputs.Members[i]));
-                break;
-            case BusinessContent business:
-                Require(schema is not null, "SCHEMA-2", "Reference enumeration needs the version's Schema.");
-                CollectObject(schema!.Fields, business.Fields, "/content", result);
                 break;
         }
         return result;
@@ -88,7 +92,8 @@ public static class VersionRules
         switch (definition.GetProperty("type").GetString())
         {
             case "reference":
-                result.Add(new(path, new VersionId(value.GetGuid())));
+                result.Add(definition.GetProperty("target").GetString() == "thing"
+                    ? new(path, null, new EntityId(value.GetGuid())) : new(path, new VersionId(value.GetGuid())));
                 break;
             case "object":
                 CollectObject(definition.GetProperty("fields"), value, path, result);
@@ -97,37 +102,6 @@ public static class VersionRules
                 var index = 0;
                 foreach (var item in value.EnumerateArray()) CollectValue(definition.GetProperty("items"), item, $"{path}/{index++}", result);
                 break;
-        }
-    }
-
-    public static async Task<bool> SameBusinessContentAsync(EntitySchema schema, BusinessContent left, BusinessContent right,
-        Func<VersionId, Task<EntityId?>> owner)
-    {
-        var a = System.Text.Json.Nodes.JsonNode.Parse(left.Fields.GetRawText())!;
-        var b = System.Text.Json.Nodes.JsonNode.Parse(right.Fields.GetRawText())!;
-        await Normalize(a, schema.Fields);
-        await Normalize(b, schema.Fields);
-        return JsonElement.DeepEquals(JsonSerializer.SerializeToElement(a), JsonSerializer.SerializeToElement(b));
-
-        async Task Normalize(System.Text.Json.Nodes.JsonNode node, JsonElement fields)
-        {
-            foreach (var field in fields.EnumerateObject())
-                if (node[field.Name] is { } value) node[field.Name] = await Value(value, field.Value);
-        }
-        async Task<System.Text.Json.Nodes.JsonNode?> Value(System.Text.Json.Nodes.JsonNode value, JsonElement definition)
-        {
-            switch (definition.GetProperty("type").GetString())
-            {
-                case "reference":
-                    return System.Text.Json.Nodes.JsonValue.Create((await owner(new(value.GetValue<Guid>())))?.Value);
-                case "object": await Normalize(value, definition.GetProperty("fields")); break;
-                case "array":
-                    var array = value.AsArray();
-                    for (var i = 0; i < array.Count; i++)
-                        if (array[i] is { } item) array[i] = await Value(item, definition.GetProperty("items"));
-                    break;
-            }
-            return value.DeepClone();
         }
     }
 

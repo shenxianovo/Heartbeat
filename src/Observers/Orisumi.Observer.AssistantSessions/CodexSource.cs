@@ -34,7 +34,20 @@ internal static partial class CodexSource
             if (type is "token_usage_record" or "world_state") return [];
             throw new InvalidDataException("Unsupported Codex row: " + type);
         }
-        return Completed(row, raw, context, liveZone, readImage);
+        var finished = new List<Interaction>();
+        if (payload.Text("type") == "item_completed")
+        {
+            var nextId = payload.At("item").Required("id");
+            foreach (var (id, pending) in context.Reasoning.ToArray())
+                if (IsSessionItem(id) && id != nextId)
+                {
+                    context.Reasoning.Remove(id);
+                    using var completed = JsonDocument.Parse(pending.Entry);
+                    finished.Add(Reasoning(completed.RootElement, pending, null));
+                }
+        }
+        finished.AddRange(Completed(row, raw, context, liveZone, readImage));
+        return finished;
     }
 
     private static IReadOnlyList<Interaction> Response(JsonElement row, byte[] raw, SourceContext context, string? liveZone)
@@ -196,9 +209,15 @@ internal static partial class CodexSource
             pending.TimeZone, parts, raw is null ? [pending.Entry] : rawFirst ? [raw, pending.Entry] : [pending.Entry, raw]);
     }
 
+    // Early Codex Desktop rollouts revise numbered reasoning items until the next item starts.
+    internal static bool IsSessionItem(string id) => SessionItemPattern().IsMatch(id);
+
     private static string? ImageMediaType(string? url) => url is not null && url.StartsWith("data:", StringComparison.Ordinal)
         && url.IndexOf(';') is var end and > 5 ? url[5..end] : null;
 
     [GeneratedRegex(@"<timezone>\s*([^<]+)\s*</timezone>", RegexOptions.CultureInvariant)]
     private static partial Regex ZonePattern();
+
+    [GeneratedRegex(@"\Aitem-[0-9]+\z", RegexOptions.CultureInvariant)]
+    private static partial Regex SessionItemPattern();
 }

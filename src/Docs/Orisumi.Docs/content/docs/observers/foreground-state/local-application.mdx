@@ -3,17 +3,17 @@ title: "Local Application"
 description: "某台设备上的一个应用安装"
 ---
 
-本机应用表示某台设备上的一个应用安装，例如这台 Mac 上的 VS Code。它有自己的 EntityId，可以在任何观测之前就存在，用 `deviceVersionId` 引用所在的[设备](../device-state/device.mdx)。[前台应用时段](./foreground-application-period.mdx)通过 `localApplicationVersionId` 引用它。
+本机应用表示某台设备上的一个应用安装，例如这台 Mac 上的 VS Code。它是一个[事物](../../core/model/thing.mdx)，第一次被提到时创建。[前台应用时段](./foreground-application-period.mdx)通过 `localApplicationId` 提到它，关于它的线索写在本机应用描述中。
 
 <ObserverStructure node="LOCAL_APPLICATION" />
 
 ## 粒度 [#granularity]
 
-一个实体对应某台设备上的一个安装。识别安装靠平台提供的标识线索；同名的应用、不同设备上的同一款软件，都是不同的实体。
+一个事物对应某台设备上的一个安装。识别安装靠平台提供的标识线索；同名的应用、不同设备上的同一款软件，都是不同的事物。
 
 ## 身份 [#identity]
 
-在 macOS 上，同一台设备上应用包标识和可执行文件路径的原始值都相同，就是同一个安装。比较区分大小写，名称、路径别名和软件品牌都不参与判断。身份与观察它的 Observer 无关，所以两个托管方上的前台状态 Observer 共用一个本机应用。内容只有不变的标识线索，所以它们写入的内容相同。
+在 macOS 上，同一台设备上应用包标识和可执行文件路径的原始值都相同，就是同一个安装。比较区分大小写，名称、路径别名和软件品牌都不参与判断。身份与观察它的 Observer 无关，所以两个托管方上的前台状态 Observer 提到同一个本机应用。
 
 | 识别依据 | 值 |
 | --- | --- |
@@ -25,7 +25,7 @@ description: "某台设备上的一个应用安装"
 
 | 变化 | 身份 |
 | --- | --- |
-| 应用名称变化 | 复用；新名称保存在观测内容中 |
+| 应用名称变化 | 复用；新名称保存在前台时段中 |
 | 应用退出后重新启动 | 复用 |
 | 前台状态 Observer 重启或升级 | 复用 |
 | 同一台设备上的另一个托管方读到它 | 复用 |
@@ -37,68 +37,80 @@ description: "某台设备上的一个应用安装"
 | 先只读到路径，之后读到包标识 | 新建 |
 | 另一台设备上的相同安装 | 新建 |
 
-读不到可执行文件路径时，只在前台状态 Observer 本次运行期间，按进程号、进程启动时间和包标识复用一个临时身份；进程或前台状态 Observer 重启后新建。连进程线索也读不到时，每次读数都新建身份。这些进程线索只用于识别，不写入业务实体。
+读不到可执行文件路径时，只在前台状态 Observer 本次运行期间，按进程号、进程启动时间和包标识复用一个临时身份；进程或前台状态 Observer 重启后新建。连进程线索也读不到时，每次读数都新建身份。这些进程线索只用于识别，不写入业务字段。
 
 识别时宁可多建身份。名称会随语言和版本变化，两个不同的安装也可能同名；多出来的身份按跨设备线索归到同一个[应用产品](../application-identity/application-product.mdx)，错误合并的身份却无法拆开。
 
-用户删除一个本机应用后，识别依据随它删除。之后读到同一个安装时，它是一个新的本机应用，见 [IDENTITY-7](../../core/rules/identity.mdx#identity-7)。
+用户删除一个本机应用后，识别依据随它删除。之后读到同一个安装时，它是一个新的事物，见 [IDENTITY-7](../../core/rules/identity.mdx#identity-7)。
 
-## 引用 [#references]
+## 描述 [#description]
 
-| 字段 | 目标 |
+本机应用描述是一份 Observation，说明这个安装在哪台设备上、有哪些标识线索。它用下面的依据写入，两个托管方读到的内容相同，所以第二次写入什么都不发生，见 [OBSERVATION-10](../../core/model/observation.mdx#observation-10)。
+
+| 识别依据 | 值 |
 | --- | --- |
-| `deviceVersionId` | 应用所在的[设备](../device-state/device.mdx) |
+| `scope` | 与本机应用相同 |
+| `scheme` | `macos.installation-description` |
+| `value` | 与本机应用相同 |
 
-设备改名时形成设备的新版本，已有的本机应用版本仍引用当时那一版。
-
-两台 Mac 上的 VS Code 是两个本机应用，它们的应用包标识相同，所以属于同一个应用产品，见 [Application Identity · 归属](../application-identity/index.mdx#membership)。
-
-## EntitySchema [#schema]
-
-| 项目 | 值 |
-| --- | --- |
-| SchemaId | `019e1bbb-ec00-7000-8000-000000000002` |
-| 显示名称 | 本机应用 |
-| 说明 | 表示某台设备上的一个应用安装，保存用于识别安装的平台标识线索。 |
-| 资源名 | `local-applications` |
-
-| 字段 | 类型 | 必填 | 可空 | description |
-| --- | --- | --- | --- | --- |
-| `deviceVersionId` | `reference` | 是 | 否 | 应用所在的设备 |
-| `identifiers` | `array` | 是 | 否 | 平台标识线索，顺序无意义；没有线索时为 `[]` |
-| `identifiers[]` | `object` | 不适用 | 否 | 一项平台标识线索，由 scheme 和 value 共同解释 |
-| `identifiers[].scheme` | `string` | 是 | 否 | 线索的种类：macos.bundle-id 是应用包标识，macos.executable-path 是可执行文件路径，android.package-name 是 Android 应用的包名 |
-| `identifiers[].value` | `string` | 是 | 否 | 线索的原始值 |
+两台 Mac 上的 VS Code 是两个本机应用，它们的描述提到同一条应用包标识，所以属于同一个应用产品，见 [Application Identity · 归属](../application-identity/index.mdx#membership)。
 
 应用的名称和图标随每段时段读取，保存在[前台应用时段](./foreground-application-period.mdx)中。
 
 ### 标识线索 [#identifiers]
 
-每项线索由 `scheme` 和 `value` 共同解释。跨设备线索在任何设备上都指同一款软件的同一类安装，应用产品按它们归属；本机线索只在所在的设备上有意义。
+跨设备线索是[应用线索](../application-identity/index.mdx#identifiers)这种事物，在任何设备上都指同一款软件的同一类安装，应用产品按它们归属。本机线索只在所在的设备上有意义，保存在字段中。
 
-| `scheme` | `value` | 作用范围 |
+| 线索 | 位置 | 作用范围 |
 | --- | --- | --- |
-| `macos.bundle-id` | 应用包标识，例如 `com.tencent.qq` | 跨设备 |
-| `macos.executable-path` | 可执行文件路径 | 本机 |
-| `android.package-name` | Android 应用的包名，例如 `com.tencent.mobileqq` | 跨设备 |
+| 应用包标识，例如 `com.tencent.qq` | `identifierIds`，`scheme` 为 `macos.bundle-id` | 跨设备 |
+| Android 应用的包名，例如 `com.tencent.mobileqq` | `identifierIds`，`scheme` 为 `android.package-name` | 跨设备 |
+| 可执行文件路径 | `executablePath` | 本机 |
 
 Android 上的前台状态 Observer 尚未实现，`android.package-name` 目前只出现在测试数据中。
 
+## EntitySchema [#schema]
+
+本机应用：
+
+| 项目 | 值 |
+| --- | --- |
+| SchemaId | `019e1bbb-ec00-7000-8000-000000000002` |
+| 显示名称 | 本机应用 |
+| 说明 | 表示某台设备上的一个应用安装。 |
+| 资源名 | `local-applications` |
+| `kind` | `thing` |
+
+本机应用描述：
+
+| 项目 | 值 |
+| --- | --- |
+| SchemaId | `019e1bbb-ec00-7000-8000-000000000014` |
+| 显示名称 | 本机应用描述 |
+| 说明 | 说明一个本机应用所在的设备和它的标识线索。事实时间未知。 |
+| 资源名 | `local-application-descriptions` |
+| `kind` | `observation` |
+| `immutable` | `false` |
+
+| 字段 | 类型 | 必填 | 可空 | description |
+| --- | --- | --- | --- | --- |
+| `localApplicationId` | `reference`，目标为事物 | 是 | 否 | 被描述的本机应用 |
+| `deviceId` | `reference`，目标为事物 | 是 | 否 | 应用所在的设备 |
+| `identifierIds` | `array` | 是 | 否 | 跨设备线索，顺序无意义；没有时为 `[]` |
+| `identifierIds[]` | `reference`，目标为事物 | 不适用 | 否 | 一条应用线索 |
+| `executablePath` | `string` | 是 | 是 | 可执行文件路径，读不到时为 `null` |
+
 ## 示例 [#example]
 
-首次读到 VS Code 时，本机应用的首版内容：
+首次读到 VS Code 时，描述的内容：
 
 ```json
 {
-  "deviceVersionId": "0196f3a1-5d0c-7a11-8e2f-1b2c3d4e5f61",
-  "identifiers": [
-    { "scheme": "macos.bundle-id", "value": "com.microsoft.VSCode" },
-    {
-      "scheme": "macos.executable-path",
-      "value": "/Applications/Visual Studio Code.app/Contents/MacOS/Electron"
-    }
-  ]
+  "localApplicationId": "01a12e31-9050-7000-8000-000000000101",
+  "deviceId": "0196f3a1-5d0c-7a11-8e2f-1b2c3d4e5f61",
+  "identifierIds": ["01a12e31-9050-7000-8000-000000000201"],
+  "executablePath": "/Applications/Visual Studio Code.app/Contents/MacOS/Electron"
 }
 ```
 
-写入它的请求见 [API · Writing](../../api/writing.mdx#example)。
+写入时引用写识别依据，见 [API · Writing](../../api/writing.mdx#references)。

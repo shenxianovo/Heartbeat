@@ -11,7 +11,7 @@ public sealed class VersionTests
     public async Task WriterIdsArePreservedAndMustBeUuid7()
     {
         using var f = new ModelFixture();
-        var draft = New(new EntitySchema("Items", "Items", "items", Json("{}")));
+        var draft = New(new EntitySchema("Items", "Items", "items", Json("{}"), "observation", false));
         await Assert.That(EntityId.New().Value.Version).IsEqualTo(7);
         await Assert.That(VersionId.New().Value.Version).IsEqualTo(7);
         foreach (var invalid in new[] { Guid.Empty, Guid.NewGuid(), Guid.Parse("019e1bbb-ec00-7000-0000-000000000001") })
@@ -76,14 +76,14 @@ public sealed class VersionTests
     public async Task BatchSavesDependenciesInOrderAndNothingWhenOneIsRejected()
     {
         using var f = new ModelFixture();
-        var schema = New(new EntitySchema("Items", "Items", "items", Json("{}")));
-        var business = New(new BusinessContent(Json("{}")), schema.VersionId);
+        var schema = New(new EntitySchema("Items", "Items", "items", Json("{}"), "observation", false));
+        var reading = New(f.Content(Json("{}")), schema.VersionId);
         var invalid = New(new InputSet([VersionId.New()]));
-        var later = New(new InputSet([business.VersionId]));
-        await Reject(() => f.SaveMany(schema, business, invalid, later), "ENTITY-6");
-        foreach (var version in new[] { schema, business, invalid, later })
+        var later = New(new InputSet([reading.VersionId]));
+        await Reject(() => f.SaveMany(schema, reading, invalid, later), "ENTITY-6");
+        foreach (var version in new[] { schema, reading, invalid, later })
             await Assert.That(await f.Service.ReadVersionAsync(version.VersionId)).IsNull();
-        await f.SaveMany(schema, business, later);
+        await f.SaveMany(schema, reading, later);
         await Assert.That(await f.Service.ReadVersionAsync(later.VersionId)).IsNotNull();
     }
 

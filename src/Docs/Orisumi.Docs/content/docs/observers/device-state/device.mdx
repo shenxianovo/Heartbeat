@@ -1,63 +1,87 @@
 ---
 title: "Device"
-description: "用户的一台设备，被本机应用和其他业务类型引用"
+description: "用户的一台设备，被本机应用和其他业务类型提到"
 ---
 
-设备表示用户的一台设备，例如这台 Mac。它是一个普通的业务实体，可以在任何观测之前就存在：[本机应用](../foreground-state/local-application.mdx)引用它，表示应用安装在哪台设备上；[助手交互](../assistant-sessions/assistant-interaction.mdx)引用它，表示交互发生在哪台设备上。
+设备表示用户的一台设备，例如这台 Mac。它是一个[事物](../../core/model/thing.mdx)，第一次被提到时创建：[本机应用描述](../foreground-state/local-application.mdx)提到它，说明应用安装在哪台设备上；[助手交互](../assistant-sessions/assistant-interaction.mdx)提到它，说明交互发生在哪台设备上。
 
-这种业务类型由使用它的 Observer 共用，写在设备状态 Observer 下，是因为被观测的正是它。设备状态 Observer 尚未实现，其他 Observer 照样使用它。
+这种业务类型由使用它的 Observer 共用，写在设备状态 Observer 下，是因为被观测的正是它。设备状态 Observer 尚未实现，其他 Observer 照样提到设备。
 
 <ObserverStructure node="DEVICE" />
 
 ## 粒度 [#granularity]
 
-一个实体对应一台设备。同一台设备上的多个托管方共用这个实体：Mac 上的客户端 Runtime 和同一台 Mac 上的开发 Runtime，形成的本机应用引用同一个设备。
+一个事物对应平台给出的一个稳定标识。同一台设备上的多个托管方提到同一个事物：Mac 上的客户端 Runtime 和同一台 Mac 上的开发 Runtime，形成的陈述提到同一个设备。
 
 ## 身份 [#identity]
 
-设备的身份来自平台给出的稳定标识。Runtime 启动时读取它，放进[运行上下文](../../hosting/index.mdx#context)；用到设备的 Observer 启动时写入设备，后端按识别依据认出它。所以这台 Mac 第一次运行时设备就出现了，同一台 Mac 上的多个托管方得到同一个实体。
+设备的身份来自平台给出的稳定标识。Runtime 启动时读取它，放进[运行上下文](../../hosting/index.mdx#context)；用到设备的 Observer 提到它时，后端按识别依据认出它。
 
 | 平台 | `scheme` | `value` |
 | --- | --- | --- |
 | macOS | `macos.hardware-uuid` | 硬件 UUID |
 | Linux | `linux.machine-id` | `/etc/machine-id` 的内容 |
+| Windows | `windows.machine-guid` | 注册表中的 `MachineGuid` |
+| 单片机 | 由固件决定，例如 `esp32.mac` | 芯片的标识 |
 
 `scope` 为 `null`。托管方身份 `hostId` 和主机名都会变：重装客户端得到新的托管方，改名得到新的主机名，所以它们不代表设备。
 
 | 变化 | 身份 |
 | --- | --- |
-| 设备改名 | 沿用，形成新版本 |
+| 设备改名 | 沿用，写入描述的新版本 |
 | 同一台设备上新接入一个托管方 | 沿用 |
 | 重装客户端 | 沿用 |
 | 重装 macOS | 沿用 |
 | 重装 Linux | 新建，`/etc/machine-id` 重新生成 |
 | 另一台设备 | 新建 |
 
-设备的新版本不改变引用它的实体的身份，旧的引用仍指向当时的版本，见 [ENTITY-4](../../core/model/entity.mdx#entity-4)。
+不同平台的标识代表的东西不同：硬件 UUID 跟着机器，`machine-id` 跟着系统安装，`scheme` 说明了它是哪一种。重装 Linux 前后是同一台机器时，模型或用户写一条 `same-as` [关系](../../core/rules/understanding.mdx#relation)，见 [THING-5](../../core/model/thing.mdx#thing-5)。
 
-## 写入 [#writing]
+## 描述 [#description]
 
-设备不是观测内容，写入时不带 `time`。`name` 在 macOS 上取计算机名，在 Linux 上取主机名。同一台设备上的程序读到的内容相同，所以多个程序写入同一个实体时什么都不发生，改名后第一个启动的程序形成新版本。
+设备描述是一份 Observation，说明这台设备是什么。每个用到设备的 Observer 各写一份，所以改名后各自形成新版本，互不影响，见 [IDENTITY-8](../../core/rules/identity.mdx#identity-8)。形成方式是 `direct`，事实时间未知。
+
+| 识别依据 | 值 |
+| --- | --- |
+| `scope` | 这个 Observer 的 EntityId |
+| `scheme` | `orisumi.device-description` |
+| `value` | 设备的稳定标识 |
+
+`platform` 是自由文字，单片机写自己的型号。设备的名字另写一份 [Name](../../core/rules/understanding.mdx#name)：macOS 上取计算机名，Linux 上取主机名。
 
 ## EntitySchema [#schema]
+
+设备：
 
 | 项目 | 值 |
 | --- | --- |
 | SchemaId | `019e1bbb-ec00-7000-8000-00000000000d` |
 | 显示名称 | 设备 |
-| 说明 | 表示用户的一台设备；设备改名时形成新版本。 |
+| 说明 | 表示平台给出的一个设备身份。 |
 | 资源名 | `devices` |
+| `kind` | `thing` |
+
+设备描述：
+
+| 项目 | 值 |
+| --- | --- |
+| SchemaId | `019e1bbb-ec00-7000-8000-000000000016` |
+| 显示名称 | 设备描述 |
+| 说明 | 说明一台设备是什么。事实时间未知。 |
+| 资源名 | `device-descriptions` |
+| `kind` | `observation` |
+| `immutable` | `false` |
 
 | 字段 | 类型 | 必填 | 可空 | description |
 | --- | --- | --- | --- | --- |
-| `name` | `string` | 是 | 是 | 设备的名称，读不到时为 `null` |
-| `platform` | `string` | 是 | 否 | 设备的平台：`macos`、`windows`、`android` 或 `linux` |
+| `deviceId` | `reference`，目标为事物 | 是 | 否 | 被描述的设备 |
+| `platform` | `string` | 是 | 否 | 设备的平台或型号，例如 `macos`、`linux`、`esp32-s3` |
 
 ## 示例 [#example]
 
 ```json
 {
-  "name": "Shenxianovo-Mac",
+  "deviceId": "0196f3a1-5d0c-7a11-8e2f-1b2c3d4e5f61",
   "platform": "macos"
 }
 ```

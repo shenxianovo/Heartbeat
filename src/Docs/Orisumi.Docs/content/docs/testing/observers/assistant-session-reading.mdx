@@ -39,7 +39,7 @@ export const caseId = 'assistant-session-reading';
 - 写入失败后进度不变，下轮重读：`AssistantReadingTests.FailedSubmissionKeepsTheCheckpointAndTheNextPollReadsTheSegmentAgain`。
 - 删除交互后重读形成新实体；删除会话后新数据引用新会话：`AssistantSubmissionTests.DeletedSessionIsRecreatedWhenNewSourceDataArrives`，使用真实 API 和独立数据库。
 
-- Codex 的两次改名形成两条标题，Claude Code 重复的同名标题沿用同一实体：`AssistantMappingTests.TitlesAreSeparateAndRepeatedClaudeTitlesDoNotCreateVersions`。
+- Codex 的两次改名形成两份 Name，Claude Code 重复的同名 Name 沿用同一实体：`AssistantMappingTests.TitlesAreSeparateAndRepeatedClaudeTitlesDoNotCreateVersions`。
 
 未覆盖：实时采集时补入本机时区，之后从头重读时，时区变为 `null` 形成 Observation 新版本的组合。
 

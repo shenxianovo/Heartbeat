@@ -10,7 +10,10 @@ public interface IEntityTransaction
     Task RegisterRecognitionAsync(EntityId schemaId, RecognitionKey key, EntityId entityId, CancellationToken cancellationToken);
     Task<WriteStreamState> ReadStreamAsync(EntityId observer, CancellationToken cancellationToken);
     Task SaveStreamAsync(EntityId observer, WriteStreamState stream, CancellationToken cancellationToken);
-    Task<EntityVersion?> FindObservationAsync(EntityId observer, EntityId content, CancellationToken cancellationToken);
+    Task<Thing?> ReadThingAsync(EntityId id, CancellationToken cancellationToken);
+    Task<IReadOnlyList<Thing>> ReadThingsAsync(IReadOnlyList<EntityId> ids, CancellationToken cancellationToken);
+    Task<IReadOnlyList<Thing>> ListThingsAsync(EntityQuery query, CancellationToken cancellationToken);
+    Task CreateThingAsync(EntityId id, EntityId schemaId, CancellationToken cancellationToken);
     Task<EntityVersion?> ReadCurrentAsync(EntityId id, CancellationToken cancellationToken);
     Task<IReadOnlyList<EntityVersion>> ListEntitiesAsync(EntityQuery query, CancellationToken cancellationToken);
     Task<IReadOnlyList<EntityVersion>> ListObservationsAsync(ObservationQuery query, CancellationToken cancellationToken);
@@ -23,7 +26,7 @@ public interface IEntityTransaction
     Task<bool> IsEntityDeletedAsync(EntityId id, CancellationToken cancellationToken);
     Task<bool> IsVersionDeletedAsync(VersionId id, CancellationToken cancellationToken);
     Task<EntityId?> FindSchemaAsync(string resourceName, CancellationToken cancellationToken);
-    Task<bool> HasBusinessVersionsAsync(EntityId schemaId, CancellationToken cancellationToken);
+    Task<bool> HasSchemaUsersAsync(EntityId schemaId, CancellationToken cancellationToken);
     Task SaveAsync(EntityVersion version, IReadOnlyList<ResolvedReference> references, IReadOnlyList<BinaryValue> contents, CancellationToken cancellationToken);
     Task<long?> ContentSizeAsync(string digest, CancellationToken cancellationToken);
     Task UploadContentAsync(string digest, byte[] data, DateTimeOffset uploadedAt, CancellationToken cancellationToken);

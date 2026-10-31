@@ -1,46 +1,45 @@
 ---
 title: "Application Identity"
-description: "每条线索的判断写成线索归属"
+description: "每次应用识别判断是一份 Observation，产品是由 Name 命名的事物"
 ---
 
 export const caseId = 'application-identity';
 
 ## 为什么验证 [#why]
 
-每条线索的判断写成线索归属，产品只有名称。约定见 [Application Identity](../../observers/application-identity/index.mdx)。
+每次应用识别判断是一份 Observation，产品是由 Name 命名的事物。依据见 [当前理解](../../core/rules/understanding.mdx)。
 
 ## 前置条件 [#setup]
 
-HTTP 用例经真实 API 和独立的 PostgreSQL 数据库运行。Runtime 使用临时数据目录；Observer 的读数、日志和模型回答由测试控制。实际运行的补充证据单独说明，见 [测试分工](../index.mdx#kinds)。
+通过真实 API 和独立 PostgreSQL 数据库运行；模型回答由测试替身提供。实际运行的补充证据单独说明。
 
 ## 操作与预期结果 [#steps]
 
 | 操作 | 预期结果 |
 | --- | --- |
-| 两个设备拥有相同线索 | 只调用一次模型，形成一条归属 |
-| 新的平台线索归入已有产品 | 新增归属和它的 Observation，产品版本不变 |
-| 形成一条归属 | 后端由 inputs 形成 InputSet，包含用到的应用、名称时段、产品和归属当前版本 |
-| 模型回答新产品 | 先写产品，取 EntityId，再写归属；下一条立即读到结果 |
-| 产品写入成功、归属失败 | 产品留在目录中，下一轮可以选中它 |
-| 删除一条归属 | 只重新判断这一条线索 |
-| 删除产品 | 指向它的线索重新判断，原归属形成新版本 |
-| 未知的线索输入不变 | 本进程内跳过；新应用、新名称或重启后再判断 |
-| 模型超时或回答非法 | 诊断并在下一轮重试 |
-| 缺少 Key 或更换模型 | 缺少 Key 不识别；模型变化形成 Observer 新版本 |
+| 两个应用拥有相同线索；新增平台线索归入已有产品 | 相同线索只判断一次；新线索形成新的归属 Observation |
+| 模型回答新产品 | 同一个请求写 Name 和线索归属；产品通过依据认出 |
+| 形成判断 | InputSet 包含实际使用的应用描述、名称时段、目录归属和用户否定 |
+| 用户否定归属，模型重复被否定的产品或名字 | 线索回到未归属；否定传给模型，重复结论跳过 |
+| 重新判断并保存 | 新建 Observation，再写 supersede；旧判断保留但不在 current 中 |
+| 未知线索的应用和名称不变 | 本进程跳过；新证据或重启后重新判断 |
+| 模型失败、非法回答或请求失败 | 不形成判断，后续轮次可以再处理 |
+| 缺少 API Key；改变模型型号 | 缺少 Key 只写描述和诊断，不调用模型；型号变化形成描述新版本 |
 
 ## 测试实现 [#implementation]
 
 方法位于 `tests/Orisumi.Integration.Tests/`：
 
-- 跨设备、产品不变、输入证据：`ApplicationIdentityTests.RecognizesOnceAcrossDevicesAndPlatformsAndPreservesEvidence`。
-- 撤销和产品删除：`ApplicationIdentityTests.MembershipRetractionRejudgesOnlyThatClueAndProductDeletionVersionsItsMemberships`。
-- 两个请求之间失败：`ApplicationIdentityTests.ProductSurvivesMembershipFailureAndIsAvailableToTheNextDecision`。
-- 未知缓存：`ApplicationIdentityTests.UnknownIsSkippedWhileRunningUntilNamesApplicationsOrTheProcessChange`。
-- 模型失败和非法目标：`ApplicationIdentityTests.ModelFailuresAndInvalidTargetsRetryWithoutCreatingProducts`。
-- 配置和 Observer 版本：`ApplicationIdentityTests.MissingKeyDoesNotIdentifyAndModelChangesVersionTheSameObserver`。
-- 模型 HTTP 编码与结果解析：`ApplicationModelTests.SendsStructuredInputWithoutToolsAndReadsTheDecision`。
+- 共享线索、新产品单请求、已有产品和输入：`ApplicationIdentityTests.SharedCluesHaveOneJudgmentAndNewProductAndNameShareOneRequest`。
+- 否定后的选择与新判断：`ApplicationIdentityTests.DenialReturnsClueToUnassignedAndRepeatedConclusionIsSkipped`。
+- 重新判断的保存语义：`ApplicationIdentityTests.RejudgmentSavesANewObservationAndSupersedesThePreviousJudgment`；测试直接调用保存步骤，不定义触发入口。
+- 未知缓存：`ApplicationIdentityTests.UnknownWaitsForNewEvidenceAndRestartClearsItsMemory`。
+- 失败、缺少 Key 和描述变化：`ApplicationIdentityTests.FailuresAndMissingKeyDoNotCreateJudgmentsAndKeepDescription`。
+- 模型请求与结构化回答：`ApplicationModelTests.SendsStructuredInputWithoutToolsAndReadsTheDecision`。
 
-未覆盖：真实 OpenAI 调用；轮次不重叠的进程级测试；修改 intervalSeconds 后的实际间隔。
+重新判断的触发时机仍由 [Application Identity · 待定](../../observers/application-identity/index.mdx#open) 决定；本次没有增加入口。
+
+未覆盖：真实 OpenAI 调用、轮次间隔的进程级测量、包含所有证据种类的单个 InputSet 组合。
 
 ## 执行结果 [#results]
 

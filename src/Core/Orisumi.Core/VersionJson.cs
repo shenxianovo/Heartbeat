@@ -9,50 +9,56 @@ public static partial class VersionJson
 {
     public static JsonElement Content(VersionContent content) => content switch
     {
-        BusinessContent business => business.Fields,
+        Observation observation => observation.Fields,
         EntitySchema schema => JsonSerializer.SerializeToElement(new
         {
             displayName = schema.DisplayName, description = schema.Description,
-            resourceName = schema.ResourceName, fields = schema.Fields,
+            resourceName = schema.ResourceName, kind = schema.Kind, immutable = schema.Immutable, fields = schema.Fields,
         }),
         InputSet inputs => JsonSerializer.SerializeToElement(new { members = inputs.Members.Select(id => id.Value) }),
-        Observation observation => JsonSerializer.SerializeToElement(new
-        {
-            observerVersionId = observation.ObserverVersionId.Value,
-            contentVersionId = observation.ContentVersionId.Value,
-            inputSetVersionId = observation.InputSetVersionId?.Value,
-            startAt = observation.StartAt is { } start ? VersionTime.Format(start) : null,
-            endAt = observation.EndAt is { } end ? VersionTime.Format(end) : null,
-            timeZone = observation.TimeZone,
-        }),
         _ => throw new ArgumentException("Unknown content category.", nameof(content)),
     };
 
-    public static JsonElement Saved(EntityVersion version) => JsonSerializer.SerializeToElement(new
+    public static JsonElement Saved(EntityVersion version)
     {
-        entityId = version.EntityId.Value, versionId = version.VersionId.Value,
-        previousVersionId = version.PreviousVersionId?.Value, category = version.Category,
-        schemaVersionId = version.SchemaVersionId?.Value, recordedAt = VersionTime.Format(version.RecordedAt),
-        content = Content(version.Content),
-    });
+        var value = new Dictionary<string, object?>
+        {
+            ["entityId"] = version.EntityId.Value, ["versionId"] = version.VersionId.Value,
+            ["previousVersionId"] = version.PreviousVersionId?.Value, ["category"] = version.Category,
+            ["recordedAt"] = VersionTime.Format(version.RecordedAt), ["content"] = Content(version.Content),
+        };
+        if (version.Content is Observation observation)
+        {
+            value["schemaVersionId"] = version.SchemaVersionId?.Value;
+            value["observerId"] = observation.ObserverId.Value;
+            value["observerVersionId"] = observation.ObserverVersionId?.Value;
+            value["formation"] = observation.Formation;
+            value["inputSetVersionId"] = observation.InputSetVersionId?.Value;
+            value["startAt"] = observation.StartAt is { } start ? VersionTime.Format(start) : null;
+            value["endAt"] = observation.EndAt is { } end ? VersionTime.Format(end) : null;
+            value["timeZone"] = observation.TimeZone;
+        }
+        return JsonSerializer.SerializeToElement(value);
+    }
 
-    private static VersionSubmission ReadVersionData(JsonElement value) => new(
+    public static EntityVersion ReadSaved(JsonElement value) => new(new(
         new(value.GetProperty("entityId").GetGuid()), new(value.GetProperty("versionId").GetGuid()),
-        NullableId(value.GetProperty("previousVersionId")), NullableId(value.GetProperty("schemaVersionId")),
-        ReadContent(value.GetProperty("category").GetString()!, value.GetProperty("content")));
-
-    public static EntityVersion ReadSaved(JsonElement value) =>
-        new(ReadVersionData(value), ParseTime(value.GetProperty("recordedAt").GetString()!));
+        NullableId(value.GetProperty("previousVersionId")),
+        value.TryGetProperty("schemaVersionId", out var schema) ? NullableId(schema) : null,
+        value.GetProperty("category").GetString() == "observation"
+            ? new Observation(new(value.GetProperty("observerId").GetGuid()), NullableId(value.GetProperty("observerVersionId")),
+                value.GetProperty("formation").GetString()!, value.GetProperty("content").Clone(),
+                NullableId(value.GetProperty("inputSetVersionId")), NullableTime(value.GetProperty("startAt")),
+                NullableTime(value.GetProperty("endAt")), value.GetProperty("timeZone").GetString())
+            : ReadContent(value.GetProperty("category").GetString()!, value.GetProperty("content"))),
+        ParseTime(value.GetProperty("recordedAt").GetString()!));
 
     public static VersionContent ReadContent(string category, JsonElement content) => category switch
     {
-        "business" => new BusinessContent(content),
         "entity_schema" => new EntitySchema(content.GetProperty("displayName").GetString()!,
-            content.GetProperty("description").GetString()!, content.GetProperty("resourceName").GetString()!, content.GetProperty("fields")),
+            content.GetProperty("description").GetString()!, content.GetProperty("resourceName").GetString()!,
+            content.GetProperty("fields"), content.GetProperty("kind").GetString()!, content.GetProperty("immutable").GetBoolean()),
         "input_set" => new InputSet(content.GetProperty("members").EnumerateArray().Select(id => new VersionId(id.GetGuid()))),
-        "observation" => new Observation(new(content.GetProperty("observerVersionId").GetGuid()),
-            new(content.GetProperty("contentVersionId").GetGuid()), NullableId(content.GetProperty("inputSetVersionId")),
-            NullableTime(content.GetProperty("startAt")), NullableTime(content.GetProperty("endAt")), content.GetProperty("timeZone").GetString()),
         _ => throw new JsonException("Unknown content category."),
     };
 

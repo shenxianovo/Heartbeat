@@ -11,10 +11,10 @@ description: "设备休眠、清醒与会话锁定（草案）"
 
 | 业务类型 | 用途 | 资源名 |
 | --- | --- | --- |
-| [Device](./device.mdx) | 被观测的设备，也被其他 Observer 的业务类型引用 | `devices` |
-| [Sleep State](./sleep-state.mdx) | 观测内容：有证据的休眠或清醒状态 | 待定 |
+| [Device](./device.mdx) | 事物：被观测的设备，也被其他 Observer 提到 | `devices`、`device-descriptions` |
+| [Sleep State](./sleep-state.mdx) | 观测：有证据的休眠或清醒状态 | 待定 |
 
-设备清醒和会话锁定分别建模。程序实例自身和会话锁定的业务类型尚未定义。
+设备清醒和会话锁定分别建模。程序实例的描述和会话锁定的业务类型尚未定义。
 
 设备状态是一条独立的时间线：它只记下设备的状态，其他 Observer 的时段不因它而切开，见 [Observers · 前台、输入与设备的时间线](../index.mdx#timelines)。
 
@@ -32,11 +32,11 @@ Observation 的边界取自已知的状态边界，见 [Sleep State · 事实时
 
 ## 写入 [#submission]
 
-接入时声明已定义的业务类型，写入程序实例的描述，之后业务代码用所在平台的 [SDK](../../api/sdk.mdx) 形成观测内容和 Observation。
+接入时声明已定义的业务类型，写入程序实例的描述，之后业务代码用所在平台的 [SDK](../../api/sdk.mdx) 形成 Observation。
 
 ## 待定 [#open]
 
-- 状态内容与[设备](./device.mdx)的关联。
+- 休眠状态怎样提到[设备](./device.mdx)。
 - 休眠与清醒边界的判定；启动时取得初始状态；停止或崩溃后的空白。
 - 会话锁定的实体、EntitySchema、状态边界和采集方式。
 - 何时写入和结束条件。

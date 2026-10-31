@@ -1,0 +1,38 @@
+---
+title: "Understanding"
+description: "Review 决定当前理解，原有 Observation 和输入证据保留"
+---
+
+export const caseId = 'api-understanding';
+
+## 为什么验证 [#why]
+
+Review 决定当前理解，原有 Observation 和输入证据保留。依据见 [当前理解](../../core/rules/understanding.mdx)。
+
+## 前置条件 [#setup]
+
+通过真实 API 和独立 PostgreSQL 数据库运行；模型回答由测试替身提供。实际运行的补充证据单独说明。
+
+## 操作与预期结果 [#steps]
+
+| 操作 | 预期结果 |
+| --- | --- |
+| 模型写判断，用户写事实时间未知的 deny | current 不含旧判断，all 仍含 |
+| 用户只否定一段 | current 仍含旧判断 |
+| 新判断用 supersede 取代旧判断 | current 只含新判断 |
+| 用户确认过旧判断，再由模型 supersede | current 同时包含两条 |
+| 来源、模型和用户为同一事物命名 | 优先用户 Name；否定它后取保存时间最晚的当前 Name |
+| 陈述的输入被否定 | 引用方查询能找到 deny；沿 InputSet 能读到被否定版本 |
+
+## 测试实现 [#implementation]
+
+方法位于 `tests/Orisumi.Integration.Tests/UnderstandingApiTests.cs`：
+
+- `ReviewsDetermineCurrentUnderstanding`：四组参数分别覆盖整条否定、部分否定、取代、确认后取代。
+- `ThingNamesPreferPeopleThenLatestAndDeletionRetainsReferences`：三个作者的名字、用户优先和否定后的选择。
+- `DeniedInputRemainsTraceableThroughInputSetAndReferrers`：输入版本、InputSet 和 Review 的追溯。
+
+
+## 执行结果 [#results]
+
+<TestCaseResults caseId={caseId} />

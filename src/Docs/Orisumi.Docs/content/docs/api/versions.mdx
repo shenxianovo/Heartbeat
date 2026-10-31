@@ -7,11 +7,11 @@ description: "版本在 API 中怎样表示：成员、字段命名、时间的�
 
 ## 成员 [#members]
 
-版本的 JSON 成员就是 [Version · 成员](../core/model/version.mdx#members) 中的七个。写入时调用方只交出内容，其余成员由后端形成，见 [Writing](./writing.mdx)。
+版本的 JSON 成员就是 [Version · 成员](../core/model/version.mdx#members) 中列出的那些，Observation 还有[自己的成员](../core/model/observation.mdx#members)。写入时调用方给出内容、形成方式和事实时间，其余成员由后端形成，见 [Writing](./writing.mdx)。事物没有版本，它的 JSON 表示见 [Reading · 事物](./reading.mdx#things)。
 
-- `category` 说明怎样解释 `content`。
-- `previousVersionId` 和 `schemaVersionId` 一定出现，没有值时为 `null`。
-- Core 类型的 `content` 是该类型的成员，见各类型页；业务版本的 `content` 就是业务字段组成的对象。
+- `category` 说明怎样解释这个版本。
+- `previousVersionId` 一定出现，首版为 `null`。Observation 的可空成员也一定出现，没有值时为 `null`。
+- Observation 的 `content` 就是业务字段组成的对象；EntitySchema 和 InputSet 的 `content` 见各类型页。
 
 读回的内容与写入的值相同，写法可以不同：对象的键不保留原来的顺序，数字可以换成等值的写法，例如写入 `1e2`，读回 `100`。时间的写法见[时间](#time)。
 
@@ -45,7 +45,7 @@ API 中的时间精确到 1 微秒，UTC 指协调世界时。事实时间的含
 后端处理[写入](./writing.mdx#write)和[业务类型的声明](./writing.mdx#types)时，判断内容与已保存的版本是否相同。比较按 JSON 的值进行：
 
 - 对象的键的顺序不影响比较。
-- `reference` 字段按目标实体比较，所以设备改名后再次写入本机应用，内容仍然相同。
+- `reference` 字段按保存的值比较：事物比较 EntityId，版本比较 VersionId。所以设备改名不影响引用设备的内容；引用一条陈述时，目标有了新版本，再次写入就是一次变化。
 - 数字按数学值比较，`1`、`1.0` 和 `1e0` 相同。
 - 字符串逐个字符比较，不做 Unicode 规范化。
 - 数组按顺序比较。InputSet 的 `members` 无序，见 [INPUTSET-4](../core/model/input-set.mdx#inputset-4)。

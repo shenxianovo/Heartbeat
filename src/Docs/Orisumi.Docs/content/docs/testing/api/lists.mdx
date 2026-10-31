@@ -17,18 +17,21 @@ HTTP 用例经真实 API 和独立的 PostgreSQL 数据库运行。Runtime 使�
 
 | 操作 | 预期结果 |
 | --- | --- |
-| 用 observerEntityId 或 contentEntityId 筛选 | 只返回对应的观测，目标删除后仍能筛选 |
+| 用 observerId、resourceName 和 formation 筛选 | 只返回对应的 Observation |
 | 不带时间范围，分别按 asc、desc 查询 | 按已知边界排序，相同时间按 EntityId 升序；两个边界都未知的始终最后 |
 | 给出 from 和 to | 只返回与范围重叠的观测；两者必须成对 |
 | 用 limit=1 沿 next 翻页 | 各页与完整结果一致，不重不漏 |
 | 把游标用于另一组条件或另一种查询 | 400 |
+| GET /things 和 POST /things/read | 事物没有版本，名字优先取人给的当前 Name；批量结果保留顺序、重复和未找到状态 |
 
 ## 测试实现 [#implementation]
 
 方法位于 `tests/Orisumi.Integration.Tests/`：
 
 - 筛选、两种排序、未知时间和游标绑定：`WriteApiTests.ObservationPaginationBindsFiltersAndKeepsUnknownTimesLast`。
-- 目标删除后投影和查询：`ProjectionTests.RebuildPreservesHistoryDeletedTargetsAndAllQueryResults`。
+- 目标删除后投影和查询：`ProjectionTests.RebuildPreservesThingsReviewsHistoryAndDeletedTargets`。
+- formation：`UnderstandingApiTests.FormationDescriptionsAuthorsAndImmutableContentFollowTheContract`。
+- 事物列表、批量读取和名字：`UnderstandingApiTests.ThingNamesPreferPeopleThenLatestAndDeletionRetainsReferences`。
 - 实体列表分页：`SdkTests.FixtureWritesAndReadsThroughHttpAndScriptReimportIsUnchanged`。
 
 未覆盖：翻页期间新增、修改或删除数据；本次没有重新覆盖所有半开区间边界组合。

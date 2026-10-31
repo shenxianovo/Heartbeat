@@ -25,10 +25,10 @@ public sealed partial record BinaryValue(string Digest, string MediaType, long S
     public static IReadOnlyList<BinaryValue> Collect(VersionSubmission version, EntitySchema? schema)
     {
         var result = new List<BinaryValue>();
-        if (version.Content is BusinessContent business)
+        if (version.Content is Observation reading)
         {
             VersionRules.Require(schema is not null, "SCHEMA-2", "Binary enumeration needs the version's Schema.");
-            CollectObject(schema!.Fields, business.Fields, result);
+            CollectObject(schema!.Fields, reading.Fields, result);
         }
         return result;
     }

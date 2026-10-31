@@ -7,7 +7,7 @@ internal sealed class StoredEntity
     public Guid EntityId { get; set; }
     public string Category { get; set; } = null!;
     public Guid? SchemaId { get; set; }
-    public Guid CurrentVersionId { get; set; }
+    public Guid? CurrentVersionId { get; set; }
 }
 
 internal sealed class StoredVersion
@@ -20,6 +20,13 @@ internal sealed class StoredVersion
     public string Category { get; set; } = null!;
     public DateTimeOffset RecordedAt { get; set; }
     public string Content { get; set; } = null!;
+    public Guid? ObserverId { get; set; }
+    public Guid? ObserverVersionId { get; set; }
+    public string? Formation { get; set; }
+    public Guid? InputSetVersionId { get; set; }
+    public DateTimeOffset? StartAt { get; set; }
+    public DateTimeOffset? EndAt { get; set; }
+    public string? TimeZone { get; set; }
 }
 
 internal sealed class DeletedVersion
@@ -39,8 +46,8 @@ internal sealed class StoredObservation
     public Guid EntityId { get; set; }
     public Guid VersionId { get; set; }
     public Guid ObserverEntityId { get; set; }
-    public Guid ContentEntityId { get; set; }
-    public Guid? ContentSchemaId { get; set; }
+    public Guid SchemaId { get; set; }
+    public string Formation { get; set; } = null!;
     public NpgsqlRange<DateTimeOffset>? FactRange { get; set; }
 }
 
@@ -100,6 +107,22 @@ internal sealed class StoredRecognitionKey
 internal sealed class StoredWriteStreamState
 {
     public Guid ObserverEntityId { get; set; }
+    public Guid? DescriptionVersionId { get; set; }
     public long LastSequence { get; set; }
     public string SchemaVersionIds { get; set; } = null!;
+}
+
+internal sealed class StoredThing
+{
+    public Guid EntityId { get; set; }
+    public Guid SchemaId { get; set; }
+    public bool Deleted { get; set; }
+}
+internal sealed class StoredReview
+{
+    public Guid EntityId { get; set; }
+    public Guid TargetEntityId { get; set; }
+    public string Verdict { get; set; } = null!;
+    public bool ByPerson { get; set; }
+    public bool Whole { get; set; }
 }

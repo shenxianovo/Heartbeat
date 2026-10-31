@@ -3,64 +3,67 @@ title: "Glossary"
 description: "Core 术语的定义"
 ---
 
-Core 类型、Observer 和各种 Id 用英文名，其余概念用中文。Observation 的中文名是“观测”。写作时用哪个词，见 [Writing · 用词](./writing.mdx#terms)。
+Observation、EntitySchema、InputSet、Observer 和各种 Id 用英文名，其余概念用中文。事物的英文名是 Thing。Observation 的中文名是“观测”。写作时用哪个词，见 [Writing · 用词](./writing.mdx#terms)。
 
 ## 实体与版本 [#entities]
 
 | 术语 | 定义 | 详见 |
 | --- | --- | --- |
 | 实体（Entity） | 有稳定身份的一项数据，例如一个人、一个本机应用或一份推断。所有数据都是实体 | [Entity](./model/entity.mdx) |
+| 事物（Thing） | 只有身份的实体，例如设备、会话、账号和人 | [Thing](./model/thing.mdx) |
 | EntityId | 实体的身份，UUIDv7 | [ENTITY-1](./model/entity.mdx#entity-1) |
-| 版本（Version） | 实体一次保存的完整内容，保存后不可改写 | [Version](./model/version.mdx) |
+| 版本（Version） | 有版本的实体一次保存的完整内容，保存后不可改写 | [Version](./model/version.mdx) |
 | VersionId | 版本的身份，后端生成的 UUIDv7 | [VERSION-12](./model/version.mdx#version-12) |
 | 版本链 | 一个实体的全部版本，每个版本指向前一版本 | [VERSION-4](./model/version.mdx#version-4) |
-| 当前版本 | 实体最新保存的版本 | [VERSION-5](./model/version.mdx#version-5) |
+| 当前版本 | 有版本的实体最新保存的版本 | [VERSION-5](./model/version.mdx#version-5) |
 | 已保存 | 版本已被后端保存，可以被引用 | [ENTITY-6](./model/entity.mdx#entity-6) |
-| 写入 | 写入方把一个实体的完整内容交给后端，可以同时形成它的 Observation。全部保存或全部不保存 | [VERSION-13](./model/version.mdx#version-13) |
+| 写入 | 写入方把一份 Observation 的完整内容交给后端。全部保存或全部不保存 | [VERSION-13](./model/version.mdx#version-13) |
 | 识别依据 | 认出实体所用的一组值：业务类型、作用范围、标识方案和标识的值 | [IDENTITY-7](./rules/identity.mdx#identity-7) |
-| 引用 | 保存目标 VersionId 的位置，由 Core 或 Schema 版本声明 | [ENTITY-4](./model/entity.mdx#entity-4) |
+| 引用 | 保存目标 EntityId 或 VersionId 的位置，由 Core 或 Schema 版本声明 | [ENTITY-4](./model/entity.mdx#entity-4) |
 | 引用方 | 保存引用的版本，以及它所属的实体 | [ENTITY-8](./model/entity.mdx#entity-8) |
 | 二进制内容 | 业务字段中的一份文件。版本保存它的描述，字节按摘要单独保存 | [Binary](./model/binary.mdx) |
 | 摘要 | 二进制内容的身份，`sha256:` 加字节的 SHA-256 摘要 | [BINARY-2](./model/binary.mdx#binary-2) |
-| 关系实体 | 表达一种关系的业务实体，用于关系需要身份、时间或属性的情况 | [ENTITY-9](./model/entity.mdx#entity-9) |
+| 关系 | 实体之间的联系，都写成 Observation 中的引用 | [ENTITY-9](./model/entity.mdx#entity-9) |
 
 ## 类型 [#types]
 
 | 术语 | 定义 | 详见 |
 | --- | --- | --- |
-| Core 类型 | Observation、EntitySchema 和 InputSet，结构由 Core 定义 | [Core · Overview](./index.mdx#core-types) |
-| 业务实体 | 类型由 EntitySchema 定义的实体 | [EntitySchema](./model/schema.mdx) |
-| 业务版本 | 业务实体的一个版本，引用它所用的 Schema 版本 | [VERSION-3](./model/version.mdx#version-3) |
-| 业务类型 | 一种业务数据，由一个 EntitySchema 定义 | [SCHEMA-1](./model/schema.mdx#schema-1) |
-| EntitySchema | 定义业务类型的 Core 类型；它的每个版本是一版字段、约束和含义 | [EntitySchema](./model/schema.mdx) |
+| 业务字段 | Observation 的 `content` 中由 Schema 版本声明的字段 | [EntitySchema](./model/schema.mdx) |
+| 业务类型 | 一种事物或 Observation，由一个 EntitySchema 定义 | [SCHEMA-1](./model/schema.mdx#schema-1) |
+| EntitySchema | 定义业务类型的实体；它的每个版本是一版字段、约束和含义 | [EntitySchema](./model/schema.mdx) |
 | SchemaId | EntitySchema 的 EntityId，也就是业务类型的身份 | [SCHEMA-1](./model/schema.mdx#schema-1) |
-| Schema 版本 | EntitySchema 的一个版本，业务版本用 `schemaVersionId` 引用它 | [SCHEMA-2](./model/schema.mdx#schema-2) |
+| Schema 版本 | EntitySchema 的一个版本，Observation 用 `schemaVersionId` 引用它 | [SCHEMA-2](./model/schema.mdx#schema-2) |
 | 资源名 | EntitySchema 的 `resourceName`，同一业务类型的各 Schema 版本相同 | [SCHEMA-5](./model/schema.mdx#schema-5) |
 | 业务规则 | 一种业务类型怎样记下事实：身份、粒度、事实时间、结束条件、原始材料，以及陈述冲突时以谁为准。写在业务类型页和 EntitySchema 的 `description` 中，由使用这种类型的 Observer 共用 | [Overview · 谁决定什么](./index.mdx#responsibility) |
-| Observation（观测） | Observer 形成的一份陈述，唯一保存事实时间的类型 | [Observation](./model/observation.mdx) |
+| Observation（观测） | Observer 形成的一份陈述，说明谁负责、说了什么、怎么来的、依据什么、事实何时成立 | [Observation](./model/observation.mdx) |
 | InputSet（输入集） | 一次处理实际用到的版本集合，可以被多份观测共用 | [InputSet](./model/input-set.mdx) |
 
 ## 角色 [#roles]
 
 | 术语 | 定义 | 详见 |
 | --- | --- | --- |
-| Observer | 对一份观测负责的业务实体，被 `observerVersionId` 引用 | [OBSERVER-1](./model/observer.mdx#observer-1) |
-| 观测内容 | 被 `contentVersionId` 引用的业务实体 | [OBSERVATION-1](./model/observation.mdx#observation-1) |
+| Observer | 对一份观测负责的事物，被 `observerId` 引用 | [OBSERVER-1](./model/observer.mdx#observer-1) |
 | 输入 | InputSet 的成员，一次处理用到的版本 | [InputSet](./model/input-set.mdx) |
 
 ## 陈述与处理 [#statements]
 
 | 术语 | 定义 | 详见 |
 | --- | --- | --- |
-| 陈述 | Observation 表达的内容，由观测内容和事实时间组成 | [OBSERVER-1](./model/observer.mdx#observer-1) |
+| 陈述 | Observation 表达的内容，由业务字段和事实时间组成 | [OBSERVER-1](./model/observer.mdx#observer-1) |
 | 处理 | 读取已保存的版本、形成观测的一次过程，例如一次模型调用。一次处理可以形成多份 Observation | [EVIDENCE-1](./rules/evidence.mdx#evidence-1) |
 | 采集诊断 | 读取、解析或匹配失败的情况，作为诊断信息处理 | [OBSERVER-8](./model/observer.mdx#observer-8) |
+| 形成方式 | 这份陈述怎么来的：直接读到、亲口陈述、确定计算、模型提取或推断 | [Observation · 形成方式](./model/observation.mdx#formation) |
+| 证据 | 来源给出的内容，由 Observer 记下 | [Understanding](./rules/understanding.mdx) |
+| 理解 | 模型读证据形成、用户可以否定的陈述 | [Understanding](./rules/understanding.mdx) |
+| 复核 | 对一条陈述的确认、否定或取代，写成一份 Review | [UNDERSTANDING-5](./rules/understanding.mdx#understanding-5) |
+| 当前理解 | 没有被否定也没有被取代的陈述 | [UNDERSTANDING-4](./rules/understanding.mdx#understanding-4) |
 
 ## 参与方 [#actors]
 
 | 术语 | 定义 | 详见 |
 | --- | --- | --- |
-| 用户 | 拥有数据的人。在模型中是业务实体，可以作为 Observer | [OBSERVER-6](./model/observer.mdx#observer-6) |
+| 用户 | 拥有数据的人。在模型中是事物，可以作为 Observer | [OBSERVER-6](./model/observer.mdx#observer-6) |
 | 程序 | 实现一项观测工作的一份代码 | [Observer · 程序实例](./model/observer.mdx#instances) |
 | 程序实例 | 由程序承担的 Observer：有自己的 EntityId 和配置的责任身份，例如这台 Mac 上的前台状态 Observer | [OBSERVER-5](./model/observer.mdx#observer-5) |
 | 一次执行 | 程序实例的一次运行 | [Observer · 程序实例](./model/observer.mdx#instances) |
@@ -104,7 +107,7 @@ Core 类型、Observer 和各种 Id 用英文名，其余概念用中文。Obser
 | --- | --- |
 | `ITimed` | Observation 的[事实时间](./model/observation.mdx#fact-time) |
 | `IEntity` | [Entity](./model/entity.mdx) 和 [Version](./model/version.mdx)：身份属于实体，内容和引用属于版本 |
-| `ObservationContent`、`Observation Content` | 观测内容，业务实体在 Observation 中承担的角色 |
+| `ObservationContent`、`Observation Content` | Observation 的业务字段 |
 | `观测时间`、`接收时间` | 形成观测的时刻、后端收到请求的时刻，见 [TIME-1](./rules/time.mdx#time-1) |
 | `观测草稿`、`ObservationDraft`、`observation-drafts`、`publishDraft`、`观测预览`、`ObservationPreview`、`observation-previews`、`publishPreview` | 已删除。进行中的事实在业务代码写入它的 Observation 之后才能读到 |
 | `草稿`、`冻结`、`提交策略`、`及时提交`、`结束后提交`、`OnCompletion`、`本地回执`、`本地保存` | 已删除。业务代码直接[写入](../api/writing.mdx)，版本由后端形成 |

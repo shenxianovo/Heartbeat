@@ -8,4 +8,4 @@ public sealed class ResourceNotFoundException() : Exception("No EntitySchema use
 public sealed record EntityQuery(string? Category = null, EntityId? SchemaId = null, int Limit = 100, EntityId? After = null);
 public sealed record ObservationCursor(DateTimeOffset? Time, EntityId EntityId);
 public sealed record ObservationQuery(DateTimeOffset? From = null, DateTimeOffset? To = null, EntityId? SchemaId = null,
-    int Limit = 100, ObservationCursor? After = null, EntityId? ObserverEntityId = null, EntityId? ContentEntityId = null, bool Descending = false);
+    int Limit = 100, ObservationCursor? After = null, EntityId? ObserverId = null, string? Formation = null, bool Current = false, bool Descending = false);

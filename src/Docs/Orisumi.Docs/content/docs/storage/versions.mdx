@@ -1,9 +1,9 @@
 ---
 title: "Versions"
-description: "版本、删除身份、实体和 EntitySchema 四张表：版本链怎样保存，内容怎样表示，删除时留下什么"
+description: "版本、事物、删除身份、实体和 EntitySchema 五张表：版本链怎样保存，内容怎样表示，删除时留下什么"
 ---
 
-`versions` 保存每个未删除版本的完整内容，`deleted_versions` 记住每个已删除版本的身份，两者是 Core 数据的权威位置。`entities` 和 `schemas` 是从它们推导的投影，记录未删除实体的当前状态和 EntitySchema 的资源名。
+`versions` 保存每个未删除版本的完整内容，`deleted_versions` 记住每个已删除版本的身份，`things` 保存事物，三者是 Core 数据的权威位置。`entities` 和 `schemas` 是从它们推导的投影，记录未删除实体的当前状态和 EntitySchema 的资源名。
 
 ## versions [#versions]
 
@@ -14,8 +14,14 @@ description: "版本、删除身份、实体和 EntitySchema 四张表：版本�
 | `version_id` | `uuid` | 版本的 VersionId |
 | `entity_id` | `uuid` | 所属的实体 |
 | `previous_version_id` | `uuid`，可空 | 同一实体的前一版本，首版为 `NULL` |
-| `category` | `text` | `observation`、`entity_schema`、`input_set` 或 `business` |
-| `schema_version_id` | `uuid`，可空 | 业务版本所用的 Schema 版本，Core 类型为 `NULL` |
+| `category` | `text` | `observation`、`entity_schema` 或 `input_set` |
+| `schema_version_id` | `uuid`，可空 | Observation 所用的 Schema 版本，其余为 `NULL` |
+| `observer_id` | `uuid`，可空 | 负责的 Observer，只有 Observation 有值 |
+| `observer_version_id` | `uuid`，可空 | 形成这一版时 Observer 的描述 |
+| `formation` | `text`，可空 | 形成方式，只有 Observation 有值 |
+| `input_set_version_id` | `uuid`，可空 | 这次处理用到的 InputSet |
+| `start_at`、`end_at` | `timestamptz`，可空 | 事实时间的边界 |
+| `time_zone` | `text`，可空 | 事实所属的 IANA 时区 |
 | `recorded_at` | `timestamptz` | 保存时间 |
 | `content` | `jsonb` | 版本的内容，与 API 中的 `content` 相同 |
 | `ordinal` | `bigint` | 在版本链中的序号，首版为 1，之后每版加 1 |
@@ -26,18 +32,31 @@ description: "版本、删除身份、实体和 EntitySchema 四张表：版本�
 | `ux_versions_entity_id_ordinal` | `(entity_id, ordinal)` | 按链的顺序读取实体的全部版本 |
 | `ux_versions_previous_version_id` | `previous_version_id`，只含非空值 | 一个版本最多一个后继 |
 | `ux_versions_entity_id` | `entity_id`，只含 `previous_version_id IS NULL` 的行 | 一个实体最多一个首版 |
-| `ix_versions_schema_version_id` | `schema_version_id` | 找出使用某个 Schema 版本的业务版本 |
+| `ix_versions_schema_version_id` | `schema_version_id` | 找出使用某个 Schema 版本的 Observation |
+| `ck_versions_observation` | `category` 为 `observation` 时 `schema_version_id`、`observer_id` 和 `formation` 都有值，否则这些列都为 `NULL` | Observation 的成员只出现在 Observation 上 |
 | `fk_versions_versions_previous_version_id`、`fk_versions_versions_schema_version_id` | 外键指向 `versions` | 前一版本和 Schema 版本仍然存在 |
 
-`ordinal` 只用于存储中的排序，不出现在 Core 和 API 的版本中。唯一约束只防止分叉，后端保存一个版本前还要检查 [VERSION-4](../core/model/version.mdx#version-4)、[VERSION-6](../core/model/version.mdx#version-6) 和 [ENTITY-3](../core/model/entity.mdx#entity-3)：前一版本属于同一实体、是它的当前版本，新版本的 `ordinal` 比它大 1，类别和业务类型不变。
+`ordinal` 只用于存储中的排序，不出现在 Core 和 API 的版本中。唯一约束只防止分叉，后端保存一个版本前还要检查 [VERSION-4](../core/model/version.mdx#version-4)、[OBSERVATION-10](../core/model/observation.mdx#observation-10) 和 [ENTITY-3](../core/model/entity.mdx#entity-3)：前一版本属于同一实体、是它的当前版本，新版本的 `ordinal` 比它大 1，类别、业务类型和作者不变。
 
-`entity_id` 没有外键：`entities` 是投影，权威表不依赖它。
+`entity_id` 没有外键：`entities` 是投影，权威表不依赖它。`observer_id`、`observer_version_id` 和 `input_set_version_id` 也没有外键：目标删除后引用保留，见 [HISTORY-8](../core/rules/history.mdx#history-8)。
 
 ### 内容的表示 [#content]
 
 - 版本的 `content` 以 `jsonb` 保存，空白和键的顺序不保留。字符串中不能有 `\u0000` 或无效的代理对，否则 API 返回 `400`。
 - 数值以 `jsonb` 的 `numeric` 保存，`integer` 没有 64 位的上限。数值必须在 `numeric` 的范围内（小数点前最多 131,072 位，小数点后最多 16,383 位），超出时 API 返回 `400`。
-- Observation 的时间在 `content` 中保存为以 `Z` 结尾、精确到微秒的字符串，与 API 读回的写法相同。列中的时间见 [PostgreSQL · 时间](./postgresql.mdx#time)。
+- 事实时间保存在列中，见 [PostgreSQL · 时间](./postgresql.mdx#time)。
+
+## things [#things]
+
+每个事物一行，保存它的身份和类型。事物没有版本，所以这是它唯一的位置。
+
+| 列 | 类型 | 含义 |
+| --- | --- | --- |
+| `entity_id` | `uuid` | 事物的 EntityId，主键 `pk_things` |
+| `schema_id` | `uuid` | 事物的类型 |
+| `deleted` | `boolean` | 事物是否已删除 |
+
+事物没有内容，所以删除时保留这一行作为删除的身份，把 `deleted` 置为真，后端据此返回 `410`。
 
 ## deleted_versions [#deleted-versions]
 
@@ -52,7 +71,7 @@ description: "版本、删除身份、实体和 EntitySchema 四张表：版本�
 
 - 读取时，身份在 `deleted_versions` 中就返回 `410`，在两张表中都不存在就返回 `404`。
 - 一个 VersionId 不能同时出现在 `versions` 和 `deleted_versions` 中，后端生成 VersionId 时避开两张表，见 [VERSION-9](../core/model/version.mdx#version-9)。操作的 EntityId 出现在 `deleted_versions` 中时，按 [HISTORY-7](../core/rules/history.mdx#history-7) 拒绝。
-- 程序实例在保存首版之前被删除时，它的 EntityId 不在这张表中，由实例登记的移除标记占用，见 [Management · 首版的检查](./management.mdx#first-version)。
+- 程序实例在第一次写入之前被删除时，它的 EntityId 由实例登记的移除标记占用，见 [Management · 第一次写入的检查](./management.mdx#first-version)。
 
 ## entities [#entities]
 
@@ -62,12 +81,12 @@ description: "版本、删除身份、实体和 EntitySchema 四张表：版本�
 | --- | --- | --- |
 | `entity_id` | `uuid` | 实体的 EntityId，主键 `pk_entities` |
 | `category` | `text` | 实体的类别 |
-| `schema_id` | `uuid`，可空 | 业务实体的 SchemaId；Core 类型为 `NULL` |
-| `current_version_id` | `uuid` | 当前版本 |
+| `schema_id` | `uuid`，可空 | 事物和 Observation 的 SchemaId；EntitySchema 和 InputSet 为 `NULL` |
+| `current_version_id` | `uuid`，可空 | 当前版本，事物为 `NULL` |
 
 | 约束或索引 | 内容 | 用途 |
 | --- | --- | --- |
-| `ux_entities_current_version_id` | `current_version_id` | 一个版本最多是一个实体的当前版本 |
+| `ux_entities_current_version_id` | `current_version_id`，只含非空值 | 一个版本最多是一个实体的当前版本 |
 | `fk_entities_versions_current_version_id` | 外键指向 `versions` | 当前版本存在 |
 | `ix_entities_category_entity_id` | `(category, entity_id)` | 按类别列出实体 |
 | `ix_entities_schema_id_entity_id` | `(schema_id, entity_id)` | 按业务类型列出实体；删除 EntitySchema 前检查 [HISTORY-9](../core/rules/history.mdx#history-9) |
@@ -87,13 +106,13 @@ description: "版本、删除身份、实体和 EntitySchema 四张表：版本�
 
 ## 删除 [#deletion]
 
-第二天用户删掉浏览器的时段。删除一个实体时，在一个事务中执行下面的步骤：
+第二天用户删掉浏览器的时段。删除一个有版本的实体时，在一个事务中执行下面的步骤：
 
 1. 把它每个版本的 `version_id` 和 `entity_id` 写入 `deleted_versions`。
-2. 找出当前版本以它的某个版本为 `contentVersionId` 的 Observation：沿 `version_references` 找到以它为目标、并且是 `observations` 中当前版本的行，再核对这个版本的 `contentVersionId`。把这些行的 `content_schema_id` 置为 `NULL`，见 [Queries · 观测](./queries.mdx#fact-time)。
-3. 删除它在 `observations`、`schemas`、`entities`、`recognition_keys` 中的行，以及它的各版本作为引用方在 `version_references` 中的行。
-4. 删除它的各版本在 `version_contents` 中的行，再删除已没有使用方的内容，见 [Contents · 删除](./contents.mdx#deletion)。
-5. 删除它在 `versions` 中的行。
-6. 它是受管理的程序实例时，把实例登记标记为已移除，见 [Management · 删除实例](./management.mdx#removal)。
+2. 删除它在 `observations`、`reviews`、`schemas`、`entities`、`recognition_keys` 中的行，以及它的各版本作为引用方在 `version_references` 中的行。
+3. 删除它的各版本在 `version_contents` 中的行，再删除已没有使用方的内容，见 [Contents · 删除](./contents.mdx#deletion)。
+4. 删除它在 `versions` 中的行。
+
+删除一个事物时，把 `things` 的 `deleted` 置为真，删除它在 `entities` 和 `recognition_keys` 中的行。它是受管理的程序实例时，再把实例登记标记为已移除，见 [Management · 删除实例](./management.mdx#removal)。
 
 其他版本对它的引用留在它们的 `content` 和 `version_references` 中，见 [HISTORY-8](../core/rules/history.mdx#history-8)。删除不保存删除的时刻。

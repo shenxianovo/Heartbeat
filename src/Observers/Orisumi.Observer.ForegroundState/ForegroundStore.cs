@@ -20,16 +20,20 @@ internal sealed class ForegroundStore(DataClient data, DeviceContext device, Act
     private void Write(ForegroundCapture capture)
     {
         WriteItem[] writes = [
-            new(ForegroundRegistration.ApplicationSchemaId,
-                new ApplicationContent(device.Ref, capture.Application.Identifiers), capture.Application.Key),
+            new(Guid.Parse("019e1bbb-ec00-7000-8000-000000000014"),
+                new ApplicationContent(Ref.Recognize(ForegroundRegistration.ApplicationSchemaId, capture.Application.Key), device.Ref,
+                    capture.Application.Identifiers.Where(i => i.Scheme == "macos.bundle-id")
+                        .Select(i => Ref.Recognize(Guid.Parse("019e1bbb-ec00-7000-8000-000000000015"), new(null, i.Scheme, i.Value))).ToArray(),
+                    capture.Application.Identifiers.SingleOrDefault(i => i.Scheme == "macos.executable-path")?.Value),
+                "direct", capture.Application.Key with { Scheme = "macos.installation-description" }),
             new(ForegroundRegistration.PeriodSchemaId,
                 new PeriodContent(Ref.Recognize(ForegroundRegistration.ApplicationSchemaId, capture.Application.Key), capture.Content.Name, capture.Content.Icon),
-                Time: new(capture.StartAt, capture.EndAt, capture.TimeZone)) ];
+                "direct", Time: new(capture.StartAt, capture.EndAt, capture.TimeZone)) ];
         try { data.WriteAllAsync(writes).GetAwaiter().GetResult(); }
         catch (HttpRequestException exception)
         { diagnostic($"The {capture.Content.Name ?? "foreground"} period was not saved: {exception.Message}"); }
     }
 }
 
-internal sealed record ApplicationContent(Ref DeviceVersionId, IReadOnlyList<ApplicationIdentifier> Identifiers);
-internal sealed record PeriodContent(Ref LocalApplicationVersionId, string? Name, BinaryContent? Icon);
+internal sealed record ApplicationContent(Ref LocalApplicationId, Ref DeviceId, Ref[] IdentifierIds, string? ExecutablePath);
+internal sealed record PeriodContent(Ref LocalApplicationId, string? Name, BinaryContent? Icon);

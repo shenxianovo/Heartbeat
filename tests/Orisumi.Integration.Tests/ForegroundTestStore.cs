@@ -15,7 +15,8 @@ internal sealed class ForegroundTestStore(DataClient data, DeviceContext device)
     internal static async Task<ForegroundTestStore> CreateAsync(HttpClient http, DeviceContext? device = null)
     {
         device ??= new(new(null, "test.device", Guid.NewGuid().ToString()), "device", "macos");
-        var data = new DataClient(http, http, Ref.Recognize(ForegroundRegistration.ObserverSchemaId, new(null, "test", Guid.NewGuid().ToString()))) { Device = device };
+        var writer = new WriteClient(http); await writer.InitializeAsync();
+        var data = new DataClient(http, http, Ref.Entity(writer.ObserverId.Value)) { Device = device };
         await ForegroundRegistration.RegisterAsync(data);
         var fixture = new ForegroundTestStore(data, device);
         fixture.Store = new(data, device, fixture.Diagnostics.Add);

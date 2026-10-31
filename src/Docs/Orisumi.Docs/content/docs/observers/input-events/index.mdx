@@ -11,7 +11,7 @@ description: "逐条记下键盘和鼠标操作（草案）"
 
 | 业务类型 | 用途 | 资源名 |
 | --- | --- | --- |
-| [Input Event](./input-event.mdx) | 观测内容：一次键盘或鼠标事件 | `input-events` |
+| [Input Event](./input-event.mdx) | 观测：一次键盘或鼠标事件 | `input-events` |
 
 程序实例自身的业务类型尚未定义。
 
@@ -37,7 +37,7 @@ description: "逐条记下键盘和鼠标操作（草案）"
 
 ## 写入 [#submission]
 
-第一次输入之前，业务代码声明 [Input Event 的 EntitySchema](./input-event.mdx#schema)，写入程序实例的描述。之后用所在平台的 [SDK](../../api/sdk.mdx) 为每次事件形成观测内容和 Observation。
+第一次输入之前，业务代码声明 [Input Event 的 EntitySchema](./input-event.mdx#schema)，写入程序实例的描述。之后用所在平台的 [SDK](../../api/sdk.mdx) 为每次事件形成 Observation。
 
 ## 待定 [#open]
 

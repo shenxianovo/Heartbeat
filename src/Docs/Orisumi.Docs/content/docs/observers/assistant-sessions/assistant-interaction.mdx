@@ -3,7 +3,7 @@ title: "Assistant Interaction"
 description: "助手会话中的一次交互：消息、工具调用与结果、推理或上下文"
 ---
 
-助手交互表示会话中的一次交互，例如用户发出的一句话、助手调用 Bash、Bash 返回的结果，或者产品在这一轮注入的 AGENTS.md。它是助手会话 Observer 形成的观测内容，这次交互发生的时间写在引用它的 Observation 上。
+助手交互表示会话中的一次交互，例如用户发出的一句话、助手调用 Bash、Bash 返回的结果，或者产品在这一轮注入的 AGENTS.md。它是助手会话 Observer 形成的 Observation，形成方式是 `direct`，事实时间是这次交互发生的时间。
 
 一次交互由三部分组成：它是哪种交互（`kind`），由谁发出（`actor`），以及内容（`parts`）。内容的原始记录保存在 `sourceEntries` 中，每份字节只保存一份。
 
@@ -71,7 +71,7 @@ Codex 的 rollout 文件用 `event_msg` 中的 `item_completed` 记下每一项�
 | `Reasoning`，连同 `id` 相同的 `response_item` `reasoning` | 一次，见下文 | `reasoning` | `assistant` |
 | `CommandExecution`、`McpToolCall`、`FileChange`、`Extension`、`ImageView` | 一项形成两次：调用和结果 | `tool-call`、`tool-result` | `assistant`、`tool` |
 
-Codex 先写 `Reasoning` 的 `item_completed`，接着写 `id` 相同、带 `encrypted_content` 的 `response_item`。两行都读到后形成一次推理；只读到第一行时，它留在本地的待配对状态中，跨轮询和重启保留。同一轮的 `task_complete` 或 `turn_aborted` 出现时还没有第二行，推理只用第一行形成。
+Codex 先写 `Reasoning` 的 `item_completed`，接着写 `id` 相同、带 `encrypted_content` 的 `response_item`。两行都读到后形成一次推理；只读到第一行时，它留在本地的待配对状态中，跨轮询和重启保留。同一轮的 `task_complete` 或 `turn_aborted` 出现时还没有第二行，推理只用第一行形成。`id` 为 `item-<N>` 的 `Reasoning` 可以连续写成多行，后一行的 `summary_text` 包含前一行的全部内容，这些行同样留在待配对状态中，读到下一个 `id` 时形成一次推理，内容取最后一行。
 
 ### 不形成交互的记录 [#excluded]
 
@@ -91,28 +91,30 @@ Codex 先写 `Reasoning` 的 `item_completed`，接着写 `id` 相同、带 `enc
 | Claude Code | 行的 `uuid`；`tool_result` block 为 `uuid#<block 序号>`；`api-request-shape` 为 `<sessionId>/<shapeHash>` |
 | Codex | `item_completed` 的 item `id`；`response_item` 的 `id`；`session_meta` 为会话 `id`；`compacted` 为 `window_id` |
 
-这些标识由来源生成，在同一个产品中唯一，所以同一条来源数据无论从哪个文件、第几次读到，都对应同一次交互。文本相同的两次输入有各自的 `sourceId`，是两次交互。
+证据的含义是“这份日志里有这一条”，所以识别依据都带上来源会话。两个会话中的 `item-3` 是两次交互：`item-<N>` 是早期 Codex 在一个会话内的序号，在已核实的版本中，0.147 到 0.149 写下的部分 rollout 从 `item-1` 开始编号。Claude Code 的 resume 和 fork 把同一条记录复制到另一个会话时，这条记录在两个会话中各是一份观测，都是真的，读取方要去重时按 `sourceId`。
 
 | 识别依据 | 值 |
 | --- | --- |
-| `scope` | `null` |
+| `scope` | 来源会话的标识 |
 | `scheme` | 工具调用是 `claude-code.tool-call` 或 `codex.tool-call`，其余是 `claude-code.interaction` 或 `codex.interaction` |
-| `value` | 工具调用是 `callId`，其余是 `sourceId`。Codex 的工具结果以同一个 `id` 形成，加上 `/result` |
+| `value` | 工具调用是 `callId`，其余是 `sourceId`。Codex 的工具结果以同一个 `id` 形成，加上 `/result`。`session_meta` 和 `api-request-shape` 再加上这一行字节的摘要 |
 
-工具调用用 `callId` 作依据，所以结果能在任何一段中引用它，见[引用](#references)。调用和结果按来源记录的结构区分，`kind`、`actor` 这些解析结果不进入识别依据。
+`session_meta` 和 `api-request-shape` 用同一个标识写下不同的字节，来源保留了每一次，所以每次是一份新的 Observation。文本相同的两次输入有各自的 `sourceId`，是两次交互。
+
+工具调用用 `callId` 作依据，所以结果能在同一会话的任何一段中引用它，见[引用](#references)。调用和结果按来源记录的结构区分，`kind`、`actor` 这些解析结果不进入识别依据。
 
 ### 重读 [#rereading]
 
-一次交互是一个实体和一份 Observation，内容形成后不再变化。再次读到一条来源数据时，识别依据和内容都相同，所以什么都不发生。
+一次交互是一份 Observation，内容形成后不再变化，这种类型声明 `immutable`，见 [SCHEMA-18](../../core/model/schema.mdx#schema-18)。再次读到一条来源数据时，识别依据和内容都相同，所以什么都不发生。修复解析错误的新版本程序重读时，形成原来这份的新版本。
 
-读取进度丢失后从头重读时，实时读到的记录按历史处理，`timeZone` 变为 `null`，这份 Observation 形成新版本，内容不变，见[事实时间](./index.mdx#fact-time)。修复解析错误后的纠正这一阶段不做。
+读取进度丢失后从头重读时，实时读到的记录按历史处理，`timeZone` 变为 `null`，这份 Observation 形成新版本，内容不变，见[事实时间](./index.mdx#fact-time)。
 
 ## 引用 [#references]
 
 | 字段 | 目标 |
 | --- | --- |
-| `sessionVersionId` | 交互所在的[会话](./assistant-session.mdx) |
-| `deviceVersionId` | 交互发生的[设备](../device-state/device.mdx) |
+| `sessionId` | 交互所在的[会话](./assistant-session.mdx) |
+| `deviceId` | 交互发生的[设备](../device-state/device.mdx) |
 | `toolCallVersionId` | 工具结果对应的调用，写调用的识别依据。调用不在已读到的数据中时为 `null`，见 [API · 引用](../../api/writing.mdx#references) |
 
 交互之间的其他关系保存为来源标识：`sourceParentId` 是 Claude Code 的 `parentUuid`，`sourceTurnId` 是一轮的标识，`sourceMessageId` 是一次 API 响应的标识。读取方在同一会话中按这些标识重建顺序和分支。
@@ -173,13 +175,15 @@ Claude Code 允许回到之前的某句话重新提问，这时同一会话中�
 | --- | --- |
 | SchemaId | `019e1bbb-ec00-7000-8000-000000000009` |
 | 显示名称 | 助手交互 |
-| 说明 | 表示 Claude Code 或 Codex 会话中的一次交互：一条消息、一次工具调用、一次工具结果、一段推理或一份交给模型的上下文。来源中的每次交互对应一个实体。内容按来源顺序列为片段，原始记录以二进制内容保存。事实时间取自来源记下的时刻：输入、调用、结果和上下文是时间点，助手的回复和推理在来源给出开始时间时是时段，否则只有结束边界。 |
+| 说明 | 表示 Claude Code 或 Codex 会话中的一次交互：一条消息、一次工具调用、一次工具结果、一段推理或一份交给模型的上下文。来源中的每次交互对应一份 Observation。内容按来源顺序列为片段，原始记录以二进制内容保存。事实时间取自来源记下的时刻：输入、调用、结果和上下文是时间点，助手的回复和推理在来源给出开始时间时是时段，否则只有结束边界。 |
 | 资源名 | `assistant-interactions` |
+| `kind` | `observation` |
+| `immutable` | `true` |
 
 | 字段 | 类型 | 必填 | 可空 | description |
 | --- | --- | --- | --- | --- |
-| `sessionVersionId` | `reference` | 是 | 否 | 交互所在的助手会话 |
-| `deviceVersionId` | `reference` | 是 | 是 | 交互发生的设备；不知道时为 `null` |
+| `sessionId` | `reference`，目标为事物 | 是 | 否 | 交互所在的助手会话 |
+| `deviceId` | `reference`，目标为事物 | 是 | 是 | 交互发生的设备；不知道时为 `null` |
 | `kind` | `string` | 是 | 否 | 交互的种类：`message`、`tool-call`、`tool-result`、`reasoning` 或 `context` |
 | `actor` | `string` | 是 | 是 | 发出方：`user`、`assistant`、`tool`、`application` 或 `agent`；来源结构不足以判断时为 `null` |
 | `sourceRole` | `string` | 是 | 是 | 来源记录中的协议角色，原样保存，例如 `user`、`assistant`、`developer`；记录没有角色时为 `null` |
@@ -191,7 +195,7 @@ Claude Code 允许回到之前的某句话重新提问，这时同一会话中�
 | `sourceParentId` | `string` | 是 | 是 | 来源记下的上一条记录：Claude Code 的 `parentUuid`；没有时为 `null` |
 | `sourceMessageId` | `string` | 是 | 是 | 一次 API 响应的标识，同一响应的各个 block 相同：Claude Code 的 `message.id`；没有时为 `null` |
 | `callId` | `string` | 是 | 是 | 工具调用的标识，调用和结果相同：Claude Code 的 `tool_use` `id` 和 `tool_use_id`，Codex 的 item `id`；其他交互为 `null` |
-| `toolCallVersionId` | `reference` | 是 | 是 | 工具结果对应的调用交互；其他交互，或调用不在已读到的记录中时为 `null` |
+| `toolCallVersionId` | `reference`，目标为版本 | 是 | 是 | 工具结果对应的调用交互；其他交互，或调用不在已读到的记录中时为 `null` |
 | `toolName` | `string` | 是 | 是 | 工具名称：Claude Code 的 `name`，Codex `McpToolCall` 的 `tool`；来源只用记录种类表示工具时为 `null`，种类见 `sourceKind` |
 | `toolServer` | `string` | 是 | 是 | 提供工具的 MCP 服务器：Codex `McpToolCall` 的 `server`；没有时为 `null` |
 | `isError` | `boolean` | 是 | 是 | 工具结果是否为来源报告的失败：Claude Code 的 `is_error`，Codex 的 `status` 为 `failed`；其他交互为 `null` |
@@ -216,8 +220,8 @@ Claude Code 允许回到之前的某句话重新提问，这时同一会话中�
 
 ```json
 {
-  "sessionVersionId": "019e2c41-7a10-7000-8000-0000000001a1",
-  "deviceVersionId": "0196f3a1-5d0c-7a11-8e2f-1b2c3d4e5f61",
+  "sessionId": "019e2c41-7a10-7000-8000-0000000001a1",
+  "deviceId": "0196f3a1-5d0c-7a11-8e2f-1b2c3d4e5f61",
   "kind": "message",
   "actor": "user",
   "sourceRole": "user",
@@ -269,8 +273,8 @@ Codex 执行 `pnpm test` 后的结果。输出只在原始记录中，调用和�
 
 ```json
 {
-  "sessionVersionId": "019e2c41-7a10-7000-8000-0000000002b3",
-  "deviceVersionId": "0196f3a1-5d0c-7a11-8e2f-1b2c3d4e5f61",
+  "sessionId": "019e2c41-7a10-7000-8000-0000000002b3",
+  "deviceId": "0196f3a1-5d0c-7a11-8e2f-1b2c3d4e5f61",
   "kind": "tool-result",
   "actor": "tool",
   "sourceRole": null,

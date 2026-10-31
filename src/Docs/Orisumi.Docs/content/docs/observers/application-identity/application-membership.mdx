@@ -1,43 +1,36 @@
 ---
 title: "Application Membership"
-description: "一条跨设备线索属于哪个应用产品"
+description: "一次判断：一条跨设备线索属于哪个应用产品"
 ---
 
-线索归属表示一条跨设备线索属于一个[应用产品](./application-product.mdx)，例如 `macos.bundle-id` 的 `com.tencent.qq` 属于 QQ。它是关系实体，见 [ENTITY-9](../../core/model/entity.mdx#entity-9)，由应用识别 Observer 的判断形成：每条线索归属有一份 Observation，Observation 说明谁负责，InputSet 列出判断时读到的版本。
+线索归属表示一次判断：一条跨设备线索属于一个[应用产品](./application-product.mdx)，例如 `macos.bundle-id` 的 `com.tencent.qq` 属于 QQ。它由应用识别 Observer 形成，形成方式是 `inferred`。
 
 <ObserverStructure node="APPLICATION_MEMBERSHIP" />
 
 ## 粒度 [#granularity]
 
-一条跨设备线索对应一个实体。例如 QQ 在 macOS 和 Android 上各有一条线索，这是两条线索归属，各有自己的依据。
+一次判断一份 Observation。QQ 在 macOS 和 Android 上各有一条线索，这是两次判断，各有自己的依据。同一条线索重新判断时形成新的 Observation，旧判断保留，见 [UNDERSTANDING-2](../../core/rules/understanding.mdx#understanding-2)。
 
 ## 身份 [#identity]
 
-| 识别依据 | 值 |
-| --- | --- |
-| `scope` | `null` |
-| `scheme` | 线索的 `scheme` |
-| `value` | 线索的 `value` |
+线索归属没有识别依据，每次判断都新建。
 
-跨设备线索在任何设备上都指同一款软件，所以作用范围是全局的。一条线索最多有一条线索归属。
-
-| 变化 | 身份 |
+| 变化 | 结果 |
 | --- | --- |
 | 应用识别 Observer 判断一条未归属的线索 | 新建 |
-| 用户删除这条线索归属 | 识别依据随它删除，模型再判断一次时新建，见[撤销](./index.mdx#retraction) |
-| 它指向的产品已删除，模型判断后指向另一个产品 | 沿用，形成新版本 |
+| 换了模型后重新判断 | 新建，再写一份 `supersede` 的 Review 取代旧判断 |
+| 用户发现归错了 | 用户写一份 `deny` 的 Review，判断保持原样 |
 
 ## 引用 [#references]
 
 | 字段 | 目标 |
 | --- | --- |
-| `productVersionId` | 线索属于的[应用产品](./application-product.mdx) |
-
-线索和本机应用之间没有引用，本机应用按线索的值归属，见 [Application Identity · 归属](./index.mdx#membership)。
+| `identifierId` | 这条[应用线索](./index.mdx#identifiers) |
+| `productId` | 线索属于的[应用产品](./application-product.mdx) |
 
 ## 事实时间 [#fact-time]
 
-Observation 的 `startAt`、`endAt` 和 `timeZone` 都是 `null`：这款软件从什么时候起有这条线索，判断时不知道，见 [OBSERVATION-5](../../core/model/observation.mdx#observation-5)。
+`startAt`、`endAt` 和 `timeZone` 都是 `null`：这款软件从什么时候起有这条线索，判断时不知道，见 [OBSERVATION-5](../../core/model/observation.mdx#observation-5)。
 
 ## EntitySchema [#schema]
 
@@ -45,21 +38,21 @@ Observation 的 `startAt`、`endAt` 和 `timeZone` 都是 `null`：这款软件�
 | --- | --- |
 | SchemaId | `019e1bbb-ec00-7000-8000-00000000000c` |
 | 显示名称 | 线索归属 |
-| 说明 | 表示一条跨设备线索属于一个应用产品。一条线索一个实体；本机应用的跨设备线索有线索归属时，它属于线索归属指向的产品。 |
+| 说明 | 表示一次判断：一条跨设备线索属于一个应用产品。当前理解中的线索归属决定线索属于哪个产品。 |
 | 资源名 | `application-memberships` |
+| `kind` | `observation` |
+| `immutable` | `true` |
 
 | 字段 | 类型 | 必填 | 可空 | description |
 | --- | --- | --- | --- | --- |
-| `identifier` | `object` | 是 | 否 | 一项跨设备线索，由 scheme 和 value 共同解释，与本机应用的标识线索相同 |
-| `identifier.scheme` | `string` | 是 | 否 | 线索的种类，例如 macos.bundle-id |
-| `identifier.value` | `string` | 是 | 否 | 线索的原始值 |
-| `productVersionId` | `reference` | 是 | 否 | 线索属于的应用产品 |
+| `identifierId` | `reference`，目标为事物 | 是 | 否 | 一条应用线索 |
+| `productId` | `reference`，目标为事物 | 是 | 否 | 线索属于的应用产品 |
 
 ## 示例 [#example]
 
 ```json
 {
-  "identifier": { "scheme": "android.package-name", "value": "com.tencent.mobileqq" },
-  "productVersionId": "019e2c41-7a10-7000-8000-0000000002c4"
+  "identifierId": "01a12e31-9050-7000-8000-000000000201",
+  "productId": "019e2c41-7a10-7000-8000-0000000002c4"
 }
 ```

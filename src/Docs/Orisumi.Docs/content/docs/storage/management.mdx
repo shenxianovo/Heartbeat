@@ -52,7 +52,7 @@ description: "Observer 管理登记的两张表：每个托管方一行的 obser
 | `ux_observer_instances_host_id_package_id` | `(host_id, package_id)`，只含 `removed = false` 的行 | 一个托管方上一个安装包最多一个未删除的实例 |
 | `ix_observer_instances_package_id` | `package_id`，只含 `removed = false` 的行 | 首次登记每个部署只能有一个实例的安装包时，检查已有的实例 |
 
-- `entity_id` 没有指向 `entities` 的外键：程序实例先登记，之后才保存首版，而 `entities` 是投影。
+- `entity_id` 没有指向 `entities` 的外键：程序实例先登记，之后才第一次写入，而 `entities` 是投影。
 - 已删除的行保留。
 - `status` 的结构见 [Hosting · 状态报告](../hosting/management.mdx#status)，后端只检查它是一个 JSON 对象。
 
@@ -66,9 +66,9 @@ description: "Observer 管理登记的两张表：每个托管方一行的 obser
 
 修改的规则见 [API · Management](../api/management.mdx)。每次修改在一个事务中检查条件、写入配置和修订号。
 
-## 首版的检查 [#first-version]
+## 第一次写入的检查 [#first-version]
 
-写入带 `entityId` 而这个实体还没有版本时，后端在同一个事务中检查它：在 `observer_instances` 中没有行，这次写入被拒绝，结果是 `400`；有 `removed = true` 的行，按 [HISTORY-7](../core/rules/history.mdx#history-7) 拒绝；带托管方凭证时，`host_id` 还要是这个托管方。这样，在保存首版之前就被删除的程序实例，它的 EntityId 也不再接受版本。已保存过版本的实例由 `deleted_versions` 占用身份，见 [Versions · deleted_versions](./versions.mdx#deleted-versions)。
+`observer` 带 `entityId` 而这个事物还不存在时，后端在同一个事务中检查它：在 `observer_instances` 中没有行，这次写入被拒绝，结果是 `400`；有 `removed = true` 的行，按 [HISTORY-7](../core/rules/history.mdx#history-7) 拒绝；带托管方凭证时，`host_id` 还要是这个托管方。这样，在第一次写入之前就被删除的程序实例，它的 EntityId 也不能再使用。已写入过的实例是一个事物，由 `things` 记下删除，见 [Versions · things](./versions.mdx#things)。
 
 ## 删除实例 [#removal]
 

@@ -28,7 +28,7 @@ export const caseId = 'foreground-icons';
 以下方法位于 `tests/Orisumi.Integration.Tests/ForegroundIconTests.cs`，使用模拟的图标：
 
 - 图标随观测内容保存并能读回字节；时段进行中图标改变，当前时段不变，图标只读取一次；之后的时段读到新图标，两段相同的图标只保存一份；本机应用的 EntityId 不变：`IconIsCapturedAtPeriodStartAndSharedWithoutChangingApplicationIdentity`。
-- 读不到图标和读取抛出异常时，`icon` 为 `null`，时段和 Observation 照常保存：`MissingOrFailedIconDoesNotPreventSavingAPeriod`。
+- 读不到图标和读取抛出异常时，`icon` 为 `null`，时段 Observation 照常保存：`MissingOrFailedIconDoesNotPreventSavingAPeriod`。
 - macOS 上原生读取和绘制图标没有自动测试。2026-10-31 在临时环境中实际打包运行，停用后从 API 读回 PNG，核对 1024×1024 尺寸和描述中的字节数；这不覆盖真实休眠。
 
 ## 执行结果 [#results]

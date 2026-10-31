@@ -17,8 +17,8 @@ HTTP 用例经真实 API 和独立的 PostgreSQL 数据库运行。Runtime 使�
 
 | 操作 | 预期结果 |
 | --- | --- |
-| 删除业务实体后按 ID 读取 | 410，批量读取为 deleted |
-| 按原 entityId 再写入 | 409，HISTORY-7 |
+| 删除 Observation 后按 ID 读取 | 410，批量读取为 deleted |
+| 删除事物后再按 EntityId 引用 | 按 ENTITY-6 拒绝；原引用仍保留 |
 | 按原 key 再写入 | 形成新实体 |
 | 删除已有登记、没有首版的程序实例 | 登记 removed；首版写入按 HISTORY-7 被拒绝 |
 | 带托管方凭证删除实体 | 403 |
@@ -29,7 +29,8 @@ HTTP 用例经真实 API 和独立的 PostgreSQL 数据库运行。Runtime 使�
 
 方法位于 `tests/Orisumi.Integration.Tests/`：
 
-- 删除、原身份拒绝和识别依据重建：`WriteApiTests.DeletionRemovesRecognitionAndBatchReadPreservesOrderDuplicatesAndStatus`。
+- 删除事物、保留引用、拒绝再引用原身份和重建依据：`UnderstandingApiTests.ThingNamesPreferPeopleThenLatestAndDeletionRetainsReferences`。
+- 删除 Observation 和识别依据重建：`WriteApiTests.DeletionRemovesRecognitionAndBatchReadPreservesOrderDuplicatesAndStatus`。
 - 预留实例删除：`ManagementApiTests.RemovingBeforeFirstVersionReservesIdentityAndStopsLocalChanges`。
 - 托管方权限：`ManagementApiTests.CredentialsEnforceOwnershipRevocationAndRePairing`。
 - Schema 删除限制：`WriteApiTests.ConcurrentRecognitionPreservesOneChainAndHttpBoundariesRemainExplicit`。

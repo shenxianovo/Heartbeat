@@ -177,16 +177,16 @@ public sealed class ManagementApiTests
         await Assert.That(duplicate.StatusCode).IsEqualTo(HttpStatusCode.Conflict);
         await Assert.That((await WriteClient.JsonAsync(duplicate)).GetProperty("code").GetString()).IsEqualTo("package_taken");
         var schema = Guid.CreateVersion7();
-        var request = new { observer = new { entityId = id }, schemas = new[] { new { schemaId = schema, content = new { displayName = "Observer", description = "Test instance", resourceName = "observers", fields = new { } } } },
-            writes = new[] { new { schemaId = schema, entityId = id, content = new { } } } };
+        var request = new { observer = new { entityId = id }, schemas = new[] { new { schemaId = schema, content = new { displayName = "Observer", description = "Test instance", resourceName = "observers", kind = "observation", immutable = false, fields = new { } } } },
+            writes = new[] { new { schemaId = schema, formation = "direct", content = new { } } } };
         using var mismatched = await other.PostAsJsonAsync("/writes", request);
         await Assert.That(mismatched.StatusCode).IsEqualTo(HttpStatusCode.Forbidden);
         await Assert.That((await WriteClient.JsonAsync(mismatched)).GetProperty("code").GetString()).IsEqualTo("host_mismatch");
         using var written = await runtime.PostAsJsonAsync("/writes", request);
         await Assert.That(written.StatusCode).IsEqualTo(HttpStatusCode.OK);
-        await Assert.That((await WriteClient.JsonAsync(written)).GetProperty("results")[0].GetProperty("version").GetProperty("entityId").GetGuid()).IsEqualTo(id);
-        using var unreserved = await runtime.PostAsJsonAsync("/writes", new { observer = new { entityId = id }, writes = new[] { new { schemaId = schema, entityId = Guid.CreateVersion7(), content = new { } } } });
-        await Assert.That((await WriteClient.JsonAsync(unreserved)).GetProperty("results")[0].GetProperty("error").GetProperty("rule").GetString()).IsEqualTo("ENTITY-2");
+        await Assert.That((await WriteClient.JsonAsync(written)).GetProperty("results")[0].GetProperty("version").GetProperty("observerId").GetGuid()).IsEqualTo(id);
+        using var unreserved = await manager.PostAsJsonAsync("/writes", new { observer = new { entityId = Guid.CreateVersion7() }, writes = Array.Empty<object>() });
+        await Assert.That((await WriteClient.JsonAsync(unreserved)).GetProperty("rule").GetString()).IsEqualTo("ENTITY-2");
         using var deleted = await runtime.DeleteAsync($"/entities/{id}");
         await Assert.That(deleted.StatusCode).IsEqualTo(HttpStatusCode.Forbidden);
     }

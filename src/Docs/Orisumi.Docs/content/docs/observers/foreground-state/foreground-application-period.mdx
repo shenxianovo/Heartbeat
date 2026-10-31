@@ -3,25 +3,23 @@ title: "Foreground Application Period"
 description: "应用处于前台的一个时段"
 ---
 
-前台应用时段表达“应用 A 处于前台”。它保存对本机应用的引用，以及时段开始时读到的应用名称和图标；这一段从几点到几点，保存在引用它的 Observation 上。
+前台应用时段是一份 Observation，陈述“应用 A 处于前台”。它提到本机应用，保存时段开始时读到的应用名称和图标，这一段从几点到几点是它的事实时间。形成方式是 `direct`。
 
 <ObserverStructure node="APPLICATION_CONTENT" />
 
 ## 粒度 [#granularity]
 
-一个应用连续处于前台的一段活动，对应一个观测内容和一份 Observation。每次确认都在补全这一份 Observation；窗口标题变化时，应用时段照样延续。
-
-观测内容只属于这一段活动，应用和名称相同的另一段活动也有自己的观测内容。所以[窗口标题](./foreground-window-title.mdx)引用观测内容，就能找到它所属的那一段活动。
+一个应用连续处于前台的一段活动，对应一份 Observation。每次确认都在补全这一份 Observation；窗口标题变化时，应用时段照样延续。应用和名称相同的另一段活动是另一份 Observation，所以[窗口标题](./foreground-window-title.mdx)引用它，就能找到所属的那一段活动。
 
 前台时段只表达系统确认的前台应用。锁屏、休眠和无输入属于其他时间线，读取方需要时再组合，见 [Observers · 前台、输入与设备的时间线](../index.mdx#timelines)。
 
 ## 身份 [#identity]
 
-每个时段新建观测内容和 Observation。本机应用、应用名称或时区变化时，前台状态 Observer 结束当前时段，为新的时段新建两者，原来的内容保持不变。
+每个时段新建一份 Observation。本机应用、应用名称或时区变化时，前台状态 Observer 结束当前时段，开始新的一份。
 
 ## 图标 [#icon]
 
-前台状态 Observer 在时段开始时读取应用的图标，作为[二进制内容](../../core/model/binary.mdx)写进 `icon`。观测内容在时段中不变，所以 `icon` 是这一段开始时应用的样子；应用升级换了图标，下一段时段读到新的图标。
+前台状态 Observer 在时段开始时读取应用的图标，作为[二进制内容](../../core/model/binary.mdx)写进 `icon`。业务字段在时段中不变，所以 `icon` 是这一段开始时应用的样子；应用升级换了图标，下一段时段读到新的图标。
 
 - 在 macOS 上，图标取自 `NSRunningApplication` 的 `icon`，绘制为 1024×1024 像素的 PNG。
 - 读不到图标时，`icon` 为 `null`，时段照常记录。
@@ -31,11 +29,11 @@ description: "应用处于前台的一个时段"
 
 | 字段 | 目标 |
 | --- | --- |
-| `localApplicationVersionId` | [Local Application](./local-application.mdx) |
+| `localApplicationId` | [Local Application](./local-application.mdx) |
 
 ## 事实时间 [#fact-time]
 
-应用、名称和时区都没变时，每次确认都延长同一份 Observation：观测内容和开始时间保持不变，结束时间更新为这次确认的时刻。这个结束时间只是最近一次确认，不代表这段已经结束，见 [TIME-4](../../core/rules/time.mdx#time-4)。
+应用、名称和时区都没变时，每次确认都延长同一份 Observation：业务字段和开始时间保持不变，结束时间更新为这次确认的时刻。这个结束时间只是最近一次确认，不代表这段已经结束，见 [TIME-4](../../core/rules/time.mdx#time-4)。
 
 | 事件 | 当前时段 | 下一个时段 |
 | --- | --- | --- |
@@ -59,22 +57,24 @@ description: "应用处于前台的一个时段"
 | --- | --- |
 | SchemaId | `019e1bbb-ec00-7000-8000-000000000001` |
 | 显示名称 | 前台应用时段 |
-| 说明 | 表达某个本机应用连续处于前台的一段活动，每段活动一个实体；内容保存应用引用与时段开始时读到的名称和图标，Observation 保存时段。 |
+| 说明 | 表达某个本机应用连续处于前台的一段活动，每段活动一份 Observation；内容保存应用引用与时段开始时读到的名称和图标，事实时间是这一段的时段。 |
 | 资源名 | `foreground-application-periods` |
+| `kind` | `observation` |
+| `immutable` | `false` |
 
 | 字段 | 类型 | 必填 | 可空 | description |
 | --- | --- | --- | --- | --- |
-| `localApplicationVersionId` | `reference` | 是 | 否 | 观测设备上的本机应用 |
+| `localApplicationId` | `reference`，目标为事物 | 是 | 否 | 观测设备上的本机应用 |
 | `name` | `string` | 是 | 是 | 当时读到的应用名称，没读到时为 `null` |
 | `icon` | `binary` | 是 | 是 | 时段开始时读到的应用图标，1024×1024 像素的 PNG；没读到时为 `null` |
 
 ## 示例 [#example]
 
-VS Code 从 14:00 到 16:00 处于前台。这一段的观测内容：
+VS Code 从 14:00 到 16:00 处于前台。这一段的 `content`：
 
 ```json
 {
-  "localApplicationVersionId": "01a12e31-9050-7000-8000-000000000101",
+  "localApplicationId": "01a12e31-9050-7000-8000-000000000101",
   "name": "Visual Studio Code",
   "icon": {
     "digest": "sha256:3a7bd3e2360a3d29eea436fcfb7e44c735d117c42d1c1835420b6b9942dd4f1b",
@@ -84,4 +84,4 @@ VS Code 从 14:00 到 16:00 处于前台。这一段的观测内容：
 }
 ```
 
-事实时间写在 Observation 上，16:00 的请求见 [API · Writing](../../api/writing.mdx#example)。
+16:00 的请求见 [API · Writing](../../api/writing.mdx#example)。

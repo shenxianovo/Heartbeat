@@ -17,11 +17,13 @@ HTTP 用例经真实 API 和独立的 PostgreSQL 数据库运行。Runtime 使�
 
 | 操作 | 预期结果 |
 | --- | --- |
-| 读取版本、实体和版本链 | 完整的七个成员，当前版本正确，版本链从首版到当前版 |
+| 读取版本、实体和版本链 | 版本身份、Schema、作者、描述、formation、InputSet、事实时间和业务 content，当前版本正确，版本链从首版到当前版 |
 | 写入带时区偏移和七位小数的事实时间 | UTC 表示，精度截断到微秒 |
 | 批量读取包含已保存、从未出现和已删除的版本 | 分别返回 found、not_found、deleted，保留顺序和重复项 |
 | 批量请求超过 256 个 VersionId | 400 |
 | 按 ID 读取未知或已删除实体 | 分别为 404 和 410 |
+| 读取事物 | 返回 category、entityId、schemaId、keys 和 name，没有 versionId |
+| 按 formation 查询 | 只返回形成方式匹配的 Observation |
 
 ## 测试实现 [#implementation]
 
@@ -29,6 +31,9 @@ HTTP 用例经真实 API 和独立的 PostgreSQL 数据库运行。Runtime 使�
 
 - 批量状态、顺序、重复和上限：`WriteApiTests.DeletionRemovesRecognitionAndBatchReadPreservesOrderDuplicatesAndStatus`。
 - 完整成员、版本链和时间：`WriteApiTests.ConcurrentRecognitionPreservesOneChainAndHttpBoundariesRemainExplicit`。
+
+- 事物表示：`UnderstandingApiTests.ThingNamesPreferPeopleThenLatestAndDeletionRetainsReferences`。
+- 描述、作者、formation 和未知事实时间：`UnderstandingApiTests.FormationDescriptionsAuthorsAndImmutableContentFollowTheContract`。
 
 ## 执行结果 [#results]
 

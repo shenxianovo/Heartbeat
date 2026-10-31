@@ -30,6 +30,7 @@ Claude Code 和 Codex 把用户的输入、工具结果和产品注入的上下�
 | Claude Code 的 `api-request`、`api-request-blob`，Codex 的 `token_count` | 不形成交互 |
 | Claude Code 的 `thinking` block 文字为空、带签名 | 形成推理，片段是空的 `text` 和 `opaque` |
 | Codex 出现不认识的事件类型 | 记下诊断，不形成交互 |
+| 同一会话的 session_meta 行字节发生变化 | 摘要参与识别依据，形成另一份上下文 Observation |
 
 ## 测试实现 [#implementation]
 
@@ -42,6 +43,8 @@ Claude Code 和 Codex 把用户的输入、工具结果和产品注入的上下�
 - 不认识的 Codex 事件作为诊断：`AssistantMappingTests.UnsupportedCodexEventsAreDiagnosedRatherThanSilentlyTreatedAsImported`。
 - Claude Code 的 `mode` 记录不形成交互：`AssistantMappingTests.ClaudeModeRowsAreNotInteractions`。
 - Codex 的工具调用形成调用和结果两次交互：见 [Assistant Interaction Relations](./assistant-interaction-relations.mdx)。
+
+- session_meta 字节变化：`AssistantMappingTests.ChangedSessionMetadataBytesCreateAnotherContextObservation`。
 
 未覆盖：`isCompactSummary` 的行和 `attachment` 行形成上下文；`api-request` 不形成交互。
 

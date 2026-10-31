@@ -36,7 +36,7 @@ internal sealed class AssistantTestFixture : IDisposable
         }
         _network = new(handler);
         _http = new HttpClient(_network) { BaseAddress = new("http://localhost/") };
-        Data = new DataClient(_http, _http, Ref.Recognize(AssistantRegistration.ObserverSchemaId, new(null, "test", Guid.NewGuid().ToString())));
+        Data = new DataClient(_http, _http, Ref.Recognize(CommonSchemas.Program, new(null, "test", Guid.NewGuid().ToString())));
         State = new(StateDirectory);
         AssistantRegistration.RegisterAsync(Data, "0.1.0").GetAwaiter().GetResult();
         Collector = CreateCollector();
@@ -60,13 +60,13 @@ internal sealed class AssistantTestFixture : IDisposable
     }
 
     internal IReadOnlyList<EntityVersion> Interactions() => Versions("assistant-interactions");
-    internal IReadOnlyList<EntityVersion> Sessions() => Versions("assistant-sessions");
-    internal IReadOnlyList<EntityVersion> Titles() => Versions("assistant-session-titles");
+    internal IReadOnlyList<JsonElement> Sessions() => Data.ListAsync("things?resourceName=assistant-sessions").GetAwaiter().GetResult();
+    internal IReadOnlyList<EntityVersion> Titles() => Versions("names");
     internal IReadOnlyList<EntityVersion> Subagents() => Versions("assistant-subagents");
     private EntityVersion[] Versions(string resource) => Data.ListAsync("entities?resourceName=" + resource).GetAwaiter().GetResult().Select(VersionJson.ReadSaved).ToArray();
-    internal IReadOnlyList<EntityVersion> Observations() => Data.ListAsync("entities?category=observation").GetAwaiter().GetResult().Select(VersionJson.ReadSaved).ToArray();
+    internal IReadOnlyList<EntityVersion> Observations() => Data.ListAsync("observations?resourceName=assistant-interactions").GetAwaiter().GetResult().Select(VersionJson.ReadSaved).ToArray();
     internal Task<byte[]> Bytes(string digest) => _http.GetByteArrayAsync("contents/" + digest);
-    internal static JsonElement Content(EntityVersion version) => ((BusinessContent)version.Content).Fields;
+    internal static JsonElement Content(EntityVersion version) => ((Observation)version.Content).Fields;
     internal static byte[] Json(object value) => JsonSerializer.SerializeToUtf8Bytes(value, JsonSerializerOptions.Web);
     internal static byte[] ClaudeMessage(string id, object content, string type = "user", string? actor = "human",
         string? parent = null, string? cwd = "/work", bool meta = false, string sessionId = "main") => Json(new

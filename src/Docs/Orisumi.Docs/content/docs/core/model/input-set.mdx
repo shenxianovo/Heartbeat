@@ -5,11 +5,11 @@ description: "一次处理实际用到的版本集合，可以被多份观测共
 
 InputSet 列出一次处理实际用到的已保存版本，中文叫输入集。例如推断 Observer 把一天的前台时段和键鼠事件放进一次模型调用，得到十份推断；这十份推断引用同一个 InputSet，从它能查到模型当时读到了哪些版本。
 
-列在 InputSet 里的版本是这次处理的输入，任何版本都可以是输入。哪些版本应当列入，见 [Evidence](../rules/evidence.mdx)。
+列在 InputSet 里的版本是这次处理的输入，Observation 和 Schema 版本都可以是输入。事物没有内容，不是输入。哪些版本应当列入，见 [Evidence](../rules/evidence.mdx)。
 
 <ModelRelations node="InputSet" />
 
-- **类别**：Core 类型，`category` 为 `input_set`
+- **类别**：`category` 为 `input_set`，结构由 Core 定义
 - **引用**：`members` 中的每个元素
 - **被引用**：Observation 的 `inputSetVersionId`
 - **决策**：[ADR · Observer 与输入集](../../adr/observers-and-evidence.mdx)
@@ -42,7 +42,7 @@ InputSet 列出一次处理实际用到的已保存版本，中文叫输入集�
 
 执行方：后端
 
-每个成员是一个确定的版本，可以是 Observation，也可以是处理读取的业务内容。
+每个成员是一个确定的版本，通常是 Observation。
 
 ### INPUTSET-2 非空 [#inputset-2]
 
@@ -60,7 +60,7 @@ InputSet 列出一次处理实际用到的已保存版本，中文叫输入集�
 
 定义
 
-`members` 是无序集合。需要保存顺序时，例如提示词中各项的排列，由业务内容表达。
+`members` 是无序集合。需要保存顺序时，例如提示词中各项的排列，由业务字段表达。
 
 ### INPUTSET-5 可共用 [#inputset-5]
 

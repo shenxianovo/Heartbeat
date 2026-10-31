@@ -37,21 +37,18 @@ internal sealed partial class PostgresEntityTransaction
 
     public async Task<WriteStreamState> ReadStreamAsync(EntityId observer, CancellationToken cancellationToken)
     {
-        await using var command = Command("SELECT last_sequence, schema_version_ids FROM write_streams WHERE observer_entity_id = $1", [observer.Value]);
+        await using var command = Command("SELECT last_sequence, schema_version_ids, description_version_id FROM write_streams WHERE observer_entity_id = $1", [observer.Value]);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken)) return new(0, []);
         using var schemas = JsonDocument.Parse(reader.GetString(1));
-        return new(reader.GetInt64(0), schemas.RootElement.EnumerateObject().ToDictionary(p => new EntityId(Guid.Parse(p.Name)), p => new VersionId(p.Value.GetGuid())));
+        return new(reader.GetInt64(0), schemas.RootElement.EnumerateObject().ToDictionary(p => new EntityId(Guid.Parse(p.Name)), p => new VersionId(p.Value.GetGuid())), reader.IsDBNull(2) ? null : new(reader.GetGuid(2)));
     }
 
     public Task SaveStreamAsync(EntityId observer, WriteStreamState stream, CancellationToken cancellationToken) =>
         ExecuteAsync("""
-            INSERT INTO write_streams(observer_entity_id, last_sequence, schema_version_ids) VALUES($1,$2,$3)
-            ON CONFLICT(observer_entity_id) DO UPDATE SET last_sequence = excluded.last_sequence, schema_version_ids = excluded.schema_version_ids
+            INSERT INTO write_streams(observer_entity_id, last_sequence, schema_version_ids, description_version_id) VALUES($1,$2,$3,$4)
+            ON CONFLICT(observer_entity_id) DO UPDATE SET last_sequence = excluded.last_sequence, schema_version_ids = excluded.schema_version_ids, description_version_id = excluded.description_version_id
             """, cancellationToken, observer.Value, stream.LastSequence,
-            Typed(NpgsqlDbType.Jsonb, JsonSerializer.Serialize(stream.SchemaVersionIds.ToDictionary(p => p.Key.Value, p => p.Value.Value))));
+            Typed(NpgsqlDbType.Jsonb, JsonSerializer.Serialize(stream.SchemaVersionIds.ToDictionary(p => p.Key.Value, p => p.Value.Value))), Typed(NpgsqlDbType.Uuid, stream.DescriptionVersionId?.Value));
 
-    public async Task<EntityVersion?> FindObservationAsync(EntityId observer, EntityId content, CancellationToken cancellationToken) =>
-        (await ReadAsync($"SELECT {Columns} FROM observations o JOIN versions v ON v.version_id = o.version_id WHERE o.observer_entity_id = $1 AND o.content_entity_id = $2",
-            cancellationToken, observer.Value, content.Value)).SingleOrDefault();
 }

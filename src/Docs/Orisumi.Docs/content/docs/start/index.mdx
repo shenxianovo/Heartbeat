@@ -9,14 +9,16 @@ Orisumi 保存一个人经历了什么。经历会过去，软件会更替，但
 
 <Callout type="warn">
 
-项目正在重写。Core 和 ADR 是当前的设计；其他分区和代码有一部分仍按旧模型编写，两者冲突时，以 Core 为准。重写期间只保留当前的设计，被取代的内容直接删除，见 [ADR · 设计层与变更流程](../adr/documentation-authority.mdx#rewrite)。
+项目正在重写。文档是当前的设计；Testing 和代码有一部分仍按旧模型编写，两者冲突时，以 Core 为准。重写期间只保留当前的设计，被取代的内容直接删除，见 [ADR · 设计层与变更流程](../adr/documentation-authority.mdx#rewrite)。
 
 </Callout>
 
 ## 核心想法 [#ideas]
 
-- 每一份观测说明四件事：谁负责、说了什么、依据什么、事实在什么时间成立。
-- 数据改动时形成新版本，旧版本保留。引用指向确定的版本，所以追溯时看到的是当时的内容。
+- 数据只有两种：事物只有身份，关于它的一切都是陈述。
+- 每一份观测说明五件事：谁负责、说了什么、怎么来的、依据什么、事实在什么时间成立。
+- 来源给不出的关系由模型读证据形成，用户只在发现错误时否定，新旧判断都保留。
+- 陈述改动时形成新版本，旧版本保留。依据固定到版本，所以追溯时看到的是当时的内容。
 - 每种数据的字段和含义由 EntitySchema 声明，和数据保存在一起，换了软件也能读懂。
 - 后端只检查结构。一件事实怎样判断，由各来源的业务规则决定。
 
@@ -56,7 +58,7 @@ flowchart LR
 
 1. [Walkthrough](./walkthrough.mdx)：用一天的数据走一遍主要概念。后面各分区的例子都取自这一天。
 2. [Core · Overview](../core/index.mdx)：Core 的全貌，以及各类型之间的关系。
-3. Core 的类型页：[Entity](../core/model/entity.mdx)、[Version](../core/model/version.mdx)、[EntitySchema](../core/model/schema.mdx)、[Observation](../core/model/observation.mdx)、[InputSet](../core/model/input-set.mdx)、[Observer](../core/model/observer.mdx)。
+3. Core 的类型页：[Entity](../core/model/entity.mdx)、[Thing](../core/model/thing.mdx)、[Version](../core/model/version.mdx)、[EntitySchema](../core/model/schema.mdx)、[Observation](../core/model/observation.mdx)、[InputSet](../core/model/input-set.mdx)、[Observer](../core/model/observer.mdx)。
 
 遇到不熟的词，查 [Glossary](../core/glossary.mdx)。[Graph](./graph.mdx) 展示 Core、ADR、Observers 和 Hosting 页面之间的引用关系，可以沿节点打开相关文档。
 
@@ -65,7 +67,7 @@ flowchart LR
 <Cards className="md:grid-cols-2">
 <Card title="接入新的来源">
 
-[Observer](../core/model/observer.mdx)、[Identity](../core/rules/identity.mdx)、[Time](../core/rules/time.mdx)、[History](../core/rules/history.mdx)、[Observers · Integration Guide](../observers/integration.mdx)、[API · Writing](../api/writing.mdx)、[API · SDK](../api/sdk.mdx)
+[Observer](../core/model/observer.mdx)、[Thing](../core/model/thing.mdx)、[Identity](../core/rules/identity.mdx)、[Time](../core/rules/time.mdx)、[History](../core/rules/history.mdx)、[Understanding](../core/rules/understanding.mdx)、[Observers · Integration Guide](../observers/integration.mdx)、[API · Writing](../api/writing.mdx)、[API · SDK](../api/sdk.mdx)
 
 </Card>
 <Card title="编写设备端客户端">
@@ -75,7 +77,7 @@ flowchart LR
 </Card>
 <Card title="修改后端">
 
-[Version](../core/model/version.mdx)、[Entity](../core/model/entity.mdx)、[EntitySchema](../core/model/schema.mdx)、[API](../api/index.mdx)、[Storage](../storage/index.mdx)
+[Observation](../core/model/observation.mdx)、[Thing](../core/model/thing.mdx)、[Version](../core/model/version.mdx)、[EntitySchema](../core/model/schema.mdx)、[API](../api/index.mdx)、[Storage](../storage/index.mdx)
 
 </Card>
 <Card title="编写文档">

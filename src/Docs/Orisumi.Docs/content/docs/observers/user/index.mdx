@@ -3,9 +3,9 @@ title: "User Statements"
 description: "用户本人作为 Observer 的陈述"
 ---
 
-用户本人是拥有这些数据的人。用户确认、否定或陈述一件事时，这份 Observation 的 Observer 是用户本人，见 [OBSERVER-6](../../core/model/observer.mdx#observer-6)。例如用户否定一条推断时，这份 Observation 引用用户本人。
+用户本人是拥有这些数据的人。用户确认、否定或陈述一件事时，这份 Observation 的 Observer 是用户本人，形成方式是 `stated`，见 [OBSERVER-6](../../core/model/observer.mdx#observer-6)。例如用户否定一条推断时，写一份 [Review](../../core/rules/understanding.mdx#review-type)。
 
-用户的陈述和修改这一阶段不做，Web 控制台只读取和删除。
+平时用户不审核，发现错误时才否定，见 [UNDERSTANDING-5](../../core/rules/understanding.mdx#understanding-5)。
 
 <ObserverStructure node="USER" />
 
@@ -13,7 +13,8 @@ description: "用户本人作为 Observer 的陈述"
 
 | 业务类型 | 用途 | 资源名 |
 | --- | --- | --- |
-| [User](./user.mdx) | Observer：用户本人 | `users` |
+| [Person](./user.mdx) | 事物：一个人，用户本人是其中之一 | `people` |
+| [Review](../../core/rules/understanding.mdx#review-type) | 用户的确认和否定 | `reviews` |
 
 ## 用户本人的身份 [#identity]
 
@@ -21,5 +22,4 @@ description: "用户本人作为 Observer 的陈述"
 
 ## 待定 [#open]
 
-- 用户的陈述和修改怎样写入，特别是它们和 Observer 写入同一个实体时怎样不互相覆盖。
 - 用户本人和登录身份的关系，以及多个用户时的处理。

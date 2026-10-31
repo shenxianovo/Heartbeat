@@ -1,39 +1,28 @@
 ---
-title: "User"
-description: "拥有数据的用户本人"
+title: "Person"
+description: "一个人：用户本人，以及模型认出的其他人"
 ---
 
-User 表示用户本人。用户作为 Observer 形成的每份 Observation，都通过 `observerVersionId` 引用它的一个版本。
+人是一个[事物](../../core/model/thing.mdx)，这种类型由[后端内置](../../core/rules/understanding.mdx#thing-types)。用户本人是其中一个，用户作为 Observer 形成的每份 Observation，都通过 `observerId` 引用它。其他人由模型从证据中认出，例如聊天对象、VRChat 的玩家或录音里的说话人。
 
 <ObserverStructure node="USER" />
 
 ## 粒度 [#granularity]
 
-一个实体对应一个人。一个部署只有一个用户，见 [User Statements · 用户本人的身份](./index.mdx#identity)。
+一个事物对应模型或用户认为的一个人。一个部署只有一个用户本人，见 [User Statements · 用户本人的身份](./index.mdx#identity)。两个人其实是同一个时，见 [THING-5](../../core/model/thing.mdx#thing-5)。
 
 ## 身份 [#identity]
 
-用户填写或修改称呼时，形成同一个实体的新版本。
+称呼是一份 [Name](../../core/rules/understanding.mdx#name)，用户填写或修改称呼时写入。账号和人是不同的事物，它们的关系由模型或用户写成[关系](../../core/rules/understanding.mdx#relation)，例如“QQ 号 123 是本人”。
+
+模型认出的人用它自己范围内的依据新建，见 [THING-4](../../core/model/thing.mdx#thing-4)。
 
 ## EntitySchema [#schema]
 
 | 项目 | 值 |
 | --- | --- |
 | SchemaId | `019e1bbb-ec00-7000-8000-000000000006` |
-| 显示名称 | 用户本人 |
-| 说明 | 表示拥有这些数据的用户本人；用户确认、否定或陈述时，作为 Observer 对陈述负责。 |
-| 资源名 | `users` |
-
-| 字段 | 类型 | 必填 | 可空 | description |
-| --- | --- | --- | --- | --- |
-| `name` | `string` | 是 | 是 | 用户的称呼，没有填写时为 `null` |
-
-## 示例 [#example]
-
-用户本人的内容：
-
-```json
-{
-  "name": null
-}
-```
+| 显示名称 | 人 |
+| 说明 | 表示一个人。用户本人确认、否定或陈述时，作为 Observer 对陈述负责。 |
+| 资源名 | `people` |
+| `kind` | `thing` |

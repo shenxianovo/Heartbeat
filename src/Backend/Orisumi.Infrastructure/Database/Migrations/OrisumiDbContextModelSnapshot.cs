@@ -87,7 +87,7 @@ namespace Orisumi.Infrastructure.Database.Migrations
                         .HasColumnType("text")
                         .HasColumnName("category");
 
-                    b.Property<Guid>("CurrentVersionId")
+                    b.Property<Guid?>("CurrentVersionId")
                         .HasColumnType("uuid")
                         .HasColumnName("current_version_id");
 
@@ -100,7 +100,8 @@ namespace Orisumi.Infrastructure.Database.Migrations
 
                     b.HasIndex("CurrentVersionId")
                         .IsUnique()
-                        .HasDatabaseName("ux_entities_current_version_id");
+                        .HasDatabaseName("ux_entities_current_version_id")
+                        .HasFilter("current_version_id IS NOT NULL");
 
                     b.HasIndex("Category", "EntityId")
                         .HasDatabaseName("ix_entities_category_entity_id");
@@ -224,21 +225,22 @@ namespace Orisumi.Infrastructure.Database.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("entity_id");
 
-                    b.Property<Guid>("ContentEntityId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("content_entity_id");
-
-                    b.Property<Guid?>("ContentSchemaId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("content_schema_id");
-
                     b.Property<NpgsqlRange<DateTimeOffset>?>("FactRange")
                         .HasColumnType("tstzrange")
                         .HasColumnName("fact_range");
 
+                    b.Property<string>("Formation")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("formation");
+
                     b.Property<Guid>("ObserverEntityId")
                         .HasColumnType("uuid")
                         .HasColumnName("observer_entity_id");
+
+                    b.Property<Guid>("SchemaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("schema_id");
 
                     b.Property<Guid>("VersionId")
                         .HasColumnType("uuid")
@@ -247,13 +249,13 @@ namespace Orisumi.Infrastructure.Database.Migrations
                     b.HasKey("EntityId")
                         .HasName("pk_observations");
 
-                    b.HasIndex("ContentEntityId")
-                        .HasDatabaseName("ix_observations_content_entity_id");
-
                     b.HasIndex("FactRange")
                         .HasDatabaseName("ix_observations_fact_range");
 
                     NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("FactRange"), "gist");
+
+                    b.HasIndex("Formation")
+                        .HasDatabaseName("ix_observations_formation");
 
                     b.HasIndex("ObserverEntityId")
                         .HasDatabaseName("ix_observations_observer_entity_id");
@@ -262,13 +264,10 @@ namespace Orisumi.Infrastructure.Database.Migrations
                         .IsUnique()
                         .HasDatabaseName("ux_observations_version_id");
 
-                    b.HasIndex("ContentSchemaId", "FactRange")
-                        .HasDatabaseName("ix_observations_content_schema_id_fact_range");
+                    b.HasIndex("SchemaId", "FactRange")
+                        .HasDatabaseName("ix_observations_schema_id_fact_range");
 
-                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("ContentSchemaId", "FactRange"), "gist");
-
-                    b.HasIndex("ObserverEntityId", "ContentEntityId")
-                        .HasDatabaseName("ix_observations_observer_entity_id_content_entity_id");
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("SchemaId", "FactRange"), "gist");
 
                     b.ToTable("observations", (string)null);
                 });
@@ -309,6 +308,39 @@ namespace Orisumi.Infrastructure.Database.Migrations
                     b.ToTable("recognition_keys", (string)null);
                 });
 
+            modelBuilder.Entity("Orisumi.Infrastructure.Database.StoredReview", b =>
+                {
+                    b.Property<Guid>("EntityId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("entity_id");
+
+                    b.Property<bool>("ByPerson")
+                        .HasColumnType("boolean")
+                        .HasColumnName("by_person");
+
+                    b.Property<Guid>("TargetEntityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("target_entity_id");
+
+                    b.Property<string>("Verdict")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("verdict");
+
+                    b.Property<bool>("Whole")
+                        .HasColumnType("boolean")
+                        .HasColumnName("whole");
+
+                    b.HasKey("EntityId")
+                        .HasName("pk_reviews");
+
+                    b.HasIndex("TargetEntityId")
+                        .HasDatabaseName("ix_reviews_target_entity_id");
+
+                    b.ToTable("reviews", (string)null);
+                });
+
             modelBuilder.Entity("Orisumi.Infrastructure.Database.StoredSchema", b =>
                 {
                     b.Property<Guid>("EntityId")
@@ -330,6 +362,27 @@ namespace Orisumi.Infrastructure.Database.Migrations
                     b.ToTable("schemas", (string)null);
                 });
 
+            modelBuilder.Entity("Orisumi.Infrastructure.Database.StoredThing", b =>
+                {
+                    b.Property<Guid>("EntityId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("entity_id");
+
+                    b.Property<bool>("Deleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("deleted");
+
+                    b.Property<Guid>("SchemaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("schema_id");
+
+                    b.HasKey("EntityId")
+                        .HasName("pk_things");
+
+                    b.ToTable("things", (string)null);
+                });
+
             modelBuilder.Entity("Orisumi.Infrastructure.Database.StoredVersion", b =>
                 {
                     b.Property<Guid>("VersionId")
@@ -347,9 +400,29 @@ namespace Orisumi.Infrastructure.Database.Migrations
                         .HasColumnType("jsonb")
                         .HasColumnName("content");
 
+                    b.Property<DateTimeOffset?>("EndAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("end_at");
+
                     b.Property<Guid>("EntityId")
                         .HasColumnType("uuid")
                         .HasColumnName("entity_id");
+
+                    b.Property<string>("Formation")
+                        .HasColumnType("text")
+                        .HasColumnName("formation");
+
+                    b.Property<Guid?>("InputSetVersionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("input_set_version_id");
+
+                    b.Property<Guid?>("ObserverId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("observer_id");
+
+                    b.Property<Guid?>("ObserverVersionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("observer_version_id");
 
                     b.Property<long>("Ordinal")
                         .HasColumnType("bigint")
@@ -366,6 +439,14 @@ namespace Orisumi.Infrastructure.Database.Migrations
                     b.Property<Guid?>("SchemaVersionId")
                         .HasColumnType("uuid")
                         .HasColumnName("schema_version_id");
+
+                    b.Property<DateTimeOffset?>("StartAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("start_at");
+
+                    b.Property<string>("TimeZone")
+                        .HasColumnType("text")
+                        .HasColumnName("time_zone");
 
                     b.HasKey("VersionId")
                         .HasName("pk_versions");
@@ -387,7 +468,10 @@ namespace Orisumi.Infrastructure.Database.Migrations
                         .IsUnique()
                         .HasDatabaseName("ux_versions_entity_id_ordinal");
 
-                    b.ToTable("versions", (string)null);
+                    b.ToTable("versions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_versions_observation", "(category = 'observation' AND schema_version_id IS NOT NULL AND observer_id IS NOT NULL AND formation IS NOT NULL) OR (category <> 'observation' AND schema_version_id IS NULL AND observer_id IS NULL AND formation IS NULL)");
+                        });
                 });
 
             modelBuilder.Entity("Orisumi.Infrastructure.Database.StoredVersionContent", b =>
@@ -435,6 +519,10 @@ namespace Orisumi.Infrastructure.Database.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("observer_entity_id");
 
+                    b.Property<Guid?>("DescriptionVersionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("description_version_id");
+
                     b.Property<long>("LastSequence")
                         .HasColumnType("bigint")
                         .HasColumnName("last_sequence");
@@ -456,7 +544,6 @@ namespace Orisumi.Infrastructure.Database.Migrations
                         .WithMany()
                         .HasForeignKey("CurrentVersionId")
                         .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired()
                         .HasConstraintName("fk_entities_versions_current_version_id");
                 });
 

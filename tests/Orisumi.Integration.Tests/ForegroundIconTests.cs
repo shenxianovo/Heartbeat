@@ -32,11 +32,11 @@ public sealed class ForegroundIconTests
         await Assert.That(fixture.Diagnostics.Count).IsEqualTo(0);
         await Assert.That(reads).IsEqualTo(3);
         var periods = await fixture.Periods();
-        await Assert.That(periods.Select(v => ((BusinessContent)v.Content).Fields.GetProperty("icon").GetProperty("digest").GetString()).SequenceEqual([firstIcon.Digest, secondIcon.Digest, secondIcon.Digest])).IsTrue();
+        await Assert.That(periods.Select(v => ((Observation)v.Content).Fields.GetProperty("icon").GetProperty("digest").GetString()).SequenceEqual([firstIcon.Digest, secondIcon.Digest, secondIcon.Digest])).IsTrue();
         foreach (var (file, bytes) in new[] { (firstIcon, new byte[] { 1, 2 }), (secondIcon, new byte[] { 3, 4 }) })
             await Assert.That((await http.GetByteArrayAsync("contents/" + file.Digest)).SequenceEqual(bytes)).IsTrue();
         await Assert.That(await BinaryContentTests.Count(db.ConnectionString, "contents")).IsEqualTo(2);
-        await Assert.That((await fixture.Data.ListAsync("entities?resourceName=local-applications")).Count).IsEqualTo(1);
+        await Assert.That((await fixture.Data.ListAsync("things?resourceName=local-applications")).Count).IsEqualTo(1);
     }
 
     [Test, Property("caseId", "foreground-icons")]
@@ -51,7 +51,7 @@ public sealed class ForegroundIconTests
             var reading = ForegroundTimelineTests.Reading(0) with { ReadIcon = () => fail ? throw new IOException("Icon unavailable") : null };
             fixture.Store.Checkpoint(ForegroundCapture.Create(fixture.Applications.Resolve(reading), reading), null); fixture.Store.FinishActive();
         }
-        await Assert.That((await fixture.Periods()).All(v => ((BusinessContent)v.Content).Fields.GetProperty("icon").ValueKind == JsonValueKind.Null)).IsTrue();
+        await Assert.That((await fixture.Periods()).All(v => ((Observation)v.Content).Fields.GetProperty("icon").ValueKind == JsonValueKind.Null)).IsTrue();
         await Assert.That((await fixture.Observations()).Length).IsEqualTo(2);
         await Assert.That(await BinaryContentTests.Count(db.ConnectionString, "contents")).IsEqualTo(0);
     }

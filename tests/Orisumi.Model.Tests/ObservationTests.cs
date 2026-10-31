@@ -5,34 +5,22 @@ namespace Orisumi.Model.Tests;
 
 public sealed class ObservationTests
 {
-    // OBSERVATION-1, OBSERVATION-3, OBSERVATION-10, VERSION-12, HISTORY-1, EVIDENCE-3
     [Test]
-    public async Task BusinessEntitiesCanShareContentAndOnlyTheSameObserverEntityCanUpdate()
+    public async Task ObservationHasOneAuthorAndOptionalDescriptionAndInputs()
     {
         using var f = new ModelFixture();
         var schema = await f.Schema();
-        var observer = await f.Business(schema);
-        var content = await f.Business(schema);
-        var statement = new Observation(observer.VersionId, content.VersionId, null, null, null, null);
-        var first = await f.Save(New(statement));
-        await f.Save(New(statement));
-        var other = await f.Business(schema);
-        await f.Save(New(statement with { ObserverVersionId = other.VersionId }));
-        await Reject(() => f.Save(Next(first, statement with { ObserverVersionId = other.VersionId })), "OBSERVATION-10");
-        await Reject(() => f.Save(New(statement with { ObserverVersionId = schema.VersionId })), "OBSERVATION-1");
-        await Reject(() => f.Save(New(statement with { ContentVersionId = first.VersionId })), "OBSERVATION-1");
-        await Reject(() => f.Save(New(statement with { InputSetVersionId = content.VersionId })), "OBSERVATION-1");
-        await Reject(() => f.Save(New(statement with { InputSetVersionId = new VersionId(Guid.NewGuid()) })), "VERSION-12");
-        var observer2 = await f.Save(Next(observer));
-        var inputs = await f.Save(New(new InputSet([content.VersionId])));
-        var updated = await f.Save(Next(first, statement with
-        {
-            ObserverVersionId = observer2.VersionId, ContentVersionId = other.VersionId,
-            InputSetVersionId = inputs.VersionId, StartAt = f.Time.Now, EndAt = f.Time.Now.AddHours(1), TimeZone = "Asia/Shanghai",
-        }));
-        var corrected = await f.Save(Next(updated, statement with { EndAt = f.Time.Now.AddDays(-1), TimeZone = "Etc/UTC" }));
-        await Assert.That(((Observation)corrected.Content).StartAt).IsNull();
-        await Assert.That(((Observation)first.Content).InputSetVersionId).IsNull();
+        var description = await f.Observe(schema);
+        var first = await f.Save(New(f.Content(Json("{}")) with { ObserverVersionId = description.VersionId }, schema.VersionId));
+        var other = EntityId.New();
+        await f.Store.ExecuteAsync(async (tx, token) => { await tx.CreateThingAsync(other, Orisumi.Application.Entities.BuiltInSchemas.Program, token); return true; });
+        await Reject(() => f.Save(Next(first, ((Observation)first.Content) with { ObserverId = other })), "OBSERVATION-1");
+        await Reject(() => f.Save(Next(first, ((Observation)first.Content) with { ObserverId = other, ObserverVersionId = null })), "OBSERVATION-10");
+        await Reject(() => f.Save(Next(first, ((Observation)first.Content) with { InputSetVersionId = schema.VersionId })), "OBSERVATION-1");
+        await Reject(() => f.Save(Next(first, ((Observation)first.Content) with { Formation = "unknown" })), "OBSERVATION-11");
+        var input = await f.Save(New(new InputSet([description.VersionId])));
+        var next = await f.Save(Next(first, ((Observation)first.Content) with { InputSetVersionId = input.VersionId }));
+        await Assert.That(((Observation)next.Content).InputSetVersionId).IsEqualTo(input.VersionId);
     }
 
     // OBSERVATION-5, OBSERVATION-6, OBSERVATION-7, OBSERVATION-8, OBSERVATION-9
@@ -47,9 +35,7 @@ public sealed class ObservationTests
     {
         using var f = new ModelFixture();
         var schema = await f.Schema();
-        var business = await f.Business(schema);
-        var draft = New(new Observation(business.VersionId, business.VersionId, null,
-            start is { } s ? f.Time.Now.AddHours(s) : null, end is { } e ? f.Time.Now.AddHours(e) : null, null));
+        var draft = New(f.Content(Json("{}")) with { StartAt = start is { } s ? f.Time.Now.AddHours(s) : null, EndAt = end is { } e ? f.Time.Now.AddHours(e) : null }, schema.VersionId);
         if (valid)
         {
             var saved = await f.Save(draft);
@@ -72,8 +58,7 @@ public sealed class ObservationTests
     {
         using var f = new ModelFixture();
         var schema = await f.Schema();
-        var business = await f.Business(schema);
-        var draft = New(new Observation(business.VersionId, business.VersionId, null, null, null, zone));
+        var draft = New(f.Content(Json("{}")) with { TimeZone = zone }, schema.VersionId);
         if (valid) await f.Save(draft);
         else await Reject(() => f.Save(draft), "OBSERVATION-9");
     }
@@ -84,19 +69,19 @@ public sealed class ObservationTests
     {
         using var f = new ModelFixture();
         var schema = await f.Schema();
-        var business = await f.Business(schema);
-        var observation = await f.Save(New(new Observation(business.VersionId, business.VersionId, null, null, null, null)));
+        var reading = await f.Observe(schema);
+        var observation = await f.Save(New(f.Content(Json("{}")), schema.VersionId));
         var input = await f.Save(New(new InputSet([schema.VersionId])));
-        var members = new[] { schema.VersionId, business.VersionId, observation.VersionId, input.VersionId };
+        var members = new[] { schema.VersionId, reading.VersionId, observation.VersionId, input.VersionId };
         var all = await f.Save(New(new InputSet(members)));
         members[0] = VersionId.New();
         await Assert.That(((InputSet)all.Content).Members[0]).IsEqualTo(schema.VersionId);
         await Reject(() => f.Save(New(new InputSet([]))), "INPUTSET-2");
-        await Reject(() => f.Save(New(new InputSet([business.VersionId, business.VersionId]))), "INPUTSET-3");
+        await Reject(() => f.Save(New(new InputSet([reading.VersionId, reading.VersionId]))), "INPUTSET-3");
         await Reject(() => f.Save(New(new InputSet([new VersionId(Guid.NewGuid())]))), "VERSION-12");
-        var result = await f.Save(New(new Observation(business.VersionId, business.VersionId, all.VersionId, null, null, null)));
-        await f.Save(Next(business));
+        var result = await f.Save(New(f.Content(Json("{}")) with { InputSetVersionId = all.VersionId }, schema.VersionId));
+        await f.Save(Next(reading));
         await Assert.That(((Observation)(await f.Service.ReadVersionAsync(result.VersionId))!.Content).InputSetVersionId).IsEqualTo(all.VersionId);
-        await Assert.That(((InputSet)(await f.Service.ReadVersionAsync(all.VersionId))!.Content).Members.Contains(business.VersionId)).IsTrue();
+        await Assert.That(((InputSet)(await f.Service.ReadVersionAsync(all.VersionId))!.Content).Members.Contains(reading.VersionId)).IsTrue();
     }
 }

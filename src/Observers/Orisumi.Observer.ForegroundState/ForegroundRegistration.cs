@@ -11,12 +11,12 @@ internal static class ForegroundRegistration
         "Orisumi.Observers.ForegroundState.schemas.json");
     internal static async Task RegisterAsync(DataClient data, string? programVersion = null, CancellationToken token = default)
     {
-        await data.UseAsync([.. Definitions, DeviceContext.Definition], ObserverSchemaId, new
+        await data.UseAsync([.. Definitions, .. DeviceContext.Definitions], ObserverSchemaId, new
         {
             platform = OperatingSystem.IsMacOS() ? "macos" : OperatingSystem.IsWindows() ? "windows" : "linux",
             hostName = Environment.MachineName,
             programVersion = programVersion ?? data.PackageVersion ?? typeof(ForegroundRegistration).Assembly.GetName().Version!.ToString(),
         }, token);
-        if (data.Device is { } device) await data.WriteAsync(device.Write, token);
+        if (data.Device is { } device) await data.WriteAllAsync(device.Writes(data.Observer.EntityId!.Value), token);
     }
 }

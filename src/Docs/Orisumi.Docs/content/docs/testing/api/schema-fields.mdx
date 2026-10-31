@@ -22,6 +22,10 @@ export const caseId = 'api-schema-fields';
 | 第二个 EntitySchema 的说明是空字符串或全为空白，分别检查各层位置 | 同上；字段的 nullable 为 true 也不允许省略说明 |
 | 第二个 EntitySchema 的字段说明是 null、数字、布尔值、对象或数组 | 请求结构错误，`400`，不带 index；两个版本都未保存 |
 | 只修改字段说明的措辞，形成同一 EntitySchema 的新版本 | 新旧版本分别读回自己的说明；旧业务版本仍引用原来的 Schema 版本，见 [SCHEMA-15](../../core/model/schema.mdx#schema-15)、[SCHEMA-2](../../core/model/schema.mdx#schema-2) |
+| thing 类型含字段、immutable 为 true，或既有 Schema 改 kind | 按 SCHEMA-17 拒绝 |
+| reference 缺少 target；顶层字段命名为 id | 分别按 SCHEMA-9、SCHEMA-7 拒绝 |
+| 不声明内置类型；一个 Observer 声明内置类型的其他版本 | 默认版本可直接写；这个 Observer 的声明优先，其他 Observer 仍使用内置版本 |
+| immutable 为 true，同一描述版本下修改内容 | 按 SCHEMA-18 拒绝；更新描述后可形成纠正版本 |
 
 ## 测试实现 [#implementation]
 
@@ -29,6 +33,12 @@ export const caseId = 'api-schema-fields';
 
 - `DescriptionsRoundTripAndChangesPreserveHistory`：合法声明各层的 description 原样读回；只改措辞形成新版本后，旧版本读回原来的说明，实体的当前版本读到新说明。
 - `DescriptionErrorsPreserveStructuralAndPerVersionBoundaries`：六组参数，每组改一个位置。字段缺少说明、对象成员的说明为空字符串、数组元素的说明全为空白时，返回 `SCHEMA-10`，整次请求回滚；这个对象成员的 nullable 为 true。字段说明为数字、对象成员说明为 `null`、数组元素说明为对象时，是请求结构错误，不带 `index`，第一个版本未保存。
+
+- `KindAndReferenceDeclarationsRespectSchemaRules`：五组参数分别检查事物字段、immutable、kind 变化、target 缺失和顶层 id。
+- `BuiltInTypesNeedNoDeclarationAndAnObserversOwnDeclarationTakesPrecedence`：内置类型默认可用及声明优先级。
+- `UnderstandingApiTests.FormationDescriptionsAuthorsAndImmutableContentFollowTheContract`：SCHEMA-18 及描述变化后的纠正。
+
+字段后缀由写入方负责，目标为事物用 Id/Ids，目标为版本用 VersionId/VersionIds；Observer 声明与读回字段由相应 Observer Case 检查。
 
 未覆盖：
 

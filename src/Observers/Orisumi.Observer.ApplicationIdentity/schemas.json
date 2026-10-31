@@ -18,23 +18,20 @@
           "nullable": false,
           "required": true
         }
-      }
+      },
+      "kind": "observation",
+      "immutable": false
     }
   },
   {
     "schemaId": "019e1bbb-ec00-7000-8000-000000000004",
     "content": {
       "displayName": "应用产品",
-      "description": "表示用户认知中的一款软件，内容只有名称，写入后不再变化。属于它的跨设备线索是单独的线索归属。",
+      "description": "表示用户认知中的一款软件。名字是 Name，属于它的线索是线索归属。",
       "resourceName": "application-products",
-      "fields": {
-        "name": {
-          "type": "string",
-          "description": "产品的名称",
-          "nullable": false,
-          "required": true
-        }
-      }
+      "fields": {},
+      "kind": "thing",
+      "immutable": false
     }
   },
   {
@@ -44,33 +41,23 @@
       "description": "表示一条跨设备线索属于一个应用产品。一条线索一个实体；本机应用的跨设备线索有线索归属时，它属于线索归属指向的产品。",
       "resourceName": "application-memberships",
       "fields": {
-        "identifier": {
-          "type": "object",
-          "description": "一项跨设备线索，由 scheme 和 value 共同解释，与本机应用的标识线索相同",
-          "nullable": false,
+        "identifierId": {
+          "type": "reference",
+          "description": "一条应用线索",
           "required": true,
-          "fields": {
-            "scheme": {
-              "type": "string",
-              "description": "线索的种类，例如 macos.bundle-id",
-              "nullable": false,
-              "required": true
-            },
-            "value": {
-              "type": "string",
-              "description": "线索的原始值",
-              "nullable": false,
-              "required": true
-            }
-          }
+          "nullable": false,
+          "target": "thing"
         },
-        "productVersionId": {
+        "productId": {
           "type": "reference",
           "description": "线索属于的应用产品",
+          "required": true,
           "nullable": false,
-          "required": true
+          "target": "thing"
         }
-      }
+      },
+      "kind": "observation",
+      "immutable": true
     }
   }
 ]

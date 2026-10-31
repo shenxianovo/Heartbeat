@@ -23,13 +23,17 @@ HTTP 用例经真实 API 和独立的 PostgreSQL 数据库运行。Runtime 使�
 | 不可空引用无法解析 | 这次写入被拒绝，规则 ENTITY-6 |
 | 可空引用无法解析，包括目标已删除 | 保存为 null |
 | 后一次写入引用本请求前面形成的实体 | 引用成功 |
-| 目标更新后重复写入引用它的内容 | 内容相同，沿用原版本 |
+| 目标 Observation 更新后再按实体或依据引用 | 引用保存为新的 VersionId，形成新版本 |
+| 事物引用分别使用 EntityId、已有依据和新依据 | 前两种认出同一事物，新依据创建事物；相同的事物引用重复写入不变 |
+| 解析引用创建事物后，字段形状校验失败 | 新事物及其依据随这次写入回滚 |
 
 ## 测试实现 [#implementation]
 
 方法位于 `tests/Orisumi.Integration.Tests/`：
 
-- 三种写法、嵌套、普通字符串、顺序、空值和删除：`WriteApiTests.ReferencesResolveInOrderAndCompareTargetEntitiesAcrossVersions`。
+- 三种写法、嵌套、普通字符串、顺序、空值和删除：`WriteApiTests.ReferencesResolveInOrderAndCompareSavedVersionIds`。
+
+- 事物三种写法、重复不变和逐次回滚：`UnderstandingApiTests.NewThingsRollbackWithRejectedWritesAndExistingThingReferencesStayUnchanged`。
 
 ## 执行结果 [#results]
 

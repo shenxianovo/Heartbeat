@@ -17,10 +17,15 @@ HTTP 用例经真实 API 和独立的 PostgreSQL 数据库运行。Runtime 使�
 
 | 操作 | 预期结果 |
 | --- | --- |
-| 不带 `key`，两次写入相同的温度 | 形成两个实体和两份 Observation |
+| 不带 `key`，两次写入相同的温度 | 形成两份 Observation，各有一个实体和一个版本 |
 | 同一 `key` 连续写相同内容、不同内容，再回到首版内容 | 相同内容沿用当前版本；两次变化各形成下一版 |
-| 引用目标只有版本变化，实体不变 | 引用按实体比较，业务内容不形成新版本 |
-| 带 `time` 写入；再重复；再改时间 | 形成 Observation；重复时沿用；时间变化时形成下一版 |
+| 引用的 Observation 形成新版本，再按实体引用 | 保存的新 VersionId 不同，形成新版本 |
+| 带 `time` 写入；再重复；再改时间 | 重复时沿用当前 Observation 版本；时间变化时形成下一版 |
+| 省略 `time` | Observation 仍保存，事实时间边界未知 |
+| 缺少 formation 或使用未知值 | 缺少时请求返回 400；未知值按 OBSERVATION-11 拒绝这次写入 |
+| 写 description 后写 Observation | 描述是 observerVersionId 为 null 的 Observation，之后的版本引用它 |
+| 另一个作者写同一依据 | 业务字段相同沿用原版本，不受 Schema 版本和时间差异影响；不同按 OBSERVATION-10 拒绝 |
+| immutable 为 true，修改内容或时间，再更新描述后改内容 | 同一描述版本下改内容按 SCHEMA-18 拒绝；改时间允许；描述变化后可形成纠正版本 |
 | 一次写入违反规则，后面的写入有效 | 只回滚失败的写入，其内容、识别依据和 InputSet 都不留下 |
 | 已有实体，写入字段形状不符合 Schema 的内容 | 这次写入按 SCHEMA-2 被拒绝，同一请求的其他写入保存 |
 | 识别依据超过 2048 字节 | 这次写入被拒绝，同一请求的其他写入保存 |
@@ -32,6 +37,8 @@ HTTP 用例经真实 API 和独立的 PostgreSQL 数据库运行。Runtime 使�
 
 方法位于 `tests/Orisumi.Integration.Tests/`：
 
+- formation、描述、作者和 immutable：`UnderstandingApiTests.FormationDescriptionsAuthorsAndImmutableContentFollowTheContract`。
+- 版本引用变化：`WriteApiTests.ReferencesResolveInOrderAndCompareSavedVersionIds`。
 - 识别、版本、时间和序号：`WriteApiTests.RecognitionVersionsObservationsAndSequenceFollowTheWriteContract`。
 - 形状错误和过长的识别依据：`WriteApiTests.WrongShapeOnAnExistingEntityAndLongKeysRejectOnlyThatWrite`。
 - 逐次回滚：`WriteApiTests.RejectionRollsBackOnlyItsWriteIncludingKeysInputsAndContent`。

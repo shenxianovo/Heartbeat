@@ -39,19 +39,20 @@ ADR 用英文 slug 命名，例如 `entity-model.mdx`，没有编号。引用时
 | 分组 | ADR | 决定 |
 | --- | --- | --- |
 | Model | [定位与边界](./positioning.mdx) | Orisumi 保存一个人经历了什么，记录以用户为主体，独立于采集和使用它的软件 |
-| Model | [实体模型](./entity-model.mdx) | 实体表达身份，不可变的版本保存完整内容，引用固定到版本，只引用已保存的版本 |
+| Model | [实体模型](./entity-model.mdx) | 事物只有身份，一切内容都是有作者的 Observation；陈述用不可变的版本保存，引用事物写 EntityId，引用陈述固定到版本 |
 | Model | [Observer 与输入集](./observers-and-evidence.mdx) | Observer 是对观测负责的实体，按负责的陈述划分；一次处理实际使用的版本由可共享的 InputSet 列出 |
 | Model | [身份、时间与更新](./identity-and-updates.mdx) | 业务规则决定身份和粒度，每个版本有自己的保存时间，更新形成新版本，独立的陈述形成新观测 |
+| Model | [模型形成的理解](./understanding.mdx) | 来源给不出的关系由模型读证据形成，用户只在发现错误时否定；判断互不覆盖，当前理解是没有被否定也没有被取代的陈述 |
 | Model | [二进制内容](./binary-content.mdx) | 业务字段可以是二进制内容：版本保存摘要、媒体类型和大小，字节按摘要单独保存、先于版本上传，随使用它的版本保留和移除 |
 | Model | [删除](./deletion.mdx) | 删除以实体为单位，只移除选中实体的全部版本，删除后不可复活 |
-| Hosting | [单向写入与托管的分工](./data-capability.mdx) | 业务代码只发送实体的完整内容，后端负责认出对象和形成版本；一个 HTTP 接口就是写入的全部契约，托管方管理运行，并在断网时留住写入 |
+| Hosting | [单向写入与托管的分工](./data-capability.mdx) | 业务代码只发送 Observation 的完整内容，后端负责认出对象和形成版本；一个 HTTP 接口就是写入的全部契约，托管方管理运行，并在断网时留住写入 |
 | Hosting | [Runtime 与进程托管](./observer-runtime.mdx) | 设备和服务器运行同一个 Runtime，Runtime 启动各 Observer 的进程，经环境变量交出运行上下文，用本地转发收下写入；实例身份和业务数据目录由 Runtime 保管，与程序文件分开 |
 | Hosting | [Observer 的统一管理](./observer-management.mdx) | 后端为每个 Runtime 和程序实例保存管理登记；启停和设置离线先生效、按字段同步，后端接受的顺序决定结果；安装维护只在线执行；Runtime 主动连接后端，凭配对得到的凭证接入 |
 | Hosting | [设备端客户端](./device-client.mdx) | 原生客户端通过 Runtime 托管本机的 Observer：从官方目录单独安装 ZIP 包，启停、更新和有限重启；专用视图原生实现，随客户端发布；陈述由各 Observer 负责 |
 | Backend | [后端运行与本地环境](./backend-runtime.mdx) | 四个后端项目组成一个进程，Aspire 编排本地环境，NGINX 提供同源入口 |
-| Backend | [实体 API](./entity-api.mdx) | 读取按身份寻址，所有类型共用一组路由，写入是一个接口，内容按 JSON 的值比较，反查按目标实体列出直接的引用方，错误带规则编号 |
-| Backend | [实体存储](./entity-storage.mdx) | 版本、删除身份、二进制内容和识别依据是四张权威表，其余五张是可以从版本和删除身份重建的查询投影；版本以 jsonb 保存在一张表中，查询走以类型开头的索引，引用反查只记录引用方版本和目标实体，所有操作串行执行 |
-| Observers | [应用识别](./application-identity.mdx) | 线索归属把各设备上的本机应用聚合到应用产品；服务器上的应用识别 Observer 用模型认出新线索 |
+| Backend | [实体 API](./entity-api.mdx) | 读取按身份寻址，所有类型共用一组路由，写入是一个接口，内容按 JSON 的值比较，查询直接返回内容，反查按目标实体列出直接的引用方，错误带规则编号 |
+| Backend | [实体存储](./entity-storage.mdx) | 版本、事物、删除身份、二进制内容和识别依据是五张权威表，其余六张是可以重建的查询投影；版本保存在一张表中，业务字段以 jsonb 保存，Observation 的成员是列，查询走以类型开头的索引，引用反查只记录引用方版本和目标实体，所有操作串行执行 |
+| Observers | [应用识别](./application-identity.mdx) | 应用包标识这样的线索是事物，线索归属把它们聚合到应用产品；服务器上的应用识别 Observer 用模型判断，判断互不覆盖 |
 | Process | [设计层与变更流程](./documentation-authority.mdx) | 文档是唯一权威；设计分为目标与模型、组件与契约、实现三层，变更从最早需要改变的位置开始，沿依赖同步并删除被取代的部分，以验证证据收口 |
 | Process | [开发验证与测试证据](./verification.mdx) | Orisumi.Dev 组织验证并保存证据，原生测试报告是测试结果的权威来源 |
 | Process | [开发环境的启动与隔离](./development-environment.mdx) | Orisumi.Dev 是启动环境的统一入口，每个检出目录运行一套环境，数据卷可选，服务按需启动 |

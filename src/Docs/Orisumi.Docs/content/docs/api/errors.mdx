@@ -5,14 +5,14 @@ description: "错误响应的格式，各状态码的含义，以及冲突对应
 
 请求被拒绝时，后端返回一个错误响应。调用方按状态码和 `rule` 判断原因，`detail` 供人阅读。
 
-例如删除一个还有业务版本使用的 EntitySchema：
+例如删除一个还有数据使用的 EntitySchema：
 
 ```json
 {
   "type": "about:blank",
   "title": "Conflict",
   "status": 409,
-  "detail": "Business versions still use this EntitySchema.",
+  "detail": "Stored data still uses this EntitySchema.",
   "rule": "HISTORY-9"
 }
 ```
@@ -56,7 +56,9 @@ description: "错误响应的格式，各状态码的含义，以及冲突对应
 | 冲突 | `rule` |
 | --- | --- |
 | 必须有值的引用解析不到目标 | [ENTITY-6](../core/model/entity.mdx#entity-6) |
+| 另一个 Observer 用同一份依据写入了不同的内容 | [OBSERVATION-10](../core/model/observation.mdx#observation-10) |
+| 同一个描述版本改变了不再变化的内容 | [SCHEMA-18](../core/model/schema.mdx#schema-18) |
 | 资源名已被另一个业务类型使用 | [SCHEMA-5](../core/model/schema.mdx#schema-5) |
 | 实体已被删除，或者写入的 EntityId 属于已删除的程序实例 | [HISTORY-7](../core/rules/history.mdx#history-7) |
 | 内容用到的二进制内容尚未上传 | [BINARY-3](../core/model/binary.mdx#binary-3) |
-| 删除仍有业务版本使用的 EntitySchema | [HISTORY-9](../core/rules/history.mdx#history-9) |
+| 删除仍有数据使用的 EntitySchema | [HISTORY-9](../core/rules/history.mdx#history-9) |

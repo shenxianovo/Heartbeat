@@ -37,11 +37,11 @@ Orisumi.Web 是 Orisumi 的 Web 控制台，只在本机使用。页面和视图
 
 ## 实体的名字
 
-业务实体在界面上的名字默认取第一个不是引用的文字字段，取不到时写类型名。Schema 自己没有文字字段时，在 `src/lib/titles.ts` 按 `resourceName` 登记取法。例如本机应用只保存标识线索，名字取 `macos.bundle-id` 的值；它归到应用产品后，`useDescribe` 改用产品的 `name`，见 [Web · 应用](../../Docs/Orisumi.Docs/content/docs/clients/web.mdx#applications)。Observer 的名字取类型名。
+事物的名字由 `GET /things` 和 `POST /things/read` 给出。Observation 在界面上的名字默认取第一个不是引用的文字字段，取不到时写类型名。Schema 自己没有文字字段时，在 `src/lib/titles.ts` 按 `resourceName` 登记取法。
 
 ## 应用产品
 
-归属在 `src/lib/applications.ts`，是不依赖 React 的纯函数：`buildCatalog` 按线索归属把线索和本机应用归到产品。`useCatalog` 读出产品、线索归属和本机应用，用 `POST /versions/read` 认出线索归属引用的产品版本。资源名还没有登记时，列出它返回 `404`，按没有数据处理。
+归属在 `src/lib/applications.ts`，是不依赖 React 的纯函数：`buildCatalog` 按当前理解中的线索归属把线索和本机应用归到产品。`useCatalog` 读出产品、线索归属和本机应用描述，交给它。
 
 ## 接入新的 Observer
 

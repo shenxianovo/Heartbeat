@@ -13,35 +13,32 @@ description: "Claude Code 与 Codex 本机会话中的交互"
 
 | 业务类型 | 用途 | 资源名 |
 | --- | --- | --- |
-| [Assistant Sessions Observer](./assistant-sessions-observer.mdx) | 程序实例自身：一台设备上的助手会话 Observer | `assistant-sessions-observers` |
-| [Assistant Session](./assistant-session.mdx) | 被交互引用：来源中的一个会话，包括子 Agent 的会话 | `assistant-sessions` |
-| [Assistant Interaction](./assistant-interaction.mdx) | 观测内容：会话中的一次交互 | `assistant-interactions` |
-| [Assistant Session Title](./assistant-session-title.mdx) | 观测内容：会话的一次标题 | `assistant-session-titles` |
-| [Assistant Subagent](./assistant-subagent.mdx) | 关系实体：子 Agent 的会话和发起它的会话 | `assistant-subagents` |
+| [Assistant Sessions Observer](./assistant-sessions-observer.mdx) | 程序实例的描述 | `assistant-sessions-observers` |
+| [Assistant Session](./assistant-session.mdx) | 事物：来源中的一个会话，包括子 Agent 的会话 | `assistant-sessions` |
+| [Assistant Interaction](./assistant-interaction.mdx) | 观测：会话中的一次交互 | `assistant-interactions` |
+| [Name](../../core/rules/understanding.mdx#name) | 观测：会话的一次标题，见 [Assistant Session · 标题](./assistant-session.mdx#titles) | `names` |
+| [Assistant Subagent](./assistant-subagent.mdx) | 观测：子 Agent 的会话和发起它的会话 | `assistant-subagents` |
 
 ```mermaid
 flowchart LR
-  O[交互 Observation] -->|observerVersionId| R[助手会话 Observer]
-  O -->|contentVersionId| I[Assistant Interaction]
-  I -->|sessionVersionId| S[Assistant Session]
-  I -->|deviceVersionId| D[Device]
+  I[Assistant Interaction] -->|observerId| R[助手会话 Observer]
+  I -->|sessionId| S[Assistant Session]
+  I -->|deviceId| D[Device]
   I -->|toolCallVersionId| I
-  T[会话标题 Observation] -->|contentVersionId| L[Assistant Session Title]
-  L -->|sessionVersionId| S
-  G[Assistant Subagent] -->|sessionVersionId| S
-  G -->|parentSessionVersionId| S
-  click O "/core/model/observation"
+  L[Name] -->|thingId| S
+  G[Assistant Subagent] -->|sessionId| S
+  G -->|parentSessionId| S
   click R "/observers/assistant-sessions/assistant-sessions-observer"
   click I "/observers/assistant-sessions/assistant-interaction"
   click S "/observers/assistant-sessions/assistant-session"
   click D "/observers/device-state/device"
-  click L "/observers/assistant-sessions/assistant-session-title"
+  click L "/core/rules/understanding#name"
   click G "/observers/assistant-sessions/assistant-subagent"
 ```
 
 ## 程序实例 [#instance]
 
-一个助手会话 Observer 读取所在设备上当前用户的日志目录。程序读的是本机日志，所以每次交互的 `deviceVersionId` 是运行上下文中的运行设备，程序启动时写入它，见 [Hosting · 运行上下文](../../hosting/index.mdx#context)。
+一个助手会话 Observer 读取所在设备上当前用户的日志目录。程序读的是本机日志，所以每次交互的 `deviceId` 是运行上下文中的运行设备，程序启动时写入设备描述，见 [Hosting · 运行上下文](../../hosting/index.mdx#context)。
 
 程序实例把采集状态保存在自己的数据目录中（见 [Runtime · 数据目录](../../hosting/runtime.mdx#data)）：
 
@@ -81,7 +78,7 @@ flowchart LR
 - 文件变短，或者设备号和 inode 变了，就从头重读这个文件。
 - 文件移动到新位置（例如 Codex 把会话移进归档目录）时，按新文件从头读。
 
-重读和重复出现的记录得到相同的识别依据，对应到已有的实体，所以不会形成重复的交互，见 [Assistant Interaction · 重读](./assistant-interaction.mdx#rereading)。
+重读和重复出现的记录得到相同的识别依据，对应到已有的 Observation，所以不会形成重复的交互，见 [Assistant Interaction · 重读](./assistant-interaction.mdx#rereading)。
 
 ### 诊断 [#diagnostics]
 
@@ -94,11 +91,11 @@ flowchart LR
 
 ## 事实时间 [#fact-time]
 
-| 观测内容 | 事实时间 |
+| 业务类型 | 事实时间 |
 | --- | --- |
 | Assistant Interaction | 来源记下的时刻：一次输入、一次工具调用或一次结果是时间点，助手的回复和推理在来源给出开始时间时是时段，见 [Assistant Interaction · 事实时间](./assistant-interaction.mdx#fact-time) |
 
-会话没有事实时间。会话持续多久、一轮花了多久，由读取方从交互的时间计算。会话标题的事实时间见 [Assistant Session Title · 事实时间](./assistant-session-title.mdx#fact-time)。
+会话是事物，没有事实时间。会话持续多久、一轮花了多久，由读取方从交互的时间计算。会话标题的事实时间见 [Assistant Session · 标题](./assistant-session.mdx#titles)。
 
 `timeZone` 按下面的顺序取值：
 
@@ -114,9 +111,11 @@ flowchart LR
 
 | 读到 | 写入 |
 | --- | --- |
-| 一个会话 | [会话](./assistant-session.mdx)，带识别依据。子 Agent 的会话同时写入父会话和[子 Agent 关系](./assistant-subagent.mdx) |
-| 一次标题 | [会话标题](./assistant-session-title.mdx)，带识别依据和时间 |
-| 一次交互 | [交互](./assistant-interaction.mdx)，带识别依据和时间；引用写会话和调用的识别依据；原始记录的字节先上传 |
+| 一个子 Agent 的会话 | [子 Agent 关系](./assistant-subagent.mdx) |
+| 一次标题 | [Name](./assistant-session.mdx#titles)，带识别依据和时间 |
+| 一次交互 | [交互](./assistant-interaction.mdx)，带识别依据和时间；提到会话，引用调用；原始记录的字节先上传 |
+
+会话是事物，第一次被提到时由后端创建，不用单独写入。
 
 重读和重复出现的数据得到相同的识别依据，内容也相同，所以什么都不发生。业务代码不查询，也不比较内容，见 [API · 一次写入](../../api/writing.mdx#write)。
 
@@ -136,7 +135,6 @@ flowchart LR
 
 ## 待定 [#open]
 
-- Claude Code 用 `--fork-session` 分叉时，复制到新会话的记录是否保留原来的 `uuid`。保留时，复制的历史对应到原来的交互；换成新 `uuid` 时，它们形成新会话中的交互。
 - 读取其他设备拷来或同步来的日志，这时交互发生的设备和运行设备不同。
 - 早于已核实版本的日志格式。其中不认识的记录现在作为诊断计数。
 - Codex 的会话在一轮结束前中断时，读到一半的推理留在待配对的状态中。

@@ -11,10 +11,10 @@ Observer 把来源中发生的事变成观测。本分区按 Observer 组织：�
 
 状态说明业务规则是否已经确定。各平台的实现情况写在每个 Observer 页的“实现”一节。
 
-| Observer | 观测内容 | 状态 |
+| Observer | 形成的观测 | 状态 |
 | --- | --- | --- |
 | [Foreground State](./foreground-state/index.mdx) | 前台应用时段与窗口标题时段 | 业务已定义 |
-| [Application Identity](./application-identity/index.mdx) | 应用产品：各设备上的本机应用归属的软件。在服务端运行 | 业务已定义 |
+| [Application Identity](./application-identity/index.mdx) | 线索归属：模型判断各设备上的本机应用属于哪款软件。在服务端运行 | 业务已定义 |
 | [User Statements](./user/index.mdx) | 用户本人的陈述，例如否定一条推断 | 业务已定义 |
 | [Assistant Sessions](./assistant-sessions/index.mdx) | Claude Code 与 Codex 会话中的交互：消息、工具调用与结果、推理和上下文 | 业务已定义 |
 | [Input Events](./input-events/index.mdx) | 逐条键鼠事件 | 草案 |

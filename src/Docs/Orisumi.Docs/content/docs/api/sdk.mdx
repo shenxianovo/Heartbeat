@@ -9,10 +9,10 @@ SDK 是[写入接口](./writing.mdx)的便利库。写入接口是全部契约�
 
 ```text
 data = connect()
-await data.use(definitions, self = (types.ForegroundStateObserver, selfContent))
+await data.use(definitions, description = (types.ForegroundStateObserver, selfContent))
 ```
 
-`connect` 在受托管时从[运行上下文](../hosting/index.mdx#context)读取地址，直接运行时由调用方传入。`data.use` 声明用到的业务类型，写入程序实例自己的描述，见[业务类型](./writing.mdx#types)和[负责的 Observer](./writing.mdx#observer)。它不等后端，所以断网时也能启动。用到设备的程序接着写入 `data.device.write`，见 [Hosting · 运行上下文](../hosting/index.mdx#context)。
+`connect` 在受托管时从[运行上下文](../hosting/index.mdx#context)读取地址，直接运行时由调用方传入。`data.use` 声明用到的业务类型，写入程序实例自己的描述，见[业务类型](./writing.mdx#types)和[负责的 Observer](./writing.mdx#observer)。它不等后端，所以断网时也能启动。用到设备的程序接着写入 `data.device.write` 这份描述，之后用 `data.device.ref` 提到设备，见 [Hosting · 运行上下文](../hosting/index.mdx#context)。
 
 ## 写入 [#write]
 
@@ -23,27 +23,30 @@ onEachSample(sample):
     await data.write(
         types.Temperature,
         { celsius: sample.celsius },
+        formation = direct,
         time = point(sample.time, sample.timeZone)
     )
 ```
 
-没有 `key`，所以每次读数是新的实体，相同的值也各成一份。事实时间由业务给出，未知时为 `null`，SDK 不用写入时刻填补，见 [TIME-1](../core/rules/time.mdx#time-1)。
+没有 `key`，所以每次读数是新的 Observation，相同的值也各成一份。事实时间由业务给出，未知时为 `null`，SDK 不用写入时刻填补，见 [TIME-1](../core/rules/time.mdx#time-1)。
 
 `data.write` 在受托管时写给本地转发，收下就返回，不说明已经保存。
 
 ## 引用和识别依据 [#references]
 
-前台时段引用本机应用：
+前台时段提到本机应用：
 
 ```text
-appKey = installationKey(data.device.key.value, bundleId, executablePath)
+app = thing(types.LocalApplication, installationKey(data.device.key.value, bundleId, executablePath))
 
 await data.writeAll([
-    item(types.LocalApplication, key = appKey,
-         content = { deviceVersionId: data.device.ref, identifiers: nativeIdentifiers }),
+    item(types.LocalApplicationDescription, key = descriptionKey(app),
+         formation = direct,
+         content = { localApplicationId: app, deviceId: data.device.ref, identifiers: nativeIdentifiers }),
     item(types.ForegroundPeriod,
+         formation = direct,
          content = {
-             localApplicationVersionId: ref(types.LocalApplication, appKey),
+             localApplicationId: app,
              name: capturedName,
              icon: file(iconBytes, "image/png")
          },
@@ -51,17 +54,17 @@ await data.writeAll([
 ])
 ```
 
-`ref` 和 `entity` 写成[引用](./writing.mdx#references)，后端解析成当时的确定版本。先写入被引用的实体，再写入引用它的实体。`installationKey` 属于本机应用的业务规则。`writeAll` 把多次写入放进一个请求，每次写入各自保存。
+`thing` 提到一个事物，后端认出或创建它；`ref` 和 `entity` 引用一条陈述此刻的版本，见[引用](./writing.mdx#references)。提到事物不用先写入，引用陈述时先写入被引用的。`installationKey` 属于本机应用的业务规则。`writeAll` 把多次写入放进一个请求，每次写入各自保存。
 
 助手日志按行写入，重读什么都不发生：
 
 ```text
 for line in newLines:
     session, interactions = parse(line)
-    items.add(item(types.Session, key = sessionKey(session), content = sessionFields(session)))
     for each interaction in interactions:
-        items.add(item(types.Interaction, key = interactionKey(interaction),
-                       content = interactionFields(interaction, ref(types.Session, sessionKey(session))),
+        items.add(item(types.Interaction, key = interactionKey(session, interaction),
+                       formation = direct,
+                       content = interactionFields(interaction, thing(types.Session, sessionKey(session))),
                        time = sourceTime(interaction)))
 
 await data.writeAll(items)
@@ -70,16 +73,17 @@ saveProgress(position)
 
 ## 结果 [#results]
 
-需要写入结果时，程序连后端地址：`data.write` 返回实际的版本，见[两个地址](./writing.mdx#endpoints)。
+需要写入结果时，程序连后端地址：`data.write` 返回实际的版本，见[两个地址](./writing.mdx#endpoints)。模型的判断这样写：
 
 ```text
-result = await data.direct.write(types.ApplicationMembership, key = membershipKey(identifier),
-                                 content = { identifier, productVersionId: entity(product.entityId) },
-                                 time = unknown(), inputs = usedVersions)
+result = await data.direct.write(types.ApplicationMembership,
+                                 formation = inferred,
+                                 content = { identifierId: clue, productId: product },
+                                 inputs = usedVersions)
 catalog.apply(result.version)
 ```
 
-读取用 `data.observations`、`data.version`、`data.versions`、`data.entity`，见 [Reading](./reading.mdx)。读取需要后端可用。
+读取用 `data.observations`、`data.version`、`data.versions`、`data.entity`、`data.things`，见 [Reading](./reading.mdx)。读取需要后端可用。
 
 ## 文件 [#files]
 
@@ -97,10 +101,10 @@ catalog.apply(result.version)
 
 | 谁 | 负责 |
 | --- | --- |
-| 业务代码 | 对象和观测的粒度、内容、识别依据、事实时间、实际输入、写入时机、读取进度 |
+| 业务代码 | 对象和观测的粒度、内容、形成方式、识别依据、事实时间、实际输入、写入时机、读取进度 |
 | SDK | 请求编码、文件、运行上下文 |
 | 本地转发 | 留住写入，按顺序交给后端，留住被拒绝的写入 |
-| 后端 | 认出对象，ID、版本链、解析引用、InputSet、校验和保存 |
+| 后端 | 认出对象，创建事物，ID、版本链、解析引用、InputSet、校验和保存 |
 
 ## 业务类型的声明 [#definitions]
 
@@ -121,10 +125,10 @@ catalog.apply(result.version)
 | --- | --- | --- |
 | 地址和凭证 | 来自[运行上下文](../hosting/index.mdx#context) | 由调用方传入 |
 | 写入 | 默认写给本地转发 | 写给后端，断网时失败 |
-| 负责的 Observer | 程序实例 | 调用方选定的实体，用[识别依据](./writing.mdx#observer)认出自己 |
+| 负责的 Observer | 程序实例 | 调用方选定的事物，用[识别依据](./writing.mdx#observer)认出自己 |
 | 配置和停止 | 来自托管方 | 由程序自己决定 |
 
-例如一次性脚本从一个 CSV 导入健康数据：它声明业务类型，写入代表这个脚本的实体，再为每一行写入，每一行用来源的标识作 `key`，运行结束就退出。再导入一次同一份文件，什么都不发生。
+例如一次性脚本从一个 CSV 导入健康数据：它声明业务类型，用识别依据认出自己，再为每一行写入，每一行用来源的标识作 `key`，运行结束就退出。再导入一次同一份文件，什么都不发生。
 
 ## .NET [#dotnet]
 

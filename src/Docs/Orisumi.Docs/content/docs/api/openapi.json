@@ -15,7 +15,7 @@
       "post": {
         "operationId": "write",
         "summary": "写入",
-        "description": "按顺序处理一组写入，每次写入说出一个实体的完整内容，后端认出对象，形成版本和 Observation。一次写入被拒绝时，其他写入照常处理。语义见 [Writing](/api/writing)。",
+        "description": "按顺序处理一组写入，每次写入说出一份 Observation 的完整内容，后端认出对象，创建提到的事物，形成版本。一次写入被拒绝时，其他写入照常处理。语义见 [Writing](/api/writing)。",
         "requestBody": {
           "required": true,
           "content": {
@@ -41,7 +41,9 @@
                           "nullable": true,
                           "description": "条目的标题。"
                         }
-                      }
+                      },
+                      "kind": "observation",
+                      "immutable": false
                     }
                   }
                 ],
@@ -55,7 +57,8 @@
                       "startAt": "2026-10-06T14:00:00+08:00",
                       "endAt": "2026-10-06T14:00:00+08:00",
                       "timeZone": "Asia/Shanghai"
-                    }
+                    },
+                    "formation": "direct"
                   }
                 ]
               }
@@ -284,13 +287,13 @@
       "get": {
         "operationId": "listEntities",
         "summary": "列出实体",
-        "description": "列出实体的当前版本，可以按 `category` 或 `resourceName` 筛选，见 [Reading · 列出实体](/api/reading#lists)。",
+        "description": "列出有版本的实体的当前版本，可以按 `category` 或 `resourceName` 筛选，见 [Reading · 列出实体](/api/reading#lists)。事物用 [`GET /things`](/api/listThings) 列出。",
         "parameters": [
           {
             "name": "category",
             "in": "query",
             "required": false,
-            "description": "只返回这一类内容的实体。",
+            "description": "只返回这一类实体。",
             "schema": {
               "$ref": "#/components/schemas/Category"
             }
@@ -383,8 +386,8 @@
     "/entities/{entityId}": {
       "get": {
         "operationId": "getEntity",
-        "summary": "读取当前版本",
-        "description": "读取实体的当前版本，见 [Reading · 版本与实体](/api/reading#versions)。",
+        "summary": "读取实体",
+        "description": "事物返回它自己，有版本的实体返回当前版本，见 [Reading · 版本与实体](/api/reading#versions)。",
         "parameters": [
           {
             "name": "entityId",
@@ -398,11 +401,18 @@
         ],
         "responses": {
           "200": {
-            "description": "实体的当前版本。",
+            "description": "事物，或者实体的当前版本。",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Version"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/Version"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Thing"
+                    }
+                  ]
                 }
               }
             }
@@ -462,7 +472,7 @@
       "delete": {
         "operationId": "deleteEntity",
         "summary": "删除实体",
-        "description": "删除实体的全部版本，删除已删除的实体也返回 `204`，见 [Writing · 删除](/api/writing#deletion)。实体是已登记的程序实例时，同时删除实例，见 [Management · 删除实例](/api/management#removal)。",
+        "description": "删除实体，删除已删除的实体也返回 `204`，见 [Writing · 删除](/api/writing#deletion)。实体是已登记的程序实例时，同时删除实例，见 [Management · 删除实例](/api/management#removal)。",
         "parameters": [
           {
             "name": "entityId",
@@ -509,7 +519,7 @@
             }
           },
           "409": {
-            "description": "还有业务版本使用这个 EntitySchema，见 [HISTORY-9](/core/rules/history#history-9)。`rule` 为 `HISTORY-9`。",
+            "description": "还有数据使用这个 EntitySchema，见 [HISTORY-9](/core/rules/history#history-9)。`rule` 为 `HISTORY-9`。",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -545,7 +555,7 @@
       "get": {
         "operationId": "listEntityVersions",
         "summary": "读取版本链",
-        "description": "读取实体的全部版本，从首版到当前版排列，不分页，见 [Reading · 版本与实体](/api/reading#versions)。",
+        "description": "读取有版本的实体的全部版本，从首版到当前版排列，不分页，见 [Reading · 版本与实体](/api/reading#versions)。事物没有版本，返回空数组。",
         "parameters": [
           {
             "name": "entityId",
@@ -625,7 +635,7 @@
       "get": {
         "operationId": "listReferrers",
         "summary": "列出引用方",
-        "description": "列出在 `content` 中引用这个实体的版本，只返回直接的引用方，见 [Reading · 引用方](/api/reading#referrers)。",
+        "description": "列出引用这个实体的版本，只返回直接的引用方，见 [Reading · 引用方](/api/reading#referrers)。",
         "parameters": [
           {
             "name": "entityId",
@@ -654,7 +664,7 @@
             "name": "path",
             "in": "query",
             "required": false,
-            "description": "只返回在这个位置引用目标的版本，例如 `/content/contentVersionId`。",
+            "description": "只返回在这个位置引用目标的版本，例如 `/content/deviceId`。",
             "schema": {
               "type": "string"
             }
@@ -727,6 +737,156 @@
           },
           "404": {
             "description": "这个身份从未出现过。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "请求带着托管方凭证，凭证无效或托管方已移除。`code` 为 `credential_invalid` 或 `credential_revoked`，见 [Overview · 认证](/api#auth)。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "后端出现意外错误。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/things": {
+      "get": {
+        "operationId": "listThings",
+        "summary": "列出事物",
+        "description": "列出事物和它们的名字，按 EntityId 升序排列，见 [Reading · 事物](/api/reading#things)。",
+        "parameters": [
+          {
+            "name": "resourceName",
+            "in": "query",
+            "required": false,
+            "description": "只返回这种类型的事物。",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "一页最多返回的事物数。",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 100
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "description": "上一页响应中的 `next`。省略时从第一页开始。",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "一页事物。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThingPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "路径中的 ID 不是 UUID，或者参数无效。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "请求带着托管方凭证，凭证无效或托管方已移除。`code` 为 `credential_invalid` 或 `credential_revoked`，见 [Overview · 认证](/api#auth)。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "后端出现意外错误。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "没有 EntitySchema 使用这个 `resourceName`。",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/things/read": {
+      "post": {
+        "operationId": "readThings",
+        "summary": "读取一组事物",
+        "description": "一次读取 1 到 256 个事物，响应按请求的顺序逐项返回，见 [Reading · 事物](/api/reading#things)。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThingReadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "逐项的结果。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThingReadResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "路径中的 ID 不是 UUID，或者参数无效。",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -905,7 +1065,7 @@
       "get": {
         "operationId": "listObservations",
         "summary": "按事实时间查询观测",
-        "description": "列出 Observation 的当前版本，可以按事实时间、负责的实体、观测内容和类型筛选，见 [Reading · 查询观测](/api/reading#observations)。",
+        "description": "列出 Observation 的当前版本，可以按事实时间、Observer、类型、形成方式和当前理解筛选，见 [Reading · 查询观测](/api/reading#observations)。",
         "parameters": [
           {
             "name": "from",
@@ -928,19 +1088,10 @@
             }
           },
           {
-            "name": "observerEntityId",
+            "name": "observerId",
             "in": "query",
             "required": false,
-            "description": "只返回由这个实体负责的 Observation，包含它的任意版本。",
-            "schema": {
-              "$ref": "#/components/schemas/EntityId"
-            }
-          },
-          {
-            "name": "contentEntityId",
-            "in": "query",
-            "required": false,
-            "description": "只返回观测内容属于这个实体的 Observation，包含它的任意版本。",
+            "description": "只返回由这个事物负责的 Observation。",
             "schema": {
               "$ref": "#/components/schemas/EntityId"
             }
@@ -963,9 +1114,32 @@
             "name": "resourceName",
             "in": "query",
             "required": false,
-            "description": "观测内容的资源名。只返回观测内容属于这种业务类型的 Observation；观测内容已删除的 Observation 不在其中，见 [Reading · 按事实时间查询](/api/reading#observations)。",
+            "description": "只返回这种业务类型的 Observation。",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "formation",
+            "in": "query",
+            "required": false,
+            "description": "只返回这种形成方式的 Observation。",
+            "schema": {
+              "$ref": "#/components/schemas/Formation"
+            }
+          },
+          {
+            "name": "standing",
+            "in": "query",
+            "required": false,
+            "description": "`all` 返回全部；`current` 只返回当前理解，见 [UNDERSTANDING-4](/core/rules/understanding#understanding-4)。",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "all",
+                "current"
+              ],
+              "default": "all"
             }
           },
           {
@@ -2280,20 +2454,18 @@
         "enum": [
           "observation",
           "entity_schema",
-          "input_set",
-          "business"
+          "input_set"
         ],
-        "description": "版本内容属于哪一类。前三种是 Core 类型。"
+        "description": "有版本的实体属于哪一类。"
       },
       "Version": {
         "type": "object",
-        "description": "一个已保存的版本。成员的含义见 [Version](/core/model/version#members)。",
+        "description": "一个已保存的版本。成员的含义见 [Version](/core/model/version#members)，Observation 的成员见 [Observation](/core/model/observation#members)。",
         "required": [
           "entityId",
           "versionId",
           "previousVersionId",
           "category",
-          "schemaVersionId",
           "recordedAt",
           "content"
         ],
@@ -2319,7 +2491,15 @@
             "$ref": "#/components/schemas/Category"
           },
           "schemaVersionId": {
-            "description": "业务内容所用的 Schema 版本，Core 类型为 `null`。",
+            "$ref": "#/components/schemas/VersionId",
+            "description": "Observation 所用的 Schema 版本。"
+          },
+          "observerId": {
+            "$ref": "#/components/schemas/EntityId",
+            "description": "负责的 Observer，是一个事物。"
+          },
+          "observerVersionId": {
+            "description": "形成这一版时 Observer 的描述，没有描述时为 `null`。",
             "anyOf": [
               {
                 "$ref": "#/components/schemas/VersionId"
@@ -2329,121 +2509,8 @@
               }
             ]
           },
-          "recordedAt": {
-            "type": "string",
-            "format": "date-time",
-            "description": "后端保存这个版本的时刻，以 `Z` 结尾，见 [VERSION-10](/core/model/version#version-10)。"
-          },
-          "content": {
-            "$ref": "#/components/schemas/Content"
-          }
-        },
-        "oneOf": [
-          {
-            "type": "object",
-            "properties": {
-              "category": {
-                "enum": [
-                  "observation"
-                ]
-              },
-              "content": {
-                "$ref": "#/components/schemas/Observation"
-              }
-            },
-            "required": [
-              "category",
-              "content"
-            ]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "category": {
-                "enum": [
-                  "entity_schema"
-                ]
-              },
-              "content": {
-                "$ref": "#/components/schemas/EntitySchema"
-              }
-            },
-            "required": [
-              "category",
-              "content"
-            ]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "category": {
-                "enum": [
-                  "input_set"
-                ]
-              },
-              "content": {
-                "$ref": "#/components/schemas/InputSet"
-              }
-            },
-            "required": [
-              "category",
-              "content"
-            ]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "category": {
-                "enum": [
-                  "business"
-                ]
-              },
-              "content": {
-                "$ref": "#/components/schemas/BusinessContent"
-              }
-            },
-            "required": [
-              "category",
-              "content"
-            ]
-          }
-        ]
-      },
-      "Content": {
-        "description": "版本的内容，按 `category` 解释：Core 类型的成员见各类型页，业务内容按 `schemaVersionId` 指向的 Schema 版本校验。",
-        "anyOf": [
-          {
-            "$ref": "#/components/schemas/Observation"
-          },
-          {
-            "$ref": "#/components/schemas/InputSet"
-          },
-          {
-            "$ref": "#/components/schemas/EntitySchema"
-          },
-          {
-            "$ref": "#/components/schemas/BusinessContent"
-          }
-        ]
-      },
-      "Observation": {
-        "type": "object",
-        "description": "Observation 的成员，见 [Observation](/core/model/observation#members)。",
-        "required": [
-          "observerVersionId",
-          "contentVersionId",
-          "inputSetVersionId",
-          "startAt",
-          "endAt",
-          "timeZone"
-        ],
-        "additionalProperties": false,
-        "properties": {
-          "observerVersionId": {
-            "$ref": "#/components/schemas/VersionId"
-          },
-          "contentVersionId": {
-            "$ref": "#/components/schemas/VersionId"
+          "formation": {
+            "$ref": "#/components/schemas/Formation"
           },
           "inputSetVersionId": {
             "description": "这次处理用到的 InputSet，没有用到已保存的数据时为 `null`。",
@@ -2490,8 +2557,91 @@
                 "type": "null"
               }
             ]
+          },
+          "recordedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "后端保存这个版本的时刻，以 `Z` 结尾，见 [VERSION-10](/core/model/version#version-10)。"
+          },
+          "content": {
+            "$ref": "#/components/schemas/Content"
           }
-        }
+        },
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "category": {
+                "enum": [
+                  "observation"
+                ]
+              },
+              "content": {
+                "$ref": "#/components/schemas/BusinessContent"
+              }
+            },
+            "required": [
+              "category",
+              "content",
+              "schemaVersionId",
+              "observerId",
+              "observerVersionId",
+              "formation",
+              "inputSetVersionId",
+              "startAt",
+              "endAt",
+              "timeZone"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "category": {
+                "enum": [
+                  "entity_schema"
+                ]
+              },
+              "content": {
+                "$ref": "#/components/schemas/EntitySchema"
+              }
+            },
+            "required": [
+              "category",
+              "content"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "category": {
+                "enum": [
+                  "input_set"
+                ]
+              },
+              "content": {
+                "$ref": "#/components/schemas/InputSet"
+              }
+            },
+            "required": [
+              "category",
+              "content"
+            ]
+          }
+        ]
+      },
+      "Content": {
+        "description": "版本的内容，按 `category` 解释：Observation 的业务字段按 `schemaVersionId` 指向的 Schema 版本校验，其余见各类型页。",
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/BusinessContent"
+          },
+          {
+            "$ref": "#/components/schemas/InputSet"
+          },
+          {
+            "$ref": "#/components/schemas/EntitySchema"
+          }
+        ]
       },
       "InputSet": {
         "type": "object",
@@ -2517,6 +2667,8 @@
           "displayName",
           "description",
           "resourceName",
+          "kind",
+          "immutable",
           "fields"
         ],
         "additionalProperties": false,
@@ -2539,6 +2691,18 @@
               "$ref": "#/components/schemas/FieldDefinition"
             },
             "description": "字段名到字段定义的映射。"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "thing",
+              "observation"
+            ],
+            "description": "事物的类型，还是 Observation 的类型，见 [SCHEMA-17](/core/model/schema#schema-17)。"
+          },
+          "immutable": {
+            "type": "boolean",
+            "description": "这种 Observation 的内容形成后是否不再变化，见 [SCHEMA-18](/core/model/schema#schema-18)。"
           }
         }
       },
@@ -2577,6 +2741,14 @@
           "description": {
             "type": "string",
             "description": "字段或数组元素的业务说明，必须非空且不全为空白。必填与非空由 SCHEMA-10 逐项校验；缺失或空白不作为整批请求的结构错误。"
+          },
+          "target": {
+            "type": "string",
+            "enum": [
+              "thing",
+              "version"
+            ],
+            "description": "`reference` 的目标：`thing` 是事物，`version` 是有版本的实体，见 [SCHEMA-9](/core/model/schema#schema-9)。"
           }
         }
       },
@@ -2749,17 +2921,29 @@
         "type": "object",
         "required": [
           "path",
+          "targetEntityId",
           "targetVersionId"
         ],
         "additionalProperties": false,
         "properties": {
           "path": {
             "type": "string",
-            "description": "引用所在的位置，是从版本根部写起的 JSON Pointer（[RFC 6901](https://www.rfc-editor.org/rfc/rfc6901.html)），例如 `/content/contentVersionId`、`/content/members/3`。"
+            "description": "引用所在的位置，是从版本根部写起的 JSON Pointer（[RFC 6901](https://www.rfc-editor.org/rfc/rfc6901.html)），例如 `/observerId`、`/content/deviceId`、`/content/members/3`。"
+          },
+          "targetEntityId": {
+            "$ref": "#/components/schemas/EntityId",
+            "description": "被引用的实体。"
           },
           "targetVersionId": {
-            "description": "这个位置的值，是目标实体的一个版本。",
-            "$ref": "#/components/schemas/VersionId"
+            "description": "引用指向版本时是这个版本，指向事物时为 `null`。",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VersionId"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -3606,7 +3790,7 @@
           "endAt",
           "timeZone"
         ],
-        "description": "事实时间，出现时同时形成 Observation，含义见 [Observation · 成员](/core/model/observation#members)。",
+        "description": "事实时间，含义见 [Observation · 成员](/core/model/observation#members)。",
         "properties": {
           "startAt": {
             "type": [
@@ -3634,24 +3818,27 @@
         "type": "object",
         "required": [
           "schemaId",
+          "formation",
           "content"
         ],
-        "description": "一次写入：一个实体的完整内容。`key` 和 `entityId` 只出现一个；都没有时新建实体。业务内容中 `reference` 字段的写法见 [Writing · 引用](/api/writing#references)。",
+        "description": "一次写入：一份 Observation 的完整内容。业务字段中 `reference` 的写法见 [Writing · 引用](/api/writing#references)。",
         "properties": {
           "schemaId": {
             "$ref": "#/components/schemas/EntityId"
           },
           "key": {
-            "$ref": "#/components/schemas/RecognitionKey"
+            "$ref": "#/components/schemas/RecognitionKey",
+            "description": "认出这份 Observation 的识别依据。省略时新建。"
           },
-          "entityId": {
-            "$ref": "#/components/schemas/EntityId"
+          "formation": {
+            "$ref": "#/components/schemas/Formation"
           },
           "content": {
             "$ref": "#/components/schemas/BusinessContent"
           },
           "time": {
-            "$ref": "#/components/schemas/FactTime"
+            "$ref": "#/components/schemas/FactTime",
+            "description": "事实时间，省略时三个成员都是 `null`。"
           },
           "inputs": {
             "type": "array",
@@ -3671,6 +3858,9 @@
         "properties": {
           "observer": {
             "$ref": "#/components/schemas/ObserverReference"
+          },
+          "description": {
+            "$ref": "#/components/schemas/ObserverDescription"
           },
           "sequence": {
             "type": "integer",
@@ -3714,26 +3904,15 @@
       },
       "WriteResult": {
         "type": "object",
-        "description": "一次写入的结果：保存时有 `version`、`changed` 和 `observation`，被拒绝时有 `error`。",
+        "description": "一次写入的结果：保存时有 `version` 和 `changed`，被拒绝时有 `error`。",
         "properties": {
           "version": {
             "$ref": "#/components/schemas/Version",
-            "description": "这次写入之后内容实体的实际当前版本。"
+            "description": "这次写入之后这份 Observation 的实际当前版本。"
           },
           "changed": {
             "type": "boolean",
             "description": "这次写入是否形成了新版本。"
-          },
-          "observation": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Version"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "这份 Observation 的当前版本，写入不带 `time` 时为 `null`。"
           },
           "error": {
             "$ref": "#/components/schemas/WriteError"
@@ -3756,6 +3935,154 @@
             "items": {
               "$ref": "#/components/schemas/WriteResult"
             }
+          }
+        }
+      },
+      "Formation": {
+        "type": "string",
+        "enum": [
+          "direct",
+          "stated",
+          "computed",
+          "extracted",
+          "inferred"
+        ],
+        "description": "这份陈述怎么来的，见 [Observation · 形成方式](/core/model/observation#formation)。"
+      },
+      "Thing": {
+        "type": "object",
+        "description": "一个事物，见 [Thing](/core/model/thing)。",
+        "required": [
+          "entityId",
+          "category",
+          "schemaId",
+          "keys",
+          "name"
+        ],
+        "properties": {
+          "entityId": {
+            "$ref": "#/components/schemas/EntityId"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "thing"
+            ]
+          },
+          "schemaId": {
+            "$ref": "#/components/schemas/EntityId",
+            "description": "事物的类型。"
+          },
+          "keys": {
+            "type": "array",
+            "description": "这个事物的识别依据，业务类型就是 `schemaId`。",
+            "items": {
+              "$ref": "#/components/schemas/RecognitionKey"
+            }
+          },
+          "name": {
+            "description": "按 [UNDERSTANDING-9](/core/rules/understanding#understanding-9) 取得的名字，没有名字时为 `null`。",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "ThingPage": {
+        "type": "object",
+        "required": [
+          "things",
+          "next"
+        ],
+        "properties": {
+          "things": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Thing"
+            }
+          },
+          "next": {
+            "description": "下一页的游标，作为 `after` 传入。没有下一页时为 `null`。",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "ThingReadRequest": {
+        "required": [
+          "entityIds"
+        ],
+        "type": "object",
+        "properties": {
+          "entityIds": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 256,
+            "items": {
+              "$ref": "#/components/schemas/EntityId"
+            }
+          }
+        }
+      },
+      "ThingReadResult": {
+        "required": [
+          "results"
+        ],
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "required": [
+                "entityId",
+                "status"
+              ],
+              "type": "object",
+              "properties": {
+                "entityId": {
+                  "$ref": "#/components/schemas/EntityId"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "found",
+                    "not_found",
+                    "deleted"
+                  ]
+                },
+                "thing": {
+                  "$ref": "#/components/schemas/Thing",
+                  "description": "`status` 为 `found` 时出现。"
+                }
+              }
+            }
+          }
+        }
+      },
+      "ObserverDescription": {
+        "type": "object",
+        "required": [
+          "schemaId",
+          "content"
+        ],
+        "description": "这个 Observer 的描述。后端把它保存成这个 Observer 的一份 Observation，之后的写入引用当时的描述版本，见 [Writing · 负责的 Observer](/api/writing#observer)。",
+        "properties": {
+          "schemaId": {
+            "$ref": "#/components/schemas/EntityId"
+          },
+          "content": {
+            "$ref": "#/components/schemas/BusinessContent"
           }
         }
       }

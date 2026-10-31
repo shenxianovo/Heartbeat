@@ -4,6 +4,17 @@ namespace Orisumi.Application.Entities;
 
 public sealed class EntityService(IEntityStore store, TimeProvider timeProvider)
 {
+    public Task<Thing?> ReadThingAsync(EntityId id, CancellationToken cancellationToken = default) =>
+        store.ExecuteAsync(async (transaction, token) =>
+        {
+            if (await transaction.IsEntityDeletedAsync(id, token)) throw new EntityDeletedException();
+            return (await transaction.ReadThingsAsync([id], token)).SingleOrDefault();
+        }, cancellationToken);
+
+    public Task<IReadOnlyList<Thing>> ListThingsAsync(EntityQuery query, string? resourceName,
+        CancellationToken cancellationToken = default) => store.ExecuteAsync(async (transaction, token) =>
+        await transaction.ListThingsAsync(query with { SchemaId = await ResolveSchemaAsync(transaction, resourceName, token) }, token), cancellationToken);
+
     public Task<EntityVersion?> ReadVersionAsync(VersionId id, CancellationToken cancellationToken = default) =>
         store.ExecuteAsync(async (transaction, token) =>
         {
@@ -33,7 +44,7 @@ public sealed class EntityService(IEntityStore store, TimeProvider timeProvider)
             var current = await transaction.ReadCurrentAsync(id, token);
             if (current is null && !await transaction.EntityExistsAsync(id, token)) return false;
             if (current?.Content is EntitySchema)
-                VersionRules.Require(!await transaction.HasBusinessVersionsAsync(id, token), "HISTORY-9", "Business versions still use this Schema.");
+                VersionRules.Require(!await transaction.HasSchemaUsersAsync(id, token), "HISTORY-9", "Business versions still use this Schema.");
             await transaction.DeleteAsync(id, token);
             return true;
         }, cancellationToken);
@@ -78,11 +89,21 @@ public sealed class EntityService(IEntityStore store, TimeProvider timeProvider)
         var references = new List<ResolvedReference>();
         foreach (var reference in VersionRules.GetReferences(version, schemaVersion?.Content as EntitySchema))
         {
-            var target = await transaction.ReadVersionAsync(reference.Target, token);
-            VersionRules.Require(target is not null,
-                "ENTITY-6", $"Reference {reference.Position} does not point to a saved version.");
+            EntityId targetId;
+            if (reference.TargetEntityId is { } thingId)
+            {
+                VersionRules.Require(await transaction.ReadThingAsync(thingId, token) is not null,
+                    "ENTITY-6", $"Reference {reference.Position} does not point to a saved thing.");
+                targetId = thingId;
+            }
+            else
+            {
+                var target = await transaction.ReadVersionAsync(reference.TargetVersionId!.Value, token);
+                VersionRules.Require(target is not null, "ENTITY-6", $"Reference {reference.Position} does not point to a saved version.");
+                targetId = target!.EntityId;
+            }
             if (reference.Position is not ("/previousVersionId" or "/schemaVersionId"))
-                references.Add(new(reference.Position, reference.Target, target!.EntityId));
+                references.Add(new(reference.Position, reference.TargetVersionId, targetId));
         }
         if (version.Content is EntitySchema schema)
         {
@@ -90,6 +111,8 @@ public sealed class EntityService(IEntityStore store, TimeProvider timeProvider)
             VersionRules.Require(owner is null || owner == version.EntityId, "SCHEMA-5", "resourceName belongs to another Schema.");
             VersionRules.Require(current?.Content is not EntitySchema previous || previous.ResourceName == schema.ResourceName,
                 "SCHEMA-5", "resourceName cannot change.");
+            VersionRules.Require(current?.Content is not EntitySchema prior || prior.Kind == schema.Kind,
+                "SCHEMA-17", "Schema kind cannot change.");
         }
         if (version.Content is Observation observation)
             await CheckObservationAsync(transaction, observation, current?.Content as Observation, token);
@@ -117,7 +140,7 @@ public sealed class EntityService(IEntityStore store, TimeProvider timeProvider)
     {
         if (current is null) return;
         VersionRules.Require(current.Category == version.Category, "ENTITY-3", "An entity cannot change category.");
-        if (version.Content is not BusinessContent) return;
+        if (version.Content is not Observation) return;
         var previousSchema = await transaction.ReadVersionAsync(current.SchemaVersionId!.Value, token);
         VersionRules.Require(previousSchema?.EntityId == schema!.EntityId, "ENTITY-3", "An entity cannot change business type.");
     }
@@ -125,11 +148,14 @@ public sealed class EntityService(IEntityStore store, TimeProvider timeProvider)
     internal static async Task CheckObservationAsync(IEntityTransaction transaction, Observation observation,
         Observation? previous, CancellationToken token)
     {
-        var observer = await transaction.ReadVersionAsync(observation.ObserverVersionId, token);
-        var content = await transaction.ReadVersionAsync(observation.ContentVersionId, token);
-        VersionRules.Require(observer is not null && content is not null, "ENTITY-6", "Observer and content must be saved versions.");
-        VersionRules.Require(observer?.Content is BusinessContent && content?.Content is BusinessContent,
-            "OBSERVATION-1", "Observer and content must be business versions.");
+        VersionRules.Require(await transaction.ReadThingAsync(observation.ObserverId, token) is not null,
+            "OBSERVATION-1", "Observer must be a saved thing.");
+        if (observation.ObserverVersionId is { } descriptionId)
+        {
+            var description = await transaction.ReadVersionAsync(descriptionId, token);
+            VersionRules.Require(description?.Content is Observation own && own.ObserverId == observation.ObserverId && own.ObserverVersionId is null,
+                "OBSERVATION-1", "Observer description must belong to this Observer.");
+        }
         if (observation.InputSetVersionId is { } inputs)
         {
             var input = await transaction.ReadVersionAsync(inputs, token);
@@ -137,7 +163,6 @@ public sealed class EntityService(IEntityStore store, TimeProvider timeProvider)
             VersionRules.Require(input!.Content is InputSet, "OBSERVATION-1", "inputSetVersionId must point to an InputSet.");
         }
         if (previous is null) return;
-        var original = await transaction.FindVersionEntityAsync(previous.ObserverVersionId, token);
-        VersionRules.Require(original == observer!.EntityId, "OBSERVATION-10", "An Observation cannot change its Observer entity.");
+        VersionRules.Require(previous.ObserverId == observation.ObserverId, "OBSERVATION-10", "An Observation cannot change its author.");
     }
 }

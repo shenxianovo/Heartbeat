@@ -15,21 +15,21 @@ public sealed class LocalApplicationIdentityTests
         var first = await ForegroundTestStore.CreateAsync(http);
         var second = await ForegroundTestStore.CreateAsync(http, first.Device);
         foreach (var collector in new[] { first, second }) { collector.Store.Checkpoint(collector.Capture(), null); collector.Store.FinishActive(); }
-        var apps = await first.Data.ListAsync("entities?resourceName=local-applications");
+        var apps = await first.Data.ListAsync("things?resourceName=local-applications");
         await Assert.That(apps.Count).IsEqualTo(1);
         await Assert.That((await first.Observations()).Length).IsEqualTo(2);
-        await Assert.That((await first.Data.ListAsync("entities?resourceName=devices")).Count).IsEqualTo(1);
-        await first.Data.WriteAsync((first.Device with { Name = "renamed device" }).Write);
+        await Assert.That((await first.Data.ListAsync("things?resourceName=devices")).Count).IsEqualTo(1);
+        await first.Data.WriteAllAsync((first.Device with { Name = "renamed device" }).Writes(first.Data.Observer.EntityId!.Value));
         first.Store.Checkpoint(first.Capture(1), null); first.Store.FinishActive();
-        var afterRename = await first.Data.ListAsync("entities?resourceName=local-applications");
-        await Assert.That(afterRename[0].GetProperty("versionId").GetGuid()).IsEqualTo(apps[0].GetProperty("versionId").GetGuid());
+        var afterRename = await first.Data.ListAsync("things?resourceName=local-applications");
+        await Assert.That(afterRename[0].GetProperty("entityId").GetGuid()).IsEqualTo(apps[0].GetProperty("entityId").GetGuid());
         var otherDevice = await ForegroundTestStore.CreateAsync(http);
         otherDevice.Store.Checkpoint(otherDevice.Capture(), null); otherDevice.Store.FinishActive();
-        await Assert.That((await first.Data.ListAsync("entities?resourceName=local-applications")).Count).IsEqualTo(2);
-        await Assert.That((await first.Data.ListAsync("entities?resourceName=devices")).Count).IsEqualTo(2);
+        await Assert.That((await first.Data.ListAsync("things?resourceName=local-applications")).Count).IsEqualTo(2);
+        await Assert.That((await first.Data.ListAsync("things?resourceName=devices")).Count).IsEqualTo(2);
         using var removed = await http.DeleteAsync("entities/" + apps[0].GetProperty("entityId").GetGuid()); removed.EnsureSuccessStatusCode();
         first.Store.Checkpoint(first.Capture(2), null); first.Store.FinishActive();
-        var afterDeletion = await first.Data.ListAsync("entities?resourceName=local-applications");
+        var afterDeletion = await first.Data.ListAsync("things?resourceName=local-applications");
         await Assert.That(afterDeletion.Any(v => v.GetProperty("entityId").GetGuid() == apps[0].GetProperty("entityId").GetGuid())).IsFalse();
         await Assert.That(afterDeletion.Count).IsEqualTo(2);
     }

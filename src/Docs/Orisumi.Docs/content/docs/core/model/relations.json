@@ -67,13 +67,6 @@
       "group": "observations",
       "path": "/core/model/schema"
     },
-    "BusinessEntity": {
-      "label": "业务实体",
-      "shape": "rectangle",
-      "style": "entity",
-      "group": "observations",
-      "path": "/core/glossary#types"
-    },
     "Observer": {
       "label": "Observer（角色）",
       "shape": "parallelogram",
@@ -81,19 +74,26 @@
       "group": "observations",
       "path": "/core/model/observer"
     },
-    "Content": {
-      "label": "观测内容（角色）",
-      "shape": "parallelogram",
-      "style": "domain",
-      "group": "observations",
-      "path": "/core/glossary#roles"
-    },
     "Input": {
       "label": "输入（角色）",
       "shape": "parallelogram",
       "style": "domain",
       "group": "observations",
       "path": "/core/rules/evidence"
+    },
+    "Thing": {
+      "label": "Thing",
+      "shape": "rectangle",
+      "style": "entity",
+      "group": "observations",
+      "path": "/core/model/thing"
+    },
+    "Observation_Formation": {
+      "label": "formation",
+      "shape": "rectangle",
+      "style": "member",
+      "group": "observations",
+      "path": "/core/model/observation#formation"
     }
   },
   "edges": [
@@ -134,12 +134,6 @@
       "label": "是实体"
     },
     {
-      "from": "BusinessEntity",
-      "to": "Entity",
-      "kind": "implementation",
-      "label": "是实体"
-    },
-    {
       "from": "Observation",
       "to": "Observation_StartAt",
       "kind": "member",
@@ -159,18 +153,6 @@
     },
     {
       "from": "Observation",
-      "to": "Observer",
-      "kind": "reference",
-      "label": "observerVersionId 引用"
-    },
-    {
-      "from": "Observation",
-      "to": "Content",
-      "kind": "reference",
-      "label": "contentVersionId 引用"
-    },
-    {
-      "from": "Observation",
       "to": "InputSet",
       "kind": "reference",
       "label": "inputSetVersionId 引用"
@@ -182,28 +164,58 @@
       "label": "members 引用"
     },
     {
+      "from": "Input",
+      "to": "Version",
+      "kind": "role",
+      "label": "是版本"
+    },
+    {
+      "from": "Thing",
+      "to": "Entity",
+      "kind": "implementation",
+      "label": "是实体"
+    },
+    {
+      "from": "Observation",
+      "to": "Observation_Formation",
+      "kind": "member",
+      "label": "属性"
+    },
+    {
+      "from": "Observation",
+      "to": "Observer",
+      "kind": "reference",
+      "label": "observerId 引用"
+    },
+    {
+      "from": "Observation",
+      "to": "EntitySchema",
+      "kind": "reference",
+      "label": "schemaVersionId 引用"
+    },
+    {
+      "from": "Observation",
+      "to": "Thing",
+      "kind": "reference",
+      "label": "业务字段引用"
+    },
+    {
       "from": "EntitySchema",
-      "to": "BusinessEntity",
+      "to": "Thing",
+      "kind": "definition",
+      "label": "定义类型"
+    },
+    {
+      "from": "EntitySchema",
+      "to": "Observation",
       "kind": "definition",
       "label": "定义类型"
     },
     {
       "from": "Observer",
-      "to": "BusinessEntity",
+      "to": "Thing",
       "kind": "role",
-      "label": "由业务实体承担"
-    },
-    {
-      "from": "Content",
-      "to": "BusinessEntity",
-      "kind": "role",
-      "label": "由业务实体承担"
-    },
-    {
-      "from": "Input",
-      "to": "Version",
-      "kind": "role",
-      "label": "可以是任何版本"
+      "label": "由事物承担"
     }
   ]
 }

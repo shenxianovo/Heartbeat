@@ -6,7 +6,6 @@
   "pages": [
     "assistant-sessions-observer",
     "assistant-session",
-    "assistant-session-title",
     "assistant-subagent",
     "assistant-interaction"
   ]

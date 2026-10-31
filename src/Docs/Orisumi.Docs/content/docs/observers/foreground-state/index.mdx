@@ -15,35 +15,33 @@ description: "前台应用时段与窗口标题时段"
 
 | 业务类型 | 用途 | 资源名 |
 | --- | --- | --- |
-| [Foreground State Observer](./foreground-state-observer.mdx) | 程序实例自身：一个前台状态 Observer | `foreground-state-observers` |
-| [Local Application](./local-application.mdx) | 被应用时段引用：设备上的一个应用安装 | `local-applications` |
-| [Device](../device-state/device.mdx) | 被本机应用引用：应用所在的设备，程序启动时写入 | `devices` |
-| [Foreground Application Period](./foreground-application-period.mdx) | 观测内容：应用处于前台的一个时段 | `foreground-application-periods` |
-| [Foreground Window Title](./foreground-window-title.mdx) | 观测内容：窗口标题的一个时段 | 待定 |
+| [Foreground State Observer](./foreground-state-observer.mdx) | 程序实例的描述 | `foreground-state-observers` |
+| [Local Application](./local-application.mdx) | 事物：设备上的一个应用安装，以及它的描述 | `local-applications`、`local-application-descriptions` |
+| [Device](../device-state/device.mdx) | 事物：应用所在的设备，以及它的描述 | `devices`、`device-descriptions` |
+| [Foreground Application Period](./foreground-application-period.mdx) | 观测：应用处于前台的一个时段 | `foreground-application-periods` |
+| [Foreground Window Title](./foreground-window-title.mdx) | 观测：窗口标题的一个时段 | 待定 |
 
 ```mermaid
 flowchart LR
-  O[应用时段 Observation] -->|observerVersionId| R[前台状态 Observer]
-  O -->|contentVersionId| C[Foreground Application Period]
-  C -->|localApplicationVersionId| A[Local Application]
-  A -->|deviceVersionId| D[Device]
-  T[标题时段 Observation] -->|observerVersionId| R
-  T -->|contentVersionId| TC[Foreground Window Title]
-  TC -->|foregroundApplicationPeriodVersionId| C
-  click O "/core/model/observation"
-  click T "/core/model/observation"
+  C[Foreground Application Period] -->|observerId| R[前台状态 Observer]
+  C -->|localApplicationId| A[Local Application]
+  L[本机应用描述] -->|localApplicationId| A
+  L -->|deviceId| D[Device]
+  T[Foreground Window Title] -->|observerId| R
+  T -->|foregroundApplicationPeriodVersionId| C
   click R "/observers/foreground-state/foreground-state-observer"
   click C "/observers/foreground-state/foreground-application-period"
   click A "/observers/foreground-state/local-application"
+  click L "/observers/foreground-state/local-application#description"
   click D "/observers/device-state/device"
-  click TC "/observers/foreground-state/foreground-window-title"
+  click T "/observers/foreground-state/foreground-window-title"
 ```
 
 ## 程序实例 [#instance]
 
-- 一个程序实例对应运行的一个前台状态 Observer。同一台设备上可以有两个，它们共用同样的本机应用，各自形成观测。
+- 一个程序实例对应运行的一个前台状态 Observer。同一台设备上可以有两个，它们提到同样的本机应用，各自形成观测。
 - 程序版本取运行上下文中的安装包版本，见 [Hosting · 运行上下文](../../hosting/index.mdx#context)。
-- 本机应用所在的设备是运行上下文中的运行设备，程序启动时写入它。读不到运行设备时，它报告诊断并等待，见 [Hosting · 运行上下文](../../hosting/index.mdx#context)。
+- 本机应用所在的设备是运行上下文中的运行设备，程序启动时写入设备描述。读不到运行设备时，它报告诊断并等待，见 [Hosting · 运行上下文](../../hosting/index.mdx#context)。
 
 ## 采集 [#collection]
 
@@ -55,7 +53,7 @@ flowchart LR
 
 macOS 唤醒后立即重新读取。休眠、读取失败等情况下时段怎样结束和重新开始，见 [Foreground Application Period · 事实时间](./foreground-application-period.mdx#fact-time)。
 
-标题通过所属应用时段的观测内容关联到这一段活动，窗口本身没有身份。标题怎样分段，见 [Foreground Window Title · 粒度](./foreground-window-title.mdx#granularity)。
+标题通过所属的应用时段关联到这一段活动，窗口本身没有身份。标题怎样分段，见 [Foreground Window Title · 粒度](./foreground-window-title.mdx#granularity)。
 
 ## 事实时间 [#fact-time]
 
@@ -72,9 +70,9 @@ macOS 唤醒后立即重新读取。休眠、读取失败等情况下时段怎�
 | 切换应用，或应用名称、时区变化 | 写入当前时段，开始新的一段 |
 | 读取失败、停止采集或其他中断 | 当前时段结束于最后一次确认，写入它 |
 
-一个时段是一个请求：先写入本机应用，带识别依据；再写入时段内容，引用本机应用，带时间和图标，代码的形状见 [SDK · 引用和识别依据](../../api/sdk.mdx#references)。两次写入都不查询后端，所以断网时照常，见 [Runtime · 本地转发](../../hosting/runtime.mdx#forwarding)。
+一个时段是一个请求：先写入本机应用描述，带识别依据；再写入时段，提到本机应用，带时间和图标，代码的形状见 [SDK · 引用和识别依据](../../api/sdk.mdx#references)。两次写入都不查询后端，所以断网时照常，见 [Runtime · 本地转发](../../hosting/runtime.mdx#forwarding)。
 
-程序异常退出时，进行中的时段随之丢失；程序实例的身份不变，新的读数开始新的时段。以后要让进行中的这一段可读，只改写入的时机：见 [API · 观测](../../api/writing.mdx#observation)。
+程序异常退出时，进行中的时段随之丢失；程序实例的身份不变，新的读数开始新的时段。以后要让进行中的这一段可读，只改写入的时机：见 [API · 一次写入](../../api/writing.mdx#write)。
 
 ## 实现 [#implementation]
 

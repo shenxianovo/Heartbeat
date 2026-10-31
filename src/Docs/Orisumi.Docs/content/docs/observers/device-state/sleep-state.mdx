@@ -13,15 +13,15 @@ description: "设备处于休眠或清醒的时段（草案）"
 
 ## 身份 [#identity]
 
-观测内容的身份和复用规则尚未确定。程序实例的身份见 [Device State · 程序实例](./index.mdx#instance)，设备的身份另行定义。
+这份 Observation 的身份规则尚未确定。程序实例的身份见 [Device State · 程序实例](./index.mdx#instance)，设备的身份见 [Device · 身份](./device.mdx#identity)。
 
 ## 引用 [#references]
 
-被观测设备的实体和引用字段尚未定义。
+提到被观测设备的字段尚未定义。
 
 ## 事实时间 [#fact-time]
 
-Observation 保存状态的开始和结束边界，两者都已知时是 `[startAt, endAt)`，表示方式见 [Observation · 事实时间](../../core/model/observation.mdx#fact-time)。
+事实时间是状态的开始和结束边界，两者都已知时是 `[startAt, endAt)`，表示方式见 [Observation · 事实时间](../../core/model/observation.mdx#fact-time)。
 
 ## EntitySchema [#schema]
 
@@ -29,7 +29,7 @@ Observation 保存状态的开始和结束边界，两者都已知时是 `[start
 | --- | --- |
 | SchemaId | 待定 |
 | 显示名称 | 设备休眠与清醒状态 |
-| 说明 | 表达设备处于休眠或清醒状态的一段事实；Observation 保存已知状态边界。 |
+| 说明 | 表达设备处于休眠或清醒状态的一段事实；事实时间是已知的状态边界。 |
 | 资源名 | 待定 |
 
 | 字段 | 类型 | 必填 | 可空 | description |
@@ -38,7 +38,7 @@ Observation 保存状态的开始和结束边界，两者都已知时是 `[start
 
 ## 示例 [#example]
 
-设备引用尚未定义，示例只有状态字段：
+提到设备的字段尚未定义，示例只有状态字段：
 
 ```json
 {
@@ -49,7 +49,7 @@ Observation 保存状态的开始和结束边界，两者都已知时是 `[start
 ## 待定 [#open]
 
 - SchemaId、资源名，以及字段的必填和可空。
-- 观测内容的身份、设备引用和内容复用规则。
+- 身份规则，以及怎样提到设备。
 - 怎样用系统的休眠和唤醒证据确定边界。
 - 启动时怎样取得状态。
 - 停止或崩溃后的采集空白。

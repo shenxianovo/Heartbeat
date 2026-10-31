@@ -24,48 +24,20 @@
           "nullable": false,
           "required": true
         }
-      }
+      },
+      "kind": "observation",
+      "immutable": false
     }
   },
   {
     "schemaId": "019e1bbb-ec00-7000-8000-000000000002",
     "content": {
       "displayName": "本机应用",
-      "description": "表示某台设备上的一个应用安装，保存用于识别安装的平台标识线索。",
+      "description": "表示某台设备上的一个应用安装。",
       "resourceName": "local-applications",
-      "fields": {
-        "deviceVersionId": {
-          "type": "reference",
-          "description": "应用所在的设备",
-          "nullable": false,
-          "required": true
-        },
-        "identifiers": {
-          "type": "array",
-          "description": "平台标识线索，顺序无意义；没有线索时为 []",
-          "nullable": false,
-          "required": true,
-          "items": {
-            "type": "object",
-            "description": "一项平台标识线索，由 scheme 和 value 共同解释",
-            "nullable": false,
-            "fields": {
-              "scheme": {
-                "type": "string",
-                "description": "线索的种类：macos.bundle-id 是应用包标识，macos.executable-path 是可执行文件路径，android.package-name 是 Android 应用的包名",
-                "nullable": false,
-                "required": true
-              },
-              "value": {
-                "type": "string",
-                "description": "线索的原始值",
-                "nullable": false,
-                "required": true
-              }
-            }
-          }
-        }
-      }
+      "fields": {},
+      "kind": "thing",
+      "immutable": false
     }
   },
   {
@@ -75,12 +47,6 @@
       "description": "表达某个本机应用连续处于前台的一段活动，每段活动一个实体；内容保存应用引用与时段开始时读到的名称和图标，Observation 保存时段。",
       "resourceName": "foreground-application-periods",
       "fields": {
-        "localApplicationVersionId": {
-          "type": "reference",
-          "description": "观测设备上的本机应用",
-          "nullable": false,
-          "required": true
-        },
         "name": {
           "type": "string",
           "description": "当时读到的应用名称，没读到时为 null",
@@ -92,8 +58,72 @@
           "description": "时段开始时读到的应用图标，1024×1024 像素的 PNG；没读到时为 null",
           "nullable": true,
           "required": true
+        },
+        "localApplicationId": {
+          "type": "reference",
+          "description": "观测设备上的本机应用",
+          "nullable": false,
+          "required": true,
+          "target": "thing"
+        }
+      },
+      "kind": "observation",
+      "immutable": false
+    }
+  },
+  {
+    "schemaId": "019e1bbb-ec00-7000-8000-000000000014",
+    "content": {
+      "displayName": "本机应用描述",
+      "description": "说明一个本机应用所在的设备和它的标识线索。事实时间未知。",
+      "resourceName": "local-application-descriptions",
+      "kind": "observation",
+      "immutable": false,
+      "fields": {
+        "localApplicationId": {
+          "type": "reference",
+          "description": "被描述的本机应用",
+          "required": true,
+          "nullable": false,
+          "target": "thing"
+        },
+        "deviceId": {
+          "type": "reference",
+          "description": "应用所在的设备",
+          "required": true,
+          "nullable": false,
+          "target": "thing"
+        },
+        "identifierIds": {
+          "type": "array",
+          "description": "跨设备线索，顺序无意义；没有时为 []",
+          "required": true,
+          "nullable": false,
+          "items": {
+            "type": "reference",
+            "description": "一条应用线索",
+            "nullable": false,
+            "target": "thing"
+          }
+        },
+        "executablePath": {
+          "type": "string",
+          "description": "可执行文件路径，读不到时为 null",
+          "required": true,
+          "nullable": true
         }
       }
+    }
+  },
+  {
+    "schemaId": "019e1bbb-ec00-7000-8000-000000000015",
+    "content": {
+      "displayName": "应用线索",
+      "description": "表示一条跨设备线索，在任何设备上都指同一款软件的同一类安装。",
+      "resourceName": "application-identifiers",
+      "kind": "thing",
+      "immutable": false,
+      "fields": {}
     }
   }
 ]
